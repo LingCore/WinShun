@@ -199,4 +199,6 @@ Window {
             }
         }
     }
+
+    WindowEdge { body: false } // the menu's colour is the window's
 }

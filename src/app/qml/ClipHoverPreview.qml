@@ -5,6 +5,8 @@ import WinShun
 Window {
     id: window
     required property Window host
+    property QtObject popupHost: null // Clipboard: prepareMenuWindow for DWM border, shadow and corners
+    property bool ready: false
     required property rect anchorRect
     required property rect availableArea
     required property var info
@@ -20,7 +22,12 @@ Window {
     transientParent: host
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus
     color: Theme.background
-    visible: host.visible
+    visible: ready && host.visible
+    Component.onCompleted: {
+        if (popupHost)
+            popupHost.prepareMenuWindow(this)
+        ready = true
+    }
     // As wide as its text, or a text's look (a formula in it) wholly, within 280 to 480.
     width: Math.ceil(Math.min(Math.max(280, Math.min(480, Math.max(measure.advanceWidth + 32,
                                                                    info.look ? (info.width ?? 0) + 40 : 0))),

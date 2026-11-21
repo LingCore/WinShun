@@ -315,7 +315,8 @@ Item {
             ClipPictureViewer {
                 readonly property Window clipWindow: page.Window.window
                 host: clipWindow
-                visible: page.pictureViewOpen && clipWindow !== null && clipWindow.visible
+                popupHost: page.clipboard
+                open: page.pictureViewOpen && clipWindow !== null && clipWindow.visible
                 hostRect: clipWindow ? Qt.rect(clipWindow.x, clipWindow.y, clipWindow.width, clipWindow.height) : Qt.rect(0, 0, 0, 0)
                 availableArea: page.frame.availableArea(page)
                 source: page.viewedSource
@@ -411,6 +412,7 @@ Item {
         sourceComponent: Component {
             ClipHoverPreview {
                 host: page.Window.window
+                popupHost: page.clipboard
                 anchorRect: page.hoverRect
                 availableArea: page.frame.availableArea(page)
                 metrics: page.metrics

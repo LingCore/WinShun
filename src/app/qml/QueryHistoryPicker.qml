@@ -172,6 +172,7 @@ Item {
                     text: qsTr("还没有搜索记录")
                     color: Theme.faint; font.pixelSize: Theme.fontBody
                 }
+                WindowEdge { body: false } // the menu's colour is the window's
             }
             MenuPathTip { id: tip; host: menu; availableArea: menu.area }
         }

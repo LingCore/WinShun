@@ -97,8 +97,17 @@ void setCloaked(QWindow* window, bool cloaked);
 // A window of its own to the shell (GitHub #418, the launcher pinned): a
 // button on the taskbar, in Alt+Tab, minimized by that button and Win+D as
 // any other, and back from them. Off: as Qt made it from its flags (a
-// Qt::Tool window: none of that). Kept while hidden and shown again.
+// Qt::Tool window: none of that). Kept while hidden, shown again, and across
+// native handle recreation; turning it on also applies the app icon so tool
+// windows (whose Qt window class has no icon) never show the generic shell
+// fallback.
 void setTaskbarWindow(QWindow* window, bool on);
+
+// Gives a window the executable's IDI_ICON1 for ICON_BIG and ICON_SMALL at
+// the window's current DPI, refreshed across DPI changes and native handle
+// recreation. Leaves windows with an explicit QWindow::icon() untouched, and
+// does nothing in executables without an IDI_ICON1 resource.
+void setAppIcon(QWindow* window);
 
 // No DWM fade as the window is shown or hidden: hidden, it is off the screen
 // in the next composition, not some 200 ms later (a capture must not catch it).

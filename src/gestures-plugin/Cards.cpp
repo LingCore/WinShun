@@ -725,18 +725,30 @@ std::vector<std::wstring> wrapLines(Probe& probe, std::wstring text, const Gdipl
 // ---- the frame ----
 
 // DWM's own corners, border and shadow for a window that has no
-// non-client area, in the look's corners and light or dark.
-void styleFrame(HWND window, const Look& look)
+// non-client area, in the look's corners and light or dark. Returns true
+// when DWM accepts DWMWA_BORDER_COLOR (Windows 11); Windows 10 draws no
+// border here, so drawCard/drawBubble draw a square 1 px edge instead.
+bool styleFrame(HWND window, const Look& look)
 {
     const int corner = look.rounded ? kCornerRound : kCornerSquare;
     ::DwmSetWindowAttribute(window, kDwmCorner, &corner, sizeof corner);
-    ::DwmSetWindowAttribute(window, kDwmBorder, &kColorDefault, sizeof kColorDefault);
+    const bool nativeBorder = SUCCEEDED(::DwmSetWindowAttribute(window, kDwmBorder, &kColorDefault, sizeof kColorDefault));
     const BOOL dark = look.dark ? TRUE : FALSE;
     if (FAILED(::DwmSetWindowAttribute(window, kDwmDarkMode, &dark, sizeof dark)))
         ::DwmSetWindowAttribute(window, kDwmDarkModeOld, &dark, sizeof dark);
     // One pixel of the frame extended: what DWM wants for the shadow.
     const MARGINS margins {0, 0, 1, 0};
     ::DwmExtendFrameIntoClientArea(window, &margins);
+    return nativeBorder;
+}
+
+void drawWindowEdge(Gdiplus::Graphics& g, int width, int height, double scale, std::uint32_t argb)
+{
+    const int edge = std::max(1, static_cast<int>(std::lround(scale)));
+    fillRectangle(g, 0, 0, width, edge, argb);
+    fillRectangle(g, 0, height - edge, width, edge, argb);
+    fillRectangle(g, 0, 0, edge, height, argb);
+    fillRectangle(g, width - edge, 0, edge, height, argb);
 }
 
 void blit(HDC dc, const Surface& surface)
@@ -846,6 +858,7 @@ struct Cards::Impl {
 
     struct Card {
         HWND window = nullptr;
+        bool nativeBorder = true;
         Surface surface;
         bool active = false;
         std::wstring title;
@@ -873,6 +886,7 @@ struct Cards::Impl {
 
     struct Bubble {
         HWND window = nullptr;
+        bool nativeBorder = true;
         Surface surface;
         bool active = false;
         unsigned generation = 0; // which bubble: a click may open another
@@ -982,8 +996,8 @@ bool Cards::Impl::create()
     bubble.window = ::CreateWindowExW(ex, kBubbleClass, L"", WS_POPUP | WS_CAPTION, 0, 0, 1, 1, nullptr, nullptr, instance, this);
     created = note.window && card.window && bubble.window;
     if (created) {
-        styleFrame(card.window, look);
-        styleFrame(bubble.window, look);
+        card.nativeBorder = styleFrame(card.window, look);
+        bubble.nativeBorder = styleFrame(bubble.window, look);
     } else {
         destroy();
     }
@@ -1030,8 +1044,8 @@ void Cards::Impl::relook()
 {
     if (!created)
         return;
-    styleFrame(card.window, look);
-    styleFrame(bubble.window, look);
+    card.nativeBorder = styleFrame(card.window, look);
+    bubble.nativeBorder = styleFrame(bubble.window, look);
     if (card.active) {
         layoutCard();
         drawCard();
@@ -1194,12 +1208,12 @@ void Cards::Impl::confirm(POINT at, ConfirmIcon icon, const std::wstring& title,
     card.done = std::move(done);
     card.screen = screenAt(at);
     layoutCard();
+    card.nativeBorder = styleFrame(card.window, look);
     drawCard();
     if (!card.surface.width()) { // no bitmap: nothing to ask with, so not done
         endConfirm(false);
         return;
     }
-    styleFrame(card.window, look);
     placeFrame(card.window, card.origin, card.size);
     blitWindow(card.window, card.surface);
     if (!grabKeys(card.window, card.keys, true))
@@ -1347,6 +1361,8 @@ void Cards::Impl::drawCard()
         };
         button(card.cancel, card.cancelText, cancelText, kCancelButton, false);
         button(card.nowButton, card.nowText, card.now, kNowButton, true);
+        if (!card.nativeBorder)
+            drawWindowEdge(g, width, height, s, look.edge);
     }
 }
 
@@ -1497,12 +1513,12 @@ void Cards::Impl::openBubble(POINT at, std::function<void()> clicked)
     bubble.hover = bubble.pressed = false;
     bubble.screen = screenAt(at);
     layoutBubble();
+    bubble.nativeBorder = styleFrame(bubble.window, look);
     drawBubble();
     if (!bubble.surface.width()) {
         closeBubble();
         return;
     }
-    styleFrame(bubble.window, look);
     placeFrame(bubble.window, bubble.origin, bubble.size);
     blitWindow(bubble.window, bubble.surface);
     keepDots();
@@ -1677,6 +1693,8 @@ void Cards::Impl::drawBubble()
                 x += dotSize + fl(px(4, s));
             }
         }
+        if (!bubble.nativeBorder)
+            drawWindowEdge(g, width, bubble.size.cy, s, look.edge);
     }
 }
 

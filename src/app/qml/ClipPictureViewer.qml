@@ -12,6 +12,9 @@ import WinShun
 Window {
     id: viewer
     required property Window host
+    property QtObject popupHost: null // Clipboard: prepareMenuWindow for DWM border, shadow and corners
+    property bool open: host.visible
+    property bool ready: false
     required property rect hostRect // the clipboard window, on the screen
     required property rect availableArea // its screen's, without the taskbar
     required property string source // empty: on its way (a file being read)
@@ -37,8 +40,13 @@ Window {
     transientParent: host
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus
     color: Theme.background
-    visible: host.visible
+    visible: ready && open
     title: qsTr("查看图片") // Qt adds " - Win顺"
+    Component.onCompleted: {
+        if (popupHost)
+            popupHost.prepareMenuWindow(this)
+        ready = true
+    }
     width: Math.ceil(Math.min(roomWidth, Math.max(420, natural.width * fitted + 2 * padding)))
     height: Math.ceil(Math.min(roomHeight, Math.max(260, natural.height * fitted + 2 * padding + footer.height)))
     x: Math.round(!beside ? availableArea.x + (availableArea.width - width) / 2

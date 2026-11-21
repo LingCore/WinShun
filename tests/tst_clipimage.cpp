@@ -941,6 +941,45 @@ private slots:
         object->setProperty("hostRect", QRectF(300, 100, 1320, 500));
         QCOMPARE(viewer->x(), int(std::round((1920 - viewer->width()) / 2.0)));
         viewer->close();
+
+        // Styled through popupHost.prepareMenuWindow before its first show (DWM border/shadow/corners).
+        QQmlComponent popupHostComponent(&engine);
+        popupHostComponent.setData(
+            "import QtQuick; QtObject { property var prepared: null; property bool wasVisible: true; "
+            "function prepareMenuWindow(w) { prepared = w; wasVisible = w.visible } }",
+            QUrl(u"popupHost.qml"_s));
+        std::unique_ptr<QObject> popupHost(popupHostComponent.create());
+        QVERIFY2(popupHost, qPrintable(popupHostComponent.errorString()));
+        std::unique_ptr<QObject> styledViewer(component.createWithInitialProperties({
+            {u"host"_s, QVariant::fromValue(host.get())}, {u"popupHost"_s, QVariant::fromValue(popupHost.get())},
+            {u"hostRect"_s, QRectF(100, 100, 600, 500)}, {u"availableArea"_s, QRectF(0, 0, 1920, 1040)},
+            {u"source"_s, QUrl::fromLocalFile(path).toString()}, {u"pixels"_s, QSizeF(shown)}, {u"caption"_s, u"PNG"_s}}));
+        QVERIFY2(styledViewer, qPrintable(component.errorString()));
+        auto* styledWindow = qobject_cast<QQuickWindow*>(styledViewer.get());
+        QVERIFY(styledWindow);
+        QCOMPARE(popupHost->property("prepared").value<QObject*>(), styledWindow);
+        QCOMPARE(popupHost->property("wasVisible").toBool(), false);
+        QTRY_VERIFY(styledWindow->isVisible());
+        styledWindow->close();
+
+        QQmlComponent hoverComponent(&engine, folder.resolved(QUrl(u"ClipHoverPreview.qml"_s)));
+        QVERIFY2(hoverComponent.isReady(), qPrintable(hoverComponent.errorString()));
+        QQmlComponent metricsComponent(&engine, folder.resolved(QUrl(u"UiScale.qml"_s)));
+        std::unique_ptr<QObject> metrics(metricsComponent.create());
+        QVERIFY2(metrics, qPrintable(metricsComponent.errorString()));
+        popupHost->setProperty("prepared", QVariant());
+        popupHost->setProperty("wasVisible", true);
+        std::unique_ptr<QObject> hoverObj(hoverComponent.createWithInitialProperties({
+            {u"host"_s, QVariant::fromValue(host.get())}, {u"popupHost"_s, QVariant::fromValue(popupHost.get())},
+            {u"anchorRect"_s, QRectF(100, 100, 400, 52)}, {u"availableArea"_s, QRectF(0, 0, 1920, 1040)},
+            {u"metrics"_s, QVariant::fromValue(metrics.get())}, {u"info"_s, QVariantMap {{u"kind"_s, 0}, {u"text"_s, u"hello"_s}}}}));
+        QVERIFY2(hoverObj, qPrintable(hoverComponent.errorString()));
+        auto* hoverWindow = qobject_cast<QQuickWindow*>(hoverObj.get());
+        QVERIFY(hoverWindow);
+        QCOMPARE(popupHost->property("prepared").value<QObject*>(), hoverWindow);
+        QCOMPARE(popupHost->property("wasVisible").toBool(), false);
+        QTRY_VERIFY(hoverWindow->isVisible());
+        hoverWindow->close();
     }
 
 private:

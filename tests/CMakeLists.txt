@@ -607,9 +607,12 @@ set_tests_properties(tst_windowvisibility PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
 # The launcher pinned as a window of its own (GitHub #418): real windows.
+# Embeds app.rc (IDI_ICON1) so taskbar/frameless window icon wiring is tested
+# against the real executable resource, just like WinShun.exe and plugin hosts.
 qt_add_executable(tst_taskbarwindow tst_taskbarwindow.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/WindowEffects.cpp
-    ${PROJECT_SOURCE_DIR}/src/app/platform/Foreground.cpp)
+    ${PROJECT_SOURCE_DIR}/src/app/platform/Foreground.cpp
+    ${PROJECT_SOURCE_DIR}/resources/app.rc)
 target_include_directories(tst_taskbarwindow PRIVATE ${PROJECT_SOURCE_DIR}/src/app ${PROJECT_SOURCE_DIR}/src/core)
 target_link_libraries(tst_taskbarwindow PRIVATE winshun_options Qt6::Gui Qt6::Test comctl32 gdi32 dwmapi ole32 shell32 user32)
 set_target_properties(tst_taskbarwindow PROPERTIES WIN32_EXECUTABLE FALSE)
