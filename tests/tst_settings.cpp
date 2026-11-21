@@ -1865,6 +1865,45 @@ private slots:
             for (const QString& o : defaults)
                 QVERIFY2(f == o || !f.startsWith(o + u'\\', Qt::CaseInsensitive), qPrintable(f + u" in "_s + o));
         }
+
+        // Manual input & environment variables (#421): cleaned without auto-expanding,
+        // while indexFolderPath and resolvedEnvPath expand %VAR% at runtime.
+        QCOMPARE(ws::Settings::cleanFolderPath(u"  \"%USERPROFILE%/Documents/\"  "_s), u"%USERPROFILE%\\Documents"_s);
+        QCOMPARE(ws::Settings::cleanFolderPath(u"\"D:\\Work\\\""_s), u"D:\\Work"_s);
+        QCOMPARE(ws::Settings::cleanFolderPath(u"d:"_s), u"d:\\"_s);
+        QCOMPARE(ws::Settings::cleanFolderPath(u"%TEMP%"_s), u"%TEMP%"_s);
+        QVERIFY(ws::Settings::hasEnvVar(u"%TEMP%"_s));
+        QVERIFY(ws::Settings::hasEnvVar(u"%USERPROFILE%\\Projects"_s));
+        QVERIFY(!ws::Settings::hasEnvVar(u"D:\\100%_done"_s));
+        QVERIFY(!ws::Settings::hasEnvVar(u"D:\\a%%b"_s));
+        const QString resolvedTemp = ws::Settings::resolvedEnvPath(u"%TEMP%"_s);
+        QVERIFY(!resolvedTemp.isEmpty());
+        QVERIFY(QFileInfo(resolvedTemp).isDir());
+        QVERIFY(ws::Settings::resolvedEnvPath(u"C:\\Windows"_s).isEmpty()); // no %VAR%
+        QVERIFY(ws::Settings::resolvedEnvPath(u"%WINSHUN_NO_SUCH_VAR_421%\\Sub"_s).isEmpty()); // unresolved
+
+        // %VAR% paths survive save/load verbatim and still expand in indexFolderPaths() and crawlRules().
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings envSettings;
+        envSettings.load();
+        envSettings.indexFolders = {u"%TEMP%"_s, u"%WINSHUN_NO_SUCH_VAR_421%\\Work"_s};
+        envSettings.indexFoldersChosen = true;
+        envSettings.excludedPaths = {u"%TEMP%"_s, u"%WINSHUN_NO_SUCH_VAR_421%\\Cache"_s};
+        envSettings.save();
+
+        ws::Settings loaded;
+        loaded.load();
+        QCOMPARE(loaded.indexFolders, envSettings.indexFolders);
+        QCOMPARE(loaded.excludedPaths, envSettings.excludedPaths);
+        const std::vector<std::wstring> indexed = loaded.indexFolderPaths();
+        QCOMPARE(indexed.size(), std::size_t(1)); // unresolved env var skipped, %TEMP% expanded
+        QCOMPARE(indexed.front(), ws::Settings::indexFolderPath(resolvedTemp));
+        const ws::CrawlRules rules = loaded.crawlRules();
+        QVERIFY(std::ranges::any_of(rules.excludedPaths, [&](const std::wstring& p) {
+            return _wcsicmp(p.c_str(), ws::Settings::excludedCompareKey(resolvedTemp).c_str()) == 0;
+        }));
     }
 
     // `WinShun.exe --settings --settings-at 9,0` to a copy that is running: the place travels

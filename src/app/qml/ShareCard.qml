@@ -11,8 +11,8 @@ Rectangle {
     id: card
 
     property string kind: "share" // share | folder
-    property var share: blank // {path, name, tone, status, signIn, suspect, busy[, verifiable][, content, contentStatus]}
-    readonly property var blank: ({ path: "", name: "", tone: "idle", status: "", signIn: false, suspect: false, busy: false, verifiable: false,
+    property var share: blank // {path, resolved, name, tone, status, signIn, suspect, busy[, verifiable][, content, contentStatus]}
+    readonly property var blank: ({ path: "", resolved: "", name: "", tone: "idle", status: "", signIn: false, suspect: false, busy: false, verifiable: false,
                                     content: false, contentStatus: "" })
     property bool marked: false // what the settings search found
     readonly property real dpr: Screen.devicePixelRatio // one Screen attached object for all its items (GitHub #111)
@@ -81,6 +81,7 @@ Rectangle {
             elide: Text.ElideMiddle
         }
         Text {
+            id: pathLabel
             visible: card.share.name !== card.share.path
             width: parent.width
             text: card.share.path
@@ -88,6 +89,12 @@ Rectangle {
             color: Theme.faint
             font.pixelSize: Theme.fontCaption
             elide: Text.ElideMiddle
+
+            HoverHandler { id: pathHover }
+            HoverTip {
+                target: pathHover.hovered && (card.share.resolved ?? "").length > 0 ? pathLabel : null
+                text: qsTr("当前展开为：%1").arg(card.share.resolved ?? "")
+            }
         }
         Item {
             visible: card.share.status.length > 0 // a folder while the disks are indexed whole: nothing to say

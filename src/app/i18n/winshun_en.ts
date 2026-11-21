@@ -6174,6 +6174,42 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>No folders excluded</translation>
     </message>
     <message>
+        <source>文件夹;添加文件夹;手动输入;环境变量;工作文件夹;桌面;文档;下载;立即核对;folders</source>
+        <translation>folder;add folder;manual input;environment variable;work folder;desktop;documents;downloads;check now;folders</translation>
+    </message>
+    <message>
+        <source>只有这些文件夹里的文件能搜到；可手动输入（支持 %USERPROFILE% 等环境变量）或拖入文件夹</source>
+        <translation>Only files in these folders can be found; type a path (environment variables like %USERPROFILE% are supported) or drag folders here</translation>
+    </message>
+    <message>
+        <source>输入或粘贴文件夹路径，例如 D:\Work 或 %USERPROFILE%\Documents</source>
+        <translation>Type or paste a folder path, e.g. D:\Work or %USERPROFILE%\Documents</translation>
+    </message>
+    <message>
+        <source>排除;忽略;隐藏;黑名单;手动输入;环境变量;exclude</source>
+        <translation>exclude;ignore;hide;blacklist;manual input;environment variable</translation>
+    </message>
+    <message>
+        <source>这些文件夹里的内容都不出现在结果里，支持 %TEMP% 等环境变量。“让其他软件把 Win顺 当作 Everything 搜索”开着时仍建索引，其他软件照样查得到（如 Total Commander 的文件夹大小）</source>
+        <translation>Nothing in these folders appears in results; environment variables like %TEMP% are supported. When “Let other apps search WinShun as Everything” is on, they are still indexed for those apps (such as Total Commander&apos;s folder sizes)</translation>
+    </message>
+    <message>
+        <source>这些文件夹里的内容都不出现在结果里，支持手动输入和 %TEMP% 等环境变量</source>
+        <translation>Nothing in these folders appears in results; manual input and environment variables like %TEMP% are supported</translation>
+    </message>
+    <message>
+        <source>输入或粘贴文件夹路径，例如 D:\Cache 或 %TEMP%</source>
+        <translation>Type or paste a folder path, e.g. D:\Cache or %TEMP%</translation>
+    </message>
+    <message>
+        <source>选择不需要搜索的文件夹</source>
+        <translation>Choose a folder to exclude</translation>
+    </message>
+    <message>
+        <source>当前展开为：%1</source>
+        <translation>Currently resolves to: %1</translation>
+    </message>
+    <message>
         <source>只想跳过某些文件？到“名称和类型”里按文件名（可用 *）或扩展名跳过</source>
         <translation>Only some files? Skip them by name (* works) or extension under “Names and types”</translation>
     </message>
@@ -9251,6 +9287,10 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>移除</source>
         <translation>Remove</translation>
+    </message>
+    <message>
+        <source>当前展开为：%1</source>
+        <translation>Currently resolves to: %1</translation>
     </message>
     <message>
         <source>启动并索引</source>
@@ -15687,6 +15727,26 @@ Content index: %5</translation>
     <message>
         <source>不是完整的文件夹路径，不会索引</source>
         <translation>Not a full folder path: not indexed</translation>
+    </message>
+    <message>
+        <source>环境变量未展开为完整路径，暂时不会索引</source>
+        <translation>Environment variable did not expand to a full path: not indexed for now</translation>
+    </message>
+    <message>
+        <source>环境变量未展开为完整的文件夹路径，请检查变量名</source>
+        <translation>The environment variable did not expand to a full folder path; check its name</translation>
+    </message>
+    <message>
+        <source>请输入完整的文件夹路径，例如 D:\Work 或 %USERPROFILE%\Documents</source>
+        <translation>Enter a full folder path, e.g. D:\Work or %USERPROFILE%\Documents</translation>
+    </message>
+    <message>
+        <source>请输入完整路径或环境变量路径；按文件夹名跳过请到“名称和类型”里添加</source>
+        <translation>Enter a full path or an environment variable path; to skip folders by name, add it under “Names and types”</translation>
+    </message>
+    <message>
+        <source>请输入完整的文件夹路径，例如 D:\Cache 或 %TEMP%</source>
+        <translation>Enter a full folder path, e.g. D:\Cache or %TEMP%</translation>
     </message>
     <message>
         <source>已经包含在 %1 里</source>

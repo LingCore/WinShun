@@ -2854,15 +2854,15 @@ Window {
                     }
 
                     title: qsTr("索引的文件夹")
-                    keywords: qsTr("文件夹;添加文件夹;工作文件夹;桌面;文档;下载;立即核对;folders").split(";")
+                    keywords: qsTr("文件夹;添加文件夹;手动输入;环境变量;工作文件夹;桌面;文档;下载;立即核对;folders").split(";")
                     values: window.editor.folders.map(folder => folder.path)
                     description: window.editor.foldersInEffect
-                                 ? qsTr("只有这些文件夹里的文件能搜到；也可以从资源管理器把文件夹拖到这里")
+                                 ? qsTr("只有这些文件夹里的文件能搜到；可手动输入（支持 %USERPROFILE% 等环境变量）或拖入文件夹")
                                  : qsTr("普通文件夹已包含在整盘索引中；mklink 创建的链接文件夹可在这里额外添加，管理员和索引服务模式也能用。")
 
                     FlatButton {
                         dpr: window.dpr
-                        text: qsTr("添加文件夹…")
+                        text: qsTr("选择文件夹…")
                         glyph: "" // Add
                         onClicked: {
                             const path = window.editor.pickFolder(qsTr("选择要索引的文件夹"))
@@ -2872,6 +2872,27 @@ Window {
                     }
 
                     body: [
+                        Row {
+                            width: parent.width
+                            spacing: 8
+
+                            InputBox {
+                                id: indexFolderInput
+                                objectName: "indexFolderInput"
+                                dpr: window.dpr
+                                width: parent.width - addIndexFolderButton.width - 8
+                                placeholder: qsTr("输入或粘贴文件夹路径，例如 D:\\Work 或 %USERPROFILE%\\Documents")
+                                onTextChanged: if (foldersRow.problem.length > 0) { foldersRow.problem = ""; foldersRow.networkPath = "" }
+                                onAccepted: if (foldersRow.add(text)) clear()
+                            }
+                            FlatButton {
+                                id: addIndexFolderButton
+                                dpr: window.dpr
+                                text: qsTr("添加")
+                                enabled: indexFolderInput.text.trim().length > 0
+                                onClicked: if (foldersRow.add(indexFolderInput.text)) indexFolderInput.clear()
+                            }
+                        },
                         Text {
                             visible: window.editor.foldersInEffect && window.editor.folders.length === 0
                             width: parent.width
@@ -2991,22 +3012,64 @@ Window {
 
                 SettingRow {
                     id: excludedFoldersRow
+                    property string problem
+                    function add(text) {
+                        const problem = window.editor.addExcludedPath(text)
+                        excludedFoldersRow.problem = problem
+                        return problem.length === 0
+                    }
+
                     title: qsTr("不搜索的文件夹")
-                    keywords: qsTr("排除;忽略;隐藏;黑名单;exclude").split(";")
+                    keywords: qsTr("排除;忽略;隐藏;黑名单;手动输入;环境变量;exclude").split(";")
                     values: window.editor.excludedPaths
                     // GitHub #351: indexed all the same for the programs asking over the Everything interface.
                     description: window.editor.everythingCompat
-                        ? qsTr("这些文件夹里的内容都不出现在结果里。“让其他软件把 Win顺 当作 Everything 搜索”开着时仍建索引，其他软件照样查得到（如 Total Commander 的文件夹大小）")
-                        : qsTr("这些文件夹里的内容都不出现在结果里")
+                        ? qsTr("这些文件夹里的内容都不出现在结果里，支持 %TEMP% 等环境变量。“让其他软件把 Win顺 当作 Everything 搜索”开着时仍建索引，其他软件照样查得到（如 Total Commander 的文件夹大小）")
+                        : qsTr("这些文件夹里的内容都不出现在结果里，支持手动输入和 %TEMP% 等环境变量")
 
                     FlatButton {
                         dpr: window.dpr
-                        text: qsTr("添加文件夹")
+                        text: qsTr("选择文件夹…")
                         glyph: "" // Add
-                        onClicked: window.editor.addExcludedFolder()
+                        onClicked: {
+                            const path = window.editor.pickFolder(qsTr("选择不需要搜索的文件夹"))
+                            if (path.length > 0)
+                                excludedFoldersRow.add(path)
+                        }
                     }
 
-                    body: [Rectangle {
+                    body: [
+                        Row {
+                            width: parent.width
+                            spacing: 8
+
+                            InputBox {
+                                id: excludedFolderInput
+                                objectName: "excludedFolderInput"
+                                dpr: window.dpr
+                                width: parent.width - addExcludedFolderButton.width - 8
+                                placeholder: qsTr("输入或粘贴文件夹路径，例如 D:\\Cache 或 %TEMP%")
+                                onTextChanged: if (excludedFoldersRow.problem.length > 0) excludedFoldersRow.problem = ""
+                                onAccepted: if (excludedFoldersRow.add(text)) clear()
+                            }
+                            FlatButton {
+                                id: addExcludedFolderButton
+                                dpr: window.dpr
+                                text: qsTr("添加")
+                                enabled: excludedFolderInput.text.trim().length > 0
+                                onClicked: if (excludedFoldersRow.add(excludedFolderInput.text)) excludedFolderInput.clear()
+                            }
+                        },
+                        Text {
+                            visible: excludedFoldersRow.problem.length > 0
+                            width: parent.width
+                            text: excludedFoldersRow.problem
+                            textFormat: Text.PlainText
+                            color: Theme.danger
+                            font.pixelSize: Theme.fontCaption
+                            wrapMode: Text.Wrap
+                        },
+                        Rectangle {
                         width: parent.width
                         height: Math.max(pathList.implicitHeight, 40)
                         radius: Theme.controlRadius
@@ -3034,6 +3097,7 @@ Window {
 
                                     required property int index
                                     required property string modelData
+                                    readonly property string resolvedPath: window.editor.resolveEnvPath(modelData)
 
                                     width: pathList.width
                                     height: 42
@@ -3053,6 +3117,7 @@ Window {
                                         size: 16
                                     }
                                     Text {
+                                        id: excludedPathLabel
                                         anchors.left: folderIcon.right
                                         anchors.leftMargin: 10
                                         anchors.right: removePath.left
@@ -3063,6 +3128,12 @@ Window {
                                         color: Theme.text
                                         font.pixelSize: Theme.fontBody
                                         elide: Text.ElideMiddle
+
+                                        HoverHandler { id: excludedPathHover }
+                                        HoverTip {
+                                            target: excludedPathHover.hovered && pathRow.resolvedPath.length > 0 ? excludedPathLabel : null
+                                            text: qsTr("当前展开为：%1").arg(pathRow.resolvedPath)
+                                        }
                                     }
                                     FlatButton {
                                         dpr: window.dpr
@@ -3073,7 +3144,10 @@ Window {
                                         implicitHeight: 32
                                         flat: true
                                         text: qsTr("移除")
-                                        onClicked: window.editor.removeExcludedPath(pathRow.index)
+                                        onClicked: {
+                                            excludedFoldersRow.problem = ""
+                                            window.editor.removeExcludedPath(pathRow.index)
+                                        }
                                     }
                                 }
                             }

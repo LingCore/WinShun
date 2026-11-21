@@ -78,6 +78,11 @@ QString displayPath(const QString& path)
     return QString::fromStdWString(win32::expandEnvironment(QDir::toNativeSeparators(path.trimmed()).toStdWString()));
 }
 
+bool hasEnvVar(QStringView text) { return Settings::hasEnvVar(text); }
+QString rawDisplayPath(const QString& path) { return Settings::cleanFolderPath(path); }
+QString resolvedEnvPath(const QString& path) { return Settings::resolvedEnvPath(path); }
+std::wstring excludedCompareKey(const QString& path) { return Settings::excludedCompareKey(path); }
+
 bool containsIgnoreCase(const QStringList& list, const QString& value)
 {
     return list.contains(value, Qt::CaseInsensitive);
@@ -1065,7 +1070,7 @@ QStringList SettingsEditor::excludedPaths() const
 {
     QStringList paths;
     for (const QString& p : m_settings.excludedPaths)
-        paths.append(displayPath(p));
+        paths.append(rawDisplayPath(p));
     return paths;
 }
 
@@ -3490,19 +3495,11 @@ bool folderHolds(std::wstring_view folder, std::wstring_view path)
         && (path.size() == folder.size() || path[folder.size()] == L'\\');
 }
 
-// A path typed or chosen, or a file:/// URL dropped: native separators, no
-// backslash at the end but a drive's ("D:\").
+// A path typed or chosen, or a file:/// URL dropped: native separators, quotes
+// stripped, no backslash at the end but a drive's ("D:\"), preserving %VAR%.
 QString folderText(const QString& text)
 {
-    QString t = text.trimmed();
-    if (t.startsWith(u"file:"_s, Qt::CaseInsensitive))
-        t = QUrl(t).toLocalFile();
-    t = QDir::toNativeSeparators(t);
-    while (t.size() > 3 && t.endsWith(u'\\'))
-        t.chop(1);
-    if (t.size() == 2 && t[1] == u':')
-        t += u'\\';
-    return t;
+    return rawDisplayPath(text);
 }
 
 // A known folder's path as IndexService writes it, without reading the disk
@@ -3617,12 +3614,17 @@ QVariantList SettingsEditor::folders() const
     };
     QVariantList list;
     for (qsizetype i = 0; i < m_settings.indexFolders.size(); ++i) {
-        const QString path = displayPath(m_settings.indexFolders[i]);
+        const QString path = rawDisplayPath(m_settings.indexFolders[i]);
+        const QString expanded = displayPath(m_settings.indexFolders[i]);
+        const QString resolved = resolvedEnvPath(m_settings.indexFolders[i]);
+        const QString namedFrom = !resolved.isEmpty() ? resolved : path;
         const std::wstring& key = keys[static_cast<std::size_t>(i)];
         // 桌面, 文档 …: as Windows calls its own folders; else the folder's name.
-        QString name = path.size() > 3 ? QDir(QDir::fromNativeSeparators(path)).dirName() : path;
+        QString name = namedFrom.size() > 3 ? QDir(QDir::fromNativeSeparators(namedFrom)).dirName() : namedFrom;
+        if (name.isEmpty())
+            name = path;
         if (const auto known = std::ranges::find_if(
-                m_knownFolders, [&](const Settings::KnownFolder& k) { return k.path.compare(path, Qt::CaseInsensitive) == 0; });
+                m_knownFolders, [&](const Settings::KnownFolder& k) { return k.path.compare(expanded, Qt::CaseInsensitive) == 0; });
             known != m_knownFolders.end())
             name = known->name;
         QString tone = u"idle"_s;
@@ -3630,10 +3632,12 @@ QVariantList SettingsEditor::folders() const
         bool busy = false;
         bool verifiable = false;
         const bool linked = hasDirectoryLink(key);
-        const bool network = key.empty() && Settings::isNetworkPath(path);
+        const bool network = key.empty() && (Settings::isNetworkPath(path) || Settings::isNetworkPath(expanded));
         if (key.empty()) {
             tone = u"warn"_s;
-            status = network ? tr("这是网络或 WSL 位置，请在“网络与 WSL”里添加") : tr("不是完整的文件夹路径，不会索引");
+            status = network          ? tr("这是网络或 WSL 位置，请在“网络与 WSL”里添加")
+                : hasEnvVar(path)     ? tr("环境变量未展开为完整路径，暂时不会索引")
+                                      : tr("不是完整的文件夹路径，不会索引");
         } else if (m_settings.selectedDrives && !m_settings.selectedDrives->contains(QString::fromStdWString(key.substr(0, 2)))) {
             tone = u"warn"_s;
             status = tr("所在的磁盘未勾选，不会索引");
@@ -3699,6 +3703,7 @@ QVariantList SettingsEditor::folders() const
         }
         list.append(QVariantMap {
             {u"path"_s, path},
+            {u"resolved"_s, resolved},
             {u"name"_s, name},
             {u"tone"_s, tone},
             {u"status"_s, status},
@@ -3766,12 +3771,15 @@ QString SettingsEditor::addFolderTo(Settings& settings, const QString& text, boo
     const QString folder = folderText(text);
     if (folder.isEmpty())
         return {};
-    if (Settings::isNetworkPath(folder))
+    const QString expanded = displayPath(folder);
+    if (Settings::isNetworkPath(folder) || Settings::isNetworkPath(expanded))
         return tr("这是网络或 WSL 位置，请在“网络与 WSL”里添加");
     const std::wstring key = Settings::indexFolderPath(folder);
-    if (key.empty())
-        return tr("请选一个完整的文件夹路径");
-    if (const QFileInfo info(folder); !info.isDir())
+    if (key.empty()) {
+        return hasEnvVar(folder) ? tr("环境变量未展开为完整的文件夹路径，请检查变量名")
+                                 : tr("请输入完整的文件夹路径，例如 D:\\Work 或 %USERPROFILE%\\Documents");
+    }
+    if (const QFileInfo info(expanded); !info.isDir())
         return info.exists() ? tr("只能添加文件夹") : tr("找不到这个文件夹");
     std::vector<std::wstring> keys;
     for (const QString& chosen : settings.indexFolders)
@@ -3782,7 +3790,7 @@ QString SettingsEditor::addFolderTo(Settings& settings, const QString& text, boo
         if (win32::equalsIgnoreCase(keys[i], key))
             return tr("已经添加过了");
         if (folderHolds(keys[i], key) && !hasDirectoryLink(key, keys[i]))
-            return tr("已经包含在 %1 里").arg(displayPath(settings.indexFolders[static_cast<qsizetype>(i)]));
+            return tr("已经包含在 %1 里").arg(rawDisplayPath(settings.indexFolders[static_cast<qsizetype>(i)]));
     }
     // One that holds folders added takes their place: none twice.
     QStringList kept;
@@ -3819,7 +3827,8 @@ void SettingsEditor::verifyFolder(int index)
 
 bool SettingsEditor::isNetworkFolder(const QString& text) const
 {
-    return Settings::isNetworkPath(folderText(text));
+    const QString folder = folderText(text);
+    return Settings::isNetworkPath(folder) || Settings::isNetworkPath(displayPath(folder));
 }
 
 QString SettingsEditor::localPath(const QString& text) const
@@ -3831,6 +3840,11 @@ QString SettingsEditor::pickFolder(const QString& title)
 {
     const HWND owner = m_window ? reinterpret_cast<HWND>(m_window->winId()) : nullptr;
     return shell::pickFolder(owner, title);
+}
+
+QString SettingsEditor::resolveEnvPath(const QString& text) const
+{
+    return resolvedEnvPath(text);
 }
 
 void SettingsEditor::listServerShares(const QString& server)
@@ -3902,10 +3916,53 @@ void SettingsEditor::addExcludedFolder()
 {
     const HWND owner = m_window ? reinterpret_cast<HWND>(m_window->winId()) : nullptr;
     const QString folder = shell::pickFolder(owner, tr("选择不需要搜索的文件夹"));
-    if (folder.isEmpty() || containsIgnoreCase(excludedPaths(), displayPath(folder)))
-        return;
-    m_settings.excludedPaths.append(folder);
-    commit();
+    if (!folder.isEmpty())
+        addExcludedPath(folder);
+}
+
+QString SettingsEditor::addExcludedPath(const QString& text)
+{
+    bool added = false;
+    const QString problem = addExcludedPathTo(m_settings, text, added);
+    if (added)
+        commit();
+    return problem;
+}
+
+QString SettingsEditor::addExcludedPathTo(Settings& settings, const QString& text, bool& added)
+{
+    added = false;
+    const QString folder = folderText(text);
+    if (folder.isEmpty())
+        return {};
+    const bool env = hasEnvVar(folder);
+    const QString expanded = rawDisplayPath(displayPath(folder));
+    const auto isAbsolutePath = [](const QString& p) {
+        if (p.size() >= 2 && p[1] == u':' && p[0].isLetter() && (p.size() == 2 || p[2] == u'\\'))
+            return true;
+        if (p.startsWith(u"\\\\"_s) && p.size() > 2 && p[2] != u'\\')
+            return true;
+        return false;
+    };
+    if (!env && !isAbsolutePath(expanded)) {
+        if (!folder.contains(u'\\') && !folder.contains(u':'))
+            return tr("请输入完整路径或环境变量路径；按文件夹名跳过请到“名称和类型”里添加");
+        return tr("请输入完整的文件夹路径，例如 D:\\Cache 或 %TEMP%");
+    }
+    const bool candidateResolved = !hasEnvVar(expanded);
+    const std::wstring candidateKey = candidateResolved ? excludedCompareKey(folder) : std::wstring();
+    for (const QString& existing : settings.excludedPaths) {
+        if (rawDisplayPath(existing).compare(folder, Qt::CaseInsensitive) == 0)
+            return tr("已经添加过了");
+        if (candidateResolved) {
+            const QString existingExpanded = rawDisplayPath(displayPath(existing));
+            if (!hasEnvVar(existingExpanded) && win32::equalsIgnoreCase(excludedCompareKey(existing), candidateKey))
+                return tr("已经添加过了");
+        }
+    }
+    settings.excludedPaths.append(folder);
+    added = true;
+    return {};
 }
 
 void SettingsEditor::removeExcludedPath(int index)

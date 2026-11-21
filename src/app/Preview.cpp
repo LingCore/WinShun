@@ -2811,6 +2811,32 @@ int runSettings(const QStringList& args)
         QTemporaryDir folder;
         check(folder.isValid(), "temporary folder was not created");
         check(editor->addFolder(folder.path()).isEmpty(), "adding a folder while elevated was rejected");
+        // Manual input & %VAR% preservation (#421): indexed folders and excluded paths.
+        check(editor->addFolder(u"\"%TEMP%/\""_s).isEmpty(), "adding %TEMP% indexed folder failed");
+        check(!editor->addFolder(u"%TEMP%"_s).isEmpty(), "duplicate %TEMP% indexed folder was accepted");
+        check(!editor->addFolder(u"%WINSHUN_NO_SUCH_VAR_421%\\Work"_s).isEmpty(), "unresolved indexed folder was accepted");
+        const auto foldersList = editor->folders();
+        const auto tempCard = std::ranges::find_if(foldersList, [](const QVariant& v) {
+            return v.toMap().value(u"path"_s).toString() == u"%TEMP%";
+        });
+        check(tempCard != foldersList.end(), "%TEMP% indexed folder was auto-expanded or missing");
+        if (tempCard != foldersList.end())
+            check(!tempCard->toMap().value(u"resolved"_s).toString().isEmpty(), "%TEMP% indexed folder missing resolved preview");
+        check(editor->addExcludedPath(u"\"%LOCALAPPDATA%/WinShunManualTest/\""_s).isEmpty(),
+            "adding %LOCALAPPDATA% excluded folder failed");
+        check(editor->excludedPaths().contains(u"%LOCALAPPDATA%\\WinShunManualTest"_s),
+            "excluded folder %VAR% was auto-expanded");
+        check(!editor->resolveEnvPath(u"%LOCALAPPDATA%\\WinShunManualTest"_s).isEmpty(),
+            "resolveEnvPath did not expand %LOCALAPPDATA%");
+        check(editor->addExcludedPath(u"%WINSHUN_CUSTOM_VAR_421%\\Cache"_s).isEmpty(),
+            "unresolved portable %VAR% excluded folder was rejected");
+        check(editor->excludedPaths().contains(u"%WINSHUN_CUSTOM_VAR_421%\\Cache"_s),
+            "unresolved %VAR% excluded folder missing");
+        check(!editor->addExcludedPath(u"node_modules"_s).isEmpty(), "bare folder name accepted as excluded path");
+        check(!editor->addExcludedPath(u"%LOCALAPPDATA%\\WinShunManualTest"_s).isEmpty(),
+            "duplicate %VAR% excluded folder was accepted");
+        check(!editor->addExcludedPath(editor->resolveEnvPath(u"%LOCALAPPDATA%\\WinShunManualTest"_s)).isEmpty(),
+            "duplicate expanded excluded folder was accepted");
         window->resize(args.contains(u"--compact"_s) ? QSize(760, 420) : QSize(920, 720));
         bool saved = true;
         const auto grab = [&](int tab, const QString& name) {

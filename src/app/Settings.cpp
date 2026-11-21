@@ -23,6 +23,7 @@
 #include <QSet>
 #include <QSettings>
 #include <QStandardPaths>
+#include <QUrl>
 
 #include <windows.h>
 
@@ -1663,14 +1664,64 @@ CrawlRules Settings::hiddenRules() const
 
 std::wstring Settings::indexFolderPath(const QString& folder)
 {
-    if (folder.trimmed().isEmpty() || isNetworkPath(folder))
+    const QString cleaned = cleanFolderPath(folder);
+    if (cleaned.isEmpty() || isNetworkPath(cleaned))
         return {}; // a share's place is 网络共享 (ShareIndexer), and its folders are not looked up here
-    std::wstring path = win32::expandEnvironment(QDir::toNativeSeparators(folder.trimmed()).toStdWString());
+    std::wstring path = win32::expandEnvironment(cleaned.toStdWString());
     if (path.size() < 2 || path[1] != L':' || !std::iswalpha(path[0]) || (path.size() > 2 && path[2] != L'\\'))
         return {}; // no full path
-    path = path.find_first_not_of(L'\\', 2) == std::wstring::npos ? path.substr(0, 2) : normalizePath(folder); // "D:\" -> "D:"
+    path = path.find_first_not_of(L'\\', 2) == std::wstring::npos ? path.substr(0, 2) : normalizePath(cleaned); // "D:\" -> "D:"
     path[0] = static_cast<wchar_t>(std::towupper(path[0]));
     return path;
+}
+
+QString Settings::cleanFolderPath(const QString& text)
+{
+    QString t = text.trimmed();
+    if (t.size() >= 2 && t.front() == u'"' && t.back() == u'"')
+        t = t.mid(1, t.size() - 2).trimmed();
+    if (t.startsWith(u"file:"_s, Qt::CaseInsensitive))
+        t = QUrl(t).toLocalFile();
+    t = QDir::toNativeSeparators(t);
+    while (t.size() > 3 && t.endsWith(u'\\'))
+        t.chop(1);
+    if (t.size() == 2 && t[1] == u':')
+        t += u'\\';
+    return t;
+}
+
+bool Settings::hasEnvVar(QStringView text)
+{
+    qsizetype from = 0;
+    while (from < text.size()) {
+        const qsizetype open = text.indexOf(u'%', from);
+        if (open < 0)
+            return false;
+        const qsizetype close = text.indexOf(u'%', open + 1);
+        if (close < 0)
+            return false;
+        if (close > open + 1)
+            return true;
+        from = close + 1;
+    }
+    return false;
+}
+
+QString Settings::resolvedEnvPath(const QString& text)
+{
+    const QString raw = cleanFolderPath(text);
+    if (!hasEnvVar(raw))
+        return {};
+    const QString expanded
+        = cleanFolderPath(QString::fromStdWString(win32::expandEnvironment(raw.toStdWString())));
+    if (expanded.isEmpty() || hasEnvVar(expanded) || expanded.compare(raw, Qt::CaseInsensitive) == 0)
+        return {};
+    return expanded;
+}
+
+std::wstring Settings::excludedCompareKey(const QString& path)
+{
+    return normalizePath(cleanFolderPath(path));
 }
 
 std::vector<std::wstring> Settings::indexFolderPaths() const

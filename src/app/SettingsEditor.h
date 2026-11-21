@@ -651,6 +651,9 @@ public:
     Q_INVOKABLE bool isNetworkFolder(const QString& text) const; // a share's place (path or file:// URL)
     Q_INVOKABLE QString localPath(const QString& text) const; // a path or a file:/// URL, with native separators
     Q_INVOKABLE QString pickFolder(const QString& title); // asks for one; empty when none was chosen
+    // If `text` contains %VAR% and expands cleanly to a different path, returns
+    // that expanded path (for tooltips); otherwise empty.
+    Q_INVOKABLE QString resolveEnvPath(const QString& text) const;
     QStringList excludedPaths() const;
     QStringList excludedNames() const { return m_settings.excludedNames; }
     QStringList excludedTypes() const { return m_settings.excludedTypes; }
@@ -1008,6 +1011,10 @@ public:
     Q_INVOKABLE void openWindowsSetting(const QString& command);
 
     Q_INVOKABLE void addExcludedFolder(); // asks for the folder
+    // Adds a typed/pasted excluded folder (supports %VAR% without auto-expanding,
+    // GitHub #421). Returns why it cannot be added, or empty once added.
+    Q_INVOKABLE QString addExcludedPath(const QString& text);
+    static QString addExcludedPathTo(Settings& settings, const QString& text, bool& added);
     Q_INVOKABLE void removeExcludedPath(int index);
     Q_INVOKABLE bool addExcludedName(const QString& name);
     Q_INVOKABLE void removeExcludedName(int index);

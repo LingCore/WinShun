@@ -667,6 +667,17 @@ struct Settings {
     // places (a share, a mapped drive) are left out: those are 网络共享's.
     std::vector<std::wstring> indexFolderPaths() const;
     static std::wstring indexFolderPath(const QString& folder); // one of them; empty when it is left out
+    // Cleans a typed/pasted/dropped folder path (trims whitespace, strips
+    // matching surrounding quotes, converts file:/// URLs, native separators,
+    // removes trailing backslash except drive root) without expanding %VAR% (#421).
+    static QString cleanFolderPath(const QString& text);
+    // True when `text` contains a %VAR% environment variable reference.
+    static bool hasEnvVar(QStringView text);
+    // If `text` contains %VAR% and expands cleanly to a different path with no
+    // unresolved %VAR% remaining, returns that expanded path; otherwise empty.
+    static QString resolvedEnvPath(const QString& text);
+    // Normalized expanded comparison key for an excluded folder path.
+    static std::wstring excludedCompareKey(const QString& path);
     // GitHub #52: the first time only the chosen folders are indexed, a list
     // never set (indexFoldersChosen) is taken for good as it is: the
     // account's known folders as load() found them, or as changed since.
