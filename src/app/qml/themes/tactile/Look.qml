@@ -69,8 +69,9 @@ QtObject {
     readonly property int toggleWidth: 40
     readonly property int toggleHeight: 20
     readonly property int checkSize: 20
-    readonly property int animFast: 120          // key travel, colours
-    readonly property int animSlide: 180         // knobs, the card sliding between rows
+    readonly property bool animations: SystemTheme.animations
+    readonly property int animFast: animations ? 120 : 0          // key travel, colours
+    readonly property int animSlide: animations ? 180 : 0         // knobs, the card sliding between rows
     readonly property int animMove: animSlide
 
     // ---- geometry the hosts lay out by (Theme reads these names) ---------------

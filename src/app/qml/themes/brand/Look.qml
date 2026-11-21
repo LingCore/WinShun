@@ -110,8 +110,9 @@ QtObject {
     readonly property int segPad: 2
     readonly property int toggleWidth: 40
     readonly property int toggleHeight: 20
-    readonly property int animFast: 120
-    readonly property int animMove: 180
+    readonly property bool animations: SystemTheme.animations
+    readonly property int animFast: animations ? 120 : 0
+    readonly property int animMove: animations ? 180 : 0
     readonly property var easeOut: [0, 0, 0, 1, 1, 1] // cubic-bezier(0,0,0,1)
 
     // ---- Geometry the hosts lay out by (themes/README.md) ----

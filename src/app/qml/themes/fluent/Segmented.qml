@@ -41,13 +41,18 @@ Item {
                    : (part.enabled && index === part.hoveredIndex) || (part.iconOnly && index === part.currentIndex) ? part.look.hover
                    : Qt.rgba(part.look.hover.r, part.look.hover.g, part.look.hover.b, 0)
 
-            Behavior on color { ColorAnimation { duration: 100 } }
+            Behavior on color { enabled: part.look !== null && part.look.animations && (part.Window.window?.visible ?? false); ColorAnimation { duration: part.look ? part.look.animFast : 0 } }
         }
     }
 
     Rectangle { // the chosen one's pill
         id: pill
         readonly property var at: part.currentIndex >= 0 && part.currentIndex < part.segments.length ? part.segments[part.currentIndex] : null
+        readonly property bool animate: part.look !== null && part.look.animations && (part.Window.window?.visible ?? false)
+        // Only slide when the user changes selection while visible — not when
+        // segments first lay out or swap labels (e.g. clearOnOpen polishing).
+        property bool sliding: false
+        Timer { id: slideWindow; interval: (part.look ? part.look.animMove : 0) + 50; onTriggered: pill.sliding = false }
         visible: at !== null && !part.iconOnly
         width: 16
         height: part.snap(3)
@@ -58,10 +63,21 @@ Item {
         transform: Scale { id: stretch; origin.x: pill.width / 2 }
 
         Behavior on x {
-            NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
+            enabled: pill.animate && pill.sliding
+            NumberAnimation { duration: part.look ? part.look.animMove : 0; easing.type: Easing.OutCubic }
         }
         readonly property int chosen: part.currentIndex
-        onChosenChanged: if (visible) stretchAnim.restart()
+        onChosenChanged: {
+            if (visible && animate) {
+                sliding = true
+                slideWindow.restart()
+                stretchAnim.restart()
+            } else {
+                sliding = false
+                slideWindow.stop()
+            }
+        }
+        onAnimateChanged: if (!animate) { sliding = false; slideWindow.stop() }
 
         SequentialAnimation {
             id: stretchAnim

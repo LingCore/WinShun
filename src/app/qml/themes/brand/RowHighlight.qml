@@ -50,7 +50,7 @@ Item {
              : Qt.rgba(row.hoverFill.r, row.hoverFill.g, row.hoverFill.b, 0)
         border.width: row.raisedFace || (row.current && !row.inMenu) ? row.edgeWidth : 0
         border.color: row.look ? (row.selected ? row.look.rowSelectedEdge : row.look.capEdge) : "transparent"
-        Behavior on color { ColorAnimation { duration: row.look ? row.look.animFast : 0 } }
+        Behavior on color { enabled: row.look !== null && row.look.animations && (row.Window.window?.visible ?? false); ColorAnimation { duration: row.look ? row.look.animFast : 0 } }
     }
     Rectangle { // the ink bar, 4 px inside the face's edge
         visible: row.bar && !row.inMenu
@@ -61,6 +61,6 @@ Item {
         radius: row.look ? (row.look.rounded ? width / 2 : 0) : 0
         color: row.look ? row.look.indicator : "transparent"
         scale: row.selected ? 1 : 0
-        Behavior on scale { NumberAnimation { duration: row.look ? row.look.animMove : 0; easing.type: Easing.Bezier; easing.bezierCurve: row.look ? row.look.easeOut : [0, 0, 0, 1, 1, 1] } }
+        Behavior on scale { enabled: row.look !== null && row.look.animations && (row.Window.window?.visible ?? false); NumberAnimation { duration: row.look ? row.look.animMove : 0; easing.type: Easing.Bezier; easing.bezierCurve: row.look ? row.look.easeOut : [0, 0, 0, 1, 1, 1] } }
     }
 }

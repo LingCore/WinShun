@@ -74,8 +74,22 @@ Item {
         width: box.width
         height: seg.height - 2 * seg.padding
         visible: seg.currentIndex >= 0 && seg.currentIndex < seg.shown
-        Behavior on x { NumberAnimation { duration: seg.look ? seg.look.animMove : 0; easing.type: Easing.Bezier; easing.bezierCurve: seg.look ? seg.look.easeOut : [0, 0, 0, 1, 1, 1] } }
-        Behavior on width { NumberAnimation { duration: seg.look ? seg.look.animMove : 0; easing.type: Easing.Bezier; easing.bezierCurve: seg.look ? seg.look.easeOut : [0, 0, 0, 1, 1, 1] } }
+        readonly property bool animate: seg.look !== null && seg.look.animations && (seg.Window.window?.visible ?? false)
+        property bool sliding: false
+        Timer { id: slideWindow; interval: (seg.look ? seg.look.animMove : 0) + 50; onTriggered: pill.sliding = false }
+        readonly property int chosen: seg.currentIndex
+        onChosenChanged: {
+            if (visible && animate) {
+                sliding = true
+                slideWindow.restart()
+            } else {
+                sliding = false
+                slideWindow.stop()
+            }
+        }
+        onAnimateChanged: if (!animate) { sliding = false; slideWindow.stop() }
+        Behavior on x { enabled: pill.animate && pill.sliding; NumberAnimation { duration: seg.look ? seg.look.animMove : 0; easing.type: Easing.Bezier; easing.bezierCurve: seg.look ? seg.look.easeOut : [0, 0, 0, 1, 1, 1] } }
+        Behavior on width { enabled: pill.animate && pill.sliding; NumberAnimation { duration: seg.look ? seg.look.animMove : 0; easing.type: Easing.Bezier; easing.bezierCurve: seg.look ? seg.look.easeOut : [0, 0, 0, 1, 1, 1] } }
 
         RectangularShadow {
             anchors.fill: parent

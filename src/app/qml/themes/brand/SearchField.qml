@@ -39,7 +39,7 @@ Item {
     // until it has the focus).
     readonly property bool underlined: flat
     property real lit: focused ? 1 : 0
-    Behavior on lit { NumberAnimation { duration: 200; easing.type: Easing.Bezier; easing.bezierCurve: field.look ? field.look.easeOut : [0, 0, 0, 1, 1, 1] } }
+    Behavior on lit { enabled: field.look !== null && field.look.animations && (field.Window.window?.visible ?? false); NumberAnimation { duration: 200; easing.type: Easing.Bezier; easing.bezierCurve: field.look ? field.look.easeOut : [0, 0, 0, 1, 1, 1] } }
 
     Item {
         id: box

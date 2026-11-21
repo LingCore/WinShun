@@ -50,7 +50,22 @@ Item {
     }
 
     Rectangle {
+        id: pill
         readonly property var segment: part.currentIndex >= 0 && part.currentIndex < part.segments.length ? part.segments[part.currentIndex] : null
+        readonly property bool animate: part.look !== null && part.look.animations && (part.Window.window?.visible ?? false)
+        property bool sliding: false
+        Timer { id: slideWindow; interval: (part.look ? part.look.animMove : 0) + 50; onTriggered: pill.sliding = false }
+        readonly property int chosen: part.currentIndex
+        onChosenChanged: {
+            if (visible && animate) {
+                sliding = true
+                slideWindow.restart()
+            } else {
+                sliding = false
+                slideWindow.stop()
+            }
+        }
+        onAnimateChanged: if (!animate) { sliding = false; slideWindow.stop() }
         visible: part.tabs && segment !== null
         width: 16
         height: part.snap(3)
@@ -59,7 +74,7 @@ Item {
         radius: part.look ? part.look.pill(height) : 0
         color: part.look ? part.look.accentLine : "transparent"
         Behavior on x {
-            enabled: part.look !== null && part.look.animations
+            enabled: pill.animate && pill.sliding
             NumberAnimation { duration: part.look ? part.look.animMove : 0; easing.type: Easing.OutCubic }
         }
     }

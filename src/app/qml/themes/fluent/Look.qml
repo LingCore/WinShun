@@ -186,8 +186,9 @@ QtObject {
     // shows (C++ tray menu); none in fluent.
     property color menuHoverEdge: "transparent"
     // Motion: colours and presses; things that move.
-    property int animFast: 100
-    property int animMove: 200
+    readonly property bool animations: SystemTheme.animations
+    property int animFast: animations ? 100 : 0
+    property int animMove: animations ? 200 : 0
 
     // ---- hooks: the parts this style draws (see themes/README.md)
     property Component windowFrame: Component { WindowBody { look: root } }

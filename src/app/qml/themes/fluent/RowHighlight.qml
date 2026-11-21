@@ -41,15 +41,16 @@ Rectangle {
         transform: Scale { id: grow; origin.y: pill.height / 2 }
     }
 
+    readonly property bool animate: part.look !== null && part.look.animations && (part.Window.window?.visible ?? false)
     NumberAnimation {
         id: pop
         target: grow
         property: "yScale"
         from: 0.35
         to: 1
-        duration: 200
+        duration: part.look ? part.look.animMove : 0
         easing.type: Easing.OutCubic
     }
-    onPositionChanged: if (pill.visible) pop.restart()
-    onSelectedChanged: if (pill.visible) pop.restart()
+    onPositionChanged: if (pill.visible && animate) pop.restart()
+    onSelectedChanged: if (pill.visible && animate) pop.restart()
 }

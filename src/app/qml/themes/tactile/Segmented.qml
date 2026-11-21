@@ -84,6 +84,7 @@ Item {
         look: seg.look
     }
     KeySurface {
+        id: knob
         visible: !seg.keyedMode && seg.currentIndex >= 0 && seg.currentIndex < seg.n
         x: seg.segmentX(Math.max(0, seg.currentIndex))
         y: seg.pad
@@ -95,8 +96,22 @@ Item {
         enabled: seg.enabled
         dpr: seg.dpr
         look: seg.look
-        Behavior on x { NumberAnimation { duration: seg.look ? (seg.look?.animSlide ?? 0) : 0; easing.type: Easing.OutCubic } }
-        Behavior on width { NumberAnimation { duration: seg.look ? (seg.look?.animSlide ?? 0) : 0; easing.type: Easing.OutCubic } }
+        readonly property bool animate: seg.look !== null && seg.look.animations && (seg.Window.window?.visible ?? false)
+        property bool sliding: false
+        Timer { id: slideWindow; interval: (seg.look ? (seg.look?.animSlide ?? 0) : 0) + 50; onTriggered: knob.sliding = false }
+        readonly property int chosen: seg.currentIndex
+        onChosenChanged: {
+            if (visible && animate) {
+                sliding = true
+                slideWindow.restart()
+            } else {
+                sliding = false
+                slideWindow.stop()
+            }
+        }
+        onAnimateChanged: if (!animate) { sliding = false; slideWindow.stop() }
+        Behavior on x { enabled: knob.animate && knob.sliding; NumberAnimation { duration: seg.look ? (seg.look?.animSlide ?? 0) : 0; easing.type: Easing.OutCubic } }
+        Behavior on width { enabled: knob.animate && knob.sliding; NumberAnimation { duration: seg.look ? (seg.look?.animSlide ?? 0) : 0; easing.type: Easing.OutCubic } }
     }
 
     // ---- keyed: separate keys with lamps ----
