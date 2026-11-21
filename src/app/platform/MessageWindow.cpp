@@ -417,6 +417,11 @@ LRESULT MessageWindow::handle(UINT msg, WPARAM wParam, LPARAM lParam)
                 m_callbacks.trayActivated(
                     ::InSendMessage() ? ::GetTickCount() : static_cast<std::uint32_t>(::GetMessageTime()));
             break;
+        case WM_MBUTTONUP:
+            if (m_callbacks.trayMiddleClicked)
+                m_callbacks.trayMiddleClicked(
+                    ::InSendMessage() ? ::GetTickCount() : static_cast<std::uint32_t>(::GetMessageTime()));
+            break;
         case WM_RBUTTONDOWN: // the menu comes with the button's release
             if (m_callbacks.trayMenuSoon)
                 m_callbacks.trayMenuSoon();

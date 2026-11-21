@@ -14,6 +14,7 @@ SettingsSection {
     objectName: "cliSection"
 
     required property SettingsEditor editor
+    readonly property alias cliRow: wsCommandRow
 
     readonly property var cli: editor.cli
     // Not `state`: that is the Item's own.
@@ -67,6 +68,7 @@ SettingsSection {
     note: qsTr("在终端里输入 ws，就能搜文件名、搜文件里的文字、读出 Word 和 PDF 的文字。能运行命令的 AI 助手（Claude Code 这类）用它比 MCP 更省上下文。和 MCP 共用上面的开关。")
 
     SettingRow {
+        id: wsCommandRow
         title: qsTr("ws 命令")
         keywords: qsTr("命令行;终端;ws;command line;cli;terminal;shell;PowerShell;cmd;PATH;环境变量;启用").split(";")
         description: cliSection.stateText

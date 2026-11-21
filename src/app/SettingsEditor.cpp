@@ -1,5 +1,6 @@
 #include "SettingsEditor.h"
 #include "DoubleTapAction.h"
+#include "TrayAction.h"
 #include "UiFont.h"
 #include "SystemTheme.h"
 
@@ -221,6 +222,7 @@ void SettingsEditor::setSettings(const Settings& settings)
         return;
     const bool keys = settings.numberKeys != m_settings.numberKeys || settings.hotkey != m_settings.hotkey
         || settings.panelHotkey != m_settings.panelHotkey
+        || settings.settingsHotkey != m_settings.settingsHotkey
         || settings.clipboardNumberKeys != m_settings.clipboardNumberKeys
         || settings.clipboardHotkey != m_settings.clipboardHotkey
         || settings.folderMenuHotkey != m_settings.folderMenuHotkey
@@ -233,6 +235,7 @@ void SettingsEditor::setSettings(const Settings& settings)
     m_openHotkeyError.clear();
     emit changed();
     emit doubleTapActionsChanged();
+    emit trayActionsChanged();
     if (shares)
         emit sharesChanged();
     if (drives)
@@ -808,6 +811,7 @@ void SettingsEditor::setDoubleTapPluginActions(const QVariantList& actions)
         return;
     m_doubleTapPluginActions = actions;
     emit doubleTapActionsChanged();
+    emit trayActionsChanged();
 }
 
 void SettingsEditor::setDoubleTapAction(const QString& action)
@@ -933,6 +937,23 @@ void SettingsEditor::setPanelHotkeyError(const QString& error)
     if (m_panelHotkeyError == error)
         return;
     m_panelHotkeyError = error;
+    emit hotkeyErrorChanged();
+}
+
+void SettingsEditor::setSettingsHotkey(const QString& hotkey)
+{
+    const QString value = hotkey.trimmed();
+    if (m_settings.settingsHotkey == value)
+        return;
+    m_settings.settingsHotkey = value;
+    commit();
+}
+
+void SettingsEditor::setSettingsHotkeyError(const QString& error)
+{
+    if (m_settingsHotkeyError == error)
+        return;
+    m_settingsHotkeyError = error;
     emit hotkeyErrorChanged();
 }
 
@@ -1986,10 +2007,13 @@ void SettingsEditor::setScreenshotPlugin(bool installed, bool on, const QStringL
 {
     if (m_screenshotInstalled == installed && m_screenshotHistory == on && m_screenshotHotkeys == hotkeys)
         return;
+    const bool historyChanged = m_screenshotHistory != on;
     m_screenshotInstalled = installed;
     m_screenshotHistory = on;
     m_screenshotHotkeys = hotkeys;
     emit screenshotPluginChanged();
+    if (historyChanged)
+        emit trayActionsChanged();
 }
 
 QString SettingsEditor::captureKeywordTaken(const QString& keyword) const
@@ -2078,6 +2102,71 @@ void SettingsEditor::setTaskbarSearchBoxSide(const QString& side)
         return;
     m_settings.taskbarSearchBoxSide = side;
     commit();
+}
+
+QVariantList SettingsEditor::trayActionsFor(const QString& current) const
+{
+    QVariantList actions {
+        QVariantMap {{u"value"_s, trayaction::kLauncher.toString()}, {u"text"_s, tr("打开搜索框")}},
+        QVariantMap {{u"value"_s, trayaction::kPanel.toString()}, {u"text"_s, tr("打开完整搜索面板")}},
+        QVariantMap {{u"value"_s, trayaction::kClipboard.toString()}, {u"text"_s, tr("打开剪贴板")}},
+        QVariantMap {{u"value"_s, trayaction::kSettings.toString()}, {u"text"_s, tr("打开设置")}},
+    };
+    if (m_screenshotHistory)
+        actions.append(QVariantMap {{u"value"_s, trayaction::kScreenshots.toString()}, {u"text"_s, tr("打开截图历史")}});
+    actions.append(QVariantMap {{u"value"_s, trayaction::kPauseClipboard.toString()}, {u"text"_s, tr("暂停 / 恢复记录剪贴板")}});
+    actions.append(m_doubleTapPluginActions);
+    actions.append(QVariantMap {{u"value"_s, trayaction::kNone.toString()}, {u"text"_s, tr("无操作")}});
+    if (std::ranges::none_of(actions, [&](const QVariant& item) {
+            return item.toMap().value(u"value"_s).toString() == current;
+        })) {
+        if (current == trayaction::kScreenshots) {
+            actions.append(QVariantMap {{u"value"_s, current}, {u"text"_s, tr("暂不可用：打开截图历史")}});
+        } else {
+            const auto plugin = doubletap::decode(current);
+            actions.append(QVariantMap {{u"value"_s, current},
+                {u"text"_s, tr("暂不可用：%1 · %2").arg(plugin.plugin, plugin.key)}});
+        }
+    }
+    return actions;
+}
+
+QVariantList SettingsEditor::trayLeftActions() const
+{
+    return trayActionsFor(m_settings.trayLeftAction);
+}
+
+QVariantList SettingsEditor::trayMiddleActions() const
+{
+    return trayActionsFor(m_settings.trayMiddleAction);
+}
+
+void SettingsEditor::setTrayLeftAction(const QString& action)
+{
+    if (action == m_settings.trayLeftAction || !trayaction::valid(action))
+        return;
+    const QVariantList available = trayLeftActions();
+    if (std::ranges::none_of(available, [&](const QVariant& item) {
+            return item.toMap().value(u"value"_s).toString() == action;
+        }))
+        return;
+    m_settings.trayLeftAction = action;
+    commit();
+    emit trayActionsChanged();
+}
+
+void SettingsEditor::setTrayMiddleAction(const QString& action)
+{
+    if (action == m_settings.trayMiddleAction || !trayaction::valid(action))
+        return;
+    const QVariantList available = trayMiddleActions();
+    if (std::ranges::none_of(available, [&](const QVariant& item) {
+            return item.toMap().value(u"value"_s).toString() == action;
+        }))
+        return;
+    m_settings.trayMiddleAction = action;
+    commit();
+    emit trayActionsChanged();
 }
 
 bool SettingsEditor::searchBoxSupported() const
@@ -3815,6 +3904,7 @@ void SettingsEditor::retranslateFolders()
     m_knownFolders = Settings::knownFolders(); // 桌面 or Desktop: translated as they are read
     emit foldersChanged();
     emit doubleTapActionsChanged();
+    emit trayActionsChanged();
 }
 
 QString SettingsEditor::addFolder(const QString& text)

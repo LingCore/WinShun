@@ -12,7 +12,8 @@ QtObject {
     property var pages: []
     property var pageKeywords: []
 
-    signal openRequested(int index, var tab)
+    signal openRequested(var which, var tab)
+    signal partRequested(var which, string name)
     // The handler calls change() (SettingsWindow.holdInView).
     signal holdRequested(Item item, var change)
 }

@@ -1,5 +1,6 @@
 #include "Settings.h"
 #include "DoubleTapAction.h"
+#include "TrayAction.h"
 #include "WebSearchConfig.h"
 #include "PreviewShortcut.h"
 #include "Query.h"
@@ -228,6 +229,64 @@ private slots:
         settings.load();
         QVERIFY(settings.panelHotkey.isEmpty());
         QCOMPARE(settings.hotkey, u"Alt+Space"_s);
+    }
+
+    void settingsHotkeyPreference()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.load();
+        QVERIFY(settings.settingsHotkey.isEmpty());
+        settings.hotkey = u"Alt+Space"_s;
+        settings.panelHotkey = u"Ctrl+Alt+F"_s;
+        settings.settingsHotkey = u"Alt+X"_s;
+        QVERIFY(settings.globalHotkeys().contains(u"Alt+X"_s));
+        QVERIFY(settings.saveChecked());
+        ws::Settings restored;
+        restored.load();
+        QCOMPARE(restored.settingsHotkey, u"Alt+X"_s);
+        QCOMPARE(restored.panelHotkey, u"Ctrl+Alt+F"_s);
+        QCOMPARE(restored.hotkey, u"Alt+Space"_s);
+        restored.settingsHotkey.clear();
+        QVERIFY(restored.saveChecked());
+        settings.load();
+        QVERIFY(settings.settingsHotkey.isEmpty());
+        QCOMPARE(settings.panelHotkey, u"Ctrl+Alt+F"_s);
+        QCOMPARE(settings.hotkey, u"Alt+Space"_s);
+    }
+
+    void trayClickActionPreferences()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.load();
+        QCOMPARE(settings.trayLeftAction, u"launcher"_s);
+        QCOMPARE(settings.trayMiddleAction, u"settings"_s);
+        for (const QString& action : {u"launcher"_s, u"panel"_s, u"clipboard"_s, u"settings"_s,
+                 u"screenshots"_s, u"pause_clipboard"_s, u"none"_s,
+                 ws::doubletap::encode(u"winshun.capture"_s, u"F1"_s)}) {
+            QVERIFY(ws::trayaction::valid(action));
+            settings.trayLeftAction = action;
+            settings.trayMiddleAction = action;
+            QVERIFY(settings.saveChecked());
+            ws::Settings restored;
+            restored.load();
+            QCOMPARE(restored.trayLeftAction, action);
+            QCOMPARE(restored.trayMiddleAction, action);
+        }
+        {
+            QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+            ini.setValue(u"Taskbar/TrayLeftAction"_s, u"bogus"_s);
+            ini.setValue(u"Taskbar/TrayMiddleAction"_s, u"plugin:../bad/F1"_s);
+            ini.sync();
+        }
+        settings.load();
+        QCOMPARE(settings.trayLeftAction, u"launcher"_s);
+        QCOMPARE(settings.trayMiddleAction, u"settings"_s);
     }
 
     void folderMenuInlineCounts()

@@ -10,7 +10,9 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QGuiApplication>
+#include <QImage>
 #include <QJSValue>
+#include <QKeyEvent>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -204,13 +206,223 @@ bool checkSettingsMotion(App& app, const QStringList& args, const QDir& output)
 
     QElapsedTimer opening;
     opening.start();
-    app.showSettings([](QQuickWindow* w) { QMetaObject::invokeMethod(w, "showPage", Q_ARG(QVariant, u"plugins"_s), Q_ARG(QVariant, 0)); });
+    const bool navOnly = args.contains(u"--nav-check"_s);
+    app.showSettings([navOnly](QQuickWindow* w) {
+        if (navOnly)
+            QMetaObject::invokeMethod(w, "showPage", Q_ARG(QVariant, u"general"_s), Q_ARG(QVariant, 0));
+        else
+            QMetaObject::invokeMethod(w, "showPage", Q_ARG(QVariant, u"plugins"_s), Q_ARG(QVariant, 0));
+    });
     QQuickWindow* w = nullptr;
     while (opening.elapsed() < 8000 && !(w = settingsWindow()))
         pump(10);
     if (!w) {
         say(u"FAILED: no settings window"_s);
         return false;
+    }
+    while (opening.elapsed() < 8000 && app.settingsOpening().firstFrameMs < 0)
+        pump(10);
+
+    if (navOnly) {
+        bool navPassed = true;
+        const auto check = [&](bool ok, const QString& label) {
+            say(u"nav-check %1: %2"_s.arg(ok ? u"PASS"_s : u"FAIL"_s, label));
+            if (!ok)
+                navPassed = false;
+        };
+        const auto pageId = [&] { return js(w, u"pages[currentPage].id"_s).toString(); };
+        const auto tabIndex = [&] { return js(w, u"currentTab"_s).toInt(); };
+        const auto scrollY = [&] { return js(w, u"currentScrollY()"_s).toDouble(); };
+        const auto sendWheelAt = [&](const QPointF& pt, int delta) {
+            QWheelEvent event(pt, w->mapToGlobal(pt), {}, QPoint(0, delta), Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+            QCoreApplication::sendEvent(w, &event);
+            pump(25);
+        };
+        const auto flickMid = [&] { return js(w, u"flick.mapToItem(null, flick.width / 2, flick.height / 2)"_s).toPointF(); };
+        const auto gleanMid = [&] { return js(w, u"gleaningView.mapToItem(null, gleaningView.width / 2, gleaningView.height / 2)"_s).toPointF(); };
+        const auto saveShot = [&](const QString& name) {
+            pump(180);
+            const QImage img = w->grabWindow();
+            if (!img.isNull())
+                img.save(output.filePath(name));
+        };
+
+        pump(250);
+        check(pageId() == u"general"_s && !js(w, u"canNavigateBack"_s).toBool() && !js(w, u"canNavigateForward"_s).toBool(),
+            u"initial open on general has empty back/forward"_s);
+
+        // Build history: general(y=260) -> keys(tab 0) -> keys(tab 1) -> appearance.
+        js(w, u"flick.stopScrolling(); flick.contentY = 260"_s);
+        pump(60);
+        js(w, u"showPage('keys', 0)"_s);
+        pump(120);
+        js(w, u"showTab(1)"_s);
+        pump(120);
+        js(w, u"showPage('appearance', 0)"_s);
+        pump(120);
+        check(pageId() == u"appearance"_s && js(w, u"canNavigateBack"_s).toBool() && !js(w, u"canNavigateForward"_s).toBool(),
+            u"navigated 4 places; back enabled, forward disabled"_s);
+
+        // Verify WindowFrame hit testing treats Back/Forward as HTCLIENT, empty bar beside them as HTCAPTION.
+        const HWND hwnd = reinterpret_cast<HWND>(w->winId());
+        const auto hitAt = [&](const QPointF& pt) {
+            POINT screenPt {qRound(pt.x() * w->devicePixelRatio()), qRound(pt.y() * w->devicePixelRatio())};
+            ::ClientToScreen(hwnd, &screenPt);
+            return ::SendMessageW(hwnd, WM_NCHITTEST, 0, MAKELPARAM(screenPt.x, screenPt.y));
+        };
+        const QPointF backPt = js(w, u"backButton.mapToItem(null, backButton.width / 2, backButton.height / 2)"_s).toPointF();
+        const QPointF fwdPt = js(w, u"forwardButton.mapToItem(null, forwardButton.width / 2, forwardButton.height / 2)"_s).toPointF();
+        const QPointF dragPt(fwdPt.x() + 80, fwdPt.y());
+        check(hitAt(backPt) == HTCLIENT && hitAt(fwdPt) == HTCLIENT && hitAt(dragPt) == HTCAPTION,
+            u"WindowFrame hitTest: Back/Forward are HTCLIENT, adjacent titlebar is HTCAPTION"_s);
+
+        // Native Win32 XButton1 (client) -> keys tab 1.
+        ::SendMessageW(hwnd, WM_XBUTTONDOWN, MAKEWPARAM(0, XBUTTON1), MAKELPARAM(400, 300));
+        ::SendMessageW(hwnd, WM_XBUTTONUP, MAKEWPARAM(0, XBUTTON1), MAKELPARAM(400, 300));
+        pump(120);
+        check(pageId() == u"keys"_s && tabIndex() == 1 && js(w, u"canNavigateForward"_s).toBool(),
+            u"WM_XBUTTON1 goes back to keys tab 1"_s);
+
+        // Native non-client title bar XButton1 -> keys tab 0.
+        ::SendMessageW(hwnd, WM_NCXBUTTONDOWN, MAKEWPARAM(HTCAPTION, XBUTTON1), MAKELPARAM(400, 16));
+        ::SendMessageW(hwnd, WM_NCXBUTTONUP, MAKEWPARAM(HTCAPTION, XBUTTON1), MAKELPARAM(400, 16));
+        pump(120);
+        check(pageId() == u"keys"_s && tabIndex() == 0, u"WM_NCXBUTTON1 on title bar goes back to keys tab 0"_s);
+
+        // Left-clicking the title bar Back button -> general with scrollY preserved (~260).
+        const auto clickAt = [&](const QPointF& pt, Qt::MouseButton button) {
+            QMouseEvent press(QEvent::MouseButtonPress, pt, w->mapToGlobal(pt), button, button, {});
+            QMouseEvent release(QEvent::MouseButtonRelease, pt, w->mapToGlobal(pt), button, Qt::NoButton, {});
+            QCoreApplication::sendEvent(w, &press);
+            QCoreApplication::sendEvent(w, &release);
+            pump(120);
+        };
+        clickAt(backPt, Qt::LeftButton);
+        check(pageId() == u"general"_s && std::abs(scrollY() - 260.0) < 2.0,
+            u"Back button click returns to general with preserved scrollY (%1)"_s.arg(scrollY()));
+
+        // Native WM_APPCOMMAND forward -> keys tab 0.
+        ::SendMessageW(hwnd, WM_APPCOMMAND, reinterpret_cast<WPARAM>(hwnd), MAKELPARAM(0, APPCOMMAND_BROWSER_FORWARD));
+        pump(120);
+        check(pageId() == u"keys"_s && tabIndex() == 0, u"WM_APPCOMMAND forward returns to keys tab 0"_s);
+
+        // Snapshot active Back + Forward titlebar buttons on keys tab 0.
+        saveShot(u"nav-titlebar-active.png"_s);
+
+        // Right-click the Forward button to open the history dropdown, capture screenshot, then jump to appearance.
+        clickAt(fwdPt, Qt::RightButton);
+        check(js(w, u"historyMenu.open && historyMenu.entries.length === 2"_s).toBool(),
+            u"right-click on Forward opens dropdown listing 2 entries"_s);
+        saveShot(u"nav-history-menu.png"_s);
+        js(w, u"navigateToHistory(historyMenu.historyIndices[1])"_s);
+        pump(120);
+        check(pageId() == u"appearance"_s && !js(w, u"historyMenu.open"_s).toBool(),
+            u"history dropdown jump lands on appearance"_s);
+
+        // Search -> result -> Back returns to search -> Back returns to appearance.
+        js(w, u"loadAllPages(); searchBox.setText('代理')"_s);
+        pump(150);
+        check(js(w, u"searching && canNavigateBack"_s).toBool(), u"searching enables Back"_s);
+        js(w, u"goToCurrent()"_s);
+        pump(150);
+        check(!js(w, u"searching"_s).toBool() && pageId() == u"general"_s, u"goToCurrent jumps to proxy row on general"_s);
+        js(w, u"navigateBack()"_s);
+        pump(150);
+        check(js(w, u"searching && searchBox.query === '代理'"_s).toBool(), u"Back #1 restores search results"_s);
+        js(w, u"navigateBack()"_s);
+        pump(150);
+        check(!js(w, u"searching"_s).toBool() && pageId() == u"appearance"_s, u"Back #2 returns to appearance"_s);
+
+        // Edge overscroll: general bottom burst must not flip; settled 2 notches switch to keys tab 0.
+        js(w, u"showPage('general', 0)"_s);
+        pump(150);
+        js(w, u"flick.stopScrolling(); layoutNow(); flick.contentY = Math.max(0, flick.contentHeight - flick.height)"_s);
+        pump(50);
+        js(w, u"edgeGate.noteBoundaryReached()"_s);
+        for (int i = 0; i < 5; ++i) {
+            sendWheelAt(flickMid(), -120);
+            pump(25);
+        }
+        check(pageId() == u"general"_s && !js(w, u"edgeGate.armed"_s).toBool(),
+            u"fast wheel burst at bottom of general does not flip or arm"_s);
+
+        pump(320); // settle past settleMs
+        sendWheelAt(flickMid(), -120); // notch 1 -> arms hint pill
+        check(pageId() == u"general"_s && js(w, u"edgeGate.armed && edgeGate.direction === 1"_s).toBool(),
+            u"settled notch 1 at bottom of general arms edge hint"_s);
+        saveShot(u"nav-edge-hint-bottom.png"_s);
+        sendWheelAt(flickMid(), -120); // notch 2 -> switches to keys tab 0
+        pump(100);
+        check(pageId() == u"keys"_s && tabIndex() == 0 && scrollY() < 1.0,
+            u"notch 2 switches from general bottom to keys tab 0 at top"_s);
+
+        // Trailing downward notch right after switch must be consumed so keys stays at y=0.
+        sendWheelAt(flickMid(), -120);
+        check(pageId() == u"keys"_s && tabIndex() == 0 && scrollY() < 1.0,
+            u"trailing downward notch right after switch stays pinned at top"_s);
+
+        // Overscroll UP at top of keys tab 0 -> general at its bottom!
+        pump(420);
+        sendWheelAt(flickMid(), 120);
+        sendWheelAt(flickMid(), 120);
+        pump(120);
+        const double maxGeneralY = js(w, u"Math.max(0, flick.contentHeight - flick.height)"_s).toDouble();
+        check(pageId() == u"general"_s && maxGeneralY > 100.0 && std::abs(scrollY() - maxGeneralY) < 4.0,
+            u"overscroll up from keys tab 0 lands at bottom of general (%1 / %2)"_s.arg(scrollY()).arg(maxGeneralY));
+
+        // Sub-tab traversal: keys tab 0 -> keys tab 1 -> appearance.
+        js(w, u"showPage('keys', 0)"_s);
+        pump(150);
+        js(w, u"flick.stopScrolling(); layoutNow(); flick.contentY = Math.max(0, flick.contentHeight - flick.height)"_s);
+        pump(420);
+        sendWheelAt(flickMid(), -120);
+        sendWheelAt(flickMid(), -120);
+        pump(120);
+        check(pageId() == u"keys"_s && tabIndex() == 1, u"overscroll down crosses from keys tab 0 to keys tab 1"_s);
+        js(w, u"flick.stopScrolling(); layoutNow(); flick.contentY = Math.max(0, flick.contentHeight - flick.height)"_s);
+        pump(420);
+        sendWheelAt(flickMid(), -120);
+        sendWheelAt(flickMid(), -120);
+        pump(120);
+        check(pageId() == u"appearance"_s && tabIndex() == 0, u"overscroll down crosses from keys tab 1 to appearance"_s);
+
+        // Warm scene (拾穗计划): health -> gleaning -> overscroll up back to health.
+        js(w, u"showPage('health', 0)"_s);
+        pump(150);
+        js(w, u"flick.stopScrolling(); layoutNow(); flick.contentY = Math.max(0, flick.contentHeight - flick.height)"_s);
+        pump(420);
+        sendWheelAt(flickMid(), -120);
+        sendWheelAt(flickMid(), -120);
+        pump(150);
+        check(pageId() == u"gleaning"_s && js(w, u"warm"_s).toBool(), u"overscroll down from health enters gleaning"_s);
+        pump(420);
+        sendWheelAt(gleanMid(), 120);
+        check(pageId() == u"gleaning"_s && js(w, u"edgeGate.armed && edgeGate.direction === -1"_s).toBool(),
+            u"overscroll up notch 1 on gleaning arms warm edge hint"_s);
+        saveShot(u"nav-edge-hint-warm.png"_s);
+        sendWheelAt(gleanMid(), 120);
+        pump(120);
+        check(pageId() == u"health"_s && !js(w, u"warm"_s).toBool(), u"overscroll up notch 2 on gleaning returns to health"_s);
+
+        // Close and reopen: history resets cleanly.
+        w->close();
+        pump(200);
+        app.showSettings([](QQuickWindow* win) {
+            QMetaObject::invokeMethod(win, "showPage", Q_ARG(QVariant, u"clipboard"_s), Q_ARG(QVariant, 0));
+        });
+        pump(300);
+        check(pageId() == u"clipboard"_s && !js(w, u"canNavigateBack"_s).toBool() && !js(w, u"canNavigateForward"_s).toBool(),
+            u"reopen directly to clipboard starts fresh with empty back/forward"_s);
+
+        const QJsonObject uiaCheck = timeUiaWalk(w);
+        say(u"nav-check UIA: %1 ms, root_children %2"_s.arg(uiaCheck.value(u"ms"_s).toDouble()).arg(uiaCheck.value(u"root_children"_s).toInt()));
+        check(uiaCheck.value(u"root_children"_s).toInt() <= 20 && uiaCheck.value(u"ms"_s).toDouble() <= 20.0,
+            u"UIA tree remains compact and fast"_s);
+
+        w->close();
+        pump(200);
+        say(u"settings nav check: %1"_s.arg(navPassed ? u"passed"_s : u"FAILED"_s));
+        return navPassed;
     }
 
     Recorder rec;

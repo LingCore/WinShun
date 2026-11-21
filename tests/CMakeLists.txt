@@ -1811,3 +1811,19 @@ set_target_properties(tst_printscreen PROPERTIES WIN32_EXECUTABLE FALSE)
 add_test(NAME tst_printscreen COMMAND tst_printscreen -o -,txt)
 set_tests_properties(tst_printscreen PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
+# Browser-like Back/Forward history, WindowFrame XButton/WM_APPCOMMAND routing,
+# and boundary-overscroll tab switching (src/app/SettingsNavigation.*).
+qt_add_executable(tst_settingsnav tst_settingsnav.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/SettingsNavigation.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/WindowFrame.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/WindowEffects.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/Foreground.cpp)
+target_include_directories(tst_settingsnav PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_compile_definitions(tst_settingsnav PRIVATE WINSHUN_QML_DIR="${PROJECT_SOURCE_DIR}/src/app/qml")
+target_link_libraries(tst_settingsnav PRIVATE wscore winshun_options Qt6::Quick Qt6::Test comctl32 dwmapi gdi32 ole32 shell32 user32)
+set_target_properties(tst_settingsnav PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
+add_test(NAME tst_settingsnav COMMAND tst_settingsnav -o -,txt)
+set_tests_properties(tst_settingsnav PROPERTIES
+    ENVIRONMENT "QT_QUICK_BACKEND=software"
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>;QT_PLUGIN_PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>/../plugins")

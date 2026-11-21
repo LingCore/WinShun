@@ -42,6 +42,9 @@ class WindowFrame : public QObject {
     Q_PROPERTY(bool maximizeHovered READ maximizeHovered NOTIFY maximizeButtonChanged FINAL)
     Q_PROPERTY(bool maximizePressed READ maximizePressed NOTIFY maximizeButtonChanged FINAL)
     Q_PROPERTY(QString icon READ icon CONSTANT FINAL) // the program's, for a title bar
+    // Opt-in browser-style Back / Forward via mouse side buttons (client or title bar)
+    // and Windows browser app commands (precision touchpad gestures, media keys).
+    Q_PROPERTY(bool browserNavigation READ browserNavigation WRITE setBrowserNavigation NOTIFY browserNavigationChanged FINAL)
 
 public:
     explicit WindowFrame(bool ownFrame, QObject* parent = nullptr);
@@ -105,6 +108,8 @@ public:
     bool maximizeHovered() const { return m_maximizeHovered; }
     bool maximizePressed() const { return m_maximizePressed; }
     QString icon() const { return s_icon; }
+    bool browserNavigation() const { return m_browserNavigation; }
+    void setBrowserNavigation(bool on);
     // The program's icon as an image URL, set once before any title bar is
     // made: WinShun's from its file icon provider, the screen capture plugin's
     // from its own (no file icons there).
@@ -113,6 +118,9 @@ public:
 signals:
     void pointerChanged();
     void maximizeButtonChanged();
+    void browserNavigationChanged();
+    void navigateBack();
+    void navigateForward();
     void doubleClicked(); // on a drag area
     void handleClicked(Qt::MouseButton button); // see addHandle
     void frameShown(); // see afterNextFrame
@@ -155,6 +163,8 @@ private:
     bool m_resizable = false;
     bool m_fixedSize = false;
     bool m_sideSizing = false;
+    bool m_browserNavigation = false;
+    int m_xButtonDown = 0;
     Qt::MouseButton m_handleButton = Qt::NoButton;
     QPoint m_handlePress;
     // afterNextFrame, set on the render thread: armed, then synchronised.

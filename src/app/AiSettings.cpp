@@ -211,6 +211,12 @@ std::vector<Entry> buildCatalog()
     add(hotkey({"Launcher/Hotkey", QT_TRANSLATE_NOOP("AiSettings", "快捷键"), "shortcuts", 0,
                    "A keyboard shortcut that opens the search window, written like Alt+Space or Ctrl+Alt+F. Empty: none. If another program already holds it the change is not kept."},
         &Settings::hotkey));
+    add(hotkey({"Launcher/PanelHotkey", QT_TRANSLATE_NOOP("AiSettings", "直接打开搜索面板"), "shortcuts", 0,
+                   "A keyboard shortcut that opens the full search panel directly, written like Ctrl+Alt+F. Empty: none."},
+        &Settings::panelHotkey));
+    add(hotkey({"Launcher/SettingsHotkey", QT_TRANSLATE_NOOP("AiSettings", "打开设置"), "shortcuts", 0,
+                   "A keyboard shortcut that opens or toggles Win顺's settings window directly, written like Alt+X. Empty: none."},
+        &Settings::settingsHotkey));
     add(choice({"Launcher/ShortcutAgain", QT_TRANSLATE_NOOP("AiSettings", "再次按下快捷键时"), "shortcuts", 0,
                    "What the shortcut that opens the search window (the custom key or the double tap) does when the window is already open and in front. Pressing it once more expands the window to the search panel with the typed words kept, and a third press closes it; or the window closes at once. Behind another window it only comes to the front."},
         &Settings::shortcutAgain,
@@ -239,6 +245,22 @@ std::vector<Entry> buildCatalog()
     add(boolean({"Taskbar/StartMenuTyping", QT_TRANSLATE_NOOP("AiSettings", "在开始菜单里打字，也用 Win顺 搜索"), "taskbar", 0,
                     "Typing in the Start menu searches with Win顺 instead of Windows."},
         &Settings::taskbarStartTyping));
+    const std::vector<Choice> trayChoices {
+        {u"launcher"_s, u"opens or toggles the search box"_s, QT_TRANSLATE_NOOP("AiSettings", "打开搜索框")},
+        {u"panel"_s, u"opens or toggles the full search panel"_s, QT_TRANSLATE_NOOP("AiSettings", "打开完整搜索面板")},
+        {u"clipboard"_s, u"opens or toggles the clipboard history"_s, QT_TRANSLATE_NOOP("AiSettings", "打开剪贴板")},
+        {u"settings"_s, u"opens Win顺's settings window"_s, QT_TRANSLATE_NOOP("AiSettings", "打开设置")},
+        {u"screenshots"_s, u"opens screenshot history in the launcher (requires the screenshot plugin)"_s,
+            QT_TRANSLATE_NOOP("AiSettings", "打开截图历史")},
+        {u"pause_clipboard"_s, u"pauses or resumes clipboard history recording"_s,
+            QT_TRANSLATE_NOOP("AiSettings", "暂停 / 恢复记录剪贴板")},
+        {u"none"_s, u"does nothing"_s, QT_TRANSLATE_NOOP("AiSettings", "无操作")}};
+    add(choice({"Taskbar/TrayLeftAction", QT_TRANSLATE_NOOP("AiSettings", "左键单击托盘图标"), "taskbar", 0,
+                   "What a left click on Win顺's notification-area icon does."},
+        &Settings::trayLeftAction, trayChoices));
+    add(choice({"Taskbar/TrayMiddleAction", QT_TRANSLATE_NOOP("AiSettings", "中键单击托盘图标"), "taskbar", 0,
+                   "What a middle click on Win顺's notification-area icon does."},
+        &Settings::trayMiddleAction, trayChoices));
 
     // ---- 系统整合: 文件管理器、资源管理器、对话框 ----
     {
@@ -315,98 +337,98 @@ std::vector<Entry> buildCatalog()
         {{u"first"_s, u"that folder's results first, then everywhere else"_s, QT_TRANSLATE_NOOP("AiSettings", "当前文件夹优先")},
             {u"only"_s, u"only that folder and its subfolders"_s, QT_TRANSLATE_NOOP("AiSettings", "只搜当前文件夹")},
             {u"level"_s, u"only what lies directly in that folder, not its subfolders"_s, QT_TRANSLATE_NOOP("AiSettings", "只搜这一层")}}));
-    add(choice({"Launcher/FolderMenu", QT_TRANSLATE_NOOP("AiSettings", "双击空白处弹出文件夹菜单"), "files_and_dialogs", 1,
+    add(choice({"Launcher/FolderMenu", QT_TRANSLATE_NOOP("AiSettings", "双击空白处弹出文件夹菜单"), "files_and_dialogs", 2,
                    "A double click on blank space in a File Explorer folder or on the desktop brings up a menu of favorite and recent folders (like Listary's). 'auto' leaves it to Listary while Listary runs."},
         &Settings::folderMenu,
         {{u"auto"_s, u"on (not while Listary runs, which does the same)"_s, QT_TRANSLATE_NOOP("AiSettings", "开")},
             {u"on"_s, u"on always, also while Listary runs (both menus may come up)"_s, QT_TRANSLATE_NOOP("AiSettings", "一直开")},
             {u"off"_s, u"off"_s, QT_TRANSLATE_NOOP("AiSettings", "关")}}));
-    add(boolean({"Launcher/FolderMenuExplorer", QT_TRANSLATE_NOOP("AiSettings", "在资源管理器的空白处双击"), "files_and_dialogs", 1,
+    add(boolean({"Launcher/FolderMenuExplorer", QT_TRANSLATE_NOOP("AiSettings", "在资源管理器的空白处双击"), "files_and_dialogs", 2,
                     "The folder menu comes up on a double click in File Explorer's folders."},
         &Settings::folderMenuExplorer));
-    add(boolean({"Launcher/FolderMenuDesktop", QT_TRANSLATE_NOOP("AiSettings", "在桌面的空白处双击"), "files_and_dialogs", 1,
+    add(boolean({"Launcher/FolderMenuDesktop", QT_TRANSLATE_NOOP("AiSettings", "在桌面的空白处双击"), "files_and_dialogs", 2,
                     "The folder menu comes up on a double click on the desktop."},
         &Settings::folderMenuDesktop));
-    add(boolean({"Launcher/FolderMenuDouble", QT_TRANSLATE_NOOP("AiSettings", "用鼠标左键双击打开文件夹菜单"), "files_and_dialogs", 1,
+    add(boolean({"Launcher/FolderMenuDouble", QT_TRANSLATE_NOOP("AiSettings", "用鼠标左键双击打开文件夹菜单"), "files_and_dialogs", 2,
                     "Open the enabled blank-space folder menu with a double click of the left mouse button. On by default; with it off the menu can still come from the middle button or the hotkey."},
         &Settings::folderMenuDouble));
-    add(boolean({"Launcher/FolderMenuMiddle", QT_TRANSLATE_NOOP("AiSettings", "同时用中键打开文件夹菜单"), "files_and_dialogs", 1,
+    add(boolean({"Launcher/FolderMenuMiddle", QT_TRANSLATE_NOOP("AiSettings", "同时用中键打开文件夹菜单"), "files_and_dialogs", 2,
                     "Also open the enabled blank-space folder menu with the middle mouse button. Off by default."},
         &Settings::folderMenuMiddle));
-    add(boolean({"Launcher/FolderMenuFavorites", QT_TRANSLATE_NOOP("AiSettings", "菜单里列出收藏的文件夹"), "files_and_dialogs", 1,
+    add(boolean({"Launcher/FolderMenuFavorites", QT_TRANSLATE_NOOP("AiSettings", "菜单里列出收藏的文件夹"), "files_and_dialogs", 2,
                     "The folder menu lists the favorite folders. At least one of the three groups stays on."},
         &Settings::folderMenuFavorites));
-    add(boolean({"Launcher/FolderMenuRecent", QT_TRANSLATE_NOOP("AiSettings", "菜单里列出最近的文件夹"), "files_and_dialogs", 1,
+    add(boolean({"Launcher/FolderMenuRecent", QT_TRANSLATE_NOOP("AiSettings", "菜单里列出最近的文件夹"), "files_and_dialogs", 2,
                     "The folder menu lists recently opened folders. At least one of the three groups stays on."},
         &Settings::folderMenuRecent));
-    add(boolean({"Launcher/FolderMenuWindows", QT_TRANSLATE_NOOP("AiSettings", "菜单里列出别的窗口里的文件夹"), "files_and_dialogs", 1,
+    add(boolean({"Launcher/FolderMenuWindows", QT_TRANSLATE_NOOP("AiSettings", "菜单里列出别的窗口里的文件夹"), "files_and_dialogs", 2,
                     "The folder menu lists the folders open in other file manager windows. At least one of the three groups stays on."},
         &Settings::folderMenuWindows));
-    add(boolean({"Launcher/FolderMenuFavoriteFolders", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单的收藏夹显示文件夹"), "files_and_dialogs", 1,
+    add(boolean({"Launcher/FolderMenuFavoriteFolders", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单的收藏夹显示文件夹"), "files_and_dialogs", 2,
                     "Include favorite folders in the folder menu's Favorites group. At least one of the five favorite kinds stays on."},
         &Settings::folderMenuFavoriteFolders));
-    add(boolean({"Launcher/FolderMenuFavoriteFiles", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单的收藏夹显示文件"), "files_and_dialogs", 1,
+    add(boolean({"Launcher/FolderMenuFavoriteFiles", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单的收藏夹显示文件"), "files_and_dialogs", 2,
                     "Include favorite files in the folder menu's Favorites group. At least one of the five favorite kinds stays on."},
         &Settings::folderMenuFavoriteFiles));
-    add(boolean({"Launcher/FolderMenuFavoriteApps", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单的收藏夹显示应用"), "files_and_dialogs", 1,
+    add(boolean({"Launcher/FolderMenuFavoriteApps", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单的收藏夹显示应用"), "files_and_dialogs", 2,
                     "Include favorite apps in the folder menu's Favorites group. Turn off to hide favorite apps completely from the folder menu; at least one of the five favorite kinds stays on."},
         &Settings::folderMenuFavoriteApps));
-    add(boolean({"Launcher/FolderMenuFavoritePlaces", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单的收藏夹显示系统设置"), "files_and_dialogs", 1,
+    add(boolean({"Launcher/FolderMenuFavoritePlaces", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单的收藏夹显示系统设置"), "files_and_dialogs", 2,
                     "Include favorite Windows and Win顺 settings places in the folder menu's Favorites group. At least one of the five favorite kinds stays on."},
         &Settings::folderMenuFavoritePlaces));
-    add(boolean({"Launcher/FolderMenuFavoriteCommands", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单的收藏夹显示自定义命令"), "files_and_dialogs", 1,
+    add(boolean({"Launcher/FolderMenuFavoriteCommands", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单的收藏夹显示自定义命令"), "files_and_dialogs", 2,
                     "Include favorite custom commands in the folder menu's Favorites group. At least one of the five favorite kinds stays on."},
         &Settings::folderMenuFavoriteCommands));
-    add(boolean({"Launcher/FolderMenuAppsExpanded", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单里展开收藏的应用"), "files_and_dialogs", 1,
+    add(boolean({"Launcher/FolderMenuAppsExpanded", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单里展开收藏的应用"), "files_and_dialogs", 2,
                     "Whether the collapsible Apps section inside the folder menu's Favorites is expanded. Can also be toggled directly inside the folder menu."},
         &Settings::folderMenuAppsExpanded));
-    add(integer({"Launcher/FolderMenuFavoritesInline", QT_TRANSLATE_NOOP("AiSettings", "收藏夹显示方式"), "files_and_dialogs", 1,
+    add(integer({"Launcher/FolderMenuFavoritesInline", QT_TRANSLATE_NOOP("AiSettings", "收藏夹显示方式"), "files_and_dialogs", 2,
                     "How the folder menu displays favorites: 0 keeps them in a submenu, 1..20 lists the first N directly at the top level with the rest under More, and -1 lists all of them directly (Listary-style)."},
         &Settings::folderMenuFavoritesInline, 1, Settings::kFolderMenuInlineMax,
         QT_TRANSLATE_NOOP("AiSettings", "二级菜单"), "submenu", QT_TRANSLATE_NOOP("AiSettings", "全部"), "all directly"));
-    add(integer({"Launcher/FolderMenuRecentInline", QT_TRANSLATE_NOOP("AiSettings", "最近的文件夹显示方式"), "files_and_dialogs", 1,
+    add(integer({"Launcher/FolderMenuRecentInline", QT_TRANSLATE_NOOP("AiSettings", "最近的文件夹显示方式"), "files_and_dialogs", 2,
                     "How the folder menu displays recent folders: 0 keeps them in a submenu, 1..20 lists the first N directly at the top level with the rest under More, and -1 lists all of them directly."},
         &Settings::folderMenuRecentInline, 1, Settings::kFolderMenuInlineMax,
         QT_TRANSLATE_NOOP("AiSettings", "二级菜单"), "submenu", QT_TRANSLATE_NOOP("AiSettings", "全部"), "all directly"));
-    add(integer({"Launcher/FolderMenuWindowsInline", QT_TRANSLATE_NOOP("AiSettings", "已打开的文件夹显示方式"), "files_and_dialogs", 1,
+    add(integer({"Launcher/FolderMenuWindowsInline", QT_TRANSLATE_NOOP("AiSettings", "已打开的文件夹显示方式"), "files_and_dialogs", 2,
                     "How the folder menu displays folders open in other windows: 0 keeps them in a submenu, 1..20 lists the first N directly at the top level with the rest under More, and -1 lists all of them directly."},
         &Settings::folderMenuWindowsInline, 1, Settings::kFolderMenuInlineMax,
         QT_TRANSLATE_NOOP("AiSettings", "二级菜单"), "submenu", QT_TRANSLATE_NOOP("AiSettings", "全部"), "all directly"));
-    add(boolean({"Launcher/FolderMenuItemSearch", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单里有“在此搜索”"), "files_and_dialogs", 1,
+    add(boolean({"Launcher/FolderMenuItemSearch", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单里有“在此搜索”"), "files_and_dialogs", 2,
                     "The folder menu offers this action under its lists. On by default."},
         &Settings::folderMenuItemSearch));
-    add(boolean({"Launcher/FolderMenuItemCopyPath", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单里有“复制路径”"), "files_and_dialogs", 1,
+    add(boolean({"Launcher/FolderMenuItemCopyPath", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单里有“复制路径”"), "files_and_dialogs", 2,
                     "The folder menu offers Copy path under its lists: puts the folder's full path on the clipboard as plain text. Not shown where there is no folder path (This PC). On by default."},
         &Settings::folderMenuItemCopyPath));
-    add(boolean({"Launcher/FolderMenuItemCmd", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单里有“在此打开命令提示符”"), "files_and_dialogs", 1,
+    add(boolean({"Launcher/FolderMenuItemCmd", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单里有“在此打开命令提示符”"), "files_and_dialogs", 2,
                     "The folder menu offers this action under its lists. On by default."},
         &Settings::folderMenuItemCmd));
-    add(boolean({"Launcher/FolderMenuItemPowerShell", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单里有“在此打开 PowerShell”"), "files_and_dialogs", 1,
+    add(boolean({"Launcher/FolderMenuItemPowerShell", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单里有“在此打开 PowerShell”"), "files_and_dialogs", 2,
                     "The folder menu offers this action under its lists. On by default."},
         &Settings::folderMenuItemPowerShell));
-    add(boolean({"Launcher/FolderMenuItemFavorite", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单里有“收藏这个文件夹”"), "files_and_dialogs", 1,
+    add(boolean({"Launcher/FolderMenuItemFavorite", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单里有“收藏这个文件夹”"), "files_and_dialogs", 2,
                     "The folder menu offers this action under its lists. On by default."},
         &Settings::folderMenuItemFavorite));
-    add(boolean({"Launcher/FolderMenuItemSettings", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单里有“在菜单末尾显示 Win顺 设置”"), "files_and_dialogs", 1,
+    add(boolean({"Launcher/FolderMenuItemSettings", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单里有“在菜单末尾显示 Win顺 设置”"), "files_and_dialogs", 2,
                     "The folder menu offers this action under its lists. On by default."},
         &Settings::folderMenuItemSettings));
-    add(boolean({"Launcher/FolderMenuFiles", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单的子列也列出文件"), "files_and_dialogs", 1,
+    add(boolean({"Launcher/FolderMenuFiles", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单的子列也列出文件"), "files_and_dialogs", 2,
                     "A folder's column in the folder menu lists the files in it after its folders; a click or Enter opens one. Not in Open or Save dialogs. Off by default."},
         &Settings::folderMenuFiles));
     add(boolean({"Favorites/DropPie", QT_TRANSLATE_NOOP("AiSettings", "拖文件时按 ` 键，弹出收藏圆盘"), "favorites", -1,
                     "While dragging files or folders (File Explorer, the desktop, file managers), pressing the key left of 1 (` and ~ on most keyboards, · in a Chinese input method; it is the key's place that counts, not what is printed on it) with them held (no need to move) brings up the favorite folders round the pointer, eight to a page (Tab turns to the next page, Shift+Tab to the one before). Moving toward one and letting go drops the files there: moved within a drive, copied to another, Ctrl copies and Shift moves. Does nothing while Win顺 runs as administrator."},
         &Settings::dropPie));
-    add(hotkey({"Launcher/FolderMenuHotkey", QT_TRANSLATE_NOOP("AiSettings", "用快捷键弹出文件夹菜单"), "files_and_dialogs", 1,
+    add(hotkey({"Launcher/FolderMenuHotkey", QT_TRANSLATE_NOOP("AiSettings", "用快捷键弹出文件夹菜单"), "files_and_dialogs", 2,
                    "A shortcut that brings up the folder menu in whatever window is in front, like Ctrl+Alt+D. Empty: none."},
         &Settings::folderMenuHotkey));
-    add(boolean({"Launcher/DialogJump", QT_TRANSLATE_NOOP("AiSettings", "Ctrl+G 转到文件管理器的文件夹"), "files_and_dialogs", 2,
+    add(boolean({"Launcher/DialogJump", QT_TRANSLATE_NOOP("AiSettings", "Ctrl+G 转到文件管理器的文件夹"), "files_and_dialogs", 3,
                     "In an Open or Save dialog, Ctrl+G goes to the folder open in the file manager."},
         &Settings::dialogJump));
-    add(boolean({"Launcher/DialogBar", QT_TRANSLATE_NOOP("AiSettings", "对话框旁的搜索框"), "files_and_dialogs", 2,
+    add(boolean({"Launcher/DialogBar", QT_TRANSLATE_NOOP("AiSettings", "对话框旁的搜索框"), "files_and_dialogs", 3,
                     "A search bar beside Open and Save dialogs."},
         &Settings::dialogBar));
     {
-        Entry& e = add(choice({"Launcher/DialogBarPlace", QT_TRANSLATE_NOOP("AiSettings", "对话框旁搜索框的位置"), "files_and_dialogs", 2,
+        Entry& e = add(choice({"Launcher/DialogBarPlace", QT_TRANSLATE_NOOP("AiSettings", "对话框旁搜索框的位置"), "files_and_dialogs", 3,
                                   "Where the dialog search bar goes."},
             &Settings::dialogBarPlace,
             {{u"auto"_s, u"below the dialog, beside it when there is no room"_s, QT_TRANSLATE_NOOP("AiSettings", "自动")},
@@ -416,23 +438,23 @@ std::vector<Entry> buildCatalog()
         e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "搜索框的位置");
     }
     {
-        Entry& e = add(boolean({"Launcher/DialogBarSuggestions", QT_TRANSLATE_NOOP("AiSettings", "点进对话框旁的搜索框就列出常用位置"), "files_and_dialogs", 2,
+        Entry& e = add(boolean({"Launcher/DialogBarSuggestions", QT_TRANSLATE_NOOP("AiSettings", "点进对话框旁的搜索框就列出常用位置"), "files_and_dialogs", 3,
                                    "Clicked into with nothing typed, the dialog search bar lists the folders open in file managers, favorites and recent folders. Off: nothing until typing (or the Down key)."},
             &Settings::dialogBarSuggestions));
         e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "点进来就列出常用位置");
     }
     {
-        Entry& e = add(boolean({"Launcher/DialogAutoJump", QT_TRANSLATE_NOOP("AiSettings", "对话框自动转到文件管理器的文件夹"), "files_and_dialogs", 2,
+        Entry& e = add(boolean({"Launcher/DialogAutoJump", QT_TRANSLATE_NOOP("AiSettings", "对话框自动转到文件管理器的文件夹"), "files_and_dialogs", 3,
                                    "Open and Save dialogs go to the folder open in the file manager by themselves, without Ctrl+G."},
             &Settings::dialogAutoJump));
         e.after = [](State& s) { s.settings.dialogAutoJumpAsked = true; }; // chosen here (a real change): not asked again under the bar
     }
-    add(choice({"Launcher/DialogAutoJumpWhen", QT_TRANSLATE_NOOP("AiSettings", "什么时候转"), "files_and_dialogs", 2,
+    add(choice({"Launcher/DialogAutoJumpWhen", QT_TRANSLATE_NOOP("AiSettings", "什么时候转"), "files_and_dialogs", 3,
                    "When a dialog goes to the file manager's folder by itself."},
         &Settings::dialogAutoJumpWhen,
         {{u"open"_s, u"as soon as the dialog comes up"_s, QT_TRANSLATE_NOOP("AiSettings", "打开时")},
             {u"back"_s, u"when the user comes back to the dialog from the file manager"_s, QT_TRANSLATE_NOOP("AiSettings", "切回来时")}}));
-    add(list({"Launcher/DialogBarExcludedApps", QT_TRANSLATE_NOOP("AiSettings", "不在这些程序的对话框下显示搜索框"), "files_and_dialogs", 2,
+    add(list({"Launcher/DialogBarExcludedApps", QT_TRANSLATE_NOOP("AiSettings", "不在这些程序的对话框下显示搜索框"), "files_and_dialogs", 3,
                  "Program files (like notepad.exe) whose file dialogs go without the search bar."},
         &Settings::dialogBarExcludedApps, ListKind::Programs));
 
@@ -1978,8 +2000,8 @@ namespace {
 // look set and do nothing.
 void checkHotkeysDiffer(Plan& plan)
 {
-    static const QStringList own {u"Launcher/Hotkey"_s, u"Launcher/FolderMenuHotkey"_s, u"Clipboard/Hotkey"_s,
-        u"Clipboard/PastePlainHotkey"_s};
+    static const QStringList own {u"Launcher/Hotkey"_s, u"Launcher/PanelHotkey"_s, u"Launcher/SettingsHotkey"_s,
+        u"Launcher/FolderMenuHotkey"_s, u"Clipboard/Hotkey"_s, u"Clipboard/PastePlainHotkey"_s};
     for (const Item& item : plan.items) {
         const QString wanted = Settings::normalizedHotkey(item.newValue.toString());
         if (!item.changed || item.entry->type != Type::Hotkey || wanted.isEmpty())

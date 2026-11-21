@@ -93,6 +93,7 @@ struct Settings {
     QStringList doubleCtrlExcludedApps; // program files ("TheFinals.exe") in front of which double Ctrl does nothing
     QString hotkey; // e.g. "Alt+Space"; empty = none
     QString panelHotkey; // opens the full search panel directly; empty = none
+    QString settingsHotkey; // opens or toggles the settings window directly; empty = none
     // The programs run as administrator that were told of, once each, that
     // a double tap cannot be heard over them (AdminTapHint), lower case.
     QStringList adminTapHinted;
@@ -409,7 +410,7 @@ struct Settings {
     // for what is not a modifier or two and one key.
     static QString normalizedHotkey(const QString& shortcut);
     // Win顺's own shortcuts that work anywhere (registered with Windows), set or not.
-    QStringList globalHotkeys() const { return {hotkey, panelHotkey, clipboardHotkey, folderMenuHotkey, pastePlainHotkey}; }
+    QStringList globalHotkeys() const { return {hotkey, panelHotkey, settingsHotkey, clipboardHotkey, folderMenuHotkey, pastePlainHotkey}; }
     // The rule for a shortcut a person (settings window) or AI sets: Ctrl, Alt
     // or Win held with its key, or a function key (F1 to F24) alone or with
     // Shift. A bare letter, Enter, Space, PrintScreen or Shift+letter would
@@ -574,6 +575,9 @@ struct Settings {
     bool taskbarSearchBox = false; // Win顺's own search box on the taskbar (taskbar::SearchBox)
     QString taskbarSearchBoxStyle = QStringLiteral("box"); // box | label | icon: the widest form it takes, as Windows' own
     QString taskbarSearchBoxSide = QStringLiteral("auto"); // auto | tray: where on the taskbar (taskbar::Side, GitHub #271)
+    // Notification-area icon clicks (TrayAction.h): built-in action id or plugin:<id>/<key>.
+    QString trayLeftAction = QStringLiteral("launcher");
+    QString trayMiddleAction = QStringLiteral("settings");
 
     // [Capture]: the screenshot is a plugin of the plugin library since
     // 0.17 (winshun.capture, GitHub #138), with its settings in its own

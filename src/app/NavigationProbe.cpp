@@ -2102,16 +2102,19 @@ bool checkNavigationSettings(QQuickWindow* window, SettingsEditor* editor, const
     };
     reveal(u"keys"_s, "直接打开搜索面板", 0); // 快捷键 › 打开 Win顺
     auto* recorder = item(window->contentItem(), u"panelHotkeyRecorder"_s);
+    auto* settingsRecorder = item(window->contentItem(), u"settingsHotkeyRecorder"_s);
     auto* favoritesMode = item(window->contentItem(), u"folderMenuFavoritesInlineMode"_s);
     auto* recentMode = item(window->contentItem(), u"folderMenuRecentInlineMode"_s);
     auto* windowsMode = item(window->contentItem(), u"folderMenuWindowsInlineMode"_s);
     auto* favorites = item(window->contentItem(), u"folderMenuFavoritesInline"_s);
     auto* recent = item(window->contentItem(), u"folderMenuRecentInline"_s);
     auto* windows = item(window->contentItem(), u"folderMenuWindowsInline"_s);
-    check(recorder && favoritesMode && recentMode && windowsMode && favorites && recent && windows,
+    check(recorder && settingsRecorder && favoritesMode && recentMode && windowsMode && favorites && recent && windows,
         u"new settings use production controls"_s);
-    if (!recorder || !favoritesMode || !recentMode || !windowsMode || !favorites || !recent || !windows) return false;
+    if (!recorder || !settingsRecorder || !favoritesMode || !recentMode || !windowsMode || !favorites || !recent || !windows)
+        return false;
     check(editor->panelHotkey().isEmpty(), u"full-panel shortcut defaults to unassigned"_s);
+    check(editor->settingsHotkey().isEmpty(), u"settings shortcut defaults to unassigned"_s);
     // Deliver to the real recorder's QML handler without starting its global
     // keyboard capture or registering shortcuts in another user's session.
     key(recorder, Qt::Key_F, Qt::ControlModifier | Qt::AltModifier);
@@ -2125,6 +2128,61 @@ bool checkNavigationSettings(QQuickWindow* window, SettingsEditor* editor, const
     saved.load();
     check(editor->panelHotkey().isEmpty() && saved.panelHotkey.isEmpty() && saved.hotkey == u"Alt+Space",
         u"clearing the full-panel chord preserves the launcher shortcut"_s);
+    key(settingsRecorder, Qt::Key_X, Qt::AltModifier);
+    saved.load();
+    check(editor->settingsHotkey() == u"Alt+X" && saved.settingsHotkey == u"Alt+X"
+        && saved.hotkey == u"Alt+Space", u"recording a settings chord persists independently"_s);
+    key(settingsRecorder, Qt::Key_Backspace);
+    saved.load();
+    check(editor->settingsHotkey().isEmpty() && saved.settingsHotkey.isEmpty() && saved.hotkey == u"Alt+Space",
+        u"clearing the settings chord preserves the launcher shortcut"_s);
+    reveal(u"integration"_s, "中键单击托盘图标", 0); // 系统整合 › 任务栏 (托盘图标)
+    auto* trayLeft = item(window->contentItem(), u"trayLeftActionPicker"_s);
+    auto* trayMiddle = item(window->contentItem(), u"trayMiddleActionPicker"_s);
+    check(trayLeft && trayMiddle, u"tray click action pickers render under System integration › Taskbar"_s);
+    if (trayLeft && trayMiddle) {
+        const auto hasAction = [](const QVariantList& list, const QString& value) {
+            return std::ranges::any_of(list, [&](const QVariant& item) {
+                return item.toMap().value(u"value"_s).toString() == value;
+            });
+        };
+        check(editor->trayLeftAction() == u"launcher" && editor->trayMiddleAction() == u"settings",
+            u"tray clicks default to launcher on left and settings on middle"_s);
+        check(!hasAction(editor->trayMiddleActions(), u"screenshots"_s),
+            u"screenshot history stays hidden when the screenshot plugin is off"_s);
+        settle(window);
+        check(window->grabWindow().save(output.filePath(u"tray-click-settings.png"_s)),
+            u"capture the tray click settings section"_s);
+        editor->setScreenshotPlugin(true, true, {u"F1"_s});
+        check(hasAction(editor->trayMiddleActions(), u"screenshots"_s),
+            u"enabling the screenshot plugin adds screenshot history to tray click actions"_s);
+        editor->setTrayLeftAction(u"panel"_s);
+        editor->setTrayMiddleAction(u"screenshots"_s);
+        saved.load();
+        check(saved.trayLeftAction == u"panel" && saved.trayMiddleAction == u"screenshots",
+            u"tray click actions persist independently"_s);
+        editor->setScreenshotPlugin(true, false, {});
+        settle(window);
+        check(hasAction(editor->trayMiddleActions(), u"screenshots"_s)
+                && !hasAction(editor->trayLeftActions(), u"screenshots"_s)
+                && trayMiddle->property("currentIndex").toInt() >= 0,
+            u"disabling the screenshot plugin keeps a fallback entry only on the picker using it"_s);
+        const QString pluginAction = u"plugin:winshun.capture/F1"_s;
+        editor->setDoubleTapPluginActions({QVariantMap {{u"value"_s, pluginAction}, {u"text"_s, u"截图 · F1"_s}}});
+        editor->setTrayMiddleAction(pluginAction);
+        saved.load();
+        check(saved.trayMiddleAction == pluginAction, u"tray middle click accepts and persists a plugin action"_s);
+        editor->setTrayMiddleAction(u"plugin:unknown/Alt+Z"_s);
+        check(editor->trayMiddleAction() == pluginAction, u"unregistered plugin actions are rejected for tray clicks"_s);
+        editor->setDoubleTapPluginActions({});
+        settle(window);
+        check(hasAction(editor->trayMiddleActions(), pluginAction)
+                && !hasAction(editor->trayLeftActions(), pluginAction)
+                && trayMiddle->property("currentIndex").toInt() >= 0,
+            u"removing a plugin action keeps a fallback entry only on the picker using it"_s);
+        editor->setTrayLeftAction(u"launcher"_s);
+        editor->setTrayMiddleAction(u"settings"_s);
+    }
     reveal(u"integration"_s, "收藏夹显示方式", 1); // 系统整合 › 文件管理器 (文件夹快捷菜单)
     // All directly (-1), first N (3), first N (20).
     QMetaObject::invokeMethod(favoritesMode, "activated", Q_ARG(int, 2));

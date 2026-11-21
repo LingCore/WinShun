@@ -23,6 +23,10 @@ Item {
     property bool labelled: true
     // The window's own buttons, left of the caption buttons (the settings' 捐赠): clicks, not the drag area.
     property alias tools: toolRow.data
+    // Optional controls beside the title (e.g. Back / Forward in Settings): clicks, not the drag area.
+    // Placed at `leadingToolsX` when > 0, otherwise immediately after the title.
+    property alias leadingTools: leadingToolRow.data
+    property real leadingToolsX: 0
 
     signal closeRequested()
 
@@ -36,6 +40,7 @@ Item {
         frame.addDragArea(bar)
         frame.addControl(buttons)
         frame.addControl(toolRow)
+        frame.addControl(leadingToolRow)
         if (maximizable)
             frame.setMaximizeButton(maximize)
     }
@@ -61,9 +66,10 @@ Item {
     }
 
     Text {
+        id: titleText
         anchors.left: icon.right
         anchors.leftMargin: 16
-        anchors.right: toolRow.left
+        anchors.right: leadingToolRow.width > 0 && bar.leadingToolsX > 0 ? leadingToolRow.left : toolRow.left
         anchors.rightMargin: 12
         anchors.verticalCenter: parent.verticalCenter
         visible: bar.labelled
@@ -71,6 +77,15 @@ Item {
         color: bar.ink
         font.pixelSize: Theme.fontCaption
         elide: Text.ElideRight
+    }
+
+    Row {
+        id: leadingToolRow
+        x: bar.leadingToolsX > 0 ? bar.leadingToolsX : titleText.x + Math.min(titleText.implicitWidth, titleText.width) + 12
+        anchors.verticalCenter: parent.verticalCenter
+        spacing: 2
+        Accessible.role: Accessible.Grouping
+        Accessible.ignored: width <= 0
     }
 
     component CaptionButton: Rectangle {

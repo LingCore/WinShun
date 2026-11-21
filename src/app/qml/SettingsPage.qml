@@ -26,7 +26,8 @@ Column {
     readonly property var pages: host.pages
     readonly property var pageKeywords: host.pageKeywords
 
-    function openPage(index: int, tab: var): void { settingsPage.host.openRequested(index, tab) }
+    function openPage(which: var, tab: var): void { settingsPage.host.openRequested(which, tab) }
+    function openPart(which: var, name: string): void { settingsPage.host.partRequested(which, name) }
     function holdInView(item: Item, change: var): void { settingsPage.host.holdRequested(item, change) }
     // Positions the sections and rows now, rather than before the next frame.
     function layoutNow(): void {

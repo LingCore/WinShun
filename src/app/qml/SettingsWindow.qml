@@ -64,7 +64,7 @@ Window {
         [],
         [qsTr("文件夹"), qsTr("名称和类型"), qsTr("磁盘"), qsTr("网络与 WSL"), qsTr("文件内容")],
         [qsTr("排序"), qsTr("显示与预览"), qsTr("操作习惯"), qsTr("类型与筛选")],
-        [qsTr("任务栏"), qsTr("文件管理器"), qsTr("对话框")],
+        [qsTr("任务栏"), qsTr("文件管理器"), qsTr("文件夹菜单"), qsTr("对话框")],
         [],
         [qsTr("记录"), qsTr("快捷键", "settings tab"), qsTr("保留")],
         window.editor.plugins.developerMode ? [qsTr("已安装"), qsTr("插件库"), qsTr("开发者")] : [qsTr("已安装"), qsTr("插件库")], // 开发者: in developer mode only
@@ -78,9 +78,11 @@ Window {
     readonly property var shortcutSections: {
         const context = {
             all: true,
-            openKeys: [window.editor.doubleCtrl && window.editor.doubleTapAction === "launcher" ? qsTr("双击 %1").arg(window.tapKey) : "", window.editor.hotkey].filter(keys => keys.length > 0).join(" / "),
-            clipboardHotkey: [window.editor.doubleCtrl && window.editor.doubleTapAction === "clipboard" ? qsTr("双击 %1").arg(window.tapKey) : "", window.editor.clipboardHotkey].filter(keys => keys.length > 0).join(" / "),
+            openKeys: [window.editor.doubleCtrl && window.editor.doubleTapAction === "launcher" ? qsTr("双击 %1").arg(window.tapKey) : "", window.editor.hotkey, window.editor.taskbarWinS ? "Win+S" : ""].filter(keys => keys.length > 0).join(" / "),
+            clipboardHotkey: [window.editor.doubleCtrl && window.editor.doubleTapAction === "clipboard" ? qsTr("双击 %1").arg(window.tapKey) : "", window.editor.clipboardWinV ? "Win+V" : "", window.editor.clipboardHotkey].filter(keys => keys.length > 0).join(" / "),
+            folderMenuHotkey: window.editor.folderMenuHotkey,
             panelHotkey: window.editor.panelHotkey,
+            settingsHotkey: window.editor.settingsHotkey,
             pastePlainHotkey: window.editor.pastePlainHotkey,
             previewKey: window.editor.previewHotkey,
             openKey: window.editor.openHotkey,
@@ -157,13 +159,31 @@ Window {
     property int currentTab: 0
     property var lastTabs: [] // by page: the tab it was left on, to come back to
     // A tab gone from the page on show (its switch turned off): the last one left.
-    onPageTabsChanged: currentTab = Math.min(currentTab, Math.max(0, (pageTabs[currentPage]?.length ?? 0) - 1))
+    onPageTabsChanged: {
+        const clamped = Math.min(currentTab, Math.max(0, (pageTabs[currentPage]?.length ?? 0) - 1))
+        if (clamped !== currentTab) {
+            currentTab = clamped
+            if (!navHistory.restoring && navHistory.count > 0 && !searching)
+                navHistory.replaceCurrent(pages[currentPage].id, currentTab, activePluginDetailId(), "", currentScrollY())
+        }
+    }
     // On the 拾穗计划 page the whole window, sidebar included, is a warm scene.
     // Not while searching: the results are on the usual page.
     readonly property bool warm: currentPage === gleaningPage && !searching
     readonly property bool searching: settingsSearch.active
-    property var beforeSearch: null // {page, y}: where the search started, to go back to when the box is cleared
+    readonly property bool modalOpen: updateDialog.open || readmeDialog.open || notesDialog.open
+                                      || pluginDialog.open || donateDialog.open || webDialog.active
+    readonly property bool pluginDetailActive: !searching && currentPage === pluginsPage && currentTab === 0
+                                               && (pluginsSlot.item?.parts.pluginsSection.detailOpen ?? false)
+    readonly property bool canNavigateBack: navHistory.canBack || searching
+    readonly property bool canNavigateForward: navHistory.canForward
+    readonly property string backTargetLabel: searching ? placeLabel(navHistory.currentEntry)
+                                                        : placeLabel(navHistory.backEntry)
+    readonly property string forwardTargetLabel: placeLabel(navHistory.forwardEntry)
+    property var beforeSearch: null // {page, tab, y}: where the search started, to go back to when the box is cleared
     property bool leavingSearch: false // for another page: no going back
+    property bool programmaticSearch: false // showSetting's internal lookup: not a user search history step
+    property bool scrollToBottomAfterFrame: false // upward edge-overscroll into a freshly loaded page
 
     width: 920
     height: 720
@@ -205,6 +225,16 @@ Window {
         window.hide()
     }
 
+    function closePopups() {
+        // Dropped menus and hover tips live on the content item (DropMenu, HoverTip).
+        for (const child of contentItem.children) {
+            if (child.open === true && child.entries !== undefined && child.anchor !== undefined)
+                child.open = false
+            else if (child.shown === true && child.shownText !== undefined)
+                child.shown = false
+        }
+    }
+
     // Hidden: back as a window made anew would be, nothing left running or
     // half done (the hotkey recorders above all: one recording keeps the
     // global hotkeys suspended).
@@ -214,24 +244,21 @@ Window {
         navPrefetch.stop()
         navPending = -1
         navHovered = -1
+        edgeGate.cancel()
+        navHistory.clear()
         // Each page made so far its own (its recorders stopped, its fields cleared, …).
         for (let i = 0; i < pageSlots.length; ++i)
             pageSlots[i].item?.resetForReopen()
         editor.plugins.recordingHotkey = false
         updateDialog.close()
         readmeDialog.close()
+        notesDialog.close()
         if (pluginDialog.open)
             pluginDialog.reject()
         donateDialog.close()
         webEditing = -2
         webReturnFocus = null
-        // Dropped menus and hover tips live on the content item (DropMenu, HoverTip).
-        for (const child of contentItem.children) {
-            if (child.open === true && child.entries !== undefined && child.anchor !== undefined)
-                child.open = false
-            else if (child.shown === true && child.shownText !== undefined)
-                child.shown = false
-        }
+        closePopups()
         editor.plugins.gallery.filter = ""
         editor.plugins.gallery.updatesOnly = false
         editor.forgetMessages()
@@ -239,6 +266,7 @@ Window {
         leavingSearch = true
         searchBox.clear()
         leavingSearch = false
+        programmaticSearch = false
         beforeSearch = null
         settingsSearch.current = null
         activatePending = false
@@ -254,6 +282,7 @@ Window {
         heldItem = null
         revealAfterFrame = ""
         scrollAfterFrame = null
+        scrollToBottomAfterFrame = false
         fadeOut.stop()
         snapshot.source = ""
         navFlick.contentY = 0
@@ -440,6 +469,310 @@ Window {
         }
     }
 
+    // ---- Navigation history & edge overscroll -------------------------------
+    SettingsHistory {
+        id: navHistory
+        objectName: "settingsHistory"
+    }
+
+    EdgeScrollGate {
+        id: edgeGate
+        objectName: "settingsEdgeScrollGate"
+        enabled: window.visible && !window.searching && !window.modalOpen
+                 && !window.editor.recordingHotkey && !window.pluginDetailActive
+        canPrevious: window.adjacentView(-1) !== null
+        canNext: window.adjacentView(1) !== null
+        onArmedDirectionChanged: (dir) => {
+            if (dir === 0)
+                return
+            const target = window.adjacentView(dir)
+            if (target && target.page !== window.currentPage && target.page < window.pageSlots.length) {
+                const slot = window.pageSlots[target.page]
+                if (slot && !slot.item && !slot.incubator)
+                    slot.prefetch(null)
+            }
+        }
+        onTriggered: (dir) => window.stepAdjacentView(dir)
+    }
+
+    Connections {
+        target: window.frame
+        function onNavigateBack() { window.navigateBack() }
+        function onNavigateForward() { window.navigateForward() }
+    }
+    Component.onCompleted: window.frame.browserNavigation = true
+
+    function currentScrollY() {
+        return currentPage === gleaningPage && !searching ? gleaningView.contentY : flick.contentY
+    }
+
+    function activePluginDetailId() {
+        if (searching || currentPage !== pluginsPage || currentTab !== 0)
+            return ""
+        const section = pageItem(pluginsPage)?.parts.pluginsSection
+        return section && section.detailOpen && section.expandedIds.length > 0 ? section.expandedIds[0] : ""
+    }
+
+    function recordPlace(scrollY) {
+        if (navHistory.restoring)
+            return
+        const pid = pages[currentPage]?.id ?? "general"
+        const y = scrollY !== undefined ? scrollY : currentScrollY()
+        if (!visible)
+            navHistory.reset(pid, currentTab, activePluginDetailId(), "", y)
+        else
+            navHistory.push(pid, currentTab, activePluginDetailId(), "", y)
+    }
+
+    function placeLabel(entry) {
+        if (!entry)
+            return ""
+        const q = entry.query ?? ""
+        if (q.length > 0)
+            return qsTr("搜索“%1”").arg(q.replace(/\s+/g, " ").trim())
+        const index = pageIndex(entry.pageId ?? "")
+        if (index < 0)
+            return ""
+        const title = pages[index].title
+        const pid = entry.pluginId ?? ""
+        if (index === pluginsPage && (entry.tab ?? 0) === 0 && pid.length > 0) {
+            const card = pageItem(pluginsPage)?.parts.pluginsSection.cardOf(pid)
+            return title + " › " + (card?.name ?? pid)
+        }
+        const tabs = pageTabs[index] ?? []
+        const tabIdx = entry.tab ?? 0
+        if (tabs.length > 0 && tabIdx >= 0 && tabIdx < tabs.length)
+            return title + " › " + tabs[tabIdx]
+        return title
+    }
+
+    function placeIcon(entry) {
+        if (!entry)
+            return { iconName: "", glyph: "" }
+        if ((entry.query ?? "").length > 0)
+            return { iconName: "magnifying-glass", glyph: "" }
+        const index = pageIndex(entry.pageId ?? "")
+        if (index < 0)
+            return { iconName: "", glyph: "" }
+        if (pages[index].gleaning === true)
+            return { iconName: "sparkle", glyph: "" }
+        return { iconName: "", glyph: pages[index].glyph ?? "" }
+    }
+
+    function backMenuEntries() {
+        const list = navHistory.backEntries
+        if (searching && navHistory.count > 0)
+            return [navHistory.currentEntry].concat(list)
+        return list
+    }
+
+    function openHistoryMenu(anchorButton, rawEntries) {
+        if (!rawEntries || rawEntries.length === 0)
+            return
+        if (historyMenu.open && historyMenu.anchor === anchorButton) {
+            historyMenu.open = false
+            return
+        }
+        const items = []
+        const indices = []
+        for (const entry of rawEntries) {
+            const icon = placeIcon(entry)
+            items.push({ text: placeLabel(entry), iconName: icon.iconName, glyph: icon.glyph })
+            indices.push(entry.historyIndex)
+        }
+        historyMenu.anchor = anchorButton
+        historyMenu.entries = items
+        historyMenu.historyIndices = indices
+        historyMenu.open = true
+    }
+
+    function restorePlace(entry) {
+        if (!entry || (!entry.pageId && !entry.query))
+            return
+        clearFocus()
+        closePopups()
+        navPrefetch.stop()
+        navPending = -1
+        edgeGate.cancel()
+        scrollAfterFrame = null
+        scrollToBottomAfterFrame = false
+        navHistory.setRestoring(true)
+        try {
+            const targetQuery = entry.query ?? ""
+            if (targetQuery.length > 0) {
+                loadAllPages()
+                const originIndex = pageIndex(entry.pageId ?? "")
+                beforeSearch = originIndex >= 0
+                    ? { page: originIndex, tab: entry.tab ?? 0, y: 0 }
+                    : null
+                searchBox.setText(targetQuery)
+                layoutNow()
+                flick.stopScrolling()
+                const maxY = Math.max(0, flick.contentHeight - flick.height)
+                flick.contentY = Math.max(0, Math.min(maxY, entry.scrollY ?? 0))
+                edgeGate.noteSwitched(0)
+                return
+            }
+            if (searching) {
+                leavingSearch = true
+                searchBox.clear()
+                leavingSearch = false
+            }
+            beforeSearch = null
+            const index = pageIndex(entry.pageId)
+            if (index < 0)
+                return
+            if (index !== gleaningPage)
+                loadPage(index)
+            lastTabs[currentPage] = currentTab
+            currentPage = index
+            const maxTab = Math.max(0, (pageTabs[index]?.length ?? 0) - 1)
+            currentTab = Math.max(0, Math.min(entry.tab ?? 0, maxTab))
+            if (index === pluginsPage && currentTab === 0) {
+                const section = pageItem(pluginsPage)?.parts.pluginsSection
+                if (section) {
+                    const targetPlugin = entry.pluginId ?? ""
+                    if (targetPlugin.length > 0 && section.cardOf(targetPlugin))
+                        section.open(targetPlugin)
+                    else
+                        section.expandedIds = []
+                }
+            }
+            if (index === gleaningPage) {
+                gleaningView.cancelFlick()
+                const maxGY = Math.max(0, gleaningView.contentHeight - gleaningView.height)
+                gleaningView.contentY = Math.max(0, Math.min(maxGY, entry.scrollY ?? 0))
+            } else {
+                flick.stopScrolling()
+                layoutNow()
+                const maxY = Math.max(0, flick.contentHeight - flick.height)
+                flick.contentY = Math.max(0, Math.min(maxY, entry.scrollY ?? 0))
+            }
+            const item = navItemAt(currentPage)
+            if (item)
+                revealNavItem(item)
+            edgeGate.noteSwitched(0)
+        } finally {
+            navHistory.setRestoring(false)
+        }
+    }
+
+    function navigateBack() {
+        if (modalOpen || editor.recordingHotkey)
+            return
+        if (searching) {
+            const activeQuery = searchBox.query
+            const searchY = flick.contentY
+            const originPage = beforeSearch ? beforeSearch.page : currentPage
+            const originTab = beforeSearch ? beforeSearch.tab : currentTab
+            if (beforeSearch)
+                navHistory.updateScroll(beforeSearch.y)
+            if (activeQuery.trim().length > 0) {
+                navHistory.push(pages[originPage]?.id ?? "general", originTab, "", activeQuery, searchY)
+                restorePlace(navHistory.back())
+            } else {
+                restorePlace(navHistory.currentEntry)
+            }
+            return
+        }
+        if (!navHistory.canBack)
+            return
+        navHistory.updateScroll(currentScrollY())
+        restorePlace(navHistory.back())
+    }
+
+    function navigateForward() {
+        if (modalOpen || editor.recordingHotkey || !navHistory.canForward)
+            return
+        if (!searching)
+            navHistory.updateScroll(currentScrollY())
+        else if (beforeSearch)
+            navHistory.updateScroll(beforeSearch.y)
+        restorePlace(navHistory.forward())
+    }
+
+    function navigateToHistory(historyIndex) {
+        if (modalOpen || editor.recordingHotkey)
+            return
+        if (searching && historyIndex === navHistory.currentIndex) {
+            navigateBack()
+            return
+        }
+        if (!searching)
+            navHistory.updateScroll(currentScrollY())
+        else if (beforeSearch)
+            navHistory.updateScroll(beforeSearch.y)
+        const target = navHistory.jumpTo(historyIndex)
+        if (target && (target.pageId || target.query))
+            restorePlace(target)
+    }
+
+    // Linear adjacent view for boundary-overscroll navigation: steps through
+    // each page's sub-tabs in order, then moves to the neighbouring category.
+    function adjacentView(direction) {
+        if (searching || modalOpen || editor.recordingHotkey || pluginDetailActive)
+            return null
+        const tabs = pageTabs[currentPage]?.length ?? 0
+        if (direction > 0) {
+            if (tabs > 1 && currentTab + 1 < tabs)
+                return { page: currentPage, tab: currentTab + 1 }
+            if (currentPage + 1 < pages.length)
+                return { page: currentPage + 1, tab: 0 }
+            return null
+        }
+        if (tabs > 1 && currentTab > 0)
+            return { page: currentPage, tab: currentTab - 1 }
+        if (currentPage > 0) {
+            const prev = currentPage - 1
+            const prevTabs = pageTabs[prev]?.length ?? 0
+            return { page: prev, tab: Math.max(0, prevTabs - 1) }
+        }
+        return null
+    }
+
+    function adjacentLabel(target) {
+        if (!target)
+            return ""
+        const tabs = pageTabs[target.page] ?? []
+        if (target.page === currentPage && target.tab >= 0 && target.tab < tabs.length)
+            return tabs[target.tab]
+        const base = pages[target.page]?.title ?? ""
+        if (tabs.length > 0 && target.tab >= 0 && target.tab < tabs.length)
+            return base + " › " + tabs[target.tab]
+        return base
+    }
+
+    function stepAdjacentView(direction) {
+        const target = adjacentView(direction)
+        if (!target)
+            return
+        clearFocus()
+        closePopups()
+        const wasLoaded = target.page === gleaningPage || pageItem(target.page) !== null
+        if (target.page === currentPage)
+            showTab(target.tab)
+        else
+            showPage(target.page, target.tab)
+        if (direction < 0) {
+            // Crossing upward past the top lands at the bottom of the previous view.
+            if (currentPage === gleaningPage) {
+                gleaningView.cancelFlick()
+                gleaningView.contentY = Math.max(0, gleaningView.contentHeight - gleaningView.height)
+            } else {
+                flick.stopScrolling()
+                layoutNow()
+                flick.contentY = Math.max(0, flick.contentHeight - flick.height)
+                if (!wasLoaded)
+                    scrollToBottomAfterFrame = true
+            }
+            navHistory.updateScroll(currentScrollY())
+        }
+        const item = navItemAt(currentPage)
+        if (item)
+            revealNavItem(item)
+        edgeGate.noteSwitched(direction)
+    }
+
     // To a page (its index or id), on `tab` if given; else on the tab it was left on.
     function showPage(which, tab) {
         const index = pageIndex(which)
@@ -448,6 +781,15 @@ Window {
             return
         }
         navPending = -1
+        edgeGate.cancel()
+        scrollToBottomAfterFrame = false
+        const wasSearching = searching
+        if (!navHistory.restoring && visible) {
+            if (wasSearching && beforeSearch)
+                navHistory.updateScroll(beforeSearch.y)
+            else if (!wasSearching)
+                navHistory.updateScroll(currentScrollY())
+        }
         if (index !== gleaningPage)
             loadPage(index) // made now if it is not yet: in this frame, not after it
         if (searching) {
@@ -459,8 +801,16 @@ Window {
         currentPage = index
         // A tab that has gone since (大小上限 with content search off): the first.
         currentTab = Math.min(tab ?? lastTabs[index] ?? 0, Math.max(0, (pageTabs[index]?.length ?? 0) - 1))
-        flick.stopScrolling()
-        flick.contentY = 0
+        if (index === gleaningPage) {
+            gleaningView.cancelFlick()
+            gleaningView.contentY = 0
+        } else {
+            flick.stopScrolling()
+            flick.contentY = 0
+        }
+        recordPlace(0)
+        if (visible && !navHistory.restoring)
+            edgeGate.noteSwitched(0)
     }
 
     // A category chosen in the list (a press, ↑ ↓, Enter). Its page at once
@@ -525,9 +875,16 @@ Window {
     function showTab(tab) {
         if (tab === currentTab)
             return
+        edgeGate.cancel()
+        scrollToBottomAfterFrame = false
+        if (!navHistory.restoring && visible && !searching)
+            navHistory.updateScroll(currentScrollY())
         currentTab = tab
         flick.stopScrolling()
         flick.contentY = 0
+        recordPlace(0)
+        if (visible && !navHistory.restoring)
+            edgeGate.noteSwitched(0)
     }
 
     // Ctrl+Tab and Ctrl+Shift+Tab: the next or previous tab, round.
@@ -547,7 +904,7 @@ Window {
         highlightColor: Theme.matchColor
         onQueryChanged: {
             if (active && !window.beforeSearch)
-                window.beforeSearch = { page: window.currentPage, tab: window.currentTab, y: flick.contentY }
+                window.beforeSearch = { page: window.currentPage, tab: window.currentTab, y: window.currentScrollY() }
         }
         onQueryApplied: (wasActive) => window.searchChanged(wasActive)
     }
@@ -561,12 +918,14 @@ Window {
         currentTab: window.currentTab
         pages: window.pages
         pageKeywords: window.pageKeywords
-        onOpenRequested: (index, tab) => window.showPage(index, tab)
+        onOpenRequested: (which, tab) => window.showPage(which, tab)
+        onPartRequested: (which, name) => window.showPart(which, name)
         onHoldRequested: (item, change) => window.holdInView(item, change)
     }
 
     function searchChanged(wasActive) {
         if (searching) {
+            edgeGate.cancel()
             flick.stopScrolling()
             flick.contentY = 0
             pickBest()
@@ -585,8 +944,14 @@ Window {
         flick.stopScrolling()
         currentPage = before.page
         currentTab = before.tab
-        layoutNow()
-        flick.contentY = Math.max(0, Math.min(flick.contentHeight - flick.height, before.y))
+        if (currentPage === gleaningPage) {
+            gleaningView.cancelFlick()
+            gleaningView.contentY = Math.max(0, Math.min(gleaningView.contentHeight - gleaningView.height, before.y))
+        } else {
+            layoutNow()
+            flick.contentY = Math.max(0, Math.min(flick.contentHeight - flick.height, before.y))
+        }
+        edgeGate.noteSwitched(0)
     }
 
     // The rows on show, in the order they stand, with their scores.
@@ -633,12 +998,71 @@ Window {
     // Leaves the search for the row's page, the row in view and its switch,
     // if it has one, given the keyboard.
     function goTo(row) {
+        const wasSearching = searching
+        const activeQuery = wasSearching ? searchBox.query : ""
+        const searchY = flick.contentY
+        const originPage = beforeSearch ? beforeSearch.page : currentPage
+        const originTab = beforeSearch ? beforeSearch.tab : currentTab
+        const originY = beforeSearch ? beforeSearch.y : currentScrollY()
+        if (!navHistory.restoring && visible) {
+            if (wasSearching && !programmaticSearch && activeQuery.trim().length > 0) {
+                navHistory.updateScroll(originY)
+                navHistory.push(pages[originPage]?.id ?? "general", originTab, "", activeQuery, searchY)
+            } else if (!wasSearching) {
+                navHistory.updateScroll(currentScrollY())
+            }
+        }
         row.revealRequested()
-        showPage(row.section.page, row.section.tab)
-        layoutNow()
-        scrollToRow(row)
+        navHistory.setRestoring(true)
+        try {
+            showPage(row.section.page, row.section.tab)
+            layoutNow()
+            scrollToRow(row)
+        } finally {
+            navHistory.setRestoring(false)
+        }
+        recordPlace(flick.contentY)
+        if (visible)
+            edgeGate.noteSwitched(0)
         row.focusControl() // a switch; else the box keeps the keyboard, for the next search
         row.flash()
+    }
+
+    // Jumps to a named row or section on a page (SettingsPage.parts): switches
+    // page and tab, scrolls it into view (again after a frame if the page was
+    // just made so wrapped heights have settled), and flashes it.
+    function showPart(which, name) {
+        const index = pageIndex(which)
+        const wasLoaded = pageItem(index) !== null
+        const target = part(which, name)
+        if (!target) {
+            if (index >= 0)
+                showPage(index)
+            return
+        }
+        if (target.section) {
+            goTo(target)
+        } else {
+            if (!navHistory.restoring && visible) {
+                if (searching && beforeSearch)
+                    navHistory.updateScroll(beforeSearch.y)
+                else if (!searching)
+                    navHistory.updateScroll(currentScrollY())
+            }
+            navHistory.setRestoring(true)
+            try {
+                showPage(target.page ?? index, target.tab)
+                layoutNow()
+                scrollToRow(target)
+            } finally {
+                navHistory.setRestoring(false)
+            }
+            recordPlace(flick.contentY)
+            if (visible)
+                edgeGate.noteSwitched(0)
+        }
+        if (!wasLoaded)
+            scrollAfterFrame = target
     }
 
     // From the top of the page while the row shows there whole; else with
@@ -737,19 +1161,29 @@ Window {
 
     Shortcut { // Ctrl+F: to the search box
         sequences: [StandardKey.Find]
-        enabled: !window.editor.recordingHotkey && !updateDialog.open && !pluginDialog.open && !donateDialog.open && !webDialog.active
+        enabled: !window.editor.recordingHotkey && !window.modalOpen
         onActivated: searchBox.focusAll()
+    }
+    Shortcut { // Alt+Left / browser Back key: step back in navigation history
+        sequences: ["Alt+Left", "Back"]
+        enabled: !window.editor.recordingHotkey && !window.modalOpen && window.canNavigateBack
+        onActivated: window.navigateBack()
+    }
+    Shortcut { // Alt+Right / browser Forward key: step forward in navigation history
+        sequences: ["Alt+Right", "Forward"]
+        enabled: !window.editor.recordingHotkey && !window.modalOpen && window.canNavigateForward
+        onActivated: window.navigateForward()
     }
     Shortcut { // Ctrl+Tab, Ctrl+Shift+Tab: through the page's tabs
         sequences: [StandardKey.NextChild]
-        enabled: !window.searching && !window.warm && !window.editor.recordingHotkey && !updateDialog.open && !donateDialog.open && !webDialog.active
+        enabled: !window.searching && !window.warm && !window.editor.recordingHotkey && !window.modalOpen
         onActivated: window.cycleTab(1)
     }
     Shortcut {
         // Not StandardKey.PreviousChild: its Ctrl+Shift+Backtab never matches
         // on Windows (Qt 6.12), the written-out keys do.
         sequences: ["Ctrl+Shift+Tab"]
-        enabled: !window.searching && !window.warm && !window.editor.recordingHotkey && !updateDialog.open && !donateDialog.open && !webDialog.active
+        enabled: !window.searching && !window.warm && !window.editor.recordingHotkey && !window.modalOpen
         onActivated: window.cycleTab(-1)
     }
 
@@ -796,12 +1230,17 @@ Window {
         if (!title)
             return
         loadAllPages() // searchReady now: the row is looked up right after
+        programmaticSearch = true
         searchBox.setText(title)
         Qt.callLater(() => {
-            if (settingsSearch.current)
-                goTo(settingsSearch.current)
-            else
-                searchBox.clear()
+            try {
+                if (settingsSearch.current)
+                    goTo(settingsSearch.current)
+                else
+                    searchBox.clear()
+            } finally {
+                programmaticSearch = false
+            }
         })
     }
     function showFavoritesPage(path) { // App::showFavoriteSettings: that favorite's form open
@@ -811,30 +1250,64 @@ Window {
     // The 插件 page, scrolled to the plugin's card, which is marked for a
     // moment (a plugin's row opening "winshun:settings": Launcher.pluginSettingsRequested).
     function showPluginPage(pluginId) {
-        showPage(pluginsPage, 0) // the cards' tab, whichever was left on
-        const plugins = part(pluginsPage, "pluginsSection")
-        const card = plugins.cardOf(pluginId)
-        if (!card) {
-            showPluginLibrary(pluginId)
-            return
+        const wasSearching = searching
+        if (!navHistory.restoring && visible) {
+            if (wasSearching && beforeSearch)
+                navHistory.updateScroll(beforeSearch.y)
+            else if (!wasSearching)
+                navHistory.updateScroll(currentScrollY())
         }
-        plugins.expand(pluginId) // its settings are what was asked for
-        layoutNow()
-        revealRow(card)
-        plugins.reveal(pluginId)
-        // A window opened just now has not laid out the cards' column yet (layoutNow
-        // places only the sections): every card is still at y 0. Once more after a frame.
-        revealAfterFrame = pluginId
+        navHistory.setRestoring(true)
+        let openedCard = false
+        try {
+            showPage(pluginsPage, 0) // the cards' tab, whichever was left on
+            const plugins = part(pluginsPage, "pluginsSection")
+            const card = plugins.cardOf(pluginId)
+            if (!card) {
+                navHistory.setRestoring(false)
+                showPluginLibrary(pluginId)
+                return
+            }
+            plugins.expand(pluginId) // its settings are what was asked for
+            layoutNow()
+            revealRow(card)
+            plugins.reveal(pluginId)
+            // A window opened just now has not laid out the cards' column yet (layoutNow
+            // places only the sections): every card is still at y 0. Once more after a frame.
+            revealAfterFrame = pluginId
+            openedCard = true
+        } finally {
+            navHistory.setRestoring(false)
+        }
+        if (openedCard) {
+            recordPlace(flick.contentY)
+            if (visible)
+                edgeGate.noteSwitched(0)
+        }
     }
     // 已安装的插件: a plugin opened in place of the grid shows from the top;
     // back, the grid is where it was left.
     property real pluginGridY: 0
     function pluginDetailToggled(open) {
-        flick.stopScrolling()
-        if (open) {
-            pluginGridY = flick.contentY
-            flick.contentY = 0
+        if (navHistory.restoring)
             return
+        const previousY = flick.contentY
+        flick.stopScrolling()
+        edgeGate.cancel()
+        if (open) {
+            pluginGridY = previousY
+            flick.contentY = 0
+            if (visible && !searching && currentPage === pluginsPage && currentTab === 0) {
+                navHistory.updateScroll(pluginGridY)
+                recordPlace(0)
+                edgeGate.noteSwitched(0)
+            }
+            return
+        }
+        if (visible && !searching && currentPage === pluginsPage && currentTab === 0) {
+            navHistory.updateScroll(previousY)
+            recordPlace(pluginGridY)
+            edgeGate.noteSwitched(0)
         }
         layoutNow()
         Qt.callLater(() => flick.contentY = Math.max(0, Math.min(window.pluginGridY, flick.contentHeight - flick.height)))
@@ -858,6 +1331,19 @@ Window {
             const row = window.scrollAfterFrame
             window.scrollAfterFrame = null
             window.scrollToRow(row)
+            navHistory.updateScroll(flick.contentY)
+        }
+    }
+    Connections {
+        target: window
+        enabled: window.scrollToBottomAfterFrame
+        function onFrameSwapped() {
+            window.scrollToBottomAfterFrame = false
+            if (!window.searching && window.currentPage !== window.gleaningPage) {
+                flick.stopScrolling()
+                flick.contentY = Math.max(0, flick.contentHeight - flick.height)
+                navHistory.updateScroll(flick.contentY)
+            }
         }
     }
     // The capture's card, unfolded at its hotkeys (快捷键 › 打开 Win顺's 截图的快捷键 row); its library entry when it is not installed.
@@ -953,6 +1439,9 @@ Window {
             // page on show is there for the first frame, laid out at the final size.
             if (currentPage !== gleaningPage)
                 loadPage(currentPage)
+            if (navHistory.count === 0)
+                navHistory.reset(pages[currentPage].id, currentTab, activePluginDetailId(), "", currentScrollY())
+            edgeGate.noteSwitched(0)
             now = new Date()
             if (warm)
                 AuthorClock.play()
@@ -1002,6 +1491,41 @@ Window {
         title: window.title + " - " + Qt.application.displayName
         iconX: navList.x + 16 // over the categories' icons, the title over their names
         foreground: window.warm ? WarmPalette.ink : Theme.text
+        leadingToolsX: nav.width // icon ink sits at nav.width + 8, lined up with the page title and cards below
+        leadingTools: [
+            TitleNavButton {
+                id: backButton
+                objectName: "settingsBackButton"
+                anchors.verticalCenter: parent.verticalCenter
+                iconName: "arrow-left"
+                active: window.canNavigateBack
+                warm: window.warm
+                ink: titleBar.ink
+                strongInk: window.warm ? WarmPalette.ink : Theme.text
+                dpr: window.dpr
+                accessibleName: window.backTargetLabel.length > 0
+                                ? qsTr("返回「%1」").arg(window.backTargetLabel)
+                                : qsTr("后退")
+                onClicked: window.navigateBack()
+                onMenuRequested: window.openHistoryMenu(backButton, window.backMenuEntries())
+            },
+            TitleNavButton {
+                id: forwardButton
+                objectName: "settingsForwardButton"
+                anchors.verticalCenter: parent.verticalCenter
+                iconName: "arrow-right"
+                active: window.canNavigateForward
+                warm: window.warm
+                ink: titleBar.ink
+                strongInk: window.warm ? WarmPalette.ink : Theme.text
+                dpr: window.dpr
+                accessibleName: window.forwardTargetLabel.length > 0
+                                ? qsTr("前进到「%1」").arg(window.forwardTargetLabel)
+                                : qsTr("前进")
+                onClicked: window.navigateForward()
+                onMenuRequested: window.openHistoryMenu(forwardButton, navHistory.forwardEntries)
+            }
+        ]
         tools: Row { // 捐赠, and the × that asks to move it to the 拾穗计划 page (GitHub #402)
             objectName: "titleDonateButton"
             visible: Gleaning.donateUrl.length > 0 && !window.editor.donateOnGleaningPage
@@ -1020,6 +1544,29 @@ Window {
                 dpr: window.dpr
                 onClicked: donateDialog.ask()
             }
+        }
+    }
+
+    HoverTip { // shared gliding tooltip for the title bar's Back / Forward keys
+        target: historyMenu.open ? null
+                : backButton.hovered ? backButton
+                : forwardButton.hovered ? forwardButton
+                : null
+        text: backButton.hovered ? backButton.accessibleName : forwardButton.accessibleName
+        shortcut: backButton.hovered ? "Alt+←" : "Alt+→"
+        dpr: window.dpr
+    }
+
+    DropMenu { // right-click or press-and-hold on Back / Forward: jump multiple steps
+        id: historyMenu
+        objectName: "settingsHistoryMenu"
+        property var historyIndices: []
+        anchor: backButton
+        alignLeft: true
+        menuWidth: 230
+        onActivated: (index) => {
+            if (index >= 0 && index < historyIndices.length)
+                window.navigateToHistory(historyIndices[index])
         }
     }
 
@@ -1357,6 +1904,24 @@ Window {
         anchors.bottom: parent.bottom
         editor: window.editor
         updater: window.updater
+        onContentYChanged: {
+            if (gleaningWheelScroll.writing || !visible)
+                return
+            const maxY = Math.max(0, contentHeight - height)
+            if (maxY > 0.5 && (contentY <= 0.5 || contentY >= maxY - 0.5))
+                edgeGate.noteBoundaryReached()
+            else
+                edgeGate.cancel()
+        }
+        ListWheelScroll {
+            id: gleaningWheelScroll
+            view: gleaningView
+            animate: SystemTheme.animations
+            consumeWheel: (dir) => edgeGate.shouldConsumeWheel(dir)
+            onRunningChanged: if (running) edgeGate.cancel()
+            onBoundaryReached: edgeGate.noteBoundaryReached()
+            onOverscrolled: (dir, delta) => edgeGate.overscroll(dir, delta)
+        }
     }
 
     Item {
@@ -1433,10 +1998,23 @@ Window {
             wheelScroll.cancel()
             cancelFlick()
         }
+        onContentYChanged: {
+            if (wheelScroll.writing || !visible)
+                return
+            const maxY = Math.max(0, contentHeight - height)
+            if (maxY > 0.5 && (contentY <= 0.5 || contentY >= maxY - 0.5))
+                edgeGate.noteBoundaryReached()
+            else
+                edgeGate.cancel()
+        }
         ListWheelScroll {
             id: wheelScroll
             view: flick
             animate: SystemTheme.animations
+            consumeWheel: (dir) => edgeGate.shouldConsumeWheel(dir)
+            onRunningChanged: if (running) edgeGate.cancel()
+            onBoundaryReached: edgeGate.noteBoundaryReached()
+            onOverscrolled: (dir, delta) => edgeGate.overscroll(dir, delta)
         }
 
         MouseArea { // clicking empty space finishes editing a field
@@ -1599,7 +2177,7 @@ Window {
                 index: window.generalPage
                 content: Component { SettingsPage {
                     host: settingsContext
-                    parts: ({ proxyRow: proxyRow })
+                    parts: ({ proxyRow: proxyRow, rendererRow: rendererRow, indexFolderRow: indexFolderRow })
                     onResetForReopen: resetButton.confirming = false
             // <page general>
             SettingsSection {
@@ -1831,6 +2409,7 @@ Window {
                 }
 
                 SettingRow {
+                    id: rendererRow
                     title: qsTr("界面绘制方式")
                     keywords: qsTr("渲染;GPU;显卡;内存;模糊;清晰;renderer").split(";")
                     description: window.editor.restartRequired
@@ -2005,10 +2584,12 @@ Window {
                 index: window.keysPage
                 content: Component { SettingsPage {
                     host: settingsContext
-                    recordingHotkey: hotkeyRecorder.recording || panelHotkeyRecorder.recording
+                    parts: ({ hotkeyRow: hotkeyRow, panelHotkeyRow: panelHotkeyRow, settingsHotkeyRow: settingsHotkeyRow })
+                    recordingHotkey: hotkeyRecorder.recording || panelHotkeyRecorder.recording || settingsHotkeyRecorder.recording
                     onResetForReopen: {
                         hotkeyRecorder.stop()
                         panelHotkeyRecorder.stop()
+                        settingsHotkeyRecorder.stop()
                         doubleCtrlAppInput.clear()
                     }
             // <page keys>
@@ -2203,6 +2784,7 @@ Window {
                 glyph: "\uE92E"
 
                 SettingRow {
+                    id: hotkeyRow
                     title: qsTr("快捷键")
                     keywords: qsTr("热键;组合键;hotkey;shortcut").split(";")
                     values: [window.editor.hotkey]
@@ -2232,6 +2814,7 @@ Window {
                 }
 
                 SettingRow {
+                    id: panelHotkeyRow
                     title: qsTr("直接打开搜索面板")
                     description: qsTr("一个组合键打开完整搜索面板并聚焦搜索框，例如 Ctrl+Alt+F")
                     keywords: qsTr("完整窗口;面板;全局;热键;快捷键;full search;panel;hotkey").split(";")
@@ -2253,6 +2836,35 @@ Window {
                         visible: window.editor.panelHotkeyError.length > 0
                         width: parent.width
                         text: window.editor.panelHotkeyError
+                        color: Theme.danger
+                        font.pixelSize: Theme.fontCaption
+                        wrapMode: Text.Wrap
+                    }
+                }
+
+                SettingRow {
+                    id: settingsHotkeyRow
+                    title: qsTr("打开设置")
+                    description: qsTr("一个组合键打开 Win顺 设置，再次按下可关闭，例如 Alt+X")
+                    keywords: qsTr("设置;偏好;全局;热键;快捷键;settings;preferences;hotkey").split(";")
+                    values: [window.editor.settingsHotkey]
+                    FlatButton {
+                        dpr: window.dpr
+                        visible: window.editor.settingsHotkey.length > 0 && !settingsHotkeyRecorder.recording
+                        flat: true
+                        text: qsTr("清除")
+                        onClicked: window.editor.settingsHotkey = ""
+                    }
+                    HotkeyRecorder {
+                        id: settingsHotkeyRecorder
+                        objectName: "settingsHotkeyRecorder"
+                        hotkey: window.editor.settingsHotkey
+                        onRecorded: hotkey => window.editor.settingsHotkey = hotkey
+                    }
+                    body: Text {
+                        visible: window.editor.settingsHotkeyError.length > 0
+                        width: parent.width
+                        text: window.editor.settingsHotkeyError
                         color: Theme.danger
                         font.pixelSize: Theme.fontCaption
                         wrapMode: Text.Wrap
@@ -2290,6 +2902,59 @@ Window {
                         current: window.editor.shortcutAgain === "panel" ? 1 : 0
                         onActivated: (index) => window.editor.shortcutAgain = index === 1 ? "panel" : "close"
                     }
+                }
+            }
+
+            SettingsSection {
+                page: window.keysPage
+                tab: 0
+                width: parent.width
+                title: qsTr("其他功能的快捷键")
+                glyph: "ph:arrow-square-out"
+
+                SettingsLinkRow {
+                    objectName: "keysClipboardLink"
+                    iconName: "clipboard-text"
+                    title: qsTr("剪贴板快捷键")
+                    description: {
+                        const openKeys = [window.editor.clipboardWinV ? "Win+V" : "", window.editor.clipboardHotkey]
+                            .filter(keys => keys.length > 0).join(" / ")
+                        const plain = window.editor.pastePlainHotkey
+                        if (openKeys.length > 0 && plain.length > 0)
+                            return qsTr("打开剪贴板：%1 · 粘贴为纯文本：%2").arg(openKeys).arg(plain)
+                        if (openKeys.length > 0)
+                            return qsTr("打开剪贴板：%1 · 可另设粘贴为纯文本和数字键粘贴").arg(openKeys)
+                        if (plain.length > 0)
+                            return qsTr("粘贴为纯文本：%1 · 尚未设置剪贴板呼出键").arg(plain)
+                        return qsTr("可开启 Win+V、另设组合键，或配置粘贴为纯文本与数字键")
+                    }
+                    destination: qsTr("剪贴板 › 快捷键")
+                    targetPage: "clipboard"
+                    targetPart: "clipboardWinVRow"
+                }
+
+                SettingsLinkRow {
+                    objectName: "keysFolderMenuLink"
+                    iconName: "folder-open"
+                    title: qsTr("文件夹菜单快捷键")
+                    description: window.editor.folderMenuHotkey.length > 0
+                                 ? qsTr("当前为 %1 · 在文件管理器或对话框中弹出常用文件夹菜单").arg(window.editor.folderMenuHotkey)
+                                 : qsTr("未设置；也可在资源管理器或桌面空白处双击或按中键弹出")
+                    destination: qsTr("系统整合 › 文件夹菜单")
+                    targetPage: "integration"
+                    targetPart: "folderMenuHotkeyRow"
+                }
+
+                SettingsLinkRow {
+                    objectName: "keysWinSLink"
+                    iconName: "magnifying-glass"
+                    title: qsTr("用 Win+S 打开 Win顺")
+                    description: window.editor.taskbarWinS
+                                 ? qsTr("已开启 · 用 Win+S 代替 Windows 自带搜索")
+                                 : qsTr("未开启 · 也可在开始菜单里直接打字搜索")
+                    destination: qsTr("系统整合 › 任务栏")
+                    targetPage: "integration"
+                    targetPart: "taskbarWinSRow"
                 }
             }
 
@@ -2355,7 +3020,15 @@ Window {
                                 anchors.verticalCenter: parent.verticalCenter
                                 visible: (shortcutRow.modelData?.setting ?? null) !== null
                                 text: qsTr("去设置")
-                                onClicked: window.showSetting(shortcutRow.modelData.setting.page, shortcutRow.modelData.setting.tab)
+                                onClicked: {
+                                    const target = shortcutRow.modelData.setting
+                                    if (target.capture)
+                                        window.showCaptureCard()
+                                    else if (target.part)
+                                        window.showPart(target.page, target.part)
+                                    else
+                                        window.showSetting(target.page, target.tab)
+                                }
                             }
                         }
                     }
@@ -2465,6 +3138,15 @@ Window {
                                  ? qsTr("使用系统亚克力模糊窗口背后的内容；关闭后保留实色玻璃质感")
                                  : qsTr("窗口背景透出桌面壁纸的颜色（云母效果）")
 
+                    FlatButton {
+                        objectName: "appearanceRendererButton"
+                        dpr: window.dpr
+                        visible: Theme.backdropCapable && !SystemTheme.backdropAvailable
+                        flat: true
+                        text: qsTr("去设置")
+                        trailingGlyph: "\uE76C"
+                        onClicked: window.showPart(window.generalPage, "rendererRow")
+                    }
                     ScopeTabs {
                         enabled: SystemTheme.backdropAvailable && Theme.backdropCapable
                         opacity: enabled ? 1 : 0.4
@@ -2599,7 +3281,7 @@ Window {
                 SettingRow {
                     title: qsTr("界面大小")
                     keywords: qsTr("缩放;大小;字号;字体大小;行高;密集;紧凑;宽松;一行;小字;scale;size;zoom;font;dense;compact").split(";")
-                    description: qsTr("搜索框、剪贴板和对话框旁搜索框的文字和行高；设置窗口不变。密集是每条结果一行的小字。剪贴板可在“剪贴板”页单独设置")
+                    description: qsTr("搜索框、剪贴板和对话框旁搜索框的文字和行高；设置窗口不变。密集是每条结果一行的小字")
 
                     ScopeTabs {
                         readonly property var sizes: ["dense", "compact", "standard", "roomy"]
@@ -2609,6 +3291,26 @@ Window {
                     }
 
                     body: AppearancePreview { width: parent.width }
+                }
+
+                SettingsLinkRow {
+                    objectName: "appearanceClipboardSizeLink"
+                    sub: true
+                    iconName: "clipboard-text"
+                    title: qsTr("剪贴板可单独设置大小")
+                    description: {
+                        const labels = {
+                            follow: qsTr("跟随界面大小"),
+                            dense: qsTr("密集"),
+                            compact: qsTr("紧凑"),
+                            standard: qsTr("标准"),
+                            roomy: qsTr("宽松")
+                        }
+                        return qsTr("当前：%1").arg(labels[window.editor.clipboardUiSize] ?? qsTr("跟随界面大小"))
+                    }
+                    destination: qsTr("剪贴板 › 剪贴板大小")
+                    targetPage: "clipboard"
+                    targetPart: "clipboardUiSizeRow"
                 }
 
                 SettingRow {
@@ -3552,6 +4254,18 @@ Window {
                         wrapMode: Text.Wrap
                     }
                 }
+
+                SettingsLinkRow {
+                    objectName: "scopeIndexFolderLink"
+                    iconName: "folder-open"
+                    title: qsTr("索引位置")
+                    description: window.editor.indexSize.length > 0
+                                 ? qsTr("当前 %1 · %2").arg(window.editor.indexSize).arg(window.editor.indexFolder)
+                                 : window.editor.indexFolder
+                    destination: qsTr("常规 › 存储")
+                    targetPage: "general"
+                    targetPart: "indexFolderRow"
+                }
             }
 
             SettingsSection {
@@ -4010,7 +4724,17 @@ Window {
                 index: window.resultsPage
                 content: Component { SettingsPage {
                     host: settingsContext
-                    parts: ({ fileTypesSection: fileTypesSection, quickFiltersSection: quickFiltersSection })
+                    parts: ({
+                        fileTypesSection: fileTypesSection,
+                        quickFiltersSection: quickFiltersSection,
+                        favoritesOnStartRow: favoritesOnStartRow,
+                        favoriteFolderTabRow: favoriteFolderTabRow,
+                        previewHotkeyRow: previewHotkeyRow,
+                        openHotkeyRow: openHotkeyRow,
+                        resultNumberKeysRow: resultNumberKeysRow,
+                        letterJumpRow: letterJumpRow,
+                        queryHistoryKeysRow: queryHistoryKeysRow
+                    })
                     recordingHotkey: previewHotkeyRecorder.recording || openHotkeyRecorder.recording
                     onResetForReopen: {
                         previewHotkeyRecorder.stop()
@@ -4212,6 +4936,7 @@ Window {
                 }
 
                 SettingRow {
+                    id: favoritesOnStartRow
                     title: qsTr("不输入时显示收藏")
                     keywords: qsTr("收藏;命令;显示;隐藏;关键词;空白;启动;favorite").split(";")
                     description: qsTr("关闭后，收藏和自定义命令仍可通过名称或关键词找到")
@@ -4386,6 +5111,7 @@ Window {
                 }
 
                 SettingRow {
+                    id: favoriteFolderTabRow
                     objectName: "favoriteFolderTab"
                     title: qsTr("选中收藏文件夹时按 Tab")
                     keywords: qsTr("Tab;Shift+Tab;收藏;文件夹;范围;键盘;favorite;keyboard").split(";")
@@ -4453,6 +5179,7 @@ Window {
                 }
 
                 SettingRow {
+                    id: previewHotkeyRow
                     title: qsTr("预览快捷键")
                     keywords: qsTr("预览;快捷键;空格;Space;Alt+P;QuickLook;preview;shortcut").split(";")
                     values: [window.editor.previewHotkey]
@@ -4569,6 +5296,7 @@ Window {
                 }
 
                 SettingRow {
+                    id: openHotkeyRow
                     title: qsTr("打开结果的备用键")
                     keywords: qsTr("打开;回车;Enter;备用;左手;快捷键;空格;open;shortcut").split(";")
                     values: [window.editor.openHotkey]
@@ -4649,6 +5377,7 @@ Window {
                 }
 
                 SettingRow {
+                    id: resultNumberKeysRow
                     title: qsTr("用数字键直接打开")
                     unlocks: [resultNumberHintsRow]
                     keywords: qsTr("快捷键;数字键;序号;Ctrl+1;Alt+1;冲突;hotkey").split(";")
@@ -4687,6 +5416,7 @@ Window {
                 }
 
                 SettingRow {
+                    id: letterJumpRow
                     title: qsTr("字母直达")
                     description: qsTr("轻按一下下面选的键再松开，每一行前面出现一个字母，按字母直接打开这一行（剪贴板里是粘贴），第九行以后也有。搜索框里按 Shift+字母是选中这一行，它的按钮（打开所在位置、在终端中打开、复制、复制路径、删除）上再出现字母，按字母就是点那个按钮，删除要按两次；剪贴板和对话框旁的搜索栏里 Shift+字母是选中那一条，剪贴板里可以选几条一起粘贴。再按一下那个键或按 Esc 退出。启动器和剪贴板共用")
                     keywords: qsTr("快捷键;字母;单手;vim;vi;提示;跳转;直达;hint").split(";")
@@ -4793,6 +5523,7 @@ Window {
                 }
 
                 SettingRow {
+                    id: queryHistoryKeysRow
                     title: qsTr("搜索历史快捷键")
                     description: qsTr("在搜索框中翻阅；回到最新位置时恢复未完成的输入，也可点时钟图标浏览和删除")
                     keywords: qsTr("历史;上一个;下一个;history;Ctrl;Alt").split(";")
@@ -4865,7 +5596,19 @@ Window {
                 index: window.integrationPage
                 content: Component { SettingsPage {
                     host: settingsContext
-                    parts: ({ explorerTypingRow: explorerTypingRow, folderMenuRow: folderMenuRow, dialogBarRow: dialogBarRow })
+                    parts: ({
+                        taskbarWinSRow: taskbarWinSRow,
+                        explorerTypingRow: explorerTypingRow,
+                        opusTypingRow: opusTypingRow,
+                        oneCommanderTypingRow: oneCommanderTypingRow,
+                        folderMenuRow: folderMenuRow,
+                        folderMenuGroupsRow: folderMenuGroupsRow,
+                        folderMenuFavoriteKindsRow: folderMenuFavoriteKindsRow,
+                        folderMenuHotkeyRow: folderMenuHotkeyRow,
+                        dialogBarRow: dialogBarRow,
+                        trayLeftActionRow: trayLeftActionRow,
+                        trayMiddleActionRow: trayMiddleActionRow
+                    })
                     recordingHotkey: folderMenuHotkeyRecorder.recording
                     onResetForReopen: {
                         folderMenuHotkeyRecorder.stop()
@@ -5050,6 +5793,7 @@ Window {
                 glyph: "\uE721"
 
                 SettingRow {
+                    id: taskbarWinSRow
                     title: qsTr("用 Win+S 打开 Win顺")
                     keywords: qsTr("Win+S;Windows 搜索;截图;Win+Shift+S").split(";")
                     description: qsTr("切换时资源管理器会重启，打开的文件夹窗口会关闭")
@@ -5118,6 +5862,81 @@ Window {
                         dpr: window.dpr
                         checked: window.editor.taskbarStartTyping
                         onToggled: (on) => window.editor.taskbarStartTyping = on
+                    }
+                }
+            }
+
+            SettingsSection {
+                page: window.integrationPage
+                tab: 0
+                width: parent.width
+                title: qsTr("托盘图标")
+                glyph: "ph:cursor-click"
+                note: qsTr("右键托盘图标始终打开托盘菜单；可为左键和中键分别指定快捷动作。")
+
+                SettingRow {
+                    id: trayLeftActionRow
+                    title: qsTr("左键单击托盘图标")
+                    keywords: qsTr("托盘;通知区域;左键;单击;点击;图标;tray;left click").split(";")
+                    description: qsTr("默认打开搜索框；也可设为完整搜索面板、剪贴板、设置或已启用插件的动作")
+
+                    ChoiceBox {
+                        id: trayLeftActionPicker
+                        objectName: "trayLeftActionPicker"
+                        implicitWidth: 260
+                        implicitHeight: 36
+                        model: window.editor.trayLeftActions
+                        textRole: "text"
+                        valueRole: "value"
+                        currentIndex: window.editor.trayLeftActions.findIndex(action => action.value === window.editor.trayLeftAction)
+                        onActivated: window.editor.trayLeftAction = currentValue
+                        Accessible.name: qsTr("左键单击托盘图标")
+                        dpr: window.dpr
+                        leftPadding: 12
+                        contentItem: Text {
+                            text: trayLeftActionPicker.displayText
+                            font: trayLeftActionPicker.font
+                            color: trayLeftActionPicker.palette.buttonText
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                        }
+                        Connections {
+                            target: trayLeftActionPicker.popup
+                            function onOpened() { window.frame.addPopup(trayLeftActionPicker.popup.background) }
+                        }
+                    }
+                }
+
+                SettingRow {
+                    id: trayMiddleActionRow
+                    title: qsTr("中键单击托盘图标")
+                    keywords: qsTr("托盘;通知区域;中键;滚轮;单击;点击;设置;截图历史;tray;middle click").split(";")
+                    description: qsTr("默认直接打开设置；安装截图插件后也可选打开截图历史或触发插件动作")
+
+                    ChoiceBox {
+                        id: trayMiddleActionPicker
+                        objectName: "trayMiddleActionPicker"
+                        implicitWidth: 260
+                        implicitHeight: 36
+                        model: window.editor.trayMiddleActions
+                        textRole: "text"
+                        valueRole: "value"
+                        currentIndex: window.editor.trayMiddleActions.findIndex(action => action.value === window.editor.trayMiddleAction)
+                        onActivated: window.editor.trayMiddleAction = currentValue
+                        Accessible.name: qsTr("中键单击托盘图标")
+                        dpr: window.dpr
+                        leftPadding: 12
+                        contentItem: Text {
+                            text: trayMiddleActionPicker.displayText
+                            font: trayMiddleActionPicker.font
+                            color: trayMiddleActionPicker.palette.buttonText
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                        }
+                        Connections {
+                            target: trayMiddleActionPicker.popup
+                            function onOpened() { window.frame.addPopup(trayMiddleActionPicker.popup.background) }
+                        }
                     }
                 }
             }
@@ -5376,7 +6195,7 @@ Window {
 
             SettingsSection {
                 page: window.integrationPage
-                tab: 1
+                tab: 2
                 width: parent.width
                 title: qsTr("文件夹快捷菜单")
                 glyph: "\uE8B7"
@@ -5478,6 +6297,15 @@ Window {
                     title: qsTr("收藏夹里显示的类型")
                     description: qsTr("至少保留一项；未勾选的类型不再出现，应用也可在菜单里直接展开或折叠")
                     keywords: qsTr("文件夹菜单;收藏夹;收藏;类型;隐藏;过滤;文件夹;文件;应用;系统设置;自定义命令;折叠;展开;favorites;apps;hide;fold;collapse").split(";")
+
+                    FlatButton {
+                        objectName: "folderMenuManageFavoritesButton"
+                        dpr: window.dpr
+                        flat: true
+                        text: qsTr("管理收藏夹")
+                        trailingGlyph: "\uE76C"
+                        onClicked: window.showPage(window.favoritesPage)
+                    }
 
                     body: Flow {
                         objectName: "folderMenuFavoriteKindChoices"
@@ -5740,6 +6568,7 @@ Window {
                 }
 
                 SettingRow {
+                    id: folderMenuHotkeyRow
                     // Shown with the double click off too: the hotkey alone
                     // brings the menu (GitHub #25).
                     title: qsTr("用快捷键弹出文件夹菜单")
@@ -5774,7 +6603,7 @@ Window {
 
             SettingsSection {
                 page: window.integrationPage
-                tab: 2
+                tab: 3
                 width: parent.width
                 title: qsTr("对话框联动")
                 glyph: "\uE8E5"
@@ -5924,7 +6753,7 @@ Window {
                 index: window.favoritesPage
                 content: Component { SettingsPage {
                     host: settingsContext
-                    parts: ({ favoritesSection: favoritesSection })
+                    parts: ({ favoritesSection: favoritesSection, dropPieRow: favoritesSection.dropPieRow })
             // <page favorites>
             FavoritesSection {
                 id: favoritesSection
@@ -5942,7 +6771,15 @@ Window {
                 index: window.clipboardPage
                 content: Component { SettingsPage {
                     host: settingsContext
-                    parts: ({ captureKeywordError: captureKeywordError }) // the probe's (--settings-reopen-check)
+                    parts: ({
+                        captureKeywordError: captureKeywordError, // the probe's (--settings-reopen-check)
+                        clipboardUiSizeRow: clipboardUiSizeRow,
+                        clipboardWinVRow: clipboardWinVRow,
+                        clipboardHotkeyRow: clipboardHotkeyRow,
+                        pastePlainHotkeyRow: pastePlainHotkeyRow,
+                        clipboardHoldRow: clipboardHoldRow,
+                        clipboardNumberKeysRow: clipboardNumberKeysRow
+                    })
                     recordingHotkey: clipHotkeyRecorder.recording || pastePlainHotkeyRecorder.recording
                     onResetForReopen: {
                         clipHotkeyRecorder.stop()
@@ -6180,6 +7017,7 @@ Window {
                 }
 
                 SettingRow {
+                    id: clipboardUiSizeRow
                     title: qsTr("剪贴板大小")
                     keywords: qsTr("字体;字号;文字大小;行高;密集;紧凑;宽松;ditto;font size;dense").split(";")
                     description: qsTr("剪贴板文字和行高，可以和搜索框不同；密集是每条一行的小字")
@@ -6301,6 +7139,7 @@ Window {
                 glyph: "\uE765"
 
                 SettingRow {
+                    id: clipboardWinVRow
                     title: qsTr("用 Win+V 打开，代替 Windows 自带的剪贴板")
                     keywords: qsTr("Win+V;剪切板;代替;替换").split(";")
                     description: qsTr("Windows 的表情面板改用 Win+. 打开")
@@ -6378,6 +7217,7 @@ Window {
                 }
 
                 SettingRow {
+                    id: clipboardHotkeyRow
                     title: qsTr("另设快捷键")
                     keywords: qsTr("快捷键;热键;组合键;hotkey").split(";")
                     values: [window.editor.clipboardHotkey]
@@ -6407,6 +7247,7 @@ Window {
                 }
 
                 SettingRow { // GitHub #408
+                    id: pastePlainHotkeyRow
                     title: qsTr("粘贴为纯文本的快捷键")
                     keywords: qsTr("纯文本;去格式;无格式;清除格式;去掉格式;PureText;快捷键;热键;plain text;paste;hotkey").split(";")
                     values: [window.editor.pastePlainHotkey]
@@ -6438,6 +7279,7 @@ Window {
                 }
 
                 SettingRow {
+                    id: clipboardHoldRow
                     title: qsTr("按住连按快捷键，松开粘贴")
                     keywords: qsTr("快捷键;按住;连按;松开;选择;Ditto;hotkey").split(";")
                     description: qsTr("按住修饰键每按一次往下选一条，松开粘贴")
@@ -6472,6 +7314,7 @@ Window {
                 glyph: "\uE92E"
 
                 SettingRow {
+                    id: clipboardNumberKeysRow
                     title: qsTr("面板内数字键粘贴")
                     unlocks: [clipNumberHintsRow]
                     keywords: qsTr("快捷键;数字键;序号;Alt+1;Ctrl+1;冲突;hotkey").split(";")
@@ -6528,6 +7371,24 @@ Window {
                         font.pixelSize: Theme.fontCaption
                         wrapMode: Text.Wrap
                     }
+                }
+
+                SettingsLinkRow {
+                    objectName: "clipboardLetterJumpLink"
+                    iconName: "keyboard"
+                    title: qsTr("字母直达")
+                    description: {
+                        if (!window.editor.letterJump)
+                            return qsTr("未开启 · 轻按修饰键后按字母直接粘贴（含第九条以后），启动器和剪贴板共用")
+                        const key = window.editor.letterJumpKey === "ctrl" ? "Ctrl"
+                                  : window.editor.letterJumpKey === "alt" ? "Alt"
+                                  : window.editor.letterJumpKey === "shift" ? "Shift"
+                                  : qsTr("跟随数字键")
+                        return qsTr("已开启（%1）· 启动器和剪贴板共用").arg(key)
+                    }
+                    destination: qsTr("结果列表 › 操作习惯")
+                    targetPage: "results"
+                    targetPart: "letterJumpRow"
                 }
             }
 
@@ -6753,8 +7614,16 @@ Window {
                 editor: window.editor
                 lockedElsewhere: pluginDevSection.lockedRows
                 onDetailToggled: (open) => window.pluginDetailToggled(open)
-                onSettingRequested: (which) => window.goTo(window.part(window.integrationPage, which === "folderMenu" ? "folderMenuRow"
-                                                                          : which === "dialogBar" ? "dialogBarRow" : "explorerTypingRow"))
+                onSettingRequested: (which) => {
+                    if (which === "dropPie")
+                        window.showPart(window.favoritesPage, "dropPieRow")
+                    else
+                        window.showPart(window.integrationPage, which === "folderMenu" ? "folderMenuRow"
+                                        : which === "dialogBar" ? "dialogBarRow"
+                                        : which === "opusTyping" ? "opusTypingRow"
+                                        : which === "oneCommanderTyping" ? "oneCommanderTypingRow"
+                                        : "explorerTypingRow")
+                }
             }
 
             PluginGallerySection {
@@ -6786,6 +7655,7 @@ Window {
                 index: window.aiPage
                 content: Component { SettingsPage {
                     host: settingsContext
+                    parts: ({ cliRow: aiCommandLineSection.cliRow })
             // <page ai>
             AiAccessSection {
                 page: window.aiPage
@@ -6795,6 +7665,7 @@ Window {
             }
 
             AiCommandLineSection {
+                id: aiCommandLineSection
                 page: window.aiPage
                 width: parent.width
                 editor: window.editor
@@ -6845,6 +7716,31 @@ Window {
         anchors.bottom: flick.bottom
     }
 
+    Item { // bounds the edge-overscroll cue to the right-hand content pane
+        anchors.left: nav.right
+        anchors.right: parent.right
+        anchors.top: window.warm ? titleBar.bottom : pageHeader.bottom
+        anchors.bottom: parent.bottom
+        z: 0.5
+        Accessible.role: Accessible.Pane
+        Accessible.ignored: !edgeScrollHint.visible
+
+        EdgeScrollHint {
+            id: edgeScrollHint
+            objectName: "settingsEdgeScrollHint"
+            direction: edgeGate.direction
+            progress: edgeGate.progress
+            targetLabel: window.adjacentLabel(window.adjacentView(edgeGate.direction))
+            warm: window.warm
+            dpr: window.dpr
+            onClicked: {
+                const dir = edgeGate.direction
+                if (dir !== 0)
+                    window.stepAdjacentView(dir)
+            }
+        }
+    }
+
     Loader { // outside the page's Flickable: always in the visible window
         id: webDialog
         z: 1
@@ -6884,6 +7780,7 @@ Window {
     }
 
     PluginNotesDialog {
+        id: notesDialog
         z: 1
         Accessible.role: Accessible.Dialog
         anchors.fill: parent

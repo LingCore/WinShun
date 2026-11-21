@@ -52,6 +52,8 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QString hotkey READ hotkey WRITE setHotkey NOTIFY changed FINAL)
     Q_PROPERTY(QString panelHotkey READ panelHotkey WRITE setPanelHotkey NOTIFY changed FINAL)
     Q_PROPERTY(QString panelHotkeyError READ panelHotkeyError NOTIFY hotkeyErrorChanged FINAL)
+    Q_PROPERTY(QString settingsHotkey READ settingsHotkey WRITE setSettingsHotkey NOTIFY changed FINAL)
+    Q_PROPERTY(QString settingsHotkeyError READ settingsHotkeyError NOTIFY hotkeyErrorChanged FINAL)
     Q_PROPERTY(QString shortcutAgain READ shortcutAgain WRITE setShortcutAgain NOTIFY changed FINAL) // close | panel
     Q_PROPERTY(QString hotkeyError READ hotkeyError NOTIFY hotkeyErrorChanged FINAL)
     Q_PROPERTY(bool recordingHotkey READ recordingHotkey WRITE setRecordingHotkey NOTIFY recordingHotkeyChanged FINAL)
@@ -316,6 +318,10 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool taskbarSearchBox READ taskbarSearchBox WRITE setTaskbarSearchBox NOTIFY changed FINAL)
     Q_PROPERTY(QString taskbarSearchBoxStyle READ taskbarSearchBoxStyle WRITE setTaskbarSearchBoxStyle NOTIFY changed FINAL) // box | label | icon
     Q_PROPERTY(QString taskbarSearchBoxSide READ taskbarSearchBoxSide WRITE setTaskbarSearchBoxSide NOTIFY changed FINAL) // auto | tray
+    Q_PROPERTY(QString trayLeftAction READ trayLeftAction WRITE setTrayLeftAction NOTIFY changed FINAL)
+    Q_PROPERTY(QString trayMiddleAction READ trayMiddleAction WRITE setTrayMiddleAction NOTIFY changed FINAL)
+    Q_PROPERTY(QVariantList trayLeftActions READ trayLeftActions NOTIFY trayActionsChanged FINAL)
+    Q_PROPERTY(QVariantList trayMiddleActions READ trayMiddleActions NOTIFY trayActionsChanged FINAL)
     Q_PROPERTY(bool searchBoxSupported READ searchBoxSupported CONSTANT FINAL)
     Q_PROPERTY(bool searchBoxShown READ searchBoxShown NOTIFY searchBoxShownChanged FINAL)
     Q_PROPERTY(QString searchBoxHidden READ searchBoxHidden NOTIFY searchBoxShownChanged FINAL)
@@ -438,6 +444,10 @@ public:
     void setPanelHotkey(const QString& hotkey);
     QString panelHotkeyError() const { return m_panelHotkeyError; }
     void setPanelHotkeyError(const QString& error);
+    QString settingsHotkey() const { return m_settings.settingsHotkey; }
+    void setSettingsHotkey(const QString& hotkey);
+    QString settingsHotkeyError() const { return m_settingsHotkeyError; }
+    void setSettingsHotkeyError(const QString& error);
     QString hotkeyError() const { return m_hotkeyError; }
     void setHotkeyError(const QString& error);
     bool recordingHotkey() const { return m_recordingHotkey; }
@@ -948,6 +958,12 @@ public:
     void setTaskbarSearchBoxStyle(const QString& style);
     QString taskbarSearchBoxSide() const { return m_settings.taskbarSearchBoxSide; }
     void setTaskbarSearchBoxSide(const QString& side);
+    QString trayLeftAction() const { return m_settings.trayLeftAction; }
+    void setTrayLeftAction(const QString& action);
+    QString trayMiddleAction() const { return m_settings.trayMiddleAction; }
+    void setTrayMiddleAction(const QString& action);
+    QVariantList trayLeftActions() const;
+    QVariantList trayMiddleActions() const;
     bool searchBoxSupported() const;
     bool searchBoxShown() const { return m_searchBoxHidden.isEmpty(); }
     QString searchBoxHidden() const { return m_searchBoxHidden; } // why not: "pending", "noroom"... (App)
@@ -1225,6 +1241,7 @@ signals:
     void numberKeysNoteChanged();
     void doubleCtrlClashChanged();
     void doubleTapActionsChanged();
+    void trayActionsChanged();
     void opusFolderMenuChanged();
     void opusRestarted(); // setOpusFolderMenu started Opus again: it came to the front
     void clipboardClearRequested();
@@ -1269,11 +1286,13 @@ private:
     QVariantMap keepSvgIcon(QByteArrayView svg); // pickWebIcon's and webIconFromSvg's answer for SVG code
     void setIndexFolder(const QString& folder);
     void setMcpMessage(const QString& message);
+    QVariantList trayActionsFor(const QString& current) const;
 
     Settings m_settings;
     QString m_runningRenderer; // resolved: never "auto"
     QString m_hotkeyError;
     QString m_panelHotkeyError;
+    QString m_settingsHotkeyError;
     QString m_previewHotkeyError;
     QString m_openHotkeyError;
     QString m_numberKeysNote;

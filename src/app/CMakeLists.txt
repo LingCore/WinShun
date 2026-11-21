@@ -234,6 +234,8 @@ set(qml_files
     qml/OnboardingWindow.qml
     qml/SettingsSearchBox.qml
     qml/TitleBar.qml
+    qml/TitleNavButton.qml
+    qml/EdgeScrollHint.qml
     qml/DonateButton.qml
     qml/DonateMoveDialog.qml
     qml/DonateSideKey.qml
@@ -244,6 +246,7 @@ set(qml_files
     qml/FileTypesSection.qml
     qml/QuickFiltersSection.qml
     qml/SettingRow.qml
+    qml/SettingsLinkRow.qml
     qml/PageTabs.qml
     qml/ThemeCard.qml
     qml/AppearancePreview.qml
@@ -402,6 +405,7 @@ qt_add_qml_module(WinShun
         platform/DisplaySetup.cpp platform/DisplaySetup.h # monitors, graphics switches, display events (#325)
         TextCheck.cpp TextCheck.h
         SettingsSearch.cpp SettingsSearch.h
+        SettingsNavigation.cpp SettingsNavigation.h
         SoundClip.cpp SoundClip.h
         SystemTheme.cpp SystemTheme.h
         PhosphorGlyph.cpp PhosphorGlyph.h

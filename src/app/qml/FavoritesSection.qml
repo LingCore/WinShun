@@ -16,6 +16,7 @@ SettingsSection {
 
     required property FavoritesSettings favorites
     required property SettingsEditor editor
+    readonly property alias dropPieRow: dropPieRow
     property int editing: -1 // the row whose form is open; -1: none
     // What was typed in the open form and not saved, {path, name, keyword}:
     // kept while the form is made again (moved, the list redone).
@@ -93,7 +94,7 @@ SettingsSection {
         }
     }
 
-    note: qsTr("什么都不输入时，收藏排在最前；只输入关键词再按 Enter 就打开。在搜索结果上右键可以加入收藏，也可以把文件或文件夹拖到这里。Tab 默认切换范围；在“结果列表”的“显示与预览”中可改为进入选中的收藏文件夹。")
+    note: qsTr("什么都不输入时，收藏排在最前；只输入关键词再按 Enter 就打开。在搜索结果上右键可以加入收藏，也可以把文件或文件夹拖到这里。")
 
     onVisibleChanged: if (!visible) { editing = -1; addingCommand = false; draft = null; favorites.clearMessage() }
 
@@ -114,6 +115,49 @@ SettingsSection {
             checked: section.editor.dropPie
             onToggled: (on) => section.editor.dropPie = on
         }
+    }
+
+    SettingsLinkRow {
+        objectName: "favoritesFolderMenuLink"
+        iconName: "folder-open"
+        title: qsTr("文件夹快捷菜单中的收藏")
+        description: {
+            if (!section.editor.folderMenu)
+                return qsTr("文件夹快捷菜单未开启；开启后在资源管理器或桌面空白处弹出")
+            if (!section.editor.folderMenuFavorites)
+                return qsTr("菜单里未勾选“收藏夹”；可在此设置显示类型、展开方式与菜单操作")
+            const count = section.editor.folderMenuFavoritesInline
+            const mode = count === 0 ? qsTr("二级菜单")
+                       : count < 0 ? qsTr("顶层显示全部")
+                       : qsTr("顶层显示前 %1 个").arg(count)
+            const kinds = []
+            if (section.editor.folderMenuFavoriteFolders) kinds.push(qsTr("文件夹"))
+            if (section.editor.folderMenuFavoriteFiles) kinds.push(qsTr("文件"))
+            if (section.editor.folderMenuFavoriteApps) kinds.push(qsTr("应用"))
+            if (section.editor.folderMenuFavoritePlaces) kinds.push(qsTr("系统设置"))
+            if (section.editor.folderMenuFavoriteCommands) kinds.push(qsTr("自定义命令"))
+            const shown = kinds.length === 5 ? qsTr("全部类型") : kinds.join(qsTr("、"))
+            return qsTr("%1 · 显示：%2").arg(mode).arg(shown)
+        }
+        destination: qsTr("系统整合 › 文件夹菜单")
+        targetPage: "integration"
+        targetPart: !section.editor.folderMenu ? "folderMenuRow"
+                  : !section.editor.folderMenuFavorites ? "folderMenuGroupsRow"
+                  : "folderMenuFavoriteKindsRow"
+    }
+
+    SettingsLinkRow {
+        objectName: "favoritesLauncherLink"
+        iconName: "magnifying-glass"
+        title: qsTr("搜索框中的收藏显示")
+        description: section.editor.favoritesOnStart
+                     ? qsTr("不输入时以%1显示 · 选中收藏文件夹按 Tab %2")
+                           .arg(section.editor.favoriteTiles ? qsTr("图标样式") : qsTr("列表样式"))
+                           .arg(section.editor.tabEntersFavoriteFolder ? qsTr("进入文件夹") : qsTr("切换范围"))
+                     : qsTr("不输入时不显示收藏；仍可用名称或关键词搜到")
+        destination: qsTr("结果列表 › 显示与预览")
+        targetPage: "results"
+        targetPart: "favoritesOnStartRow"
     }
 
     SettingRow {

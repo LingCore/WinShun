@@ -59,6 +59,15 @@ Item {
     // The goal had to be a plain distance, for want of rows made to read edges
     // from: look for the nearest edge once it has arrived.
     property bool unsnapped: false
+    // Optional callback `bool (int direction)`: return true to swallow a plain
+    // wheel tick (e.g. trailing ticks right after an edge-overscroll switch).
+    property var consumeWheel: null
+
+    // Fired when a plain mouse-wheel event tries to scroll past top (-1) or
+    // bottom (+1) while the view is already resting at that boundary.
+    signal overscrolled(int direction, real angleDelta)
+    // Fired when scrolling moves the view onto top (-1) or bottom (+1).
+    signal boundaryReached(int direction)
 
     function cancel() {
         glide.stop()
@@ -110,6 +119,7 @@ Item {
         if (Math.abs(destination - view.contentY) < 0.000001)
             return
         if (!animate) {
+            const before = view.contentY
             writePosition(destination)
             // No glide follows an end the write moved: the rows it laid out
             // change the estimate. Go to the end again until it stays put.
@@ -120,6 +130,12 @@ Item {
                 writePosition(settled)
             }
             settleOnEdge() // its rows are made now
+            if (maximumY > minimumY + 0.5 && Math.abs(view.contentY - before) > 0.000001) {
+                if (direction > 0 && view.contentY >= maximumY - 0.01)
+                    boundaryReached(1)
+                else if (direction < 0 && view.contentY <= minimumY + 0.01)
+                    boundaryReached(-1)
+            }
             return
         }
         glide.from = view.contentY
@@ -127,7 +143,7 @@ Item {
         glide.start()
     }
 
-    function wheel(angle) {
+    function wheel(angle, modifiers) {
         const lines = scrollLines
         if (lines === 0) {
             cancel()
@@ -135,6 +151,14 @@ Item {
         }
         const step = -angle / 120 * (lines > 0 ? lines * lineHeight : view.height)
         const nextDirection = Math.sign(step)
+        const plain = modifiers === undefined || modifiers === Qt.NoModifier
+        if (consumeWheel && nextDirection !== 0 && plain && consumeWheel(nextDirection)) {
+            cancel()
+            view.cancelFlick()
+            return
+        }
+        const wasIdle = !running
+        const beforeY = view.contentY
         const whole = Math.abs(angle) >= 120
         // Accumulate a burst, but discard its untravelled distance on reversal.
         // Keep the fractional remainder after arrival too: tiny deltas must
@@ -153,6 +177,17 @@ Item {
         // Keep an endpoint's intent when variable-height rows change the
         // view's estimate of the range during the glide.
         requestedY = endGoal(goal, nextDirection)
+        const destination = aligned(requestedY)
+        const atBoundary = nextDirection !== 0 && Math.abs(destination - beforeY) < 0.000001
+            && ((nextDirection > 0 && destination >= maximumY - 0.01)
+                || (nextDirection < 0 && destination <= minimumY + 0.01))
+        if (atBoundary && plain) {
+            if (wasIdle)
+                overscrolled(nextDirection, Math.abs(angle))
+            else
+                boundaryReached(nextDirection)
+            return
+        }
         moveTo(requestedY)
     }
 
@@ -275,7 +310,7 @@ Item {
         enabled: scroll.view.interactive
         onWheel: event => {
             if (event.angleDelta.y)
-                scroll.wheel(event.angleDelta.y)
+                scroll.wheel(event.angleDelta.y, event.modifiers)
         }
     }
 
@@ -285,7 +320,15 @@ Item {
         property: "position"
         duration: 200
         easing.type: Easing.OutCubic
-        onFinished: scroll.settleOnEdge()
+        onFinished: {
+            scroll.settleOnEdge()
+            if (scroll.maximumY > scroll.minimumY + 0.5) {
+                if (scroll.direction > 0 && scroll.view.contentY >= scroll.maximumY - 0.01)
+                    scroll.boundaryReached(1)
+                else if (scroll.direction < 0 && scroll.view.contentY <= scroll.minimumY + 0.01)
+                    scroll.boundaryReached(-1)
+            }
+        }
     }
 
     Connections {

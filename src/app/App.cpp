@@ -1,5 +1,6 @@
 #include "App.h"
 #include "DoubleTapAction.h"
+#include "TrayAction.h"
 #include "UiFont.h"
 #include "AdminDialogHint.h"
 #include "AdminTapHint.h"
@@ -176,6 +177,7 @@ constexpr int kScreenClipHotkeyId = 6; // Win+Shift+S, which Explorer gives up w
 constexpr int kFolderMenuHotkeyId = 7; // the folder menu in the window in front (GitHub #25)
 constexpr int kPanelHotkeyId = 8; // directly open the full search panel (#206)
 constexpr int kPastePlainHotkeyId = 9; // the clipboard pasted as plain text into the window in front (#408)
+constexpr int kSettingsHotkeyId = 10; // directly open or toggle the settings window
 constexpr int kQuickPasteHotkeyId = 20; // + 1…9: paste without opening the clipboard
 // For another program to tell where its text caret is: longer, and the
 // clipboard would open late; it opens by the mouse pointer then.
@@ -1053,9 +1055,10 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
 
     MessageWindow::Callbacks callbacks;
     callbacks.trayActivated = [this](std::uint32_t time) {
-        const std::uint64_t pressedAt = tickTime(time, ::GetTickCount64());
-        beginTrigger(TriggerSource::Tray, pressedAt);
-        toggleLauncher(false, pressedAt);
+        runTrayAction(m_settings.trayLeftAction, tickTime(time, ::GetTickCount64()));
+    };
+    callbacks.trayMiddleClicked = [this](std::uint32_t time) {
+        runTrayAction(m_settings.trayMiddleAction, tickTime(time, ::GetTickCount64()));
     };
     callbacks.trayMenuRequested = [this] { showTrayMenu(); };
     callbacks.trayMenuSoon = [this] { prefetchTrayMenus(); };
@@ -1098,6 +1101,8 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
             beginTrigger(TriggerSource::Hotkey, pressedAt);
             panelHotkey(pressedAt);
         }
+        else if (id == kSettingsHotkeyId)
+            settingsHotkey();
         else if (id != kDialogJumpHotkeyId) {
             beginTrigger(TriggerSource::Hotkey, pressedAt);
             toggleLauncher(true, pressedAt);
@@ -2105,18 +2110,26 @@ void App::applyHotkey()
 {
     m_messages->unregisterHotkey(kHotkeyId);
     m_messages->unregisterHotkey(kPanelHotkeyId);
+    m_messages->unregisterHotkey(kSettingsHotkeyId);
     if (m_settingsEditor && m_settingsEditor->recordingHotkey())
         return; // the keys being pressed must reach the settings window
+    const auto registerChord = [this](int id, const QString& raw, const QString& settingKey) {
+        const QString chord = raw.trimmed();
+        QString error;
+        if (!chord.isEmpty() && !m_messages->registerHotkey(id, chord)) {
+            UINT modifiers = 0;
+            UINT vk = 0;
+            error = MessageWindow::parseHotkey(chord, &modifiers, &vk)
+                ? tr("“%1” 已被其他程序或系统占用，请换一个。").arg(chord)
+                : tr("无法识别“%1”，请重新设置。").arg(chord);
+        }
+        noteApplyProblem(settingKey, error);
+        if (!settingsShown() && !error.isEmpty() && !m_aiApplying)
+            m_messages->showNotification(tr("快捷键不可用"), error);
+        return error;
+    };
     const QString hotkey = m_settings.hotkey.trimmed();
-    QString hotkeyError;
-    if (!hotkey.isEmpty() && !m_messages->registerHotkey(kHotkeyId, hotkey)) {
-        UINT modifiers = 0;
-        UINT vk = 0;
-        hotkeyError = MessageWindow::parseHotkey(hotkey, &modifiers, &vk)
-            ? tr("“%1” 已被其他程序或系统占用，请换一个。").arg(hotkey)
-            : tr("无法识别“%1”，请重新设置。").arg(hotkey);
-    }
-    noteApplyProblem(u"Launcher/Hotkey"_s, hotkeyError);
+    const QString hotkeyError = registerChord(kHotkeyId, hotkey, u"Launcher/Hotkey"_s);
     // Over a program run as administrator only a hotkey with a modifier
     // comes (docs/pitfalls.md): the one AdminTapHint names.
     UINT hotkeyModifiers = 0;
@@ -2124,24 +2137,13 @@ void App::applyHotkey()
     m_hotkeyOverAdmin = !hotkey.isEmpty() && hotkeyError.isEmpty()
         && MessageWindow::parseHotkey(hotkey, &hotkeyModifiers, &hotkeyKey)
         && (hotkeyModifiers & (MOD_ALT | MOD_CONTROL | MOD_SHIFT | MOD_WIN)) != 0;
-    if (m_settingsEditor)
+    const QString panelError = registerChord(kPanelHotkeyId, m_settings.panelHotkey, u"Launcher/PanelHotkey"_s);
+    const QString settingsError = registerChord(kSettingsHotkeyId, m_settings.settingsHotkey, u"Launcher/SettingsHotkey"_s);
+    if (m_settingsEditor) {
         m_settingsEditor->setHotkeyError(hotkeyError); // shown next to the shortcut
-    if (!settingsShown() && !hotkeyError.isEmpty() && !m_aiApplying)
-        m_messages->showNotification(tr("快捷键不可用"), hotkeyError);
-    const QString panelKey = m_settings.panelHotkey.trimmed();
-    QString panelError;
-    if (!panelKey.isEmpty() && !m_messages->registerHotkey(kPanelHotkeyId, panelKey)) {
-        UINT modifiers = 0;
-        UINT vk = 0;
-        panelError = MessageWindow::parseHotkey(panelKey, &modifiers, &vk)
-            ? tr("“%1” 已被其他程序或系统占用，请换一个。").arg(panelKey)
-            : tr("无法识别“%1”，请重新设置。").arg(panelKey);
-    }
-    noteApplyProblem(u"Launcher/PanelHotkey"_s, panelError);
-    if (m_settingsEditor)
         m_settingsEditor->setPanelHotkeyError(panelError);
-    if (!settingsShown() && !panelError.isEmpty() && !m_aiApplying)
-        m_messages->showNotification(tr("快捷键不可用"), panelError);
+        m_settingsEditor->setSettingsHotkeyError(settingsError);
+    }
 }
 
 // The folder menu's hotkey (GitHub #25). Over the launcher itself, the
@@ -3845,6 +3847,7 @@ void App::releaseWinChordsForExplorer()
     const std::pair<int, QString> ours[] = {
         {kHotkeyId, m_settings.hotkey},
         {kPanelHotkeyId, m_settings.panelHotkey},
+        {kSettingsHotkeyId, m_settings.settingsHotkey},
         {kFolderMenuHotkeyId, m_settings.folderMenuHotkey},
         {kClipboardHotkeyId, m_settings.clipboardHotkey},
         {kPastePlainHotkeyId, m_settings.pastePlainHotkey},
@@ -4267,7 +4270,8 @@ void App::showSettingsNow(const std::function<void(QQuickWindow*)>& at)
     } else if (opening) {
         // Shown again. A hotkey another program held may be free now: tried
         // again where one did not work (working ones are left registered).
-        if (!m_settingsEditor->hotkeyError().isEmpty())
+        if (!m_settingsEditor->hotkeyError().isEmpty() || !m_settingsEditor->panelHotkeyError().isEmpty()
+            || !m_settingsEditor->settingsHotkeyError().isEmpty())
             applyHotkey();
         if (!m_settingsEditor->folderMenuHotkeyError().isEmpty())
             applyFolderMenuHotkey();
@@ -5368,6 +5372,69 @@ void App::updateDoubleTapActions()
     m_settingsEditor->setDoubleTapPluginActions(actions);
 }
 
+bool App::invokePluginAction(QStringView encoded)
+{
+    const auto action = doubletap::decode(encoded);
+    if (action.plugin.isEmpty())
+        return false;
+    const auto found = m_pluginTapActions.find(action.plugin);
+    return m_pluginHost && found != m_pluginTapActions.end() && found->second.contains(action.key)
+        && m_pluginHost->notify(action.plugin, u"hotkey"_s, {{u"key"_s, action.key}}, true);
+}
+
+void App::runTrayAction(const QString& action, std::uint64_t pressedAt)
+{
+    if (action == trayaction::kNone)
+        return;
+    if (action == trayaction::kLauncher) {
+        beginTrigger(TriggerSource::Tray, pressedAt);
+        toggleLauncher(false, pressedAt);
+        return;
+    }
+    if (action == trayaction::kPanel) {
+        beginTrigger(TriggerSource::Tray, pressedAt);
+        panelHotkey(pressedAt);
+        return;
+    }
+    if (action == trayaction::kClipboard) {
+        beginTrigger(TriggerSource::Tray, pressedAt);
+        toggleClipboard(pressedAt);
+        return;
+    }
+    if (action == trayaction::kSettings) {
+        showSettings();
+        return;
+    }
+    if (action == trayaction::kScreenshots) {
+        const QString keyword = screenshotKeyword();
+        if (keyword.isEmpty()) {
+            m_messages->showNotification(tr("截图历史暂不可用"),
+                tr("请启用截图插件，并在“剪贴板”中确认截图历史关键词。"));
+            return;
+        }
+        m_launcher->setScope(Launcher::All);
+        showLauncher(keyword + u' ');
+        return;
+    }
+    if (action == trayaction::kPauseClipboard) {
+        if (!m_settings.clipboard) {
+            m_messages->showNotification(tr("剪贴板历史未开启"),
+                tr("可在“剪贴板”设置中开启记录剪贴板历史。"));
+            return;
+        }
+        setClipboardPaused(!m_clipboardPaused);
+        m_messages->showNotification(
+            m_clipboardPaused ? tr("已暂停记录剪贴板") : tr("已恢复记录剪贴板"),
+            m_clipboardPaused ? tr("再次点击托盘图标或从托盘菜单可恢复记录。")
+                              : tr("复制的内容会重新记入剪贴板历史。"));
+        return;
+    }
+    if (!invokePluginAction(action)) {
+        m_messages->showNotification(tr("托盘图标动作暂不可用"),
+            tr("请启用对应插件，并在“系统整合 › 任务栏”中重新选择托盘点击操作。"));
+    }
+}
+
 void App::onDoubleCtrl(const KeyListener::Tap& tap)
 {
     const std::uint64_t now = ::GetTickCount64();
@@ -5393,10 +5460,7 @@ void App::onDoubleCtrl(const KeyListener::Tap& tap)
         }
         if (m_settings.doubleTapAction != u"launcher") {
             m_triggers->decided("plugin-action");
-            const auto action = doubletap::decode(m_settings.doubleTapAction);
-            const auto found = m_pluginTapActions.find(action.plugin);
-            if (!m_pluginHost || found == m_pluginTapActions.end() || !found->second.contains(action.key)
-                || !m_pluginHost->notify(action.plugin, u"hotkey"_s, {{u"key"_s, action.key}}, true)) {
+            if (!invokePluginAction(m_settings.doubleTapAction)) {
                 m_messages->showNotification(tr("双击动作暂不可用"),
                     tr("请启用对应插件，并在“快捷键”的双击设置中重新选择动作。"));
             }
@@ -7475,6 +7539,17 @@ void App::panelHotkey(std::optional<std::uint64_t> pressedAt)
         return;
     }
     showSearchPanel();
+}
+
+void App::settingsHotkey()
+{
+    if (m_settingsWindow && m_settingsWindow->isVisible()
+        && !(m_settingsWindow->windowState() & Qt::WindowMinimized)
+        && m_settingsWindow->isActive()) {
+        m_settingsWindow->close();
+        return;
+    }
+    showSettings();
 }
 
 void App::togglePanel()

@@ -1,5 +1,6 @@
 #include "Settings.h"
 #include "DoubleTapAction.h"
+#include "TrayAction.h"
 #include "WebSearchConfig.h"
 #include "PreviewShortcut.h"
 #include "platform/HotkeyText.h"
@@ -885,6 +886,7 @@ void Settings::load()
     doubleCtrlExcludedApps = readOrDefault(s, u"Launcher/DoubleCtrlExcludedApps"_s, d.doubleCtrlExcludedApps);
     hotkey = readOrDefault(s, u"Launcher/Hotkey"_s, d.hotkey);
     panelHotkey = readOrDefault(s, u"Launcher/PanelHotkey"_s, d.panelHotkey).trimmed();
+    settingsHotkey = readOrDefault(s, u"Launcher/SettingsHotkey"_s, d.settingsHotkey).trimmed();
     adminTapHinted = readOrDefault(s, u"Launcher/AdminTapHinted"_s, d.adminTapHinted);
     adminDialogHinted = readOrDefault(s, u"Launcher/AdminDialogHinted"_s, d.adminDialogHinted);
     serviceUpdateHinted = readOrDefault(s, u"Launcher/ServiceUpdateHinted"_s, d.serviceUpdateHinted).trimmed();
@@ -1260,6 +1262,12 @@ void Settings::load()
     taskbarSearchBoxSide = readOrDefault(s, u"Taskbar/SearchBoxSide"_s, d.taskbarSearchBoxSide).trimmed().toLower();
     if (taskbarSearchBoxSide != u"tray")
         taskbarSearchBoxSide = d.taskbarSearchBoxSide;
+    trayLeftAction = readOrDefault(s, u"Taskbar/TrayLeftAction"_s, d.trayLeftAction).trimmed();
+    if (!trayaction::valid(trayLeftAction))
+        trayLeftAction = d.trayLeftAction;
+    trayMiddleAction = readOrDefault(s, u"Taskbar/TrayMiddleAction"_s, d.trayMiddleAction).trimmed();
+    if (!trayaction::valid(trayMiddleAction))
+        trayMiddleAction = d.trayMiddleAction;
     // 0.7.1 to 0.11: the box right of Start (a DLL in Explorer made room
     // there). The box has one place now (taskbar::SearchBox).
     s.remove(u"Taskbar/StartGap"_s);
@@ -1386,6 +1394,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Launcher/DoubleCtrlExcludedApps"_s, doubleCtrlExcludedApps);
     s.setValue(u"Launcher/Hotkey"_s, hotkey);
     s.setValue(u"Launcher/PanelHotkey"_s, panelHotkey);
+    s.setValue(u"Launcher/SettingsHotkey"_s, settingsHotkey);
     s.setValue(u"Launcher/AdminTapHinted"_s, adminTapHinted);
     s.setValue(u"Launcher/AdminDialogHinted"_s, adminDialogHinted);
     s.setValue(u"Launcher/ServiceUpdateHinted"_s, serviceUpdateHinted);
@@ -1574,6 +1583,8 @@ bool Settings::saveChecked() const
     s.setValue(u"Taskbar/SearchBox"_s, taskbarSearchBox);
     s.setValue(u"Taskbar/SearchBoxStyle"_s, taskbarSearchBoxStyle);
     s.setValue(u"Taskbar/SearchBoxSide"_s, taskbarSearchBoxSide);
+    s.setValue(u"Taskbar/TrayLeftAction"_s, trayLeftAction);
+    s.setValue(u"Taskbar/TrayMiddleAction"_s, trayMiddleAction);
     if (capturePrintScreenBefore.isEmpty())
         s.remove(u"Capture/PrintScreenBefore"_s);
     else

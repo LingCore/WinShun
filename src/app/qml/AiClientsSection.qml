@@ -53,14 +53,31 @@ SettingsSection {
             keywords: qsTr("连接;配置;MCP;AI;Skill;%1").arg(modelData.name).split(";")
             description: modelData.connected ? qsTr("已连接 · %1").arg(modelData.configPath) : modelData.note
             shown: modelData.installed && clientsSection.editor.mcp
+            readonly property bool needsCliPath: isClaudeCode && clientsSection.cliFound && clientsSection.cliChecked && !clientsSection.cliOnPath
             bodyShown: skillText.length > 0
-            body: Text {
+            body: Column {
                 width: parent.width
-                text: clientRow.skillText
-                color: Theme.subtext
-                font.pixelSize: Theme.fontCaption
-                wrapMode: Text.Wrap
-                lineHeight: 1.15
+                spacing: 6
+
+                Text {
+                    width: parent.width
+                    text: clientRow.skillText
+                    color: Theme.subtext
+                    font.pixelSize: Theme.fontCaption
+                    wrapMode: Text.Wrap
+                    lineHeight: 1.15
+                }
+                FlatButton {
+                    dpr: clientsSection.dpr
+                    visible: clientRow.needsCliPath
+                    flat: true
+                    implicitHeight: 28
+                    fontSize: Theme.fontCaption
+                    text: qsTr("去启用命令行")
+                    trailingGlyph: "\uE76C"
+                    onClicked: if (clientsSection.column && clientsSection.column.openPart)
+                                   clientsSection.column.openPart("ai", "cliRow")
+                }
             }
 
             Glyph {

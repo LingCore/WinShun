@@ -967,6 +967,23 @@ private slots:
             restore(*item.entry, back, item.oldValue);
         QCOMPARE(back, state);
     }
+
+    // 系统整合 tabs: 0 任务栏, 1 文件管理器, 2 文件夹菜单, 3 对话框.
+    void integrationTabsMatchLayout()
+    {
+        for (const aisettings::Entry& e : catalog()) {
+            if (e.section == u"taskbar") {
+                QCOMPARE(e.tab, 0);
+            } else if (e.section == u"files_and_dialogs") {
+                if (e.key.startsWith(u"Launcher/FolderMenu"))
+                    QCOMPARE(e.tab, 2);
+                else if (e.key.startsWith(u"Launcher/Dialog"))
+                    QCOMPARE(e.tab, 3);
+                else
+                    QCOMPARE(e.tab, 1);
+            }
+        }
+    }
 };
 
 QTEST_GUILESS_MAIN(AiSettingsTest)

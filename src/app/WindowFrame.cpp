@@ -6,6 +6,7 @@
 #include <QDir>
 #include <QEvent>
 #include <QGuiApplication>
+#include <QMouseEvent>
 #include <QPlatformSurfaceEvent>
 #include <QScreen>
 #include <QQuickWindow>
@@ -245,10 +246,57 @@ struct WindowFrame::Hook {
             }
             break;
         }
+        case WM_XBUTTONDOWN:
+        case WM_XBUTTONDBLCLK:
+        case WM_NCXBUTTONDOWN:
+        case WM_NCXBUTTONDBLCLK:
+            if (self->m_browserNavigation) {
+                const WORD button = GET_XBUTTON_WPARAM(wParam);
+                if (button == XBUTTON1 || button == XBUTTON2) {
+                    self->m_xButtonDown = button;
+                    return TRUE;
+                }
+            }
+            break;
+        case WM_XBUTTONUP:
+        case WM_NCXBUTTONUP:
+            if (self->m_browserNavigation) {
+                const WORD button = GET_XBUTTON_WPARAM(wParam);
+                const int pressed = std::exchange(self->m_xButtonDown, 0);
+                if (button == XBUTTON1 || button == XBUTTON2) {
+                    if (pressed == button) {
+                        const bool back = (button == XBUTTON1);
+                        QMetaObject::invokeMethod(self, [self, back] {
+                            if (back)
+                                emit self->navigateBack();
+                            else
+                                emit self->navigateForward();
+                        }, Qt::QueuedConnection);
+                    }
+                    return TRUE;
+                }
+            }
+            break;
+        case WM_APPCOMMAND:
+            if (self->m_browserNavigation) {
+                const UINT cmd = GET_APPCOMMAND_LPARAM(lParam);
+                if (cmd == APPCOMMAND_BROWSER_BACKWARD || cmd == APPCOMMAND_BROWSER_FORWARD) {
+                    const bool back = (cmd == APPCOMMAND_BROWSER_BACKWARD);
+                    QMetaObject::invokeMethod(self, [self, back] {
+                        if (back)
+                            emit self->navigateBack();
+                        else
+                            emit self->navigateForward();
+                    }, Qt::QueuedConnection);
+                    return TRUE;
+                }
+            }
+            break;
         case WM_RBUTTONUP:
         case WM_MBUTTONUP:
         case WM_CANCELMODE:
             self->m_handleButton = Qt::NoButton;
+            self->m_xButtonDown = 0;
             break;
         case WM_NCDESTROY:
             ::RemoveWindowSubclass(hwnd, &Hook::proc, 0);
@@ -284,6 +332,7 @@ void WindowFrame::setWindow(QWindow* window)
     connect(window, &QWindow::visibleChanged, this, [this](bool visible) {
         if (!visible) { // no leave message comes then
             m_handleButton = Qt::NoButton;
+            m_xButtonDown = 0;
             m_trackingLeave = false;
             setPointer({-1, -1});
             setMaximizeState(false, false);
@@ -332,18 +381,46 @@ void WindowFrame::attach()
 
 bool WindowFrame::eventFilter(QObject* watched, QEvent* event)
 {
+    if (watched == m_window && m_browserNavigation) {
+        if (event->type() == QEvent::MouseButtonPress || event->type() == QEvent::MouseButtonDblClick) {
+            const auto button = static_cast<QMouseEvent*>(event)->button();
+            if (button == Qt::BackButton || button == Qt::ForwardButton)
+                return true;
+        }
+        if (event->type() == QEvent::MouseButtonRelease) {
+            const auto button = static_cast<QMouseEvent*>(event)->button();
+            if (button == Qt::BackButton) {
+                emit navigateBack();
+                return true;
+            }
+            if (button == Qt::ForwardButton) {
+                emit navigateForward();
+                return true;
+            }
+        }
+    }
     if (watched == m_window && event->type() == QEvent::PlatformSurface
         && static_cast<QPlatformSurfaceEvent*>(event)->surfaceEventType() == QPlatformSurfaceEvent::SurfaceCreated
         && m_window->winId() != m_hwnd) {
         qWarning("Window frame: the window has a new native handle (%ls), hooked again",
             qUtf16Printable(m_window->objectName().isEmpty() ? m_window->title() : m_window->objectName()));
         m_handleButton = Qt::NoButton;
+        m_xButtonDown = 0;
         m_trackingLeave = false;
         setPointer({-1, -1});
         setMaximizeState(false, false);
         attach();
     }
     return QObject::eventFilter(watched, event);
+}
+
+void WindowFrame::setBrowserNavigation(bool on)
+{
+    if (on == m_browserNavigation)
+        return;
+    m_browserNavigation = on;
+    m_xButtonDown = 0;
+    emit browserNavigationChanged();
 }
 
 void WindowFrame::afterNextFrame()

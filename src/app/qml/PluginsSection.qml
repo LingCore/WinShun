@@ -406,8 +406,10 @@ SettingsSection {
                     title: builtinRow.opusTypingTitle
                     description: qsTr("在文件列表中输入字母或数字，用 Win顺 搜索当前标签的文件夹；保留 Opus 的符号键、改名和地址栏输入")
                     checked: pluginsSection.editor.opusTyping
+                    linkText: qsTr("更多设置")
                     marked: builtinRow.opusTypingFound
                     onToggled: (on) => pluginsSection.editor.opusTyping = on
+                    onLinkActivated: pluginsSection.settingRequested("opusTyping")
                 }
             }
             Loader {
@@ -420,8 +422,10 @@ SettingsSection {
                     title: builtinRow.oneCommanderTypingTitle
                     description: qsTr("在文件列表中输入字母或数字，用 Win顺 搜索这一栏的文件夹，代替 OneCommander 的按首字母筛选")
                     checked: pluginsSection.editor.oneCommanderTyping
+                    linkText: qsTr("更多设置")
                     marked: builtinRow.oneCommanderTypingFound
                     onToggled: (on) => pluginsSection.editor.oneCommanderTyping = on
+                    onLinkActivated: pluginsSection.settingRequested("oneCommanderTyping")
                 }
             }
             Loader {
@@ -434,8 +438,10 @@ SettingsSection {
                     title: builtinRow.dropPieTitle
                     description: qsTr("按住文件时按数字 1 左边那个键，收藏的文件夹围着指针弹出，朝哪个拖就放进哪个")
                     checked: pluginsSection.editor.dropPie
+                    linkText: qsTr("更多设置")
                     marked: builtinRow.dropPieFound
                     onToggled: (on) => pluginsSection.editor.dropPie = on
+                    onLinkActivated: pluginsSection.settingRequested("dropPie")
                 }
             }
         }

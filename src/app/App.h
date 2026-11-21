@@ -202,6 +202,7 @@ public:
         QScreen* on = nullptr, HWND avoid = nullptr, bool inside = false, const RECT& orInto = {}, bool asPanel = false);
     void showSearchPanel();
     void panelHotkey(std::optional<std::uint64_t> pressedAt);
+    void settingsHotkey();
     // Where folder typing came from (TypeToSearch): File Explorer (its
     // tab), Directory Opus (its file display) or OneCommander (its window;
     // `list`: its file list on the screen, empty when not known).
@@ -557,6 +558,8 @@ private:
     QString trayTooltip() const;
     QString doubleCtrlName() const;
     void updateDoubleTapActions();
+    bool invokePluginAction(QStringView encoded);
+    void runTrayAction(const QString& action, std::uint64_t pressedAt);
     void armReveal();
     void typedRowsShown();
     void revealLauncher(); // slides in (Placement::slideIn) unless it went away meanwhile

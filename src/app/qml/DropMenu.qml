@@ -16,6 +16,7 @@ Item {
     // {text, glyph, danger}, in order; activated(index) when one is chosen.
     property var entries: []
     property real menuWidth: 200
+    property bool alignLeft: false
     property bool open: false
     property int hovered: -1 // the entry under the pointer
     // Its entries are made the first time it opens, then kept: most menus
@@ -56,7 +57,8 @@ Item {
             return
         const p = anchor.mapToItem(parent, 0, 0)
         const below = p.y + anchor.height + 4
-        box.x = Math.max(8, Math.min(p.x + anchor.width - box.width, parent.width - box.width - 8))
+        const preferredX = alignLeft ? p.x : p.x + anchor.width - box.width
+        box.x = Math.max(8, Math.min(preferredX, parent.width - box.width - 8))
         box.y = below + box.height <= parent.height - 8 ? below : Math.max(8, p.y - box.height - 4)
     }
 
@@ -189,7 +191,8 @@ Item {
                     Glyph {
                         x: 10
                         anchors.verticalCenter: parent.verticalCenter
-                        glyph: entry.modelData.glyph
+                        iconName: entry.modelData.iconName ?? ""
+                        glyph: entry.modelData.glyph ?? ""
                         size: 14
                         color: entry.modelData.danger ? Theme.danger : Theme.text
                     }

@@ -3573,10 +3573,12 @@ int runSettings(const QStringList& args)
         {PluginSettings::tr("API 密钥"), pluginsPage, 0}, // a plugin's own setting
         {QCoreApplication::translate("PasteFileCard", "粘贴为文件"), pluginsPage, 0}, // a built-in card
         // Shown as 内置功能 cards too, the rows of their own page first (open_settings searches them by title).
-        {QCoreApplication::translate("SettingsWindow", "在资源管理器或桌面弹出文件夹快捷菜单"), integrationPage, 1}, // 文件管理器
-        {QCoreApplication::translate("SettingsWindow", "菜单里列出的内容"), integrationPage, 1},
-        {QCoreApplication::translate("SettingsWindow", "文件夹的子列也列出文件"), integrationPage, 1}, // GitHub #384
-        {QCoreApplication::translate("SettingsWindow", "对话框旁的搜索框"), integrationPage, 2}, // 对话框
+        {QCoreApplication::translate("SettingsWindow", "在资源管理器或桌面弹出文件夹快捷菜单"), integrationPage, 2}, // 文件夹菜单
+        {QCoreApplication::translate("SettingsWindow", "菜单里列出的内容"), integrationPage, 2},
+        {QCoreApplication::translate("SettingsWindow", "收藏夹里显示的类型"), integrationPage, 2},
+        {QCoreApplication::translate("SettingsWindow", "收藏夹显示方式"), integrationPage, 2},
+        {QCoreApplication::translate("SettingsWindow", "文件夹的子列也列出文件"), integrationPage, 2}, // GitHub #384
+        {QCoreApplication::translate("SettingsWindow", "对话框旁的搜索框"), integrationPage, 3}, // 对话框
         {QCoreApplication::translate("SettingsWindow", "在 Directory Opus 里直接打字搜索"), integrationPage, 1},
         {u"AI"_s, aiPage, 0},
         {u"命令行"_s, aiPage, 0},
@@ -3627,6 +3629,87 @@ int runSettings(const QStringList& args)
             qWarning("preview: still searching after Enter on '%s'", qUtf8Printable(probe.word));
         input->setProperty("text", QString());
         settle(window, 2);
+    }
+
+    // Cross-page SettingsLinkRow jumps and 快捷键 › 按键一览: every jump lands on
+    // the expected page and tab, scrolls its target into view, and restores cleanly.
+    if (!onePage) {
+        const int generalPage = window->property("generalPage").toInt();
+        const int keysPage = window->property("keysPage").toInt();
+        const int appearancePage = window->property("appearancePage").toInt();
+        const int clipboardPage = window->property("clipboardPage").toInt();
+        struct LinkCheck {
+            int fromPage;
+            int fromTab;
+            const char* objectName;
+            const char* method;
+            int expectedPage;
+            int expectedTab;
+        };
+        const LinkCheck links[] = {
+            {favoritesPage, 0, "favoritesFolderMenuLink", "trigger", integrationPage, 2},
+            {favoritesPage, 0, "favoritesLauncherLink", "trigger", resultsPage, 1},
+            {integrationPage, 2, "folderMenuManageFavoritesButton", "clicked", favoritesPage, 0},
+            {keysPage, 0, "keysClipboardLink", "trigger", clipboardPage, 1},
+            {keysPage, 0, "keysFolderMenuLink", "trigger", integrationPage, 2},
+            {keysPage, 0, "keysWinSLink", "trigger", integrationPage, 0},
+            {appearancePage, 0, "appearanceClipboardSizeLink", "trigger", clipboardPage, 0},
+            {scopePage, 2, "scopeIndexFolderLink", "trigger", generalPage, 0},
+            {clipboardPage, 1, "clipboardLetterJumpLink", "trigger", resultsPage, 2},
+        };
+        for (const LinkCheck& link : links) {
+            QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, QVariant(link.fromPage)), Q_ARG(QVariant, QVariant(link.fromTab)));
+            settle(window, 2);
+            QQuickItem* control = visualNamed(window->contentItem(), QString::fromLatin1(link.objectName));
+            if (!control) {
+                qWarning("preview: link '%s' missing on page %d tab %d", link.objectName, link.fromPage, link.fromTab);
+                continue;
+            }
+            if (!QMetaObject::invokeMethod(control, link.method))
+                qWarning("preview: link '%s' could not invoke %s", link.objectName, link.method);
+            settle(window, 3);
+            const int landedPage = window->property("currentPage").toInt();
+            const int landedTab = window->property("currentTab").toInt();
+            if (landedPage != link.expectedPage || landedTab != link.expectedTab)
+                qWarning("preview: link '%s' went to page %d tab %d, expected %d/%d",
+                    link.objectName, landedPage, landedTab, link.expectedPage, link.expectedTab);
+        }
+        // Smart contextual target from 收藏夹 when folder menu is turned off: lands on the main switch.
+        const bool menuWasOn = editor->folderMenu();
+        editor->setFolderMenu(false);
+        QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, QVariant(favoritesPage)), Q_ARG(QVariant, QVariant(0)));
+        settle(window, 2);
+        if (QQuickItem* link = visualNamed(window->contentItem(), u"favoritesFolderMenuLink"_s)) {
+            if (link->property("targetPart").toString() != u"folderMenuRow"_s)
+                qWarning("preview: favoritesFolderMenuLink targetPart when off was '%s'",
+                    qUtf8Printable(link->property("targetPart").toString()));
+        }
+        editor->setFolderMenu(menuWasOn);
+        // 按键一览 reflects Win+V, Win+S, and folderMenuHotkey.
+        const bool winVBefore = editor->clipboardWinV();
+        const bool winSBefore = editor->taskbarWinS();
+        const QString fmKeyBefore = editor->folderMenuHotkey();
+        editor->setClipboardWinV(true);
+        editor->setTaskbarWinS(true);
+        editor->setFolderMenuHotkey(u"Ctrl+Alt+D"_s);
+        settle(window, 2);
+        const QVariantList sections = window->property("shortcutSections").toList();
+        bool sawWinS = false, sawWinV = false, sawFolderMenu = false;
+        for (const QVariant& secVar : sections) {
+            for (const QVariant& rowVar : secVar.toMap().value(u"rows"_s).toList()) {
+                const QString keys = rowVar.toMap().value(u"keys"_s).toString();
+                if (keys.contains(u"Win+S"_s)) sawWinS = true;
+                if (keys.contains(u"Win+V"_s)) sawWinV = true;
+                if (keys == u"Ctrl+Alt+D"_s) sawFolderMenu = true;
+            }
+        }
+        if (!sawWinS || !sawWinV || !sawFolderMenu)
+            qWarning("preview: shortcutSections missing global keys (Win+S=%d Win+V=%d folderMenu=%d)",
+                int(sawWinS), int(sawWinV), int(sawFolderMenu));
+        editor->setClipboardWinV(winVBefore);
+        editor->setTaskbarWinS(winSBefore);
+        editor->setFolderMenuHotkey(fmKeyBefore);
+        say(u"cross-page settings links & global shortcuts list checked"_s);
     }
     return finish(window, saved);
 }
