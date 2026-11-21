@@ -9502,6 +9502,59 @@ bool checkStyleWindows(QQmlEngine* engine, const QDir& output)
         }
     }
 
+    { // FolderMenuWindow with its groups at the first level (收藏夹 and 最近的文件夹 全部,
+      // the favorite apps' section unfolded, 已打开的文件夹 a submenu): the rows as
+      // FolderMenu groups them (favoriteGroupEntries, groupEntries, assembleGroups).
+        Favorites favorites(temporary.filePath(u"favorites-inline.json"_s));
+        FolderMenu menu(nullptr, &favorites);
+        menu.setRecordHistory(false);
+        QQmlComponent component(engine, u"WinShun"_s, u"FolderMenuWindow"_s);
+        std::unique_ptr<QObject> object(component.createWithInitialProperties({{u"folderMenu"_s, QVariant::fromValue(&menu)}}));
+        auto* window = qobject_cast<QQuickWindow*>(object.get());
+        check(window, u"folder menu inline: "_s + component.errorString());
+        if (window) {
+            menu.setWindow(window);
+            const auto row = [](const QString& text, const QString& glyph, const QString& icon, const QString& detail = {}) {
+                return QVariantMap {{u"text"_s, text}, {u"detail"_s, detail}, {u"glyph"_s, glyph}, {u"icon"_s, icon},
+                    {u"action"_s, 0}};
+            };
+            const QString folderIcon = FileIconProvider::iconUrl({}, true);
+            const QVariantList primary {row(u"项目资料"_s, u""_s, folderIcon, u"xm"_s),
+                row(u"年度报告"_s, u""_s, folderIcon, u"nb"_s),
+                row(u"合同扫描件.pdf"_s, u""_s, FileIconProvider::iconUrl(u"合同扫描件.pdf"_s, false))};
+            const QVariantList apps {
+                row(u"微信"_s, u""_s,
+                    FileIconProvider::appIconUrl(u"{6D809377-6AF0-444B-8957-A3773F02200E}\\Tencent\\Weixin\\Weixin.exe"_s, false, false)),
+                row(u"Visual Studio Code"_s, u""_s, FileIconProvider::appIconUrl(u"Microsoft.VisualStudioCode"_s, false, false)),
+                row(u"终端"_s, u""_s, FileIconProvider::appIconUrl(u"Microsoft.WindowsTerminal_8wekyb3d8bbwe!App"_s, true, false))};
+            const QVariantList recent {row(u"2026 第三季度"_s, u""_s, folderIcon), row(u"客户资料"_s, u""_s, folderIcon),
+                row(u"下载"_s, u""_s, folderIcon)};
+            const QVariantList windows {row(u"发票"_s, u""_s, folderIcon), row(u"照片"_s, u""_s, folderIcon)};
+            QVariantList entries = FolderMenu::assembleGroups({
+                FolderMenu::favoriteGroupEntries(u"收藏夹"_s, u""_s, primary, apps, true, FolderMenu::kInlineAll),
+                FolderMenu::groupEntries(u"最近的文件夹"_s, u""_s, recent, FolderMenu::kInlineAll),
+                FolderMenu::groupEntries(u"已打开的文件夹"_s, u""_s, windows, 0)});
+            entries.append(QVariantMap {{u"separator"_s, true}});
+            entries.append(row(u"在“项目资料”里搜索"_s, u""_s, {}));
+            entries.append(row(u"在此打开命令提示符"_s, u""_s, {}));
+            entries.append(QVariantMap {{u"separator"_s, true}});
+            entries.append(row(u"Win顺 设置…"_s, u""_s, {}));
+            int highlight = -1; // Visual Studio Code's row
+            for (int i = 0; i < entries.size(); ++i) {
+                if (entries.at(i).toMap().value(u"text"_s).toString() == u"Visual Studio Code"_s)
+                    highlight = i;
+            }
+            check(highlight >= 0, u"folder menu inline: the apps' rows unfolded"_s);
+            menu.previewEntries(entries);
+            showOffScreen(window);
+            pump(400); // the icons, read on the provider's threads
+            window->setProperty("highlighted", highlight);
+            shoot(window, u"style-foldermenu-inline"_s);
+            menu.dismiss();
+            window->hide();
+        }
+    }
+
     { // DropPieWindow
         Favorites favorites(temporary.filePath(u"pie-favorites.json"_s));
         for (const QString& name : {u"项目资料"_s, u"年度报告"_s, u"设计素材"_s, u"客户合同"_s, u"归档备份"_s}) {
