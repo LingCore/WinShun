@@ -1789,6 +1789,10 @@
         <source>%1 是你给 Win顺 设的快捷键，在这里按也是那个快捷键。可在设置里改用 %2</source>
         <translation>%1 is the shortcut you set for WinShun; pressing it here does the same. You can use %2 instead in Settings</translation>
     </message>
+    <message>
+        <source>粘贴这一条</source>
+        <translation>Paste this item</translation>
+    </message>
 </context>
 <context>
     <name>ClipTabs</name>
@@ -2228,7 +2232,34 @@
     </message>
 </context>
 <context>
+    <name>DialogBarRow</name>
+    <message>
+        <source>%1 是你给 Win顺 设的快捷键，在这里按也是那个快捷键。可在设置的“结果列表”里改用 %2</source>
+        <translation>%1 is the shortcut you set for WinShun; pressing it here does the same. You can use %2 instead under Result list in Settings</translation>
+    </message>
+    <message>
+        <source>复制这一行路径</source>
+        <translation>Copy this path</translation>
+    </message>
+    <message>
+        <source>打开这一行</source>
+        <translation>Open this row</translation>
+    </message>
+    <message>
+        <source>转到这一行</source>
+        <translation>Go to this row</translation>
+    </message>
+</context>
+<context>
     <name>DialogBarWindow</name>
+    <message>
+        <source>第 %1 项，共 %2 项</source>
+        <translation>Item %1 of %2</translation>
+    </message>
+    <message>
+        <source>第 %1 到 %2 项，共 %3 项</source>
+        <translation>Items %1 to %2 of %3</translation>
+    </message>
     <message>
         <source>Win顺</source>
         <translation>WinShun</translation>
@@ -5117,6 +5148,10 @@ Send suggestions and problems on our website</translation>
         <translation>%1 is the shortcut you set for WinShun; pressing it here does the same. You can use %2 instead under Result list in Settings</translation>
     </message>
     <message>
+        <source>打开这一行</source>
+        <translation>Open this row</translation>
+    </message>
+    <message>
         <source>确认删除 %1 项</source>
         <translation>Delete %1</translation>
     </message>
@@ -7980,8 +8015,8 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Nothing inside these folders shows up in results. With “Let other programs search WinShun as Everything” on they are still indexed, so other programs can find them (Total Commander&apos;s folder sizes, say)</translation>
     </message>
     <message>
-        <source>按 %1+1 打开第一行，依此类推到第九行</source>
-        <translation>%1+1 opens the first row, up to the ninth</translation>
+        <source>按 %1+1 打开当前可见的第 1 行，依此类推到第 9 行（随列表滚动更新）</source>
+        <translation>%1+1 opens the first visible row, up to the ninth (follows scrolling)</translation>
     </message>
     <message>
         <source>序号提示</source>
@@ -7996,8 +8031,8 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>shortcut;letter;one hand;vim;vi;hint;jump</translation>
     </message>
     <message>
-        <source>启动器和剪贴板共用；隐藏提示不影响数字快捷键</source>
-        <translation>Shared by the launcher and clipboard; shortcuts still work when hints are hidden</translation>
+        <source>启动器、剪贴板和对话框搜索栏共用；隐藏提示不影响数字快捷键</source>
+        <translation>Shared by the launcher, clipboard, and dialog search bar; shortcuts still work when hints are hidden</translation>
     </message>
     <message>
         <source>快捷键;数字键;图标;按住;显示;隐藏</source>
@@ -8566,8 +8601,8 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Number keys inside the panel</translation>
     </message>
     <message>
-        <source>打开剪贴板面板后，按 %1+1 粘贴第一条，依此类推到第九条；加按 Shift 粘贴为纯文本</source>
-        <translation>With the clipboard panel open, press %1+1 to paste the first entry, through 9 for the ninth. Add Shift to paste as plain text.</translation>
+        <source>打开剪贴板面板后，按 %1+1 粘贴当前可见的第 1 条，依此类推到第 9 条（随列表滚动更新）；加按 Shift 粘贴为纯文本</source>
+        <translation>With the clipboard panel open, press %1+1 to paste the first visible entry, through 9 for the ninth (follows scrolling). Add Shift to paste as plain text.</translation>
     </message>
     <message>
         <source>不打开面板直接粘贴</source>
@@ -12110,6 +12145,10 @@ Content index: %5</translation>
     <message>
         <source>收藏</source>
         <translation>Favorite</translation>
+    </message>
+    <message>
+        <source>收藏 · %1</source>
+        <translation>Favorite · %1</translation>
     </message>
     <message>
         <source>剪贴板</source>

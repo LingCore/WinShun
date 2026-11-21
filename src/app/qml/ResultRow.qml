@@ -704,19 +704,24 @@ Item {
     // One tip for all the buttons: it glides from one to the next. The date
     // has one too: the time in full.
     HoverTip {
+        id: rowTip
+        objectName: "resultRowTip"
+        dpr: row.dpr
         readonly property RowAction hovered: row.actions !== null ? row.actions.hovered : null
         // Hover handlers on items under the row's mouse area get no hover: asked of the area instead.
         function under(item: Item): bool {
-            return area.containsMouse && item.contains(item.mapFromItem(area, area.mouseX, area.mouseY))
+            return area.containsMouse && !area.pressed && item.contains(item.mapFromItem(area, area.mouseX, area.mouseY))
         }
         readonly property bool onDate: !hovered && date.visible && under(date)
         readonly property bool onKeys: !hovered && !onDate && numberSlot.visible && numberSlot.opacity > 0
-                                      && row.hintTaken && under(numberSlot)
+                                      && row.hint > 0 && row.hintLetter.length === 0 && under(numberSlot)
         target: hovered ? hovered : onDate ? date : onKeys ? numberSlot : null
         text: hovered ? hovered.tip : onDate ? row.modifiedFull
-            : onKeys ? qsTr("%1 是你给 Win顺 设的快捷键，在这里按也是那个快捷键。可在设置的“结果列表”里改用 %2")
-                       .arg(row.hintModifier + "+" + row.hint).arg(row.hintModifier === "Alt" ? "Ctrl" : "Alt")
-            : ""
-        shortcut: hovered ? hovered.tipShortcut : ""
+            : !onKeys ? ""
+            : row.hintTaken ? qsTr("%1 是你给 Win顺 设的快捷键，在这里按也是那个快捷键。可在设置的“结果列表”里改用 %2")
+                              .arg(row.hintModifier + "+" + row.hint).arg(row.hintModifier === "Alt" ? "Ctrl" : "Alt")
+            : qsTr("打开这一行")
+        shortcut: hovered ? hovered.tipShortcut
+                : onKeys && !row.hintTaken ? row.hintModifier + "+" + row.hint : ""
     }
 }

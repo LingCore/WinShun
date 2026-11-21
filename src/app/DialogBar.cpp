@@ -79,6 +79,11 @@ QString managerName(filemanager::Kind kind)
     return DialogBar::tr("资源管理器");
 }
 
+QString favoriteTag(const QString& keyword)
+{
+    return keyword.isEmpty() ? DialogBar::tr("收藏") : DialogBar::tr("收藏 · %1").arg(keyword);
+}
+
 QScreen* screenOf(HMONITOR monitor)
 {
     for (QScreen* screen : QGuiApplication::screens()) {
@@ -760,7 +765,7 @@ void DialogBar::onResults(quint64 id, const SearchResults& results)
     std::ranges::stable_partition(rows, &SearchResult::favorite);
     QStringList tags;
     for (const SearchResult& r : std::as_const(rows))
-        tags.append(r.favorite ? tr("收藏") : QString());
+        tags.append(r.favorite ? favoriteTag(r.favoriteKeyword) : QString());
     setRows(std::move(rows), std::move(tags), parseQuery(m_query).highlights);
 }
 
@@ -847,7 +852,7 @@ void DialogBar::showSuggestions(bool refresh)
         add(m_clipboard, m_clipboardIsDir, tr("剪贴板"));
     for (const SearchResult& f : std::as_const(m_favoritesThere)) {
         if (!foldersOnly() || f.isDir)
-            add(f.path, f.isDir, tr("收藏"), false, f.name); // as its user named it
+            add(f.path, f.isDir, favoriteTag(f.favoriteKeyword), false, f.name); // as its user named it
     }
     for (const QString& folder : std::as_const(m_recent))
         add(folder, true, tr("最近"), true);
@@ -897,6 +902,7 @@ void DialogBar::lookAround()
             r.name = f.name;
             r.isDir = isDir;
             r.favorite = true;
+            r.favoriteKeyword = f.keyword;
             found.favorites.append(r);
         }
         const QString path = clipboardPath();

@@ -4652,7 +4652,7 @@ Window {
                     title: qsTr("用数字键直接打开")
                     unlocks: [resultNumberHintsRow]
                     keywords: qsTr("快捷键;数字键;序号;Ctrl+1;Alt+1;冲突;hotkey").split(";")
-                    description: qsTr("按 %1+1 打开第一行，依此类推到第九行")
+                    description: qsTr("按 %1+1 打开当前可见的第 1 行，依此类推到第 9 行（随列表滚动更新）")
                                  .arg(window.editor.numberKeys === "alt" ? "Alt" : "Ctrl")
 
                     ScopeTabs {
@@ -4676,7 +4676,7 @@ Window {
                     sub: true
                     shown: window.editor.numberKeys !== "off"
                     title: qsTr("序号提示")
-                    description: qsTr("启动器和剪贴板共用；隐藏提示不影响数字快捷键")
+                    description: qsTr("启动器、剪贴板和对话框搜索栏共用；隐藏提示不影响数字快捷键")
                     keywords: qsTr("快捷键;数字键;图标;按住;显示;隐藏").split(";")
 
                     ScopeTabs {
@@ -6475,7 +6475,7 @@ Window {
                     title: qsTr("面板内数字键粘贴")
                     unlocks: [clipNumberHintsRow]
                     keywords: qsTr("快捷键;数字键;序号;Alt+1;Ctrl+1;冲突;hotkey").split(";")
-                    description: qsTr("打开剪贴板面板后，按 %1+1 粘贴第一条，依此类推到第九条；加按 Shift 粘贴为纯文本")
+                    description: qsTr("打开剪贴板面板后，按 %1+1 粘贴当前可见的第 1 条，依此类推到第 9 条（随列表滚动更新）；加按 Shift 粘贴为纯文本")
                                  .arg(window.editor.clipboardNumberKeys === "ctrl" ? "Ctrl" : "Alt")
 
                     ScopeTabs {
@@ -6499,7 +6499,7 @@ Window {
                     sub: true
                     shown: window.editor.clipboardNumberKeys !== "off"
                     title: qsTr("序号提示")
-                    description: qsTr("启动器和剪贴板共用；隐藏提示不影响数字快捷键")
+                    description: qsTr("启动器、剪贴板和对话框搜索栏共用；隐藏提示不影响数字快捷键")
                     keywords: qsTr("快捷键;数字键;图标;按住;显示;隐藏").split(";")
 
                     ScopeTabs {

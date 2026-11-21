@@ -4203,7 +4203,8 @@ void checkDialogSearchKeys(IndexService& index, QQmlEngine* engine, const QDir& 
     places.setPlaces(std::make_shared<const PlaceList>());
     SearchEngine search(&index, &apps, &places);
     History history(temporary.filePath(u"history.tsv"_s));
-    DialogBar bar(&search, &history, nullptr, {});
+    Favorites favorites(temporary.filePath(u"favorites.json"_s));
+    DialogBar bar(&search, &history, &favorites, {});
     QQmlComponent component(engine, u"WinShun"_s, u"DialogBarWindow"_s);
     std::unique_ptr<QObject> object(component.createWithInitialProperties({{u"bar"_s, QVariant::fromValue(&bar)}}));
     auto* window = qobject_cast<QQuickWindow*>(object.get());
@@ -4304,6 +4305,63 @@ void checkDialogSearchKeys(IndexService& index, QQmlEngine* engine, const QDir& 
         };
         auto* number = visualNamed(list, u"dialogResultNumber"_s);
         check(hints && number && number->isVisible() && number->x() < 30, u"dialog rows keep their number on the left"_s);
+        // Position indicator, scroll-bar wake-up and shortcut HoverTip:
+        // left 1–9 stay viewport-relative shortcuts while the bar shows where
+        // the viewport sits in the list and the scroll bar wakes on scroll.
+        auto* posLabel = visualNamed(window->contentItem(), u"dialogPositionLabel"_s);
+        auto* scrollBar = visualNamed(window->contentItem(), u"dialogListScrollBar"_s);
+        check(posLabel && posLabel->isVisible() && posLabel->property("text").toString() == u"1–5 / 18",
+            u"dialog position label shows the visible range at the top"_s);
+        check(scrollBar && scrollBar->isVisible() && !scrollBar->property("scrolling").toBool(),
+            u"dialog scroll bar is visible on an overflowing list and calm at rest"_s);
+        list->setProperty("contentY", 7.0 * bar.rowHeight());
+        check(scrollBar && scrollBar->property("scrolling").toBool(),
+            u"dialog scroll bar wakes up while scrolling"_s);
+        settle(window, 1);
+        QVariant firstNumberAfterScroll;
+        QMetaObject::invokeMethod(window, "numberOf", Q_RETURN_ARG(QVariant, firstNumberAfterScroll), Q_ARG(QVariant, 7));
+        check(firstNumberAfterScroll.toInt() == 1, u"dialog shortcut numbers stay viewport-relative when scrolled"_s);
+        check(posLabel && posLabel->isVisible() && posLabel->property("text").toString() == u"8–12 / 18",
+            u"dialog position label tracks the scrolled range"_s);
+        check(saveGrab(window, output.filePath(u"dialog-scrolled-position.png"_s)), u"render the scrolled dialog list with position label"_s);
+        pump(1000);
+        check(scrollBar && !scrollBar->property("scrolling").toBool(),
+            u"dialog scroll bar relaxes after scrolling stops"_s);
+        // Non-overflowing list: neither scroll bar nor position range shows.
+        list->setProperty("contentY", -4.0);
+        list->setHeight(20 * bar.rowHeight());
+        settle(window);
+        check(scrollBar && !scrollBar->isVisible(), u"dialog scroll bar hides when all rows fit"_s);
+        check(posLabel && !posLabel->isVisible(), u"dialog position label hides when all rows fit"_s);
+        list->setHeight(5 * bar.rowHeight());
+        list->setProperty("contentY", -4.0);
+        settle(window);
+        // Hovering a left shortcut number explains the shortcut (and any conflict).
+        auto* topNumber = visualNamed(list, u"dialogResultNumber"_s);
+        auto* rowTip = topNumber && topNumber->parentItem() ? topNumber->parentItem()->findChild<QObject*>(u"dialogRowTip"_s) : nullptr;
+        if (topNumber && rowTip) {
+            const QPointF at = topNumber->mapToScene(QPointF(topNumber->width() / 2, topNumber->height() / 2));
+            QMouseEvent move(QEvent::MouseMove, at, window->mapToGlobal(at), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+            QCoreApplication::sendEvent(window, &move);
+            settle(window);
+            check(rowTip->property("target").value<QObject*>() == topNumber
+                    && rowTip->property("shortcut").toString() == u"Ctrl+1"
+                    && !rowTip->property("text").toString().isEmpty(),
+                u"hovering a dialog shortcut number explains the Ctrl+1 shortcut"_s);
+            bar.setNumberKeysLeft(1u << 1);
+            settle(window);
+            check(rowTip->property("target").value<QObject*>() == topNumber
+                    && rowTip->property("shortcut").toString().isEmpty()
+                    && rowTip->property("text").toString().contains(u"Ctrl+1"_s),
+                u"hovering a taken dialog shortcut number explains the conflict"_s);
+            bar.setNumberKeysLeft(0);
+            QMouseEvent away(QEvent::MouseMove, QPointF(window->width() - 4, 4), window->mapToGlobal(QPointF(window->width() - 4, 4)),
+                Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+            QCoreApplication::sendEvent(window, &away);
+            settle(window);
+        } else {
+            check(false, u"dialog shortcut HoverTip missing"_s);
+        }
         if (hints) {
             hints->setProperty("jumping", true);
             settle(window);
@@ -4365,10 +4423,28 @@ void checkDialogSearchKeys(IndexService& index, QQmlEngine* engine, const QDir& 
             key(Qt::Key_O, Qt::ControlModifier);
             check(!menuOpen(), u"a hidden dialog list opens no result menu"_s);
         }
+        // Favorite keyword tag matches the launcher's "收藏 · <keyword>", and
+        // typing the keyword in DialogBar brings that favorite to the top.
+        if (const SearchResult* firstItem = bar.results()->at(0)) {
+            Favorite fav;
+            fav.kind = firstItem->isDir ? Favorite::Kind::Folder : Favorite::Kind::File;
+            fav.path = firstItem->path;
+            fav.name = firstItem->name;
+            fav.keyword = u"zp"_s;
+            favorites.add(fav);
+            bar.setQuery(u"zp"_s);
+            timeout.restart();
+            while ((bar.tags().isEmpty() || !bar.tags().first().contains(u"zp"_s)) && timeout.elapsed() < 2000) pump(10);
+            check(!bar.tags().isEmpty() && bar.tags().first() == DialogBar::tr("收藏 · %1").arg(u"zp"_s),
+                u"dialog favorite rows display their keyword tag"_s);
+        }
     }
     QFile report(output.filePath(u"dialog-navigation.json"_s));
     check(report.open(QIODevice::WriteOnly), u"write the dialog regression report"_s);
-    if (report.isOpen()) report.write(QJsonDocument(QJsonObject {{u"passed"_s, passed}, {u"checks"_s, checks}}).toJson());
+    if (report.isOpen()) {
+        report.write(QJsonDocument(QJsonObject {{u"passed"_s, passed}, {u"checks"_s, checks}}).toJson());
+        report.close();
+    }
     say(u"dialog search navigation: %1 checks, production DialogBarWindow/DialogBar, local Qt input, %2"_s
         .arg(checks.size()).arg(passed ? u"passed" : u"FAILED"));
     if (!passed)
@@ -8820,12 +8896,41 @@ bool checkNumberColumn(QQmlEngine* qmlEngine, const QDir& output, int width)
         }
     };
     verifyRows();
+    auto* footerStatus = visualNamed(window->contentItem(), u"footerStatus"_s);
+    check(footerStatus && footerStatus->property("text").toString().isEmpty(),
+        "launcher footer stays quiet at the top of the list");
     check(saveGrab(window, output.filePath(u"number-column-main.png"_s)), "main did not render");
     auto* firstRow = visualNamed(window->contentItem(), u"resultRow-0"_s);
     auto* icon = firstRow ? visualNamed(firstRow, u"resultIcon"_s) : nullptr;
     auto* text = firstRow ? visualNamed(firstRow, u"resultText"_s) : nullptr;
     if (!icon || !text || !view)
         return false;
+    // Hovering a left shortcut number explains the shortcut (and conflict when taken).
+    auto* firstSlot = visualNamed(firstRow, u"resultNumberSlot"_s);
+    auto* firstTip = firstRow->findChild<QObject*>(u"resultRowTip"_s);
+    if (firstSlot && firstTip) {
+        const QPointF at = firstSlot->mapToScene(QPointF(firstSlot->width() / 2, firstSlot->height() / 2));
+        QMouseEvent move(QEvent::MouseMove, at, window->mapToGlobal(at), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(window, &move);
+        settle(window);
+        check(firstTip->property("target").value<QObject*>() == firstSlot
+                && firstTip->property("shortcut").toString() == u"Ctrl+1"
+                && !firstTip->property("text").toString().isEmpty(),
+            "hovering a launcher shortcut number explains Ctrl+1");
+        launcher.setNumberKeysLeft(1u << 1);
+        settle(window);
+        check(firstTip->property("target").value<QObject*>() == firstSlot
+                && firstTip->property("shortcut").toString().isEmpty()
+                && firstTip->property("text").toString().contains(u"Ctrl+1"_s),
+            "hovering a taken launcher shortcut number explains the conflict");
+        launcher.setNumberKeysLeft(0);
+        QMouseEvent away(QEvent::MouseMove, QPointF(window->width() - 4, 4), window->mapToGlobal(QPointF(window->width() - 4, 4)),
+            Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(window, &away);
+        settle(window);
+    } else {
+        check(false, "launcher shortcut HoverTip missing");
+    }
     const qreal iconX = icon->x();
     const qreal textX = text->x();
     launcher.setNumberHints(u"held"_s);
@@ -8860,7 +8965,11 @@ bool checkNumberColumn(QQmlEngine* qmlEngine, const QDir& output, int width)
     settle(window, 3);
     verifyRows();
     const int first = window->property("firstShownRow").toInt();
+    const int lastInView = window->property("lastRowInView").toInt();
     check(first > 0, "list did not scroll");
+    const QString expectedRange = u"%1–%2 / 24"_s.arg(first + 1).arg(lastInView + 1);
+    check(footerStatus && footerStatus->property("text").toString() == expectedRange,
+        "launcher footer shows the scrolled range while 1-9 stay shortcuts");
     opened.clear();
     const auto* target = launcher.results()->at(first + 1);
     const QString scrolled = target ? target->path : QString();

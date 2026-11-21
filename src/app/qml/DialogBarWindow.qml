@@ -114,10 +114,19 @@ Window {
     // modifier is held, or never), and 字母直达 the same (GitHub #357).
     readonly property int numberKey: bar.numberKeys === "ctrl" ? Qt.Key_Control
                                    : bar.numberKeys === "alt" ? Qt.Key_Alt : -1
+    readonly property string numberModifier: numberKey === Qt.Key_Alt ? "Alt" : "Ctrl"
     readonly property int firstShownRow: Math.max(0, Math.floor((list.contentY + bar.rowHeight / 2) / bar.rowHeight))
     readonly property int lastRowInView: Math.floor((list.contentY + list.height - bar.rowHeight / 2) / bar.rowHeight)
     readonly property int lastShownRow: Math.min(list.count - 1, firstShownRow + 8, lastRowInView)
     readonly property int lastLetterRow: Math.min(list.count - 1, firstShownRow + numberHints.letters.length - 1, lastRowInView)
+    // Where the viewport stands in an overflowing list (e.g. "14–19 / 28"):
+    // keeps scrolling oriented while the left 1–9 hints stay shortcut keys.
+    readonly property int shownFrom: list.count > 0 ? Math.min(list.count, Math.max(1, firstShownRow + 1)) : 0
+    readonly property int shownTo: list.count > 0 ? Math.min(list.count, Math.max(shownFrom, lastRowInView + 1)) : 0
+    readonly property string positionText: list.visible && scrollBar.scrollable && bar.rowHeight > 0
+                                           ? (shownFrom === shownTo ? shownFrom + " / " + list.count
+                                                                    : shownFrom + "–" + shownTo + " / " + list.count)
+                                           : ""
     NumberHints {
         id: numberHints
         objectName: "dialogNumberHints"
@@ -405,6 +414,24 @@ Window {
                 text: qsTr("没有找到")
                 color: Theme.faint
                 font.pixelSize: Theme.uiCaption
+            }
+
+            Text {
+                id: positionLabel
+                objectName: "dialogPositionLabel"
+                anchors.verticalCenter: parent.verticalCenter
+                visible: window.positionText.length > 0 && !notFound.visible
+                         && (!scopeTag.visible || !chip.visible || window.width >= 560)
+                rightPadding: 8
+                text: window.positionText
+                textFormat: Text.PlainText
+                color: Theme.faint
+                font.pixelSize: Theme.uiCaption
+                font.features: ({ "tnum": 1 })
+                Accessible.role: Accessible.StaticText
+                Accessible.name: window.shownFrom === window.shownTo
+                                 ? qsTr("第 %1 项，共 %2 项").arg(window.shownFrom).arg(list.count)
+                                 : qsTr("第 %1 到 %2 项，共 %3 项").arg(window.shownFrom).arg(window.shownTo).arg(list.count)
             }
 
             Item {
@@ -698,8 +725,12 @@ Window {
             hintLetter: window.letterOf(index)
             hintOpacity: numberHints.hintOpacity
             reserveHintSpace: (window.numberKey >= 0 && window.bar.numberHints !== "off") || window.bar.letterJump
+            hintModifier: window.numberModifier
             hintTaken: rowItem.hint > 0 && !window.numberUsable(rowItem.hint)
+            canOpen: window.bar.canOpen
+            copyOnly: window.bar.copyOnly
             nameTip: nameTip
+            tipHost: window.bar
             // On whole device pixels wherever the list has scrolled to (see
             // Main.qml). Below the bar the rows start at 49 logical pixels:
             // at 150 % on a half pixel even before any scrolling.
@@ -728,8 +759,10 @@ Window {
     }
 
     ListScrollBar {
+        id: scrollBar
+        objectName: "dialogListScrollBar"
         dpr: window.dpr
-        visible: window.bar.rows > 0
+        visible: list.visible && scrollable
         flickable: list
         x: window.width - width
         y: list.y

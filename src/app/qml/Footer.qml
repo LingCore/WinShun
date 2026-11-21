@@ -18,6 +18,9 @@ Item {
     required property Launcher launcher
     required property WindowFrame frame
     property bool compact: false
+    // Shown quietly in the status slot while scrolled and no status message is up.
+    property string positionText: ""
+    readonly property string shownStatus: launcher.statusText.length > 0 ? launcher.statusText : positionText
 
     signal galleryRequested(bool gallery) // the panel's view switch
 
@@ -137,15 +140,17 @@ Item {
 
     Text {
         id: status
+        objectName: "footerStatus"
         anchors.left: order.visible ? order.right : parent.left
         anchors.leftMargin: order.visible ? 14 : 18
         anchors.right: hints.left
         anchors.rightMargin: 12
         anchors.verticalCenter: parent.verticalCenter
-        text: footer.launcher.statusText
+        text: footer.shownStatus
         textFormat: Text.PlainText // may name a file
-        color: Theme.subtext
+        color: footer.launcher.statusText.length > 0 ? Theme.subtext : Theme.faint
         font.pixelSize: footer.compact ? 12 : Theme.uiBody
+        font.features: footer.launcher.statusText.length > 0 ? ({}) : ({ "tnum": 1 })
         elide: Text.ElideRight
     }
 
@@ -365,7 +370,8 @@ Item {
         TextMetrics {
             id: statusMetrics
             font.pixelSize: footer.compact ? 12 : Theme.uiBody
-            text: footer.launcher.statusText
+            font.features: footer.launcher.statusText.length > 0 ? ({}) : ({ "tnum": 1 })
+            text: footer.shownStatus
         }
 
         KeyHint { dpr: footer.dpr; id: enterHint; visible: hints.given < 2 && label.length > 0; keys: "Enter"; label: hints.keyHints.enter ?? "" }

@@ -32,8 +32,12 @@ Item {
     property string hintLetter // 字母直达: the letter that does, while the letters show
     property real hintOpacity: 1 // the number's: shown as the settings say (NumberHints)
     property bool reserveHintSpace: false // every row keeps the room, numbered or not: one left edge
+    property string hintModifier: "Ctrl" // ... with this held
     property bool hintTaken: false // one of Win顺's own shortcuts has that chord: shown struck through
+    property bool canOpen: false // dialog opens files: Enter / Ctrl+n opens a file row
+    property bool copyOnly: false // elevated dialog without service: Enter / Ctrl+n copies its path
     property NameTip nameTip: null // the window's tip for a name or folder cut short
+    property QtObject tipHost: null // permits a detached HoverTip when the bar is short
 
     readonly property var results: ListView.view ? ListView.view.model : null // the bar's ResultModel
 
@@ -61,6 +65,7 @@ Item {
     function dropTip() {
         if (nameTip && nameTip.source === row)
             nameTip.dismiss()
+        rowTip.dismiss()
     }
     onPathChanged: dropTip() // delegate reused for another entry
     Component.onDestruction: dropTip()
@@ -208,7 +213,10 @@ Item {
         anchors.right: parent.right
         anchors.rightMargin: 18
         y: row.onPixel((row.height - height) / 2)
+        width: Math.min(implicitWidth, 200)
         text: row.tag
+        textFormat: Text.PlainText
+        elide: Text.ElideMiddle
         color: Theme.faint
         font.pixelSize: Theme.uiCaption
     }
@@ -218,12 +226,17 @@ Item {
         anchors.fill: parent
         hoverEnabled: true
         acceptedButtons: Qt.LeftButton | Qt.RightButton
-        onPressed: if (row.nameTip) row.nameTip.dismiss()
+        onPressed: {
+            if (row.nameTip)
+                row.nameTip.dismiss()
+            rowTip.dismiss()
+        }
         // The wheel hides the tip even where the list does not scroll (Windows' own tips do);
         // passed on, so the list still scrolls.
         onWheel: (wheel) => {
             if (row.nameTip)
                 row.nameTip.dismiss()
+            rowTip.dismiss()
             wheel.accepted = false
         }
         onPositionChanged: if (!pressed) row.offerTip() // moved: a tip dismissed (a key, a scroll) may come again
@@ -233,5 +246,23 @@ Item {
             else
                 row.clicked(row.index)
         }
+    }
+
+    HoverTip {
+        id: rowTip
+        objectName: "dialogRowTip"
+        dpr: row.dpr
+        host: row.tipHost
+        readonly property bool onKeys: numberSlot.visible && numberSlot.opacity > 0
+                                       && row.hint > 0 && row.hintLetter.length === 0
+                                       && area.containsMouse && !area.pressed
+                                       && numberSlot.contains(numberSlot.mapFromItem(area, area.mouseX, area.mouseY))
+        target: onKeys ? numberSlot : null
+        text: !onKeys ? ""
+            : row.hintTaken ? qsTr("%1 是你给 Win顺 设的快捷键，在这里按也是那个快捷键。可在设置的“结果列表”里改用 %2")
+                              .arg(row.hintModifier + "+" + row.hint).arg(row.hintModifier === "Alt" ? "Ctrl" : "Alt")
+            : row.copyOnly ? qsTr("复制这一行路径")
+            : !row.isDir && row.canOpen ? qsTr("打开这一行") : qsTr("转到这一行")
+        shortcut: onKeys && !row.hintTaken ? row.hintModifier + "+" + row.hint : ""
     }
 }

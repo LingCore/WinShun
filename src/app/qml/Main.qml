@@ -594,9 +594,22 @@ Window {
     readonly property int numberKey: launcher.numberKeys === "ctrl" ? Qt.Key_Control
                                    : launcher.numberKeys === "alt" ? Qt.Key_Alt : -1
     readonly property int firstShownRow: Math.max(0, rowAtY(view.contentY + viewRowHeight / 2, true) * gridColumns)
-    readonly property int lastShownRow: Math.min(view.count - 1, firstShownRow + 8,
-                                                 rowAtY(view.contentY + view.height - viewRowHeight / 2, false) * gridColumns + gridColumns - 1)
+    readonly property int lastRowInView: Math.min(view.count - 1,
+                                                  rowAtY(view.contentY + view.height - viewRowHeight / 2, false) * gridColumns + gridColumns - 1)
+    readonly property int lastShownRow: Math.min(firstShownRow + 8, lastRowInView)
     readonly property string numberModifier: numberKey === Qt.Key_Alt ? "Alt" : "Ctrl"
+    // Scrolled past the top of the popup list: show the visible range in the
+    // footer so the user keeps their bearings while 1–9 stay shortcut keys.
+    readonly property string scrollPositionText: {
+        if (panel || view.count <= tileRows || firstShownRow <= tileRows)
+            return ""
+        const listCount = view.count - tileRows
+        const from = Math.min(listCount, Math.max(1, firstShownRow - tileRows + 1))
+        const to = Math.min(listCount, Math.max(from, lastRowInView - tileRows + 1))
+        const knownTotal = tileRows > 0 ? listCount : Math.max(listCount, launcher.totalMatches)
+        const total = launcher.moreAvailable && knownTotal <= listCount ? knownTotal + "+" : String(knownTotal)
+        return from === to ? from + " / " + total : from + "–" + to + " / " + total
+    }
     NumberHints {
         id: numberHints
         mode: window.launcher.numberHints
@@ -2081,6 +2094,7 @@ Window {
             launcher: window.launcher
             frame: window.frame
             dpr: window.dpr
+            positionText: window.scrollPositionText
         }
     }
 

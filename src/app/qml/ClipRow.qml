@@ -477,18 +477,23 @@ Item {
     }
 
     HoverTip {
+        id: rowTip
+        objectName: "clipboardRowTip"
         dpr: row.dpr
         readonly property RowAction hovered: row.actions !== null ? row.actions.hovered : null
-        readonly property bool onKeys: !hovered && numberSlot.visible && numberSlot.opacity > 0 && row.hintTaken && area.containsMouse // (a hover handler under the area gets no hover)
-                                          && numberSlot.contains(numberSlot.mapFromItem(area, area.mouseX, area.mouseY))
-        readonly property bool onMark: !hovered && !onKeys && pastedMark.visible && area.containsMouse
+        readonly property bool onKeys: !hovered && numberSlot.visible && numberSlot.opacity > 0
+                                       && row.hint > 0 && row.hintLetter.length === 0 && area.containsMouse && !area.pressed // (a hover handler under the area gets no hover)
+                                       && numberSlot.contains(numberSlot.mapFromItem(area, area.mouseX, area.mouseY))
+        readonly property bool onMark: !hovered && !onKeys && pastedMark.visible && area.containsMouse && !area.pressed
                                        && pastedMark.contains(pastedMark.mapFromItem(area, area.mouseX, area.mouseY))
         target: hovered ? hovered : onKeys ? numberSlot : onMark ? pastedMark : null
         text: hovered ? hovered.tip
             : onMark ? qsTr("已粘贴过")
-            : onKeys ? qsTr("%1 是你给 Win顺 设的快捷键，在这里按也是那个快捷键。可在设置里改用 %2")
-                       .arg(row.hintModifier + "+" + row.hint).arg(row.hintModifier === "Alt" ? "Ctrl" : "Alt")
-            : ""
-        shortcut: hovered ? hovered.tipShortcut : ""
+            : !onKeys ? ""
+            : row.hintTaken ? qsTr("%1 是你给 Win顺 设的快捷键，在这里按也是那个快捷键。可在设置里改用 %2")
+                              .arg(row.hintModifier + "+" + row.hint).arg(row.hintModifier === "Alt" ? "Ctrl" : "Alt")
+            : qsTr("粘贴这一条")
+        shortcut: hovered ? hovered.tipShortcut
+                : onKeys && !row.hintTaken ? row.hintModifier + "+" + row.hint : ""
     }
 }

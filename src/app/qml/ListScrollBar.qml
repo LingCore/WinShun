@@ -1,17 +1,25 @@
 import QtQuick
 import WinShun
 
-// Windows 11 style overlay scroll bar: a thin line that widens when the mouse
-// comes near. Drag the thumb to scroll; click the track to move a page.
+// Windows 11 style overlay scroll bar: a thin line that wakes up while
+// scrolling and widens when the mouse comes near. Drag the thumb to scroll;
+// click the track to move a page.
 Item {
     id: bar
 
     required property Flickable flickable
 
     readonly property bool expanded: area.containsMouse || area.pressed || collapseDelay.running
+    readonly property bool scrolling: scrollHold.running
     readonly property real minY: flickable.originY - flickable.topMargin
     readonly property real maxY: flickable.originY + flickable.contentHeight + flickable.bottomMargin - flickable.height
+    readonly property bool scrollable: flickable.height > 0 && flickable.contentHeight > 0 && maxY > minY + 0.5
     readonly property real position: maxY > minY ? Math.max(0, Math.min(1, (flickable.contentY - minY) / (maxY - minY))) : 0
+
+    // Baseline of the last observed viewport position and scrollable range so
+    // initial layout or model-reset jumps to an edge do not flash the bar.
+    property real lastContentY: NaN
+    property real lastExtent: NaN
 
     // A size in logical pixels as whole device pixels (3 is 4.5 at 150 %).
     property real dpr: 0 // the window's, passed by a host that has it (GitHub #111)
@@ -31,31 +39,92 @@ Item {
     }
 
     implicitWidth: 14
-    visible: flickable.contentHeight > flickable.height
+    visible: scrollable
+
+    function syncBaseline() {
+        if (!bar.visible || !bar.scrollable) {
+            scrollHold.stop()
+            lastContentY = NaN
+            lastExtent = NaN
+            return
+        }
+        lastContentY = bar.flickable.contentY
+        lastExtent = bar.maxY - bar.minY
+    }
+
+    Component.onCompleted: syncBaseline()
+    onVisibleChanged: syncBaseline()
+    onScrollableChanged: {
+        if (!scrollable)
+            syncBaseline()
+        else if (isNaN(lastContentY))
+            syncBaseline()
+    }
+    onFlickableChanged: {
+        scrollHold.stop()
+        lastContentY = NaN
+        lastExtent = NaN
+        syncBaseline()
+    }
+
+    Connections {
+        target: bar.flickable
+        function onContentYChanged() {
+            const y = bar.flickable.contentY
+            const extent = bar.maxY - bar.minY
+            if (!bar.visible || !bar.scrollable) {
+                bar.lastContentY = y
+                bar.lastExtent = extent
+                scrollHold.stop()
+                return
+            }
+            if (isNaN(bar.lastContentY)) {
+                bar.lastContentY = y
+                bar.lastExtent = extent
+                return
+            }
+            const moved = Math.abs(y - bar.lastContentY) >= 1
+            const atEdge = Math.abs(y - bar.minY) < 1 || Math.abs(y - bar.maxY) < 1
+            const resetToEdge = atEdge && Math.abs(extent - bar.lastExtent) > 1
+            bar.lastContentY = y
+            bar.lastExtent = extent
+            if (moved && !resetToEdge)
+                scrollHold.restart()
+        }
+    }
 
     Timer { // stay wide for a moment after the mouse leaves, as Windows does
         id: collapseDelay
         interval: 600
     }
 
+    Timer { // stay crisp briefly while the user scrolls with wheel or keys
+        id: scrollHold
+        interval: 900
+    }
+
     Hook { // the style's track and thumb (Theme.scrollBar)
         id: track
+        objectName: "scrollBarTrack"
         anchors.right: parent.right
         anchors.rightMargin: bar.pixels(3)
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         anchors.topMargin: 4
         anchors.bottomMargin: 4
-        width: bar.expanded ? bar.pixels(8) : bar.pixels(3)
+        width: bar.expanded ? bar.pixels(8) : bar.scrolling ? bar.pixels(5) : bar.pixels(3)
         part: Theme.scrollBar
-        active: bar.expanded
+        active: bar.expanded || bar.scrolling
         hovered: area.overThumb
         pressed: area.pressed
         position: thumb.y - track.y
         extent: thumb.height
         dpr: bar.pixelRatio
 
-        Behavior on width { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+        Behavior on width {
+            enabled: SystemTheme.animations
+            NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
+        }
     }
 
     Item { // where the thumb is (drawn by the part)
