@@ -8,6 +8,8 @@ Rectangle {
     property string text
     property string glyph
     property string trailingGlyph // after the text (a drop-down's chevron)
+    property int fontSize: Theme.fontBody
+    property int glyphSize: 14
     property real contentSpacing: 6 // icon to text; a round icon (arrow-clockwise) fills its box and wants a bit more
     property bool highlighted: false
     property bool flat: false // no background until hovered
@@ -59,7 +61,7 @@ Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             visible: button.glyph.length > 0
             glyph: button.glyph
-            size: 14
+            size: button.glyphSize
             color: button.foreground
         }
         Text {
@@ -67,7 +69,7 @@ Rectangle {
             visible: button.text.length > 0
             text: button.text
             color: button.foreground
-            font.pixelSize: Theme.fontBody
+            font.pixelSize: button.fontSize
             font.weight: surface.out("fontWeight", Font.Normal)
         }
         Glyph {

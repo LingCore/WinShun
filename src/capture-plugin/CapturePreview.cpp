@@ -488,6 +488,21 @@ int runOcr(const QStringList& args)
         for (const auto& [state, words, detail] : states) {
             QMetaObject::invokeMethod(window, "present", Q_ARG(QVariant, state), Q_ARG(QVariant, words), Q_ARG(QVariant, detail));
             settle(window);
+            if (state == u"copied"_s) {
+                const auto* headline = window->findChild<QQuickItem*>(u"ocrBubbleHeadline"_s);
+                const auto* edit = window->findChild<QQuickItem*>(u"ocrBubbleEdit"_s);
+                const auto* closeBtn = window->findChild<QQuickItem*>(u"ocrBubbleClose"_s);
+                const auto* edge = window->findChild<QQuickItem*>(u"ocrBubbleEdge"_s);
+                const int headlinePx = headline ? headline->property("font").value<QFont>().pixelSize() : 0;
+                const int editPx = edit ? edit->property("fontSize").toInt() : 0;
+                const bool truncated = headline ? headline->property("truncated").toBool() : true;
+                const QColor edgeFill = edge ? edge->property("fill").value<QColor>() : QColor();
+                const bool ok = headline && edit && closeBtn && edge && headlinePx > editPx && !truncated && edgeFill.alpha() > 0;
+                say(u"bubble checks: headline=%1px edit=%2px truncated=%3 edgeAlpha=%4 -> %5"_s
+                        .arg(headlinePx).arg(editPx).arg(truncated ? u"yes"_s : u"no"_s).arg(edgeFill.alpha())
+                        .arg(ok ? u"ok"_s : u"FAIL"_s));
+                all = all && ok;
+            }
             say(u"bubble %1: %2 x %3"_s.arg(state).arg(window->width()).arg(window->height()));
             all = saveGrab(window, out.filePath(u"ocr-bubble-%1.png"_s.arg(state))) && all;
         }
@@ -3171,6 +3186,7 @@ int run(const QStringList& args)
     QGuiApplication::styleHints()->setColorScheme(args.contains(u"--dark"_s) ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light);
     SystemTheme::setBackdropAvailable(false); // plain colours, as a window without Mica
     SystemTheme::setUiStyle(valueAfter(args, u"--style", u"fluent"_s)); // --style fluent|brand|tactile
+    SystemTheme::setUiSize(valueAfter(args, u"--size", u"standard"_s)); // --size dense|compact|standard|roomy
     if (presenterMode)
         return runPresenter(args);
     if (settingsMode)

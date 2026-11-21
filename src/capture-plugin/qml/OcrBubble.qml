@@ -21,7 +21,9 @@ Window {
     property string words
     property string detail // why nothing was read, when it is not just no words
 
-    readonly property int padding: 12
+    readonly property int padding: 14
+    readonly property real dpr: Screen.devicePixelRatio
+    readonly property real headerWidth: (mark.visible ? mark.width + 8 : 0) + headline.implicitWidth + 8 + buttons.implicitWidth
 
     // Called by the app with each change, before it places the window.
     function present(newPhase, newWords, newDetail) {
@@ -39,7 +41,7 @@ Window {
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus
     color: Theme.backdrop && SystemTheme.materials ? "transparent" : Theme.background
     title: qsTr("识别文字") // Qt adds " - Win顺"
-    width: 300 + 12 * Theme.step
+    width: Math.min(420, Math.max(320 + 16 * Theme.step, Math.ceil(headerWidth) + 2 * padding))
     height: body.implicitHeight + 2 * padding
 
     Timer {
@@ -62,7 +64,7 @@ Window {
         x: bubble.padding
         y: bubble.padding
         width: parent.width - 2 * bubble.padding
-        spacing: 6
+        spacing: 8
 
         Item {
             width: parent.width
@@ -71,15 +73,16 @@ Window {
             Glyph {
                 id: mark
                 anchors.verticalCenter: parent.verticalCenter
-                width: 16
-                height: 16
+                width: 18
+                height: 18
                 visible: bubble.phase !== "reading"
                 glyph: bubble.phase === "copied" ? String.fromCharCode(0xE73E) : String.fromCharCode(0xE7BA) // CheckMark, Warning
-                size: 14
+                size: 16
                 color: bubble.phase === "copied" ? Theme.success : Theme.caution
             }
             Text {
                 id: headline
+                objectName: "ocrBubbleHeadline"
                 anchors.left: mark.visible ? mark.right : parent.left
                 anchors.leftMargin: mark.visible ? 8 : 0
                 anchors.right: buttons.left
@@ -89,7 +92,7 @@ Window {
                     : bubble.phase === "copied" ? qsTr("已复制识别的文字") : qsTr("没识别到文字")
                 elide: Text.ElideRight
                 color: Theme.text
-                font.pixelSize: Theme.uiBody
+                font.pixelSize: Theme.uiTitle
                 font.weight: Theme.fontStrong
             }
             Row {
@@ -100,9 +103,15 @@ Window {
 
                 FlatButton {
                     objectName: "ocrBubbleEdit"
+                    dpr: bubble.dpr
                     visible: bubble.phase === "copied"
                     flat: true
+                    role: "toolbar"
+                    keyboardActivation: false
+                    corner: Theme.smallControlRadius
                     height: 28
+                    fontSize: Theme.uiCaption
+                    glyphSize: Math.min(14, Theme.uiCaption)
                     glyph: String.fromCharCode(0xE70F) // Edit
                     text: qsTr("编辑")
                     onClicked: {
@@ -110,32 +119,27 @@ Window {
                         bubble.dismiss()
                     }
                 }
-                Rectangle {
+                FlatButton {
+                    objectName: "ocrBubbleClose"
+                    dpr: bubble.dpr
                     anchors.verticalCenter: parent.verticalCenter
-                    width: 24
-                    height: 24
-                    radius: Theme.smallControlRadius
-                    color: closeArea.pressed ? Theme.controlPressed : closeArea.containsMouse ? Theme.controlHover : "transparent"
-
-                    Glyph {
-                        anchors.centerIn: parent
-                        glyph: String.fromCharCode(0xE711) // Cancel
-                        size: 10
-                        color: Theme.subtext
-                    }
-                    MouseArea {
-                        id: closeArea
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        onClicked: bubble.dismiss()
-                    }
+                    flat: true
+                    role: "toolbar"
+                    keyboardActivation: false
+                    corner: Theme.smallControlRadius
+                    width: 28
+                    height: 28
+                    glyphSize: 11
+                    glyph: String.fromCharCode(0xE711) // Cancel
                     Accessible.role: Accessible.Button
                     Accessible.name: qsTr("关闭")
+                    onClicked: bubble.dismiss()
                 }
             }
         }
 
         Text { // the first lines of what was copied, or why nothing was
+            objectName: "ocrBubbleBody"
             width: parent.width
             visible: text.length > 0
             text: bubble.phase === "copied" ? bubble.words : bubble.phase === "none" ? bubble.detail : ""
@@ -145,9 +149,13 @@ Window {
             elide: Text.ElideRight
             color: bubble.phase === "copied" ? Theme.text : Theme.subtext
             font.pixelSize: Theme.uiCaption
-            lineHeight: 1.1
+            lineHeight: 1.3
         }
     }
 
-    WindowEdge {}
+    WindowEdge {
+        id: windowEdge
+        objectName: "ocrBubbleEdge"
+        fill: Theme.background
+    }
 }
