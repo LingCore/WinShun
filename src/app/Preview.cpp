@@ -4327,14 +4327,34 @@ void checkDialogSearchKeys(IndexService& index, QQmlEngine* engine, const QDir& 
         pump(1000);
         check(scrollBar && !scrollBar->property("scrolling").toBool(),
             u"dialog scroll bar relaxes after scrolling stops"_s);
+        // Shrinking the list while scrolled shifts ListView.originY; shortcut
+        // numbering and the range label must stay anchored to originY.
+        if (const SearchResult* firstItem = bar.results()->at(0)) {
+            bar.setQuery(firstItem->name);
+            timeout.restart();
+            while (bar.results()->count() >= 5 && timeout.elapsed() < 2000) pump(10);
+            settle(window, 2);
+            QVariant num0;
+            QMetaObject::invokeMethod(window, "numberOf", Q_RETURN_ARG(QVariant, num0), Q_ARG(QVariant, 0));
+            check(window->property("firstShownRow").toInt() == 0 && num0.toInt() == 1,
+                u"shrinking a scrolled dialog list keeps shortcut 1 on row 0 despite originY"_s);
+            bar.setQuery(originalQuery);
+            timeout.restart();
+            while (bar.results()->count() != 18 && timeout.elapsed() < 2000) pump(10);
+            settle(window, 2);
+            QMetaObject::invokeMethod(window, "numberOf", Q_RETURN_ARG(QVariant, num0), Q_ARG(QVariant, 0));
+            check(window->property("firstShownRow").toInt() == 0 && num0.toInt() == 1
+                    && posLabel && posLabel->property("text").toString() == u"1–5 / 18",
+                u"re-querying after a scrolled shrink keeps row 0 numbered 1 and resets range"_s);
+        }
         // Non-overflowing list: neither scroll bar nor position range shows.
-        list->setProperty("contentY", -4.0);
+        list->setProperty("contentY", list->property("originY").toDouble() - 4.0);
         list->setHeight(20 * bar.rowHeight());
         settle(window);
         check(scrollBar && !scrollBar->isVisible(), u"dialog scroll bar hides when all rows fit"_s);
         check(posLabel && !posLabel->isVisible(), u"dialog position label hides when all rows fit"_s);
         list->setHeight(5 * bar.rowHeight());
-        list->setProperty("contentY", -4.0);
+        list->setProperty("contentY", list->property("originY").toDouble() - 4.0);
         settle(window);
         // Hovering a left shortcut number explains the shortcut (and any conflict).
         auto* topNumber = visualNamed(list, u"dialogResultNumber"_s);
@@ -8838,6 +8858,7 @@ bool checkNumberColumn(QQmlEngine* qmlEngine, const QDir& output, int width)
     launcher.setResultOptions(KindOrder::FilesFirst, true, false, false, u"ctrl"_s);
     launcher.setNumberHints(u"always"_s);
     launcher.setNumberKeysLeft(0);
+    EntryId firstFolderId = kNoEntry;
     {
         const auto files = index.index();
         const auto lock = files->writeLock();
@@ -8845,7 +8866,9 @@ bool checkNumberColumn(QQmlEngine* qmlEngine, const QDir& output, int width)
         for (int i = 1; i <= 24; ++i) {
             const QString name = u"编号_%1"_s.arg(i, 2, 10, QLatin1Char('0'));
             check(QDir(temporary.path()).mkdir(name), "could not create isolated folder");
-            files->add(root, name.toStdString(), EntryFlag::Directory);
+            const EntryId id = files->add(root, name.toStdString(), EntryFlag::Directory);
+            if (i == 1)
+                firstFolderId = id;
         }
     }
     ClipStore store(temporary.filePath(u"clipboard"_s));
@@ -8960,6 +8983,31 @@ bool checkNumberColumn(QQmlEngine* qmlEngine, const QDir& output, int width)
     const QString expected = launcher.results()->at(2)->path;
     press(3, Qt::ControlModifier);
     check(opened == expected, "Ctrl+3 did not open the numbered result");
+    // Smooth wheel gliding keeps the left 1–9 slots visually steady via hintOffsetY
+    // instead of sliding and snapping every half-row, then returns hintOffsetY to 0.
+    if (auto* wheelScroll = window->contentItem()->findChild<QObject*>(u"boxWheelScroll"_s)) {
+        const auto* topRow = visualNamed(window->contentItem(), u"resultRow-0"_s);
+        const auto* topSlot = topRow ? visualNamed(const_cast<QQuickItem*>(topRow), u"resultNumberSlot"_s) : nullptr;
+        const qreal restingSlotY = topSlot ? topSlot->mapToScene(QPointF(0, 0)).y() : -1;
+        wheelScroll->setProperty("animate", true);
+        QMetaObject::invokeMethod(wheelScroll, "wheel", Q_ARG(QVariant, -240));
+        pump(60); // mid-glide
+        if (wheelScroll->property("running").toBool()) {
+            const int midFirst = window->property("firstShownRow").toInt();
+            auto* midRow = visualNamed(window->contentItem(), u"resultRow-%1"_s.arg(midFirst));
+            auto* midSlot = midRow ? visualNamed(midRow, u"resultNumberSlot"_s) : nullptr;
+            if (midSlot && restingSlotY >= 0) {
+                const qreal midY = midSlot->mapToScene(QPointF(0, 0)).y();
+                check(std::abs(midY - restingSlotY) <= 1.5,
+                    "shortcut number 1 drifted vertically during smooth wheel scroll");
+            }
+        }
+        pump(300); // settle after 200ms glide
+        settle(window, 2);
+        check(qFuzzyIsNull(window->property("hintOffsetY").toDouble()),
+            "hintOffsetY did not return to 0 after wheel scroll settled");
+        verifyRows();
+    }
     const double rowHeight = window->property("rowHeight").toDouble();
     view->setProperty("contentY", 11.25 * rowHeight);
     settle(window, 3);
@@ -8977,17 +9025,120 @@ bool checkNumberColumn(QQmlEngine* qmlEngine, const QDir& output, int width)
     press(2, Qt::AltModifier);
     check(!scrolled.isEmpty() && opened == scrolled, "Alt+2 did not follow the scrolled numbering");
     check(saveGrab(window, output.filePath(u"number-column-scrolled.png"_s)), "scrolled results did not render");
-    query(u"编号_0"_s);
-    check(launcher.results()->count() > 0 && launcher.results()->count() < 24, "query did not replace the result set");
+    // Reproduces scrolling past page 1 and then replacing with a short list
+    // (e.g. Ctrl+A, Ctrl+X -> recent rows): Qt ListView retains a non-zero
+    // originY, which must never hide or offset the 1–9 hints or shortcuts.
+    query(u"编号_01"_s);
+    check(launcher.results()->count() == 1, "single-result query did not replace the scrolled result set");
     verifyRows();
-    // A programmatic refresh may retain the viewport. Its visible "1"
-    // still means that first visible result, rather than absolute row 1.
-    const int refreshedFirst = window->property("firstShownRow").toInt();
-    const auto* refreshed = launcher.results()->at(refreshedFirst);
-    const QString refreshedPath = refreshed ? refreshed->path : QString();
+    check(window->property("firstShownRow").toInt() == 0,
+        "shrinking a scrolled launcher list lost firstShownRow == 0 (originY drift)");
+    check(footerStatus && footerStatus->property("text").toString().isEmpty(),
+        "launcher footer stayed non-empty after returning to the top");
     opened.clear();
     press(1, Qt::AltModifier);
-    check(!refreshedPath.isEmpty() && opened == refreshedPath, "refreshed numbering did not match Alt+1");
+    check(opened == launcher.results()->at(0)->path, "Alt+1 failed after shrinking a scrolled list");
+    // Re-searching after an originY shift must keep row 0 numbered 1 (no blank leading rows).
+    query(u"编号"_s);
+    check(launcher.results()->count() == 24, "re-query did not restore 24 results");
+    verifyRows();
+    check(window->property("firstShownRow").toInt() == 0,
+        "re-query after scrolled shrink left leading rows unnumbered");
+    opened.clear();
+    press(1, Qt::AltModifier);
+    check(opened == launcher.results()->at(0)->path, "Alt+1 did not open row 0 after re-query");
+    // Scrolling a 6–9 row list in a 5-row viewport keeps every row's icon aligned.
+    // GitHub #425: Open in Terminal as administrator from context menu and Shift+click on the row's terminal button.
+    {
+        QString termFolder;
+        bool termAdmin = false;
+        int termCalls = 0;
+        launcher.setTerminalOpener([&](const QString& folder, bool asAdmin) {
+            termFolder = folder;
+            termAdmin = asAdmin;
+            ++termCalls;
+            return true;
+        });
+        const QVariantList menu = launcher.menuItems(0);
+        int idxTerminal = -1, idxTerminalAdmin = -1;
+        for (int i = 0; i < menu.size(); ++i) {
+            const int act = menu[i].toMap().value(u"action"_s, -1).toInt();
+            if (act == Launcher::OpenTerminal)
+                idxTerminal = i;
+            else if (act == Launcher::OpenTerminalAdmin)
+                idxTerminalAdmin = i;
+        }
+        check(idxTerminal >= 0 && idxTerminalAdmin == idxTerminal + 1,
+            "context menu offers Open in Terminal as administrator right below Open in Terminal");
+        const QString row0Path = launcher.results()->at(0)->path;
+        launcher.trigger(0, Launcher::OpenTerminal);
+        check(termCalls == 1 && termFolder == row0Path && !termAdmin,
+            "OpenTerminal opens the folder with normal rights");
+        launcher.trigger(0, Launcher::OpenTerminalAdmin);
+        check(termCalls == 2 && termFolder == row0Path && termAdmin,
+            "OpenTerminalAdmin opens the folder as administrator");
+        if (auto* row0 = visualNamed(window->contentItem(), u"resultRow-0"_s)) {
+            if (auto* termBtn = visualNamed(row0, u"terminalAction"_s)) {
+                const QPointF center = termBtn->mapToScene(QPointF(termBtn->width() / 2, termBtn->height() / 2));
+                const QPointF global = window->mapToGlobal(center);
+                auto clickBtn = [&](Qt::KeyboardModifiers mods) {
+                    QMouseEvent down(QEvent::MouseButtonPress, center, global, Qt::LeftButton, Qt::LeftButton, mods);
+                    QMouseEvent up(QEvent::MouseButtonRelease, center, global, Qt::LeftButton, Qt::NoButton, mods);
+                    QCoreApplication::sendEvent(window, &down);
+                    QCoreApplication::sendEvent(window, &up);
+                    settle(window);
+                };
+                clickBtn(Qt::NoModifier);
+                check(termCalls == 3 && termFolder == row0Path && !termAdmin,
+                    "clicking the terminal button opens normally");
+                clickBtn(Qt::ShiftModifier);
+                check(termCalls == 4 && termFolder == row0Path && termAdmin,
+                    "Shift+clicking the terminal button opens as administrator");
+            } else {
+                check(false, "terminalAction button missing on row 0");
+            }
+        }
+        // On a file inside a folder, OpenTerminalAdmin opens the file's parent folder as admin.
+        const QString folder1Path = QDir(temporary.path()).filePath(u"编号_01"_s);
+        const QString subFile = QDir(folder1Path).filePath(u"readme.txt"_s);
+        {
+            QFile f(subFile);
+            check(f.open(QIODevice::WriteOnly), "could not create fixture file for terminal admin check");
+            if (f.isOpen()) f.write("ok");
+        }
+        {
+            const auto files = index.index();
+            const auto lock = files->writeLock();
+            if (firstFolderId != kNoEntry)
+                files->add(firstFolderId, "readme.txt", 0);
+        }
+        launcher.setScope(Launcher::All);
+        query(u"readme.txt"_s);
+        check(launcher.results()->count() >= 1 && !launcher.results()->at(0)->isDir,
+            "fixture file not found for OpenTerminalAdmin parent-folder check");
+        if (launcher.results()->count() >= 1) {
+            launcher.trigger(0, Launcher::OpenTerminalAdmin);
+            check(termCalls == 5 && termAdmin
+                    && QDir::toNativeSeparators(termFolder).compare(QDir::toNativeSeparators(folder1Path), Qt::CaseInsensitive) == 0,
+                "OpenTerminalAdmin on a file opens its parent folder as administrator");
+        }
+        launcher.setScope(Launcher::Folders);
+        query(u"编号"_s);
+    }
+    launcher.setMaxRows(5);
+    query(u"编号_0"_s);
+    check(launcher.results()->count() == 9, "expected 9 results for 5-row alignment check");
+    view->setProperty("contentY", view->property("originY").toDouble() + 2.0 * rowHeight);
+    settle(window, 3);
+    verifyRows();
+    if (auto* row1 = visualNamed(window->contentItem(), u"resultRow-1"_s)) {
+        auto* row2 = visualNamed(window->contentItem(), u"resultRow-2"_s);
+        auto* icon1 = visualNamed(row1, u"resultIcon"_s);
+        auto* icon2 = row2 ? visualNamed(row2, u"resultIcon"_s) : nullptr;
+        check(icon1 && icon2 && icon1->x() == icon2->x(),
+            "scrolling a <=9-row list shifted unnumbered rows horizontally");
+    }
+    launcher.setMaxRows(8);
     query(u"没有这个结果145"_s);
     opened.clear();
     press(1, Qt::AltModifier);
@@ -10026,12 +10177,15 @@ int runResults(const QStringList& args)
     if (args.contains(u"--clipboard-crashed-reading"_s)) // its warning when it gives up is expected
         return checkClipboardCrashedReading() ? 0 : 4;
     if (const qsizetype at = args.indexOf(u"--terminal-launch"_s); at >= 0 && at + 2 < args.size()) {
-        // 在终端中打开 for real (GitHub #386): <id> <folder> [command]. Only
+        // 在终端中打开 for real (GitHub #386, #425): <id> <folder> [command] [--admin]. Only
         // started here; the script that runs it finds the new shell, checks
         // its folder and closes it.
-        const QString id = args[at + 1], folder = args[at + 2], command = args.value(at + 3);
+        const bool asAdmin = args.contains(u"--admin"_s);
+        const QString id = args[at + 1], folder = args[at + 2];
+        const QString candidate = args.value(at + 3);
+        const QString command = candidate == u"--admin"_s ? QString() : candidate;
         auto result = std::make_shared<std::atomic<int>>(-1);
-        shell::openTerminalIn(id, command, folder, [result](bool ok) { *result = ok ? 1 : 0; });
+        shell::openTerminalIn(id, command, folder, [result](bool ok) { *result = ok ? 1 : 0; }, asAdmin);
         QElapsedTimer waited;
         waited.start();
         while (*result < 0 && waited.elapsed() < 10000)
