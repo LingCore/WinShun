@@ -95,11 +95,18 @@ struct NameSearchOptions {
     // programs are, C:\Windows\System32\curl.exe. Only for the best match
     // (RankBy::Match, SortKey::Rank): by time or by a column, left aside.
     PreferredTypes preferred;
+    // Normally only shown entries are returned (while counting matches left
+    // out by hiddenFolders or excluded file rules); the other modes return
+    // one of those left-out sets alone on demand.
+    enum class SkipMode : std::uint8_t { Shown, OnlyHiddenFolders, OnlyExcludedFiles };
+    SkipMode skipMode = SkipMode::Shown;
 };
 
 struct NameSearchOutput {
     std::vector<NameHit> hits; // best first
     std::size_t totalMatches = 0;
+    std::size_t hiddenFolderMatches = 0;
+    std::size_t excludedFileMatches = 0;
     bool cancelled = false;
 };
 

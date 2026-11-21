@@ -13124,6 +13124,116 @@ Content index: %5</translation>
         <translation>This folder is not in the index</translation>
     </message>
     <message>
+        <source>正在读取排除目录里的结果…</source>
+        <translation>Loading results in excluded folders…</translation>
+    </message>
+    <message>
+        <source>正在读取已跳过的文件…</source>
+        <translation>Loading skipped files…</translation>
+    </message>
+    <message numerus="yes">
+        <source>正在搜排除目录… 已看 %Ln 项</source>
+        <translation>
+            <numerusform>Searching excluded folders… %Ln item looked at</numerusform>
+            <numerusform>Searching excluded folders… %Ln items looked at</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>排除目录里有 %Ln 项</source>
+        <translation>
+            <numerusform>%Ln item in excluded folders</numerusform>
+            <numerusform>%Ln items in excluded folders</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>排除目录里另有 %Ln 项</source>
+        <translation>
+            <numerusform>%Ln more item in excluded folders</numerusform>
+            <numerusform>%Ln more items in excluded folders</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>这次也显示</source>
+        <translation>Show this time</translation>
+    </message>
+    <message>
+        <source>排除设置…</source>
+        <translation>Exclusions…</translation>
+    </message>
+    <message numerus="yes">
+        <source>已跳过的文件里有 %Ln 项</source>
+        <translation>
+            <numerusform>%Ln skipped file matched</numerusform>
+            <numerusform>%Ln skipped files matched</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>已跳过的文件里另有 %Ln 项</source>
+        <translation>
+            <numerusform>%Ln more skipped file matched</numerusform>
+            <numerusform>%Ln more skipped files matched</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>这个文件夹在排除目录里，未建索引</source>
+        <translation>This folder is excluded from the index</translation>
+    </message>
+    <message>
+        <source>这个磁盘不在索引范围内</source>
+        <translation>This drive is not in the index</translation>
+    </message>
+    <message>
+        <source>搜索范围…</source>
+        <translation>Search scope…</translation>
+    </message>
+    <message>
+        <source>排除目录 %1 没搜</source>
+        <translation>Excluded folder %1 was skipped</translation>
+    </message>
+    <message numerus="yes">
+        <source>%1 等 %Ln 个排除目录没搜</source>
+        <translation>
+            <numerusform>%Ln excluded folder (incl. %1) skipped</numerusform>
+            <numerusform>%Ln excluded folders (incl. %1) skipped</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>另有 %Ln 个排除目录没搜</source>
+        <translation>
+            <numerusform>%Ln excluded folder was skipped</numerusform>
+            <numerusform>%Ln excluded folders were skipped</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>排除目录里显示了 %Ln 项</source>
+        <translation>
+            <numerusform>Shown %Ln item from excluded folders</numerusform>
+            <numerusform>Shown %Ln items from excluded folders</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>排除目录里也没有</source>
+        <translation>Not found in excluded folders</translation>
+    </message>
+    <message numerus="yes">
+        <source>已跳过的文件里显示了 %Ln 项</source>
+        <translation>
+            <numerusform>Shown %Ln skipped file</numerusform>
+            <numerusform>Shown %Ln skipped files</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>已跳过的文件里也没有</source>
+        <translation>Not found in skipped files</translation>
+    </message>
+    <message numerus="yes">
+        <source>排除目录里找到 %Ln 项</source>
+        <translation>
+            <numerusform>Found %Ln item in excluded folders</numerusform>
+            <numerusform>Found %Ln items in excluded folders</numerusform>
+        </translation>
+    </message>
+    <message>
         <source>加入索引</source>
         <translation>Add to the index</translation>
     </message>

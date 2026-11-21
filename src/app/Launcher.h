@@ -36,6 +36,7 @@
 
 namespace ws {
 
+class Crawler;
 class FilePreview;
 class History;
 class IndexService;
@@ -462,6 +463,10 @@ public:
     // has them; `only`: set), for the notes about what lies outside them
     // (leftOutHints), and whether the user closed the general one for good.
     void setChosenFolders(bool only, const QStringList& folders, bool noteDismissed);
+    // Excluded folders/names and selected local drives from Settings: used to
+    // detect excluded typed paths and offer on-demand excluded-folder search.
+    void setExcludedFolders(const QStringList& paths, const QStringList& names, bool everythingCompat,
+        const std::optional<QStringList>& selectedDrives = std::nullopt);
     // Explorer's "search here": the folder is typed; one not indexed is
     // walked at once for what is typed after it, as the user named it.
     void noteSearchHere(const QString& folder);
@@ -970,6 +975,8 @@ signals:
     void settingsRequested();
     void shortcutSettingsRequested(); // the settings' overview of all shortcuts
     void folderSettingsRequested(); // the settings' page of the chosen folders
+    void excludedSettingsRequested(); // the settings' section of excluded folders
+    void excludedFilesSettingsRequested(); // the settings' section of skipped file types & names
     void shareSettingsRequested(); // the settings' section of network and WSL folders (GitHub #114)
     void folderAddRequested(const QString& path); // a folder not indexed, to be (the app adds it as the settings do)
     void folderNoteDismissed(); // 不再提示
@@ -1159,6 +1166,7 @@ private:
     void onRecycled(const SearchResult& result, bool ok);
     void onRecycledMany(const SearchResults& items, bool ok);
     void onResults(quint64 id, const SearchResults& results, qint64 total, qint64 elapsedUs);
+    void onNameLeftOut(quint64 id, const NameLeftOut& leftOut);
     void onContentResults(quint64 id, const SearchResults& results);
     void onContentProgress(quint64 id, int scanned, int total, bool finished);
     void onContentLeftOut(quint64 id, const ContentLeftOut& leftOut);
@@ -1176,10 +1184,22 @@ private:
     // as they are, so it counts as done): only then is what it passed over
     // known, and the hints shown.
     bool hintsSettled() const;
-    // The folder typed (a path, then words) when only the chosen folders are
-    // indexed and it is not among them, on a disk of this PC that is there;
-    // else empty. Asked of the disk once per query.
-    QString outsideFolder() const;
+    // A typed path's folder when it is not covered by the index, on a local
+    // fixed disk that exists: excluded by rules, outside the chosen folders
+    // (#52), or on an unselected drive. Asked of the disk once per query.
+    struct OutsideTarget {
+        enum class Kind : std::uint8_t { None, NotChosen, Excluded, UnselectedDrive };
+        Kind kind = Kind::None;
+        QString folder;
+    };
+    OutsideTarget outsideTarget() const;
+    struct ExcludedFolder {
+        QString raw;
+        QString path;
+        QString label;
+        int priority = 1; // 0: user-added / %TEMP%; 1: system folders; 2: WinSxS
+    };
+    std::vector<const ExcludedFolder*> applicableExcludedFolders() const;
     void walkHereSoon(); // noteSearchHere: its folder walked as soon as the search ends
     void finishLeftOut(bool stopped); // the one running is over: the hint goes, the footer says what came of it
     void refreshStatus();
@@ -1315,15 +1335,24 @@ private:
     // again (the limits, the settings, or the index leave them out). Back to
     // nothing with a new query.
     ContentLeftOut m_leftOut;
+    NameLeftOut m_nameLeftOut;
     RemovableDrives m_drives;
     QString m_hintRunning;
     QSet<QString> m_hintsTaken;
     QSet<QString> m_leftOutFound;
     int m_hintHits = 0; // rows the one running has brought
+    bool m_webFallbackOnly = false; // the list holds only the fallback web search row
     // Only the chosen folders are indexed (setChosenFolders).
     bool m_foldersOnly = false;
     QStringList m_chosenFolders;
     bool m_folderNoteDismissed = false;
+    // Excluded folders/names and selected drives (setExcludedFolders).
+    QStringList m_excludedPathsRaw;
+    QStringList m_excludedNamesRaw;
+    bool m_everythingCompat = false;
+    std::optional<QStringList> m_selectedDrives;
+    std::unique_ptr<Crawler> m_excludedCrawler;
+    std::vector<ExcludedFolder> m_excludedFolders;
     QString m_hereFolder; // "search here" named it (noteSearchHere)
     bool m_hereSeen = false; // ... and the query has been that folder since
     // Typed in a folder's window (setTypingFolder, GitHub #110): the box's
@@ -1365,8 +1394,8 @@ private:
     // How the folder typed in shapes the list ("first:D:\work",
     // "only:D:\work"; empty: not at all), for telling a new list from a refresh.
     QString typingKey() const;
-    mutable QString m_outsideQuery; // outsideFolder() was last asked for this query ...
-    mutable QString m_outside; // ... and said this
+    mutable QString m_outsideQuery; // outsideTarget() was last asked for this query ...
+    mutable OutsideTarget m_outside; // ... and said this
     mutable bool m_outsideKnown = false;
     bool m_walkRunning = false; // ... it is a walk of a drive (SearchEngine::driveProgress ends it)
     int m_walkSeen = 0; // files and folders it has looked at

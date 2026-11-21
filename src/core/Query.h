@@ -194,9 +194,18 @@ public:
     // Whether nameMayMatch() ever says no (a query of folders alone does not).
     bool filtersNames() const noexcept;
 
+    // Why an entry that matched the query was left out.
+    enum class SkipReason : std::uint8_t { None, ExcludedFile, HiddenFolder };
+
     // Caller holds index.readLock().
     int match(const FileIndex& index, const EntryScan& entry, Folders& folders, EntryId id = kNoEntry) const;
     int match(const FileIndex& index, const EntryScan& entry) const;
+    // Like match(), but when the entry would match and is left out only by
+    // excludedExtensions/excludedFileNames (when `checkExcluded`) or
+    // hiddenFolders, returns its match score and reports why in `reason`.
+    int matchDetailed(const FileIndex& index, const EntryScan& entry, Folders& folders, EntryId id,
+        SkipReason& reason, bool checkExcluded = true) const;
+    bool hasExcludedFiles() const noexcept;
     // Matches a full path that is not (necessarily) in the index, e.g. history.
     int matchPath(const QString& fullPath, bool isDir, FileTime modified = 0, FileSize size = kUnknownSize) const;
     // Matches a bare UTF-8 name with no folders or extension, such as an
@@ -210,8 +219,9 @@ public:
     bool isExactName(QStringView name, bool isDir) const;
 
 private:
-    // match() but for ParsedQuery::hiddenFolders.
-    int matchShown(const FileIndex& index, const EntryScan& entry, Folders& folders, EntryId id) const;
+    // matchDetailed() but for ParsedQuery::hiddenFolders.
+    int matchShownDetailed(const FileIndex& index, const EntryScan& entry, Folders& folders, EntryId id,
+        SkipReason& reason, bool checkExcluded) const;
 
     bool m_invalid = false;
     std::shared_ptr<const HiddenFolders> m_hidden;

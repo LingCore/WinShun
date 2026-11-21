@@ -384,6 +384,13 @@ add_test(NAME tst_searchworkload COMMAND $<TARGET_FILE:WinShun>
 set_tests_properties(tst_searchworkload PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# Excluded-folder / skipped-file recovery hints, one-off walks, everythingCompat
+# hidden reveals, and typed excluded paths in real Main.qml / Panel.qml / Launcher.
+add_test(NAME tst_excludedrecovery COMMAND $<TARGET_FILE:WinShun>
+    --preview-results "${CMAKE_CURRENT_BINARY_DIR}/excluded-recovery" --excluded-recovery --renderer d3d11)
+set_tests_properties(tst_excludedrecovery PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # First-run gating and draft/commit behavior in the real App and QML, with
 # temporary profiles and process-local HKCU redirection. No clipboard writes.
 foreach(case IN ITEMS fresh later apply legacy)

@@ -1223,15 +1223,43 @@ std::uint64_t NameMatcher::termsInFolders(const FileIndex& index, EntryId folder
     return terms;
 }
 
-int NameMatcher::match(const FileIndex& index, const EntryScan& entry, Folders& folders, EntryId id) const
+bool NameMatcher::hasExcludedFiles() const noexcept
 {
-    const int scored = matchShown(index, entry, folders, id);
-    // Last: only what matches is looked up in its folders.
-    return scored >= 0 && m_hidden && m_hidden->hides(index, entry, folders.m_hidden) ? -1 : scored;
+    return !m_excluded.empty() || !m_excludedNames.empty()
+        || std::ranges::any_of(m_alternatives, [](const NameMatcher& m) { return m.hasExcludedFiles(); });
 }
 
-int NameMatcher::matchShown(const FileIndex& index, const EntryScan& entry, Folders& folders, EntryId id) const
+int NameMatcher::match(const FileIndex& index, const EntryScan& entry, Folders& folders, EntryId id) const
 {
+    SkipReason reason = SkipReason::None;
+    const int scored = matchDetailed(index, entry, folders, id, reason, false);
+    return reason == SkipReason::None ? scored : -1;
+}
+
+int NameMatcher::matchDetailed(const FileIndex& index, const EntryScan& entry, Folders& folders, EntryId id,
+    SkipReason& reason, bool checkExcluded) const
+{
+    reason = SkipReason::None;
+    const int scored = matchShownDetailed(index, entry, folders, id, reason, checkExcluded);
+    if (scored < 0)
+        return -1;
+    // Last: only what matches is looked up in its folders.
+    if (m_hidden && m_hidden->hides(index, entry, folders.m_hidden)) {
+        if (reason == SkipReason::None) {
+            reason = SkipReason::HiddenFolder;
+            return scored;
+        }
+        // Skipped by both a hidden folder and a file rule: not shown under either alone.
+        reason = SkipReason::None;
+        return -1;
+    }
+    return scored;
+}
+
+int NameMatcher::matchShownDetailed(const FileIndex& index, const EntryScan& entry, Folders& folders, EntryId id,
+    SkipReason& reason, bool checkExcluded) const
+{
+    reason = SkipReason::None;
     if (m_invalid)
         return -1;
     if (!m_conditions.empty()) {
@@ -1243,10 +1271,33 @@ int NameMatcher::matchShown(const FileIndex& index, const EntryScan& entry, Fold
     }
     if (!m_alternatives.empty()) {
         folders.m_alternatives.resize(m_alternatives.size());
-        int best = -1;
-        for (std::size_t i = 0; i < m_alternatives.size(); ++i)
-            best = std::max(best, m_alternatives[i].match(index, entry, folders.m_alternatives[i], id));
-        return best;
+        int bestShown = -1;
+        int bestExcluded = -1;
+        int bestHidden = -1;
+        for (std::size_t i = 0; i < m_alternatives.size(); ++i) {
+            SkipReason branchReason = SkipReason::None;
+            const int s = m_alternatives[i].matchDetailed(
+                index, entry, folders.m_alternatives[i], id, branchReason, checkExcluded);
+            if (s < 0)
+                continue;
+            if (branchReason == SkipReason::None)
+                bestShown = std::max(bestShown, s);
+            else if (branchReason == SkipReason::ExcludedFile)
+                bestExcluded = std::max(bestExcluded, s);
+            else if (branchReason == SkipReason::HiddenFolder)
+                bestHidden = std::max(bestHidden, s);
+        }
+        if (bestShown >= 0)
+            return bestShown;
+        if (bestExcluded >= 0) {
+            reason = SkipReason::ExcludedFile;
+            return bestExcluded;
+        }
+        if (bestHidden >= 0) {
+            reason = SkipReason::HiddenFolder;
+            return bestHidden;
+        }
+        return -1;
     }
     if (m_filter.any()) {
         if (id == kNoEntry)
@@ -1255,15 +1306,21 @@ int NameMatcher::matchShown(const FileIndex& index, const EntryScan& entry, Fold
             return -1;
     }
     // A skipped type: a file only (a folder named "x.bak" stays), and before
-    // the rest, so that the name is not searched for nothing. Not in
-    // nameMayMatch: a name is shared by a file and a folder.
+    // the rest when skipped counts are not asked for, so that the name is not
+    // searched for nothing. Not in nameMayMatch: a name is shared by a file
+    // and a folder.
+    bool excludedExt = false;
     if (!m_excluded.empty() && !entry.isDir()) {
         const std::size_t extLength = index.extLength(entry);
         if (extLength > 0 && extLength <= m_excludedLongest) {
             const std::string_view name = index.name(entry);
             const std::string_view ext = name.substr(name.size() - extLength);
-            if (std::any_of(m_excluded.begin(), m_excluded.end(), [&](const std::string& e) { return text::equalsFolded(ext, e); }))
-                return -1;
+            if (std::any_of(m_excluded.begin(), m_excluded.end(),
+                    [&](const std::string& e) { return text::equalsFolded(ext, e); })) {
+                if (!checkExcluded)
+                    return -1;
+                excludedExt = true;
+            }
         }
     }
     const int scored = score<true>(
@@ -1281,10 +1338,16 @@ int NameMatcher::matchShown(const FileIndex& index, const EntryScan& entry, Fold
             return j < 0;
         },
         [&] { return termsInFolders(index, entry.parent, &folders); });
+    if (scored < 0)
+        return -1;
     // A skipped file name, files only as above; after the rest, as a pattern
     // costs more than an extension and few names that match are skipped.
-    if (scored >= 0 && !m_excludedNames.empty() && !entry.isDir() && nameMatchesAny(index.name(entry), m_excludedNames))
-        return -1;
+    if (excludedExt || (!m_excludedNames.empty() && !entry.isDir() && nameMatchesAny(index.name(entry), m_excludedNames))) {
+        if (!checkExcluded)
+            return -1;
+        reason = SkipReason::ExcludedFile;
+        return scored;
+    }
     return scored;
 }
 

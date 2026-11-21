@@ -1557,6 +1557,124 @@ private slots:
         QCOMPARE(walk(QDir::toNativeSeparators(dir.filePath(u"missing"_s)), u"report"_s), QStringList {}); // not there: nothing, and it ends
     }
 
+    void walkExcludedFolders()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const auto writeFile = [&](const QString& relative, const QByteArray& bytes) {
+            const QString path = dir.filePath(relative);
+            QVERIFY(QDir().mkpath(QFileInfo(path).absolutePath()));
+            QFile file(path);
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            QCOMPARE(file.write(bytes), bytes.size());
+        };
+        writeFile(u"temp/claude/f3848bdcdc85cc89/ac8bbb5d/scratchpad/members-agy.png"_s, QByteArray(128, 'p'));
+        writeFile(u"temp/claude/中文报告.txt"_s, "hello");
+        writeFile(u"temp/nested/report.bak"_s, "backup");
+        writeFile(u"temp/nested/big.dat"_s, QByteArray(4096, 'b'));
+        writeFile(u"temp/nested/small.dat"_s, "s");
+        writeFile(u"system/nested/members-agy-sys.png"_s, QByteArray(64, 's'));
+
+        SearchEngine engine(nullptr);
+        QSignalSpy rows(&engine, &SearchEngine::driveResults);
+        QSignalSpy progress(&engine, &SearchEngine::driveProgress);
+        const auto runWalk = [&](SearchEngine::Request request) {
+            rows.clear();
+            progress.clear();
+            const quint64 id = engine.submit(std::move(request));
+            const auto finished = [&] {
+                return !progress.isEmpty() && progress.last().at(2).toBool() && progress.last().at(0).toULongLong() == id;
+            };
+            if (!QTest::qWaitFor(finished, 5000))
+                return SearchResults {};
+            SearchResults found;
+            for (const QList<QVariant>& batch : rows) {
+                for (const SearchResult& r : batch.at(1).value<SearchResults>())
+                    found.append(r);
+            }
+            return found;
+        };
+
+        const QString tempRoot = QDir::toNativeSeparators(dir.filePath(u"temp"_s));
+        const QString nestedTemp = QDir::toNativeSeparators(dir.filePath(u"temp/claude"_s));
+        const QString sysRoot = QDir::toNativeSeparators(dir.filePath(u"system"_s));
+        const QString missingRoot = QDir::toNativeSeparators(dir.filePath(u"does-not-exist"_s));
+
+        // Priority order + deduplication of nested roots + exact filename match + file size.
+        {
+            SearchEngine::Request req;
+            req.text = u"members-agy.png"_s;
+            req.walkFolders = {tempRoot, nestedTemp, missingRoot, sysRoot};
+            const SearchResults found = runWalk(std::move(req));
+            QCOMPARE(found.size(), 1);
+            QCOMPARE(found.first().name, u"members-agy.png"_s);
+            QCOMPARE(found.first().size, 128);
+        }
+        // Multiple roots in priority order: both matched, temp before system when limit=1.
+        {
+            SearchEngine::Request req;
+            req.text = u"members-agy"_s;
+            req.limit = 1;
+            req.walkFolders = {tempRoot, sysRoot};
+            const SearchResults found = runWalk(std::move(req));
+            QCOMPARE(found.size(), 1);
+            QCOMPARE(found.first().name, u"members-agy.png"_s);
+        }
+        // Zero-alloc pre-filter handles pinyin, wildcards, regex, and excluded root folder itself.
+        {
+            SearchEngine::Request req;
+            req.text = u"zwbg"_s;
+            req.walkFolders = {tempRoot};
+            const SearchResults found = runWalk(std::move(req));
+            QCOMPARE(found.size(), 1);
+            QCOMPARE(found.first().name, u"中文报告.txt"_s);
+        }
+        {
+            SearchEngine::Request req;
+            req.text = u"*.png"_s;
+            req.walkFolders = {tempRoot, sysRoot};
+            const SearchResults found = runWalk(std::move(req));
+            QCOMPARE(found.size(), 2);
+        }
+        {
+            SearchEngine::Request req;
+            req.text = u"^members-.*\\.png$"_s;
+            req.regex = true;
+            req.walkFolders = {tempRoot, sysRoot};
+            const SearchResults found = runWalk(std::move(req));
+            QCOMPARE(found.size(), 2);
+        }
+        {
+            SearchEngine::Request req;
+            req.text = u"temp"_s;
+            req.scope = Scope::Folders;
+            req.walkFolders = {tempRoot};
+            const SearchResults found = runWalk(std::move(req));
+            QCOMPARE(found.size(), 1);
+            QCOMPARE(found.first().name, u"temp"_s);
+            QVERIFY(found.first().isDir);
+        }
+        // Panel size filter (request.filter) and auto-unhide of typed skipped extension.
+        {
+            SearchEngine::Request req;
+            req.text = u".dat"_s;
+            req.filter.minSize = packSize(1024);
+            req.walkFolders = {tempRoot};
+            const SearchResults found = runWalk(std::move(req));
+            QCOMPARE(found.size(), 1);
+            QCOMPARE(found.first().name, u"big.dat"_s);
+        }
+        {
+            SearchEngine::Request req;
+            req.text = u"report.bak"_s;
+            req.excludedTypes = {u"bak"_s};
+            req.walkFolders = {tempRoot};
+            const SearchResults found = runWalk(std::move(req));
+            QCOMPARE(found.size(), 1);
+            QCOMPARE(found.first().name, u"report.bak"_s);
+        }
+    }
+
     void folderFromAddress()
     {
         using pathtext::folderFromAddress;
@@ -9177,12 +9295,48 @@ private slots:
         }
         // A folder is no file of the type.
         QVERIFY(search(u"report"_s, Scope::Folders, {u"bak"_s}).contains(u"report-old.bak"_s));
-        // Asked for: ext: typed, or a type chosen with it among.
+        // Asked for: ext: typed, a type chosen with it among, or a term ending in ".ext".
         QCOMPARE(search(u"report ext:bak"_s, Scope::Files, {u"bak"_s}), (QStringList {u"report.bak"_s}));
+        QCOMPARE(search(u"report.bak"_s, Scope::Files, {u"bak"_s}), (QStringList {u"report.Bak.txt"_s, u"report.bak"_s}));
+        QCOMPARE(search(u"*.bak"_s, Scope::Files, {u"bak"_s}), (QStringList {u"report-old.bak"_s, u"report.bak"_s}));
+        QCOMPARE(search(u"^report.bak$"_s, Scope::Files, {u"bak"_s}), (QStringList {u"report.bak"_s}));
+        // Negated ".bak" or ".bak.txt" does not un-hide .bak files.
+        QCOMPARE(search(u"report !*.bak"_s, Scope::Files, {u"bak"_s}),
+            (QStringList {u"report"_s, u"report.Bak.txt"_s, u"report.WBK"_s, u"report.docx"_s}));
+        QCOMPARE(search(u"report.bak.txt"_s, Scope::Files, {u"bak"_s}), (QStringList {u"report.Bak.txt"_s}));
         QCOMPARE(search(u"report"_s, Scope::Files, {u"bak"_s, u"wbk"_s}, {u"bak"_s, u"docx"_s}),
             (QStringList {u"report.bak"_s, u"report.docx"_s}));
         // Another type chosen: a skipped one stays out, though the type names it only as one of its own.
         QCOMPARE(search(u"report"_s, Scope::Files, {u"bak"_s}, {u"docx"_s}), (QStringList {u"report.docx"_s}));
+        // nameLeftOut counts skipped files, and NameSet::ExcludedFiles reveals them on demand.
+        {
+            QSignalSpy leftSpy(&engine, &SearchEngine::nameLeftOut);
+            QCOMPARE(search(u"report"_s, Scope::Files, {u"bak"_s, u"wbk"_s}),
+                (QStringList {u"report"_s, u"report-old.bak"_s, u"report.Bak.txt"_s, u"report.docx"_s}));
+            QVERIFY(!leftSpy.isEmpty());
+            const NameLeftOut left = leftSpy.last().at(1).value<NameLeftOut>();
+            QCOMPARE(left.excludedFiles, 2); // report.bak and report.WBK (not the folder report-old.bak)
+            QCOMPARE(left.hiddenFolders, 0);
+
+            QSignalSpy revealRows(&engine, &SearchEngine::driveResults);
+            QSignalSpy revealDone(&engine, &SearchEngine::driveProgress);
+            SearchEngine::Request req;
+            req.text = u"report"_s;
+            req.scope = Scope::Files;
+            req.excludedTypes = {u"bak"_s, u"wbk"_s};
+            req.nameSet = SearchEngine::NameSet::ExcludedFiles;
+            const quint64 id = engine.submit(std::move(req));
+            QVERIFY(QTest::qWaitFor(
+                [&] { return !revealDone.isEmpty() && revealDone.last().at(2).toBool() && revealDone.last().at(0).toULongLong() == id; },
+                5000));
+            QStringList revealed;
+            for (const QList<QVariant>& batch : revealRows) {
+                for (const SearchResult& r : batch.at(1).value<SearchResults>())
+                    revealed.append(r.path.mid(root.size()));
+            }
+            revealed.sort();
+            QCOMPARE(revealed, (QStringList {u"report.WBK"_s, u"report.bak"_s}));
+        }
         // Nothing typed, the files written last.
         {
             spy.clear();
@@ -10060,6 +10214,91 @@ private slots:
         std::vector<EntryId> expected {similar, inOther, kept};
         std::ranges::sort(expected);
         QCOMPARE(ids, expected);
+        QCOMPARE(found.hiddenFolderMatches, std::size_t(5));
+        QCOMPARE(found.excludedFileMatches, std::size_t(0));
+        // OnlyHiddenFolders returns the exact 5 hidden matches.
+        const NameSearchOutput hiddenOnly
+            = searchNames(index, matcher, {.limit = 50, .skipMode = NameSearchOptions::SkipMode::OnlyHiddenFolders}, pool, {});
+        std::vector<EntryId> hiddenIds;
+        for (const NameHit& hit : hiddenOnly.hits)
+            hiddenIds.push_back(hit.id);
+        std::ranges::sort(hiddenIds);
+        std::vector<EntryId> expectedHidden {inSkipped, deep, inModules, inObjects, onD};
+        std::ranges::sort(expectedHidden);
+        QCOMPARE(hiddenIds, expectedHidden);
+        // Combined hidden folder + excluded extension is not counted in either alone.
+        {
+            ParsedQuery both = ws::parseQuery(u"report"_s);
+            both.hiddenFolders = hidden;
+            both.excludedExtensions = {"txt"};
+            const NameMatcher bothMatcher(both);
+            const NameSearchOutput out = searchNames(index, bothMatcher, {.limit = 50}, pool, {});
+            // inSkipped (.txt) and onD (.txt) are both hidden and excluded; deep (.md), inModules (.js), inObjects (no ext) stay hidden-only.
+            QCOMPARE(out.hiddenFolderMatches, std::size_t(3));
+            // similar (.txt) and inOther (.txt) are excluded-only.
+            QCOMPARE(out.excludedFileMatches, std::size_t(2));
+        }
+        // End-to-end SearchEngine with IndexService::Options::hidden: nameLeftOut,
+        // NameSet::HiddenFolders reveal, and explicit typed path auto-unhide.
+        {
+            QTemporaryDir tmpDir;
+            IndexService::Options opts;
+            opts.content.enabled = false;
+            opts.hidden.excludedPaths = {L"F:\\ws_hidden\\temp"};
+            IndexService service(tmpDir.path() + u"/index"_s, opts);
+            {
+                const auto idx = service.index();
+                const auto lock = idx->writeLock();
+                const EntryId f = idx->addRoot("F:");
+                const EntryId top = idx->add(f, "ws_hidden", EntryFlag::Directory);
+                const EntryId temp = idx->add(top, "temp", EntryFlag::Directory);
+                const EntryId scratch = idx->add(temp, "scratchpad", EntryFlag::Directory);
+                idx->add(scratch, "members-agy.png", 0);
+            }
+            SearchEngine engine(&service);
+            QSignalSpy resultsSpy(&engine, &SearchEngine::resultsReady);
+            QSignalSpy leftSpy(&engine, &SearchEngine::nameLeftOut);
+            {
+                SearchEngine::Request req;
+                req.text = u"members-agy.png"_s;
+                req.scope = Scope::Files;
+                engine.submit(std::move(req));
+                QVERIFY(resultsSpy.wait(5000));
+                QVERIFY(resultsSpy.at(0).at(1).value<SearchResults>().isEmpty());
+                QVERIFY(!leftSpy.isEmpty());
+                const NameLeftOut left = leftSpy.last().at(1).value<NameLeftOut>();
+                QCOMPARE(left.hiddenFolders, 1);
+                QCOMPARE(left.excludedFiles, 0);
+            }
+            {
+                QSignalSpy revealRows(&engine, &SearchEngine::driveResults);
+                QSignalSpy revealDone(&engine, &SearchEngine::driveProgress);
+                SearchEngine::Request req;
+                req.text = u"members-agy.png"_s;
+                req.scope = Scope::Files;
+                req.nameSet = SearchEngine::NameSet::HiddenFolders;
+                const quint64 id = engine.submit(std::move(req));
+                QVERIFY(QTest::qWaitFor(
+                    [&] { return !revealDone.isEmpty() && revealDone.last().at(2).toBool() && revealDone.last().at(0).toULongLong() == id; },
+                    5000));
+                QCOMPARE(revealRows.size(), 1);
+                const SearchResults foundRows = revealRows.at(0).at(1).value<SearchResults>();
+                QCOMPARE(foundRows.size(), 1);
+                QCOMPARE(foundRows.first().name, u"members-agy.png"_s);
+            }
+            // Typing the excluded path explicitly un-hides it automatically.
+            {
+                resultsSpy.clear();
+                SearchEngine::Request req;
+                req.text = u"F:\\ws_hidden\\temp\\members-agy.png"_s;
+                req.scope = Scope::Files;
+                engine.submit(std::move(req));
+                QVERIFY(resultsSpy.wait(5000));
+                const SearchResults foundRows = resultsSpy.at(0).at(1).value<SearchResults>();
+                QCOMPARE(foundRows.size(), 1);
+                QCOMPARE(foundRows.first().name, u"members-agy.png"_s);
+            }
+        }
         // The files written last too.
         const NewestOutput newest = ws::newestFiles(index,
             {.limit = 10, .perFolder = 5, .perTree = 10, .notAfter = T + 100, .hiddenFolders = hidden}, pool, {});

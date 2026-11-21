@@ -338,7 +338,7 @@ Window {
                 readonly property bool current: window.hintIndex === index || (window.hintIndex < 0 && index === 0)
 
                 anchors.horizontalCenter: parent.horizontalCenter
-                width: hintLine.width + 24
+                width: Math.min(parent.width, hintLine.implicitWidth + 24)
                 height: Theme.labelRowHeight
                 Accessible.role: Accessible.Button
                 Accessible.name: modelData.text + " " + modelData.action
@@ -358,25 +358,34 @@ Window {
 
                     Text {
                         text: emptyHint.modelData.text
+                        textFormat: Text.PlainText
                         color: Theme.faint
                         font.pixelSize: Theme.uiBody
+                        elide: Text.ElideRight
+                        width: Math.min(implicitWidth, Math.max(0, emptyHint.parent.width - 24
+                            - hintSep.implicitWidth - hintAct.implicitWidth
+                            - (hintAct2.visible ? hintGap.implicitWidth + hintAct2.implicitWidth : 0)))
                     }
                     Text {
+                        id: hintSep
                         text: " · "
                         color: Theme.faint
                         font.pixelSize: Theme.uiBody
                     }
                     Text { // the action: accent words on the plain background, as a link
+                        id: hintAct
                         text: emptyHint.modelData.action
                         color: Theme.accent
                         font.pixelSize: Theme.uiBody
                     }
                     Text {
+                        id: hintGap
                         visible: !!emptyHint.modelData.action2
                         text: "  "
                         font.pixelSize: Theme.uiBody
                     }
                     Text { // a second link on the row
+                        id: hintAct2
                         visible: !!emptyHint.modelData.action2
                         text: emptyHint.modelData.action2
                         color: Theme.accent

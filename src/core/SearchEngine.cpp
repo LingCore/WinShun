@@ -338,7 +338,15 @@ Hidden hiddenOf(const SearchEngine::Request& request, const ParsedQuery& query, 
         parseConditions(request.conditions), std::move(folders)};
     std::erase_if(hidden.types, [&](const std::string& h) {
         return std::ranges::find(types, h) != types.end()
-            || anywhere([&](const ParsedQuery& part) { return std::ranges::find(part.extensions, h) != part.extensions.end(); });
+            || anywhere([&](const ParsedQuery& part) {
+                return std::ranges::find(part.extensions, h) != part.extensions.end()
+                    || std::ranges::any_of(part.terms, [&](const QueryTerm& t) {
+                        if (t.negated || t.text.size() <= h.size())
+                            return false;
+                        const std::size_t dot = t.text.size() - h.size() - 1;
+                        return t.text[dot] == '.' && std::string_view(t.text).substr(dot + 1) == h;
+                    });
+            });
     });
     std::erase_if(hidden.names, [&](const std::string& pattern) {
         return anywhere([&](const ParsedQuery& part) {
@@ -1331,6 +1339,7 @@ SearchEngine::SearchEngine(IndexService* index, AppCatalog* apps, SystemCatalog*
     qRegisterMetaType<ws::SearchResults>();
     qRegisterMetaType<ws::ContentLeftOut>();
     qRegisterMetaType<ws::ContentScope>();
+    qRegisterMetaType<ws::NameLeftOut>();
     qRegisterMetaType<ws::RemovableDrives>();
     m_drivesWorker = std::jthread([this](std::stop_token stop) { drivesLoop(stop); });
     m_scanWorker = std::jthread([this](std::stop_token stop) { workerLoop(stop, Lane::Scans); });
@@ -1375,7 +1384,7 @@ quint64 SearchEngine::submit(Request request)
     const Lane lane = laneOf(request);
     leaveBehind(now);
     m_latest.store(id);
-    if (lane == Lane::Names)
+    if (lane == Lane::Names && request.nameSet == NameSet::Shown)
         m_latestNames.store(id);
     for (std::optional<Job>& pending : m_pending)
         pending.reset(); // one waiting on the other lane is old now too
@@ -1511,7 +1520,8 @@ void SearchEngine::runNameSearch(const Job& job)
     // typed in the panel lists them all the same (browse).
     const bool filtered = request.filter.any() || !request.folders.isEmpty() || !request.typeFolders.isEmpty() || query.hasFilters();
     const bool listing = filtered || (request.browse && query.isEmpty());
-    if (query.isEmpty() && request.startList == StartList::Modified && !listing) {
+    NameLeftOut leftOut;
+    if (request.nameSet == NameSet::Shown && query.isEmpty() && request.startList == StartList::Modified && !listing) {
         // The files written last (in 文件夹, the folders they are in), newest first.
         // A day ahead at most: later is a clock gone wrong, not new work.
         const NewestOptions options {.limit = static_cast<std::size_t>(request.limit),
@@ -1538,7 +1548,7 @@ void SearchEngine::runNameSearch(const Job& job)
         }
         markRecent(results, request.history);
         total = results.size();
-    } else if (query.isEmpty() && !listing) {
+    } else if (request.nameSet == NameSet::Shown && query.isEmpty() && !listing) {
         phase = "listing the recent items";
         const int recentLimit = std::min(std::max(0, request.limit), std::clamp(request.recentItems, 1, 200));
         qsizetype next = 0;
@@ -1610,16 +1620,33 @@ void SearchEngine::runNameSearch(const Job& job)
         const pathtext::TypedPath typedPath = typedIn
             ? pathtext::TypedPath {pathtext::pathFromText(request.currentFolder), request.text}
             : request.regex ? pathtext::TypedPath() : pathtext::splitTyped(request.text);
+        // Explicitly searching inside a hidden folder (everythingCompat): show
+        // its contents instead of hiding what the user specifically asked for.
+        Hidden searchHidden = hidden;
+        if (request.nameSet == NameSet::Shown && searchHidden.folders) {
+            const bool typedHidden
+                = !typedPath.folder.isEmpty() && !insideFirst && searchHidden.folders->hidesPath(typedPath.folder.toStdWString());
+            const bool filteredHidden = !request.folders.isEmpty()
+                && std::ranges::all_of(request.folders, [&](const QString& f) {
+                    return searchHidden.folders->hidesPath(f.toStdWString());
+                });
+            if (typedHidden || filteredHidden)
+                searchHidden.folders.reset();
+        }
         // A share may be indexed at a subfolder: its UNC prefix is a single
         // root entry, not a chain of ancestor names. Search the words alone
         // and constrain by the folder's identity, as for Explorer typing.
         const NameMatcher matcher(withTypes(
-            !typedIn && !typedPath.folder.isEmpty() ? parseQuery(typedPath.name) : query, types, hidden));
+            !typedIn && !typedPath.folder.isEmpty() ? parseQuery(typedPath.name) : query, types, searchHidden));
         // A path typed from some folder along the way ("tools/out/"); none in regex mode.
         const auto relative = [&] { return request.regex ? pathtext::RelativePath() : pathtext::splitRelative(request.text); };
         EntryFilter filter = request.filter;
         filter.merge(query.filter);
         std::vector<EntryId> typeFolders;
+        const NameSearchOptions::SkipMode skipMode = request.nameSet == NameSet::HiddenFolders
+            ? NameSearchOptions::SkipMode::OnlyHiddenFolders
+            : request.nameSet == NameSet::ExcludedFiles ? NameSearchOptions::SkipMode::OnlyExcludedFiles
+                                                        : NameSearchOptions::SkipMode::Shown;
         {
             phase = "waiting for the index";
             const auto lock = index->readLock();
@@ -1656,13 +1683,19 @@ void SearchEngine::runNameSearch(const Job& job)
                 .insideFirst = insideFirst ? folder : kNoEntry, // one not in the index: everything is elsewhere
                 .order = request.order,
                 .trustedUntil = trustedUntil(),
-                .preferred = preferred};
+                .preferred = preferred,
+                .skipMode = skipMode};
             const NameSearchOutput out
                 = searchNames(*index, matcher, options, m_pool, [&] { return isStale(job.id); });
             names = Clock::now() - began - lockWait;
             if (out.cancelled || isStale(job.id))
                 return;
             total = static_cast<qint64>(out.totalMatches);
+            const auto capped = [](std::size_t n) {
+                return static_cast<int>(std::min<std::size_t>(n, static_cast<std::size_t>(std::numeric_limits<int>::max())));
+            };
+            leftOut.hiddenFolders = capped(out.hiddenFolderMatches);
+            leftOut.excludedFiles = capped(out.excludedFileMatches);
             // Keep the exact-folder boundary when other folder filters are
             // present too. A folder absent from the index has only the disk
             // listing below, never a similarly named folder's hits (#49).
@@ -1685,6 +1718,19 @@ void SearchEngine::runNameSearch(const Job& job)
         }
         phase = "putting recent items first";
         arrange(results, request, matcher, rankBy, *m_onDisk, typedPath.folder);
+        if (request.nameSet != NameSet::Shown) {
+            for (SearchResult& r : results) {
+                if (r.path.startsWith(u"\\\\"))
+                    r.offline = m_index->shares().offline(r.path.toStdWString());
+            }
+            phase = "done";
+            if (!isStale(job.id)) {
+                if (!results.isEmpty())
+                    emit driveResults(job.id, results);
+                emit driveProgress(job.id, static_cast<int>(results.size()), true);
+            }
+            return;
+        }
         phase = "apps, places, typed paths, favorites";
 
         // A network folder is listed only when its server answers: one that
@@ -2121,6 +2167,8 @@ void SearchEngine::runNameSearch(const Job& job)
     phase = "done";
     if (isStale(job.id))
         return;
+    if (!query.isEmpty())
+        emit nameLeftOut(job.id, leftOut);
     emit resultsReady(job.id, results, total, timer.nsecsElapsed() / 1000);
     // Something typed, and the list is all there is: whether a drive the
     // index leaves out could hold what was not found (the launcher offers to
@@ -2168,15 +2216,15 @@ RemovableDrives SearchEngine::unindexedRemovableDrives()
 }
 
 // A removable drive the index leaves out, or any folder it does not hold
-// (only the folders chosen are indexed: GitHub #52), walked on the disk for
-// the names (Request::walkFolder): each folder read once, in the order they are met,
-// one at a time (a USB stick serves one request at a time), each file and
-// folder matched as a path from the history is (NameMatcher::matchPath:
-// pinyin, folders, ext: and exclusions as for the index). The rows go out
-// every so often, each batch in the order asked (best match first, or by
-// time); a folder's handle is closed before the next is opened, so the drive
-// can be ejected between folders. Stops at Request::limit rows: more would be
-// a list nobody reads through.
+// (only the folders chosen are indexed: GitHub #52; or excluded folders walked
+// on demand), walked on the disk for the names (Request::walkFolder /
+// walkFolders): each folder read once, in the priority order given, each file
+// and folder matched as a path from the history is (NameMatcher::matchPath:
+// pinyin, folders, ext:, size:, dm: and exclusions as for the index), with a
+// zero-allocation nameMayMatch() pre-filter on every entry. USB sticks and
+// spinning disks are read one folder at a time (handles closed between folders
+// so a removable drive can eject); local SSDs walk in parallel on scanPool().
+// Stops at Request::limit rows: more would be a list nobody reads through.
 void SearchEngine::runDriveWalk(const Job& job)
 {
     const Request& request = job.request;
@@ -2185,21 +2233,56 @@ void SearchEngine::runDriveWalk(const Job& job)
     const std::vector<std::string> types = foldersOnly ? std::vector<std::string>() : foldedExtensions(request.extensions);
     const Hidden hidden = hiddenOf(request, query, types);
     const NameMatcher matcher(withTypes(query, types, hidden));
+    const bool prefilter = matcher.filtersNames();
+    const bool needFile = !types.empty();
+    const EntryFilter& extraFilter = request.filter;
     const RankBy rankBy = request.rankBy;
     const auto stale = [&] { return isStale(job.id); };
     std::optional<PreferredTypes> preferred;
     if (rankBy == RankBy::Match && !request.preferredTypes.isEmpty())
         preferred.emplace(foldedExtensions(request.preferredTypes));
 
+    // Normalize and deduplicate roots while preserving priority order: a child
+    // of another listed root is dropped so nothing is walked or returned twice.
+    std::vector<std::wstring> rawRoots;
+    if (!request.walkFolders.isEmpty()) {
+        rawRoots.reserve(static_cast<std::size_t>(request.walkFolders.size()));
+        for (const QString& f : request.walkFolders) {
+            std::wstring s = QDir::toNativeSeparators(f.trimmed()).toStdWString();
+            while (!s.empty() && s.back() == L'\\')
+                s.pop_back();
+            if (!s.empty())
+                rawRoots.push_back(std::move(s));
+        }
+    } else if (!request.walkFolder.isEmpty()) {
+        std::wstring s = QDir::toNativeSeparators(request.walkFolder.trimmed()).toStdWString();
+        while (!s.empty() && s.back() == L'\\')
+            s.pop_back();
+        if (!s.empty())
+            rawRoots.push_back(std::move(s));
+    }
+    const auto under = [](std::wstring_view path, std::wstring_view ancestor) {
+        return path.size() > ancestor.size() && path[ancestor.size()] == L'\\'
+            && win32::equalsIgnoreCase(path.substr(0, ancestor.size()), ancestor);
+    };
+    std::vector<std::wstring> roots;
+    roots.reserve(rawRoots.size());
+    for (std::size_t i = 0; i < rawRoots.size(); ++i) {
+        const std::wstring& candidate = rawRoots[i];
+        const bool duplicate = std::any_of(rawRoots.begin(), rawRoots.begin() + static_cast<std::ptrdiff_t>(i),
+            [&](const std::wstring& prev) { return win32::equalsIgnoreCase(prev, candidate); });
+        const bool nested = std::ranges::any_of(rawRoots, [&](const std::wstring& other) { return under(candidate, other); });
+        if (!duplicate && !nested)
+            roots.push_back(candidate);
+    }
+
     struct Hit {
         SearchResult row;
         int score;
     };
-    std::vector<Hit> batch;
-    int seen = 0;
-    int found = 0;
-    auto lastSent = std::chrono::steady_clock::now();
-    const auto send = [&](bool finished) {
+    std::mutex emitMutex;
+    const auto emitBatch = [&](std::vector<Hit>& batch, int totalSeen, bool finished) {
+        std::lock_guard emitLock(emitMutex);
         if (stale())
             return;
         const FileTime until = trustedUntil();
@@ -2214,72 +2297,215 @@ void SearchEngine::runDriveWalk(const Job& job)
             return a.score > b.score;
         });
         SearchResults rows;
+        rows.reserve(static_cast<qsizetype>(batch.size()));
         for (Hit& hit : batch)
             rows.push_back(std::move(hit.row));
         batch.clear();
         if (!rows.isEmpty())
             emit driveResults(job.id, rows);
-        emit driveProgress(job.id, seen, finished);
-        lastSent = std::chrono::steady_clock::now();
+        emit driveProgress(job.id, totalSeen, finished);
     };
 
-    // "E:", "D:\work": no backslash at the end ("E:\" is "E:", the drive).
-    std::wstring start = request.walkFolder.toStdWString();
-    while (!start.empty() && start.back() == L'\\')
-        start.pop_back();
-    const int baseDepth = static_cast<int>(std::count(start.begin(), start.end(), L'\\'));
-    const bool driveRoot = start.size() == 2 && start[1] == L':';
-    std::deque<std::wstring> folders {std::move(start)};
-    while (!folders.empty() && !stale() && found < request.limit) {
-        const std::wstring folder = std::move(folders.front());
-        folders.pop_front();
-        const int depth = static_cast<int>(std::count(folder.begin(), folder.end(), L'\\')) - baseDepth;
-        WIN32_FIND_DATAW fd;
-        const win32::UniqueFind find(::FindFirstFileExW(win32::longPath(folder + L"\\*").c_str(), FindExInfoBasic, &fd,
-            FindExSearchNameMatch, nullptr, FIND_FIRST_EX_LARGE_FETCH));
-        if (!find.valid())
-            continue; // not readable (or gone): the index would have left it out too
-        do {
-            const std::wstring_view name(fd.cFileName);
-            if (name == L"." || name == L"..")
+    std::atomic<int> seen {0};
+    std::atomic<int> found {0};
+    std::atomic<bool> stopWalk {false};
+    std::mutex batchMutex;
+    std::vector<Hit> sharedBatch;
+    auto lastSent = std::chrono::steady_clock::now();
+    bool sentAny = false;
+
+    const auto maybeFlush = [&](bool force) {
+        std::vector<Hit> toSend;
+        bool shouldEmit = false;
+        {
+            std::lock_guard lock(batchMutex);
+            const auto now = std::chrono::steady_clock::now();
+            if (force || (!sentAny && !sharedBatch.empty()) || now - lastSent > 200ms) {
+                toSend.swap(sharedBatch);
+                lastSent = now;
+                if (!toSend.empty())
+                    sentAny = true;
+                shouldEmit = true;
+            }
+        }
+        if (shouldEmit)
+            emitBatch(toSend, seen.load(std::memory_order_relaxed), false);
+    };
+
+    // Match one entry; uses reusable UTF-8 buffer for zero-alloc name pre-filtering.
+    const auto tryMatch = [&](const std::wstring& folder, std::wstring_view name, bool isDir, int depth, FileTime modified,
+                              FileTime created, std::uint64_t bytes, std::string& utf8Buf, std::vector<Hit>& out) {
+        if ((foldersOnly && !isDir) || (needFile && isDir))
+            return;
+        const FileSize packedSize = isDir ? kUnknownSize : packSize(bytes);
+        if (extraFilter.any() && !extraFilter.fits(modified, packedSize, isDir))
+            return;
+        if (prefilter) {
+            utf8Buf.clear();
+            wtf8::append(utf8Buf, wtf8::view(name));
+            const std::size_t nameLen = utf8Buf.size();
+            utf8Buf.append(text::kReadPastEnd, '\0');
+            const std::string_view nameView(utf8Buf.data(), nameLen);
+            if (!matcher.nameMayMatch(nameView, extensionLength(nameView, false), pinyin::hasHan(nameView)))
+                return;
+        }
+        const std::wstring path = folder.empty() ? std::wstring(name) : folder + L'\\' + std::wstring(name);
+        const QString qpath = QString::fromStdWString(path);
+        if (!request.typeFolders.isEmpty() && !pathtext::inChosenFolders(request.typeFolders, qpath))
+            return;
+        if (!hidden.empty() && !ofType(qpath, isDir, {}, hidden))
+            return;
+        int score = matcher.matchPath(qpath, isDir, modified, packedSize);
+        if (score < 0)
+            return;
+        const int prev = found.fetch_add(1, std::memory_order_relaxed);
+        if (prev >= request.limit) {
+            stopWalk.store(true, std::memory_order_relaxed);
+            return;
+        }
+        if (prev + 1 >= request.limit)
+            stopWalk.store(true, std::memory_order_relaxed);
+        score -= std::min(depth + 1, 12); // as a name search ranks depth
+        SearchResult r;
+        r.path = qpath;
+        r.name = QString::fromWCharArray(name.data(), static_cast<qsizetype>(name.size()));
+        if (preferred && !isDir && preferred->hasName(wtf8::fromUtf16(wtf8::view(r.name))))
+            score += PreferredTypes::kBonus; // as a name search ranks the types listed first
+        r.isDir = isDir;
+        r.modified = modified;
+        r.created = created;
+        if (!isDir)
+            r.size = static_cast<std::int64_t>(bytes);
+        out.push_back({std::move(r), score});
+    };
+
+    const bool multiWalk = !request.walkFolders.isEmpty();
+    for (const std::wstring& start : roots) {
+        if (stale() || stopWalk.load(std::memory_order_relaxed))
+            break;
+        const bool driveRoot = start.size() == 2 && start[1] == L':';
+        // When walking excluded folders on demand, check whether the excluded
+        // folder itself matches the query too.
+        if (multiWalk && !driveRoot) {
+            const PathProbe probed = probePath(start);
+            if (probed.attributes == INVALID_FILE_ATTRIBUTES || !(probed.attributes & FILE_ATTRIBUTE_DIRECTORY))
                 continue;
-            const bool isDir = fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY;
-            // Windows' own folders at the root hold nothing of the user's.
-            if (isDir && driveRoot && depth == 0 && (name == L"System Volume Information" || name == L"$RECYCLE.BIN"))
-                continue;
-            ++seen;
-            const std::wstring path = folder + L'\\' + std::wstring(name);
-            if (isDir && Crawler::shouldDescend(fd.dwFileAttributes, fd.dwReserved0))
-                folders.push_back(path);
-            if (foldersOnly && !isDir)
-                continue;
-            const QString qpath = QString::fromStdWString(path);
-            if (!request.typeFolders.isEmpty() && !pathtext::inChosenFolders(request.typeFolders, qpath))
-                continue;
-            if (!hidden.empty() && !ofType(qpath, isDir, {}, hidden))
-                continue;
-            const auto modified = knownTime(fileTimeOf(win32::ticks(fd.ftLastWriteTime)));
-            const auto bytes = (std::uint64_t(fd.nFileSizeHigh) << 32) | fd.nFileSizeLow;
-            int score = matcher.matchPath(qpath, isDir, modified, isDir ? kUnknownSize : packSize(bytes));
-            if (score < 0)
-                continue;
-            score -= std::min(depth + 1, 12); // as a name search ranks depth
-            SearchResult r;
-            r.path = qpath;
-            r.name = QString::fromWCharArray(fd.cFileName);
-            if (preferred && !isDir && preferred->hasName(wtf8::fromUtf16(wtf8::view(r.name))))
-                score += PreferredTypes::kBonus; // as a name search ranks the types listed first
-            r.isDir = isDir;
-            r.modified = knownTime(fileTimeOf(win32::ticks(fd.ftLastWriteTime)));
-            r.created = knownTime(fileTimeOf(win32::ticks(fd.ftCreationTime)));
-            batch.push_back({std::move(r), score});
-            if (++found >= request.limit)
-                break;
-        } while (::FindNextFileW(find.get(), &fd));
-        if (std::chrono::steady_clock::now() - lastSent > 200ms)
-            send(false);
+            const std::size_t slash = start.find_last_of(L'\\');
+            if (slash != std::wstring::npos && slash + 1 < start.size()) {
+                std::string utf8Buf;
+                std::vector<Hit> rootHit;
+                tryMatch(start.substr(0, slash), std::wstring_view(start).substr(slash + 1), true, 0,
+                    knownTime(probed.modified), knownTime(probed.created), 0, utf8Buf, rootHit);
+                if (!rootHit.empty()) {
+                    std::lock_guard lock(batchMutex);
+                    sharedBatch.insert(sharedBatch.end(), std::make_move_iterator(rootHit.begin()),
+                        std::make_move_iterator(rootHit.end()));
+                }
+            }
+        }
+
+        int threads = 1;
+        if (start.size() >= 2 && start[1] == L':') {
+            const std::wstring_view drive(start.data(), 2);
+            if (!isExternalVolume(drive) && !placementOf(drive).seeks)
+                threads = std::clamp(scanPool().size(), 1, 4);
+        }
+
+        struct WalkState {
+            std::mutex mutex;
+            std::condition_variable cv;
+            std::deque<std::pair<std::wstring, int>> queue;
+            int active = 0;
+        } state;
+        state.queue.emplace_back(start, 0);
+
+        const auto runWorker = [&](std::size_t) {
+            std::string utf8Buf;
+            utf8Buf.reserve(256);
+            std::vector<std::pair<std::wstring, int>> subdirs;
+            std::vector<Hit> localHits;
+            for (;;) {
+                std::wstring folder;
+                int depth = 0;
+                {
+                    std::unique_lock lock(state.mutex);
+                    state.cv.wait(lock, [&] {
+                        return stopWalk.load(std::memory_order_relaxed) || !state.queue.empty() || state.active == 0;
+                    });
+                    if (stopWalk.load(std::memory_order_relaxed) || state.queue.empty())
+                        break;
+                    auto& front = state.queue.front();
+                    folder = std::move(front.first);
+                    depth = front.second;
+                    state.queue.pop_front();
+                    ++state.active;
+                }
+
+                subdirs.clear();
+                localHits.clear();
+                int localSeen = 0;
+                WIN32_FIND_DATAW fd;
+                const win32::UniqueFind find(::FindFirstFileExW(win32::longPath(folder + L"\\*").c_str(), FindExInfoBasic,
+                    &fd, FindExSearchNameMatch, nullptr, FIND_FIRST_EX_LARGE_FETCH));
+                if (find.valid()) {
+                    do {
+                        if ((localSeen & 255) == 0 && (stale() || stopWalk.load(std::memory_order_relaxed))) {
+                            stopWalk.store(true, std::memory_order_relaxed);
+                            break;
+                        }
+                        const std::wstring_view name(fd.cFileName);
+                        if (name == L"." || name == L"..")
+                            continue;
+                        const bool isDir = (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+                        // Windows' own folders at the root hold nothing of the user's.
+                        if (isDir && driveRoot && depth == 0
+                            && (name == L"System Volume Information" || name == L"$RECYCLE.BIN"))
+                            continue;
+                        ++localSeen;
+                        if (isDir && Crawler::shouldDescend(fd.dwFileAttributes, fd.dwReserved0))
+                            subdirs.emplace_back(folder + L'\\' + std::wstring(name), depth + 1);
+                        const auto modified = knownTime(fileTimeOf(win32::ticks(fd.ftLastWriteTime)));
+                        const auto created = knownTime(fileTimeOf(win32::ticks(fd.ftCreationTime)));
+                        const auto bytes = (std::uint64_t(fd.nFileSizeHigh) << 32) | fd.nFileSizeLow;
+                        tryMatch(folder, name, isDir, depth, modified, created, bytes, utf8Buf, localHits);
+                        if (stopWalk.load(std::memory_order_relaxed))
+                            break;
+                    } while (::FindNextFileW(find.get(), &fd));
+                }
+
+                seen.fetch_add(localSeen, std::memory_order_relaxed);
+                if (!localHits.empty()) {
+                    std::lock_guard lock(batchMutex);
+                    sharedBatch.insert(sharedBatch.end(), std::make_move_iterator(localHits.begin()),
+                        std::make_move_iterator(localHits.end()));
+                }
+                {
+                    std::lock_guard lock(state.mutex);
+                    --state.active;
+                    if (!stopWalk.load(std::memory_order_relaxed) && !stale()) {
+                        for (auto& sub : subdirs)
+                            state.queue.push_back(std::move(sub));
+                    } else {
+                        stopWalk.store(true, std::memory_order_relaxed);
+                    }
+                    state.cv.notify_all();
+                }
+                maybeFlush(false);
+            }
+        };
+
+        if (threads > 1)
+            scanPool().parallelFor(static_cast<std::size_t>(threads), runWorker);
+        else
+            runWorker(0);
     }
-    send(true);
+
+    std::vector<Hit> remaining;
+    {
+        std::lock_guard lock(batchMutex);
+        remaining.swap(sharedBatch);
+    }
+    emitBatch(remaining, seen.load(std::memory_order_relaxed), true);
 }
 
 void SearchEngine::runContentSearch(const Job& job)

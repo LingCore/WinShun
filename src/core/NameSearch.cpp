@@ -481,7 +481,12 @@ NameSearchOutput search(const FileIndex& index, const NameMatcher& matcher, cons
     std::vector<std::vector<NameHit>> partialFolders(apart ? parts : 0);
     std::atomic<std::size_t> nextSlice {0};
     std::atomic<std::size_t> total {0};
+    std::atomic<std::size_t> hiddenFolderTotal {0};
+    std::atomic<std::size_t> excludedFileTotal {0};
     std::atomic<bool> cancelled {false};
+    const auto skipMode = options.skipMode;
+    const bool checkExcluded
+        = matcher.hasExcludedFiles() && skipMode != NameSearchOptions::SkipMode::OnlyHiddenFolders;
     // The folder typed in (insideFirst), for UnderAny: one, so its test is a
     // compare per folder up the way, remembered by parent as for the filter.
     const std::vector<EntryId> insideOf
@@ -518,6 +523,8 @@ NameSearchOutput search(const FileIndex& index, const NameMatcher& matcher, cons
         if (!insideOf.empty())
             inside.emplace(index, insideOf);
         std::size_t matches = 0;
+        std::size_t hiddenFolders = 0;
+        std::size_t excludedFiles = 0;
         for (std::size_t slice = grouped ? nextSlice.fetch_add(1, std::memory_order_relaxed) : part; slice < slices;
             slice = grouped ? nextSlice.fetch_add(1, std::memory_order_relaxed) : slices) {
             if (cancelled.load(std::memory_order_relaxed))
@@ -554,9 +561,26 @@ NameSearchOutput search(const FileIndex& index, const NameMatcher& matcher, cons
                     continue;
                 if (filter.directIn != kNoEntry && e.parent != filter.directIn)
                     continue;
-                int score = matcher.match(index, e, seen, id);
+                NameMatcher::SkipReason skipped = NameMatcher::SkipReason::None;
+                int score = matcher.matchDetailed(index, e, seen, id, skipped, checkExcluded);
                 if (score < 0)
                     continue;
+                if (skipMode == NameSearchOptions::SkipMode::Shown) {
+                    if (skipped == NameMatcher::SkipReason::HiddenFolder) {
+                        ++hiddenFolders;
+                        continue;
+                    }
+                    if (skipped == NameMatcher::SkipReason::ExcludedFile) {
+                        ++excludedFiles;
+                        continue;
+                    }
+                } else if (skipMode == NameSearchOptions::SkipMode::OnlyHiddenFolders) {
+                    if (skipped != NameMatcher::SkipReason::HiddenFolder)
+                        continue;
+                } else {
+                    if (skipped != NameMatcher::SkipReason::ExcludedFile)
+                        continue;
+                }
                 ++matches;
                 score += staticBonus(e);
                 // Before mayAccept, which takes the score for the most it can be:
@@ -586,6 +610,10 @@ NameSearchOutput search(const FileIndex& index, const NameMatcher& matcher, cons
             }
         }
         total.fetch_add(matches, std::memory_order_relaxed);
+        if (hiddenFolders > 0)
+            hiddenFolderTotal.fetch_add(hiddenFolders, std::memory_order_relaxed);
+        if (excludedFiles > 0)
+            excludedFileTotal.fetch_add(excludedFiles, std::memory_order_relaxed);
         partial[part] = top.take();
         if (apart)
             partialFolders[part] = folders.take();
@@ -629,6 +657,8 @@ NameSearchOutput search(const FileIndex& index, const NameMatcher& matcher, cons
             output.hits.end(), order);
     }
     output.totalMatches = total.load();
+    output.hiddenFolderMatches = hiddenFolderTotal.load();
+    output.excludedFileMatches = excludedFileTotal.load();
     return output;
 }
 

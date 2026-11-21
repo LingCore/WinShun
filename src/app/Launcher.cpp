@@ -8,6 +8,7 @@
 #include "Wsl.h"
 
 #include "AppCatalog.h"
+#include "Crawler.h"
 #include "Details.h"
 #include "FileIconProvider.h"
 #include "FilePreview.h"
@@ -28,6 +29,7 @@
 #include "ToastPolicy.h"
 #include "Unc.h"
 #include "WebDav.h"
+#include "Win32Util.h"
 #include "DragPicture.h"
 #include "platform/DragOut.h"
 #include "platform/FileManagers.h"
@@ -142,6 +144,14 @@ constexpr QLatin1StringView kFoldersDismissHint("folders-dismiss");
 constexpr QLatin1StringView kEverywhereHint("everywhere");
 // ... and whether its subfolders are in it (GitHub #182): the other way, this time.
 constexpr QLatin1StringView kLevelHint("level");
+// Matches left out by exclusion rules: in-memory counts (everythingCompat or
+// skipped files), on-demand disk walk of excludedPaths, and settings links.
+constexpr QLatin1StringView kHiddenFoldersHint("hidden-folders");
+constexpr QLatin1StringView kExcludedFilesHint("excluded-files");
+constexpr QLatin1StringView kExcludedFoldersHint("excluded-folders");
+constexpr QLatin1StringView kExcludedSettingsHint("excluded-settings");
+constexpr QLatin1StringView kExcludedFileSettingsHint("excluded-file-settings");
+constexpr QLatin1StringView kScopeSettingsHint("scope-settings");
 
 // What a hint that walks the disk walks: a drive's root, or a folder.
 QString walkedPath(const QString& kind)
@@ -618,6 +628,7 @@ Launcher::Launcher(IndexService* index, AppCatalog* apps, SystemCatalog* places,
     connect(&m_results, &ResultModel::selectionChanged, this, &Launcher::refreshStatus);
     connect(&m_suggester, &WebSuggester::answered, this, &Launcher::onSuggestions);
     connect(m_engine, &SearchEngine::resultsReady, this, &Launcher::onResults);
+    connect(m_engine, &SearchEngine::nameLeftOut, this, &Launcher::onNameLeftOut);
     connect(m_engine, &SearchEngine::contentResults, this, &Launcher::onContentResults);
     connect(m_engine, &SearchEngine::contentProgress, this, &Launcher::onContentProgress);
     connect(m_engine, &SearchEngine::contentLeftOut, this, &Launcher::onContentLeftOut);
@@ -1010,6 +1021,88 @@ void Launcher::setChosenFolders(bool only, const QStringList& folders, bool note
         refreshStatus(); // a folder just added is indexed: its note goes
 }
 
+void Launcher::setExcludedFolders(const QStringList& paths, const QStringList& names, bool everythingCompat,
+    const std::optional<QStringList>& selectedDrives)
+{
+    if (paths == m_excludedPathsRaw && names == m_excludedNamesRaw && everythingCompat == m_everythingCompat
+        && selectedDrives == m_selectedDrives)
+        return;
+    const bool compatChanged = everythingCompat != m_everythingCompat;
+    m_excludedPathsRaw = paths;
+    m_excludedNamesRaw = names;
+    m_everythingCompat = everythingCompat;
+    m_selectedDrives = selectedDrives;
+    m_outsideKnown = false;
+
+    CrawlRules rules;
+    for (const QString& p : paths) {
+        if (p.trimmed().isEmpty())
+            continue;
+        if (std::wstring key = Settings::excludedCompareKey(p); !key.empty())
+            rules.excludedPaths.push_back(std::move(key));
+    }
+    for (const QString& n : names) {
+        const QString trimmed = n.trimmed();
+        if (!trimmed.isEmpty())
+            rules.excludedNames.push_back(QDir::toNativeSeparators(trimmed).toStdWString());
+    }
+    m_excludedCrawler = !rules.excludedPaths.empty() || !rules.excludedNames.empty()
+        ? std::make_unique<Crawler>(rules)
+        : nullptr;
+
+    const auto atOrUnder = [](std::wstring_view path, std::wstring_view dir) {
+        return !dir.empty() && path.size() >= dir.size() && (path.size() == dir.size() || path[dir.size()] == L'\\')
+            && win32::equalsIgnoreCase(path.substr(0, dir.size()), dir);
+    };
+    const std::wstring windir = Settings::excludedCompareKey(u"%WINDIR%"_s);
+    const std::wstring winSxs = Settings::excludedCompareKey(u"%WINDIR%\\WinSxS"_s);
+    const std::wstring winRe = Settings::excludedCompareKey(u"%SystemDrive%\\$WinREAgent"_s);
+
+    struct Candidate {
+        ExcludedFolder entry;
+        std::wstring wide;
+    };
+    std::vector<Candidate> candidates;
+    candidates.reserve(static_cast<std::size_t>(paths.size()));
+    for (const QString& raw : paths) {
+        const QString trimmed = raw.trimmed();
+        if (trimmed.isEmpty())
+            continue;
+        std::wstring norm = Settings::excludedCompareKey(trimmed);
+        if (norm.size() < 3 || norm[1] != L':' || norm[2] != L'\\' || norm.find(L'%') != std::wstring::npos
+            || unc::isUnc(norm))
+            continue;
+        const int priority = atOrUnder(norm, winSxs) ? 2
+                           : (atOrUnder(norm, windir) || atOrUnder(norm, winRe)) ? 1
+                                                                                 : 0;
+        const QString qpath = QString::fromStdWString(norm);
+        const bool bareEnvVar = trimmed.size() >= 3 && trimmed.front() == u'%' && trimmed.back() == u'%'
+            && trimmed.indexOf(u'%', 1) == trimmed.size() - 1;
+        const QString label = bareEnvVar ? trimmed : folderLabel(qpath);
+        candidates.push_back({ExcludedFolder {trimmed, qpath, label, priority}, std::move(norm)});
+    }
+    m_excludedFolders.clear();
+    m_excludedFolders.reserve(candidates.size());
+    for (std::size_t i = 0; i < candidates.size(); ++i) {
+        const std::wstring& path = candidates[i].wide;
+        const bool duplicate = std::any_of(candidates.begin(), candidates.begin() + static_cast<std::ptrdiff_t>(i),
+            [&](const Candidate& prev) { return win32::equalsIgnoreCase(prev.wide, path); });
+        const bool nested = std::ranges::any_of(candidates, [&](const Candidate& other) {
+            return other.wide.size() < path.size() && atOrUnder(path, other.wide);
+        });
+        if (!duplicate && !nested)
+            m_excludedFolders.push_back(std::move(candidates[i].entry));
+    }
+    std::ranges::stable_sort(m_excludedFolders, {}, &ExcludedFolder::priority);
+
+    if (m_window && m_window->isVisible()) {
+        if (compatChanged)
+            search();
+        else
+            refreshStatus();
+    }
+}
+
 void Launcher::noteSearchHere(const QString& folder)
 {
     m_hereFolder = folder;
@@ -1151,25 +1244,68 @@ bool Launcher::setTypingScope(TypingScope scope)
     return true;
 }
 
-QString Launcher::outsideFolder() const
+Launcher::OutsideTarget Launcher::outsideTarget() const
 {
-    if (!m_foldersOnly || m_scope == Content || m_keyword)
+    if (m_scope == Content || m_keyword || regexTerms())
         return {};
     const QString text = searchText();
-    if (m_outsideKnown && m_outsideQuery == text)
+    const QString panelFolder = m_panel ? m_folderFilter : QString();
+    const QString cacheKey = panelFolder.isEmpty() ? text : text + u'\0' + panelFolder;
+    if (m_outsideKnown && m_outsideQuery == cacheKey)
         return m_outside;
     m_outsideKnown = true;
-    m_outsideQuery = text;
-    m_outside.clear();
-    const pathtext::TypedPath typed = pathtext::typedOutside(text, m_chosenFolders);
+    m_outsideQuery = cacheKey;
+    m_outside = {};
+    const pathtext::TypedPath typed = pathtext::splitTyped(text);
+    const QString target = !typed.folder.isEmpty() ? typed.folder : panelFolder;
+    if (target.size() < 2 || !target[0].isLetter() || target[1] != u':')
+        return m_outside;
+
+    OutsideTarget::Kind kind = OutsideTarget::Kind::None;
+    const std::wstring key = Settings::excludedCompareKey(target);
+    const bool excluded = !key.empty() && m_excludedCrawler
+        && (!m_everythingCompat
+                ? m_excludedCrawler->isExcludedPath(key)
+                : m_excludedCrawler->isExcludedDir(key.substr(0, 2), key.substr(0, 2)));
+    if (excluded)
+        kind = OutsideTarget::Kind::Excluded;
+    else if (m_foldersOnly && !pathtext::inChosenFolders(m_chosenFolders, target))
+        kind = OutsideTarget::Kind::NotChosen;
+    else if (!m_foldersOnly && m_selectedDrives && !m_selectedDrives->contains(target.left(2), Qt::CaseInsensitive))
+        kind = OutsideTarget::Kind::UnselectedDrive;
+    if (kind == OutsideTarget::Kind::None)
+        return m_outside;
+
     // A fixed disk of this PC, and the folder there: a removable drive has its
     // own hint, a share its own list, and a folder that is not there holds nothing.
-    if (!typed.folder.isEmpty()) {
-        const std::wstring root = typed.folder.left(3).toStdWString(); // "D:\"
-        if (::GetDriveTypeW(root.c_str()) == DRIVE_FIXED && QFileInfo(typed.folder).isDir())
-            m_outside = typed.folder;
-    }
+    const std::wstring root = (target.left(2) + u'\\').toStdWString(); // "D:\"
+    if (::GetDriveTypeW(root.c_str()) == DRIVE_FIXED && QFileInfo(target).isDir())
+        m_outside = {kind, target};
     return m_outside;
+}
+
+std::vector<const Launcher::ExcludedFolder*> Launcher::applicableExcludedFolders() const
+{
+    std::vector<const ExcludedFolder*> result;
+    if (m_everythingCompat || m_excludedFolders.empty())
+        return result;
+    const QString text = searchText();
+    const pathtext::TypedPath typed = regexTerms() ? pathtext::TypedPath() : pathtext::splitTyped(text);
+    const QString scopeFolder = !typed.folder.isEmpty() ? typed.folder
+                              : (m_panel && !m_folderFilter.isEmpty()) ? m_folderFilter
+                                                                       : QString();
+    for (const ExcludedFolder& entry : m_excludedFolders) {
+        if (m_foldersOnly) {
+            if (!pathtext::inChosenFolders(m_chosenFolders, entry.path))
+                continue;
+        } else if (m_selectedDrives && !m_selectedDrives->contains(entry.path.left(2), Qt::CaseInsensitive)) {
+            continue;
+        }
+        if (!scopeFolder.isEmpty() && !pathtext::inChosenFolders({scopeFolder}, entry.path))
+            continue;
+        result.push_back(&entry);
+    }
+    return result;
 }
 
 // "Search here" named a folder that is not indexed: what is typed after it is
@@ -1179,14 +1315,14 @@ void Launcher::walkHereSoon()
 {
     if (m_hereFolder.isEmpty())
         return;
-    const QString outside = outsideFolder();
-    if (outside.isEmpty() || !pathtext::sameFolder(outside, m_hereFolder)) {
+    const OutsideTarget outside = outsideTarget();
+    if (outside.folder.isEmpty() || !pathtext::sameFolder(outside.folder, m_hereFolder)) {
         if (m_hereSeen || (!searchText().isEmpty() && !pathtext::sameFolder(pathtext::splitTyped(searchText()).folder, m_hereFolder)))
             m_hereFolder.clear(); // typed on elsewhere
         return;
     }
     m_hereSeen = true;
-    const QString kind = kFolderHint + outside;
+    const QString kind = kFolderHint + outside.folder;
     if (!m_hintRunning.isEmpty() || m_hintsTaken.contains(kind) || pathtext::splitTyped(searchText()).name.trimmed().isEmpty()
         || !hintsSettled())
         return;
@@ -1218,6 +1354,12 @@ QVariantList Launcher::leftOutHints() const
             text = tr("正在搜系统和程序文件夹里的文件…");
         else if (m_hintRunning == kTypesHint)
             text = tr("正在搜这些类型的文件…");
+        else if (m_hintRunning == kHiddenFoldersHint)
+            text = tr("正在读取排除目录里的结果…");
+        else if (m_hintRunning == kExcludedFilesHint)
+            text = tr("正在读取已跳过的文件…");
+        else if (m_hintRunning == kExcludedFoldersHint)
+            text = tr("正在搜排除目录… 已看 %Ln 项", nullptr, m_walkSeen);
         else
             text = tr("正在搜 %1… 已看 %Ln 项", nullptr, m_walkSeen).arg(QDir::toNativeSeparators(walkedPath(m_hintRunning)));
         add(m_hintRunning, text, tr("停止"));
@@ -1235,6 +1377,68 @@ QVariantList Launcher::leftOutHints() const
             tr("也搜其他位置"));
         add(kLevelHint, m_typingLevel ? tr("没有搜子文件夹里的") : tr("包含子文件夹里的"),
             m_typingLevel ? tr("含子文件夹") : tr("只搜这一层"));
+    }
+    // Name-search left-out hints come first so an empty filename search offers
+    // excluded folders / skipped files before content size-limit hints.
+    const bool noLocalResults = m_results.count() == 0 || m_webFallbackOnly;
+    const bool sparseResults = noLocalResults || m_results.count() < m_maxRows;
+    OutsideTarget outside;
+    if (m_scope != Content && !m_moreNames) {
+        if (!onlyTypingFolder && sparseResults) {
+            if (m_nameLeftOut.hiddenFolders > 0 && !m_hintsTaken.contains(kHiddenFoldersHint)) {
+                add(kHiddenFoldersHint,
+                    noLocalResults ? tr("排除目录里有 %Ln 项", nullptr, m_nameLeftOut.hiddenFolders)
+                                   : tr("排除目录里另有 %Ln 项", nullptr, m_nameLeftOut.hiddenFolders),
+                    tr("这次也显示"), kExcludedSettingsHint, tr("排除设置…"));
+            }
+            if (m_nameLeftOut.excludedFiles > 0 && !m_hintsTaken.contains(kExcludedFilesHint)) {
+                add(kExcludedFilesHint,
+                    noLocalResults ? tr("已跳过的文件里有 %Ln 项", nullptr, m_nameLeftOut.excludedFiles)
+                                   : tr("已跳过的文件里另有 %Ln 项", nullptr, m_nameLeftOut.excludedFiles),
+                    tr("这次也显示"), kExcludedFileSettingsHint, tr("设置…"));
+            }
+        }
+        outside = outsideTarget();
+        const bool outsideOnDrive = !outside.folder.isEmpty()
+            && std::any_of(m_drives.cbegin(), m_drives.cend(),
+                [&](const RemovableDrive& drive) { return outside.folder.startsWith(drive.root, Qt::CaseInsensitive); });
+        if (outside.kind != OutsideTarget::Kind::None && !outsideOnDrive) {
+            const QString walkKind = kFolderHint + outside.folder;
+            switch (outside.kind) {
+            case OutsideTarget::Kind::Excluded:
+                if (!m_hintsTaken.contains(walkKind))
+                    add(walkKind, tr("这个文件夹在排除目录里，未建索引"), tr("这次也搜它"), kExcludedSettingsHint, tr("排除设置…"));
+                else
+                    add(kExcludedSettingsHint, tr("这个文件夹在排除目录里，未建索引"), tr("排除设置…"));
+                break;
+            case OutsideTarget::Kind::NotChosen:
+                if (!m_hintsTaken.contains(walkKind))
+                    add(walkKind, tr("这个文件夹不在索引范围内"), tr("这次也搜它"), kAddFolderHint + outside.folder, tr("加入索引"));
+                else if (!m_hintsTaken.contains(kAddFolderHint + outside.folder))
+                    add(kAddFolderHint + outside.folder, tr("这个文件夹不在索引范围内"), tr("加入索引"));
+                break;
+            case OutsideTarget::Kind::UnselectedDrive:
+                if (!m_hintsTaken.contains(walkKind))
+                    add(walkKind, tr("这个磁盘不在索引范围内"), tr("这次也搜它"), kScopeSettingsHint, tr("搜索范围…"));
+                else
+                    add(kScopeSettingsHint, tr("这个磁盘不在索引范围内"), tr("搜索范围…"));
+                break;
+            case OutsideTarget::Kind::None:
+                break;
+            }
+        } else if (!onlyTypingFolder && noLocalResults && m_queryError.isEmpty() && !m_everythingCompat
+            && !m_hintsTaken.contains(kExcludedFoldersHint)) {
+            const std::vector<const ExcludedFolder*> excluded = applicableExcludedFolders();
+            if (excluded.size() == 1) {
+                add(kExcludedFoldersHint, tr("排除目录 %1 没搜").arg(excluded.front()->label), tr("这次也搜它"),
+                    kExcludedSettingsHint, tr("排除设置…"));
+            } else if (!excluded.empty()) {
+                const QString text = excluded.front()->priority == 0
+                    ? tr("%1 等 %Ln 个排除目录没搜", nullptr, static_cast<int>(excluded.size())).arg(excluded.front()->label)
+                    : tr("另有 %Ln 个排除目录没搜", nullptr, static_cast<int>(excluded.size()));
+                add(kExcludedFoldersHint, text, tr("也搜这些"), kExcludedSettingsHint, tr("排除设置…"));
+            }
+        }
     }
     if (m_scope == All && m_scanComplete && !m_moreContent && m_leftOut.deferred > 0)
         add(kDeferredHint, tr("还有 %Ln 个文件未搜索内容", nullptr, m_leftOut.deferred), tr("搜索内容"));
@@ -1273,31 +1477,13 @@ QVariantList Launcher::leftOutHints() const
                 tr("这次也搜它"));
         }
     }
-    // Only the chosen folders are indexed (GitHub #52). The folder typed is
-    // not among them: walked for the words typed after it, or added; once
-    // walked, adding it is what is left to offer. Else, when few rows came,
-    // a word that more may be elsewhere, once (closed for good).
-    if (m_scope != Content && !m_moreNames) {
-        const QString outside = outsideFolder();
-        switch (pathtext::scopeNote(m_foldersOnly, !outside.isEmpty(), m_folderNoteDismissed, static_cast<int>(m_results.count()),
-            m_maxRows, searchText().size())) {
-        case pathtext::ScopeNote::Outside:
-            // On an external hard disk the index leaves out (it says
-            // DRIVE_FIXED: GitHub #266), the drive's hint above says it.
-            if (std::any_of(m_drives.cbegin(), m_drives.cend(),
-                    [&](const RemovableDrive& drive) { return outside.startsWith(drive.root, Qt::CaseInsensitive); }))
-                break;
-            if (!m_hintsTaken.contains(kFolderHint + outside))
-                add(kFolderHint + outside, tr("这个文件夹不在索引范围内"), tr("这次也搜它"), kAddFolderHint + outside, tr("加入索引"));
-            else if (!m_hintsTaken.contains(kAddFolderHint + outside))
-                add(kAddFolderHint + outside, tr("这个文件夹不在索引范围内"), tr("加入索引"));
-            break;
-        case pathtext::ScopeNote::Chosen:
-            add(kFoldersHint, tr("只索引了你选的文件夹，可能有别的地方没搜到"), tr("设置文件夹…"), kFoldersDismissHint, tr("不再提示"));
-            break;
-        case pathtext::ScopeNote::None:
-            break;
-        }
+    // Only the chosen folders are indexed (GitHub #52): when few rows came,
+    // a general note once (closed for good).
+    if (m_scope != Content && !m_moreNames && outside.kind == OutsideTarget::Kind::None
+        && pathtext::scopeNote(m_foldersOnly, false, m_folderNoteDismissed, static_cast<int>(m_results.count()),
+               m_maxRows, searchText().size())
+            == pathtext::ScopeNote::Chosen) {
+        add(kFoldersHint, tr("只索引了你选的文件夹，可能有别的地方没搜到"), tr("设置文件夹…"), kFoldersDismissHint, tr("不再提示"));
     }
     return hints;
 }
@@ -1339,6 +1525,18 @@ void Launcher::searchLeftOut(const QString& kind)
         emit shareSettingsRequested();
         return;
     }
+    if (kind == kExcludedSettingsHint) {
+        emit excludedSettingsRequested();
+        return;
+    }
+    if (kind == kExcludedFileSettingsHint) {
+        emit excludedFilesSettingsRequested();
+        return;
+    }
+    if (kind == kScopeSettingsHint) {
+        emit folderSettingsRequested();
+        return;
+    }
     if (kind == kFoldersHint || kind == kFoldersDismissHint) {
         m_folderNoteDismissed = true; // its button was taken either way: said once
         emit folderNoteDismissed();
@@ -1375,13 +1573,57 @@ void Launcher::searchLeftOut(const QString& kind)
     request.preferredTypes = m_preferredTypes;
     request.excludedTypes = m_excludedTypes;
     request.excludedFileNames = m_excludedFileNames;
-    if (kind.startsWith(kDriveHint) || kind.startsWith(kFolderHint)) {
+    if (kind == kHiddenFoldersHint || kind == kExcludedFilesHint) {
+        request.text = nameText();
+        if (!typingWords().isEmpty()) {
+            request.currentFolder = m_typingFolder;
+            request.currentFolderOnly = m_typingOnly;
+            request.currentFolderLevel = m_typingOnly && m_typingLevel;
+        }
+        request.scope = m_scope == Folders ? ws::Scope::Folders : ws::Scope::Files;
+        request.extensions = fileExtensions();
+        request.typeFolders = fileTypeFolders();
+        request.conditions = quickConditions();
+        request.kindOrder = m_kindOrder;
+        if (m_panel) {
+            request.filter = panelFilter();
+            if (!m_folderFilter.isEmpty())
+                request.folders = {m_folderFilter};
+        }
+        request.order = nameOrder();
+        request.limit = kPage;
+        request.regex = regexTerms();
+        request.nameSet = kind == kHiddenFoldersHint ? SearchEngine::NameSet::HiddenFolders
+                                                     : SearchEngine::NameSet::ExcludedFiles;
+        m_walkRunning = true;
+        m_walkSeen = 0;
+    } else if (kind == kExcludedFoldersHint) {
+        const QString text = searchText();
+        const pathtext::TypedPath typed = regexTerms() ? pathtext::TypedPath() : pathtext::splitTyped(text);
+        request.text = !typed.folder.isEmpty() ? typed.name.trimmed() : nameText();
+        request.scope = m_scope == Folders ? ws::Scope::Folders : ws::Scope::Files;
+        request.extensions = fileExtensions();
+        request.typeFolders = fileTypeFolders();
+        request.conditions = quickConditions();
+        if (m_panel)
+            request.filter = panelFilter();
+        request.limit = kPage;
+        for (const ExcludedFolder* entry : applicableExcludedFolders())
+            request.walkFolders.append(entry->path);
+        request.regex = regexTerms();
+        m_walkRunning = true;
+        m_walkSeen = 0;
+    } else if (kind.startsWith(kDriveHint) || kind.startsWith(kFolderHint)) {
         // A folder typed as a path: the words after it are what is looked for
-        // (typed in a folder's window, on a drive too: nameText).
-        request.text = kind.startsWith(kFolderHint) ? pathtext::splitTyped(searchText()).name.trimmed() : nameText();
+        // (typed in a folder's window, on a drive, or in a panel folder filter: nameText).
+        const pathtext::TypedPath typed = pathtext::splitTyped(searchText());
+        request.text = kind.startsWith(kFolderHint) && !typed.folder.isEmpty() ? typed.name.trimmed() : nameText();
         request.scope = m_scope == Folders ? ws::Scope::Folders : ws::Scope::Files; // 全部: its files and folders
         request.extensions = fileExtensions();
         request.typeFolders = fileTypeFolders();
+        request.conditions = quickConditions();
+        if (m_panel)
+            request.filter = panelFilter();
         request.limit = kPage;
         request.walkFolder = walkedPath(kind);
         request.regex = regexTerms();
@@ -1444,6 +1686,10 @@ void Launcher::finishLeftOut(bool stopped)
         m_leftOut.lowPriority = 0;
     else if (kind == kTypesHint)
         m_leftOut.otherTypes = 0;
+    else if (kind == kHiddenFoldersHint)
+        m_nameLeftOut.hiddenFolders = 0;
+    else if (kind == kExcludedFilesHint)
+        m_nameLeftOut.excludedFiles = 0;
     QString said;
     if (stopped)
         said = hits > 0 ? tr("已停止，找到 %Ln 条", nullptr, hits) : tr("已停止");
@@ -1453,6 +1699,12 @@ void Launcher::finishLeftOut(bool stopped)
         said = hits > 0 ? tr("系统和程序文件夹里找到 %Ln 条", nullptr, hits) : tr("系统和程序文件夹里也没有");
     else if (kind == kTypesHint)
         said = hits > 0 ? tr("这些类型的文件里找到 %Ln 条", nullptr, hits) : tr("这些类型的文件里也没有");
+    else if (kind == kHiddenFoldersHint)
+        said = hits > 0 ? tr("排除目录里显示了 %Ln 项", nullptr, hits) : tr("排除目录里也没有");
+    else if (kind == kExcludedFilesHint)
+        said = hits > 0 ? tr("已跳过的文件里显示了 %Ln 项", nullptr, hits) : tr("已跳过的文件里也没有");
+    else if (kind == kExcludedFoldersHint)
+        said = hits > 0 ? tr("排除目录里找到 %Ln 项", nullptr, hits) : tr("排除目录里也没有");
     else {
         const QString root = QDir::toNativeSeparators(walkedPath(kind));
         said = hits > 0 ? tr("%1 里找到 %Ln 项", nullptr, hits).arg(root) : tr("%1 里也没有").arg(root);
@@ -2457,7 +2709,7 @@ void Launcher::searchAgainNow()
 {
     // What is under way searches the index as it is now: its rows come first
     // (asked again, they would never come while the background keeps changing).
-    if (m_pending || m_contentRunning) {
+    if (m_pending || m_contentRunning || m_walkRunning) {
         m_searchAgain.start(100);
         return;
     }
@@ -2529,6 +2781,8 @@ void Launcher::search(bool more)
         m_moreNames = false;
         m_moreContent = false;
         m_leftOut = {};
+        m_nameLeftOut = {};
+        m_webFallbackOnly = false;
         m_drives.clear();
         m_hintsTaken.clear();
         m_leftOutFound.clear();
@@ -2719,9 +2973,12 @@ void Launcher::showRows(SearchResults rows, QStringList highlights)
             sorted.append(std::move(rows[i]));
         rows = std::move(sorted);
     }
+    m_webFallbackOnly = false;
     if (rows.isEmpty()) {
-        if (std::optional<SearchResult> web = webFallbackRow())
+        if (std::optional<SearchResult> web = webFallbackRow()) {
             rows.append(std::move(*web)); // Enter looks the words up instead of 没有找到 (GitHub #320)
+            m_webFallbackOnly = true;
+        }
     }
     if (std::optional<SearchResult> address = webAddressRow()) {
         // First, but after a file or an app of that very name ("baidu.txt"
@@ -3429,6 +3686,17 @@ void Launcher::onContentProgress(quint64 id, int scanned, int total, bool finish
     refreshStatus();
 }
 
+void Launcher::onNameLeftOut(quint64 id, const NameLeftOut& leftOut)
+{
+    if (id != m_nameRequestId || !m_hintRunning.isEmpty())
+        return; // superseded
+    m_nameLeftOut = leftOut;
+    if (m_hintsTaken.contains(kHiddenFoldersHint))
+        m_nameLeftOut.hiddenFolders = 0;
+    if (m_hintsTaken.contains(kExcludedFilesHint))
+        m_nameLeftOut.excludedFiles = 0;
+}
+
 void Launcher::onContentLeftOut(quint64 id, const ContentLeftOut& leftOut)
 {
     if (id != m_requestId || !m_hintRunning.isEmpty())
@@ -3471,14 +3739,23 @@ void Launcher::onDriveResults(quint64 id, const SearchResults& results)
             fresh.append(std::move(r));
         }
     }
+    if (fresh.isEmpty())
+        return;
+    const bool hadNoLocal = m_results.count() == 0 || m_webFallbackOnly;
+    if (m_webFallbackOnly && m_results.count() == 1 && m_results.at(0)->isWeb()) {
+        m_results.removeRange(0, 1);
+        m_webFallbackOnly = false;
+    }
     m_hintHits += static_cast<int>(fresh.size());
     const int at = grouped && ownFolder ? m_results.elsewhereRow() : -1;
     if (at < 0) {
         m_results.append(fresh);
-        return;
+    } else {
+        for (qsizetype i = 0; i < fresh.size(); ++i)
+            m_results.insert(at + static_cast<int>(i), fresh[i]);
     }
-    for (qsizetype i = 0; i < fresh.size(); ++i)
-        m_results.insert(at + static_cast<int>(i), fresh[i]);
+    if (hadNoLocal)
+        emit betterFirstRow();
 }
 
 void Launcher::onDriveProgress(quint64 id, int seen, bool finished)

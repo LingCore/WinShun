@@ -800,6 +800,8 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     connect(m_launcher.get(), &Launcher::shortcutSettingsRequested, this, &App::showShortcutSettings);
     // Only the chosen folders are indexed (GitHub #52): the notes under the results.
     connect(m_launcher.get(), &Launcher::folderSettingsRequested, this, [this] { showSettingsFor(u"Index/Folders"_s); });
+    connect(m_launcher.get(), &Launcher::excludedSettingsRequested, this, [this] { showSettingsFor(u"Index/ExcludedPaths"_s); });
+    connect(m_launcher.get(), &Launcher::excludedFilesSettingsRequested, this, [this] { showSettingsFor(u"Index/ExcludedTypes"_s); });
     // Not a setting the AI settings know of: the section, by its row's title (SettingsWindow.qml).
     connect(m_launcher.get(), &Launcher::shareSettingsRequested, this, [this] {
         showSettings([](QQuickWindow* window) {
@@ -8096,6 +8098,8 @@ void App::tellLauncherFolders()
     for (const std::wstring& path : m_settings.indexFolderPaths())
         chosen.push_back(QString::fromStdWString(path));
     m_launcher->setChosenFolders(m_foldersInEffect, chosen, m_settings.folderHintDismissed);
+    m_launcher->setExcludedFolders(
+        m_settings.excludedPaths, m_settings.excludedNames, m_settings.everythingCompat, m_settings.selectedDrives);
 }
 
 void App::addFolderFromLauncher(const QString& path)

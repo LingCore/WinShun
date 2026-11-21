@@ -9143,6 +9143,220 @@ bool checkSearchWorkload(QQmlEngine* qml, const QDir& output)
     return passed;
 }
 
+// --excluded-recovery: production Main.qml/Panel.qml/Launcher/SearchEngine
+// covering excluded-folder discovery & one-off walk, everythingCompat hidden
+// matches, skipped file reveal / auto-unhide, and typed excluded paths.
+bool checkExcludedRecovery(QQmlEngine* qml, const QDir& output)
+{
+    QTemporaryDir temporary;
+    if (!temporary.isValid()) return false;
+    const QString excludedRoot = QDir::toNativeSeparators(temporary.filePath(u"excluded_temp"_s));
+    const QString otherExcluded = QDir::toNativeSeparators(temporary.filePath(u"excluded_other"_s));
+    const QString targetFile = QDir::toNativeSeparators(
+        temporary.filePath(u"excluded_temp/claude/f3848bdcdc85cc89/ac8bbb5d/scratchpad/members-agy.png"_s));
+    const QString indexedBak = QDir::toNativeSeparators(temporary.filePath(u"indexed/report.bak"_s));
+    const QString indexedDoc = QDir::toNativeSeparators(temporary.filePath(u"indexed/notes.txt"_s));
+    QDir().mkpath(QFileInfo(targetFile).absolutePath());
+    QDir().mkpath(otherExcluded);
+    QDir().mkpath(QFileInfo(indexedBak).absolutePath());
+    for (const QString& p : {targetFile, indexedBak, indexedDoc}) {
+        QFile f(p);
+        if (!f.open(QIODevice::WriteOnly) || f.write("fixture\n") < 0) return false;
+    }
+
+    const auto ensureFolder = [](FileIndex& files, const QString& nativePath) {
+        const QStringList parts = QDir::toNativeSeparators(nativePath).split(u'\\', Qt::SkipEmptyParts);
+        if (parts.isEmpty()) return kNoEntry;
+        EntryId cur = kNoEntry;
+        const std::string rootName = parts.first().toUtf8().toStdString();
+        for (const EntryId r : files.roots()) {
+            if (files.name(r) == rootName) {
+                cur = r;
+                break;
+            }
+        }
+        if (cur == kNoEntry)
+            cur = files.addRoot(rootName);
+        for (qsizetype i = 1; i < parts.size(); ++i) {
+            const std::string seg = parts[i].toUtf8().toStdString();
+            EntryId child = files.findChild(cur, seg);
+            if (child == kNoEntry)
+                child = files.add(cur, seg, EntryFlag::Directory);
+            cur = child;
+        }
+        return cur;
+    };
+
+    IndexService::Options opts;
+    opts.content.enabled = false;
+    IndexService index(temporary.filePath(u"index"_s), opts);
+    {
+        const auto files = index.index();
+        const auto lock = files->writeLock();
+        const EntryId indexedDir = ensureFolder(*files, temporary.filePath(u"indexed"_s));
+        files->add(indexedDir, "report.bak", 0);
+        files->add(indexedDir, "notes.txt", 0);
+    }
+
+    AppCatalog apps;
+    SystemCatalog places;
+    apps.setApps(std::make_shared<const AppList>());
+    places.setPlaces(std::make_shared<const PlaceList>());
+    History history(temporary.filePath(u"history.tsv"_s));
+    SearchEngine search(&index, &apps, &places);
+    Launcher launcher(&index, &apps, &places, &search, &history);
+    launcher.setContentOptions(false, {u"txt"_s}, ContentSizeLimits{}, false, false);
+    launcher.setExcludedFolders({excludedRoot, otherExcluded}, {u"node_modules"_s}, false);
+    launcher.setExcludedFiles({u"bak"_s}, {u"~$*"_s});
+
+    int excludedSettingsCalls = 0;
+    QObject::connect(&launcher, &Launcher::excludedSettingsRequested, &launcher, [&] { ++excludedSettingsCalls; });
+
+    ClipStore store(temporary.filePath(u"clipboard"_s));
+    if (!store.open(QDateTime::currentMSecsSinceEpoch())) return false;
+    ClipboardWatcher watcher({}, {});
+    Clipboard clipboard(&store, &watcher);
+    Placement placement(temporary.filePath(u"state.ini"_s), u"Launcher"_s);
+    WindowFrame frame(false);
+    QQmlComponent component(qml, u"WinShun"_s, u"Main"_s);
+    std::unique_ptr<QObject> object(component.createWithInitialProperties({
+        {u"launcher"_s, QVariant::fromValue(&launcher)}, {u"clipboard"_s, QVariant::fromValue(&clipboard)},
+        {u"frame"_s, QVariant::fromValue(&frame)}, {u"placement"_s, QVariant::fromValue(&placement)}}));
+    auto* window = qobject_cast<QQuickWindow*>(object.get());
+    if (!window) { say(component.errorString()); return false; }
+    window->create();
+    launcher.setWindow(window);
+    frame.setWindow(window);
+    placement.setWindow(window);
+    showOffScreen(window);
+
+    const auto wait = [](int ms) {
+        QEventLoop loop;
+        QTimer::singleShot(ms, &loop, &QEventLoop::quit);
+        loop.exec();
+    };
+    const auto waitFor = [&](const auto& ready) {
+        QElapsedTimer timer;
+        timer.start();
+        while (!ready() && timer.elapsed() < 15000) wait(10);
+        return ready();
+    };
+    const auto findHint = [&](const QString& kind) -> QVariantMap {
+        for (const QVariant& h : launcher.leftOutHints()) {
+            const QVariantMap m = h.toMap();
+            if (m.value(u"kind"_s).toString() == kind) return m;
+        }
+        return {};
+    };
+    const auto hasPath = [&](const QString& path) {
+        return launcher.results()->indexOf(path) >= 0;
+    };
+
+    QJsonObject report;
+    bool passed = true;
+    const auto check = [&](const QString& name, bool okay) {
+        report.insert(name, okay);
+        passed = passed && okay;
+        if (!okay) say(u"excluded recovery failed: "_s + name);
+    };
+
+    // 1. Default mode: searching members-agy.png gives 0 rows + excluded-folders hint #0.
+    launcher.setScope(Launcher::All);
+    launcher.setQuery(u"members-agy.png"_s);
+    check(u"empty_search_settled"_s, waitFor([&] {
+        return !launcher.searching() && window->property("showEmptyState").toBool() && !launcher.leftOutHints().isEmpty();
+    }));
+    const QVariantList emptyHints = launcher.leftOutHints();
+    check(u"empty_zero_rows"_s, launcher.results()->count() == 0);
+    check(u"excluded_hint_first"_s, !emptyHints.isEmpty() && emptyHints.first().toMap().value(u"kind"_s) == u"excluded-folders"_s);
+    check(u"excluded_hint_has_settings"_s, !emptyHints.isEmpty() && emptyHints.first().toMap().value(u"kind2"_s) == u"excluded-settings"_s);
+    wait(60);
+    check(u"empty_screenshot"_s, saveGrab(window, output.filePath(u"excluded-empty.png"_s)));
+
+    // Clicking settings link opens ExcludedPaths settings.
+    launcher.searchLeftOut(u"excluded-settings"_s);
+    check(u"settings_link_fires"_s, excludedSettingsCalls == 1);
+
+    // Taking the excluded-folders hint walks disk and finds members-agy.png.
+    launcher.searchLeftOut(u"excluded-folders"_s);
+    check(u"walk_finds_target"_s, waitFor([&] {
+        return !launcher.busy() && hasPath(targetFile);
+    }));
+    wait(60);
+    check(u"found_screenshot"_s, saveGrab(window, output.filePath(u"excluded-found.png"_s)));
+
+    // 2. Typing an excluded folder path directly offers walking that folder + settings.
+    launcher.setQuery(excludedRoot + u"\\members-agy.png"_s);
+    check(u"typed_excluded_settled"_s, waitFor([&] {
+        return !launcher.searching() && !findHint(u"folder:"_s + excludedRoot).isEmpty();
+    }));
+    const QVariantMap folderHint = findHint(u"folder:"_s + excludedRoot);
+    check(u"typed_excluded_hint_settings"_s, folderHint.value(u"kind2"_s) == u"excluded-settings"_s);
+    launcher.searchLeftOut(u"folder:"_s + excludedRoot);
+    check(u"typed_excluded_walk_finds"_s, waitFor([&] { return !launcher.busy() && hasPath(targetFile); }));
+
+    // 3. Skipped extension: typing report.bak auto-unhides; typing report offers excluded-files reveal.
+    launcher.setQuery(u"report.bak"_s);
+    check(u"typed_skipped_ext_found"_s, waitFor([&] { return !launcher.searching() && hasPath(indexedBak); }));
+    launcher.setQuery(u"report"_s);
+    check(u"skipped_files_hint_offered"_s, waitFor([&] {
+        return !launcher.searching() && !findHint(u"excluded-files"_s).isEmpty();
+    }));
+    check(u"skipped_files_hidden_initially"_s, !hasPath(indexedBak));
+    launcher.searchLeftOut(u"excluded-files"_s);
+    check(u"skipped_files_revealed"_s, waitFor([&] { return !launcher.busy() && hasPath(indexedBak); }));
+
+    // 4. Panel empty state shows recovery hint cleanly.
+    launcher.setPanel(true);
+    window->resize(760, 500);
+    launcher.setQuery(u"members-agy.png"_s);
+    check(u"panel_empty_hint"_s, waitFor([&] {
+        return !launcher.searching() && launcher.results()->count() == 0 && !findHint(u"excluded-folders"_s).isEmpty();
+    }));
+    wait(60);
+    check(u"panel_screenshot"_s, saveGrab(window, output.filePath(u"excluded-panel-empty.png"_s)));
+    // Panel folder filter inside an excluded subtree also offers walking that subtree directly.
+    const QString excludedSub = QDir::toNativeSeparators(temporary.filePath(u"excluded_temp/claude"_s));
+    launcher.setFolderFilter(excludedSub);
+    check(u"panel_excluded_sub_hint"_s, waitFor([&] {
+        return !launcher.searching() && !findHint(u"folder:"_s + excludedSub).isEmpty();
+    }));
+    launcher.searchLeftOut(u"folder:"_s + excludedSub);
+    check(u"panel_excluded_sub_walk_finds"_s, waitFor([&] { return !launcher.busy() && hasPath(targetFile); }));
+    launcher.setFolderFilter({});
+    launcher.setPanel(false);
+
+    // 5. everythingCompat = true: in-memory HiddenFolders count + instant reveal + typed-path auto-unhide.
+    const QString fullExcluded = QString::fromStdWString(Settings::excludedCompareKey(excludedRoot));
+    {
+        IndexService::Options compatOpts;
+        compatOpts.content.enabled = false;
+        compatOpts.hidden.excludedPaths = {Settings::excludedCompareKey(excludedRoot)};
+        index.setOptions(compatOpts);
+        const auto files = index.index();
+        const auto lock = files->writeLock();
+        const EntryId sp = ensureFolder(*files, fullExcluded + u"\\claude\\f3848bdcdc85cc89\\ac8bbb5d\\scratchpad"_s);
+        files->add(sp, "members-agy.png", 0);
+    }
+    const QString fullTarget = QString::fromStdWString(Settings::excludedCompareKey(targetFile));
+    launcher.setQuery({});
+    launcher.setExcludedFolders({excludedRoot, otherExcluded}, {u"node_modules"_s}, true);
+    launcher.setQuery(u"members-agy.png"_s);
+    check(u"compat_hidden_hint_offered"_s, waitFor([&] {
+        return !launcher.searching() && launcher.results()->count() == 0 && !findHint(u"hidden-folders"_s).isEmpty();
+    }));
+    launcher.searchLeftOut(u"hidden-folders"_s);
+    check(u"compat_hidden_revealed"_s, waitFor([&] { return !launcher.busy() && hasPath(fullTarget); }));
+    launcher.setQuery(fullExcluded + u"\\members-agy.png"_s);
+    check(u"compat_typed_path_auto_unhides"_s, waitFor([&] { return !launcher.searching() && hasPath(fullTarget); }));
+
+    window->hide();
+    report.insert(u"passed"_s, passed);
+    QFile result(output.filePath(u"excluded-recovery.json"_s));
+    if (!result.open(QIODevice::WriteOnly) || result.write(QJsonDocument(report).toJson()) < 0) return false;
+    return passed;
+}
+
 // --style-buttons: production controls, process-local input and temporary data.
 // Keeps icon choices distinct from text tabs and an open action marked after hover.
 bool checkStyleButtons(QQmlEngine* engine, const QDir& output)
@@ -9737,6 +9951,10 @@ int runResults(const QStringList& args)
     if (args.contains(u"--search-workload"_s)) {
         engine.addImageProvider(u"thumbnail"_s, new ThumbnailProvider);
         return checkSearchWorkload(&engine, out) ? std::min(g_warnings, 100) : 4;
+    }
+    if (args.contains(u"--excluded-recovery"_s)) {
+        engine.addImageProvider(u"thumbnail"_s, new ThumbnailProvider);
+        return checkExcludedRecovery(&engine, out) ? std::min(g_warnings, 100) : 4;
     }
     ResultModel results;
     results.setThumbnails(false); // synthetic paths: no thumbnail handler or real file access

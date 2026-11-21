@@ -88,6 +88,15 @@ struct ContentScope {
     friend bool operator==(const ContentScope&, const ContentScope&) = default;
 };
 
+// What a name search passed over in the index (SearchEngine::nameLeftOut):
+// entries in hidden folders (everythingCompat) and files skipped by
+// excludedTypes or excludedFileNames. The launcher offers to show them once.
+struct NameLeftOut {
+    int hiddenFolders = 0;
+    int excludedFiles = 0;
+    friend bool operator==(const NameLeftOut&, const NameLeftOut&) = default;
+};
+
 // A removable drive (a USB stick, a memory card) with media in it that the
 // index leaves out (Settings: includeRemovableDrives), as a name search
 // found it (SearchEngine::removableDrives). The launcher offers to walk it
@@ -115,6 +124,14 @@ public:
         LowPriority, // only the files of listed types in system, program and tool folders
         OtherTypes, // only the files of text types not listed (OtherTextTypes), where the scan looked
         Given, // only the files named in contentOnly, as they are now
+    };
+
+    // Which subset of matching names a name search returns: normally the shown
+    // ones, or one of the left-out sets (NameLeftOut) on demand.
+    enum class NameSet : std::uint8_t {
+        Shown,
+        HiddenFolders,
+        ExcludedFiles,
     };
 
     struct Request {
@@ -174,8 +191,13 @@ public:
         // not hold: "D:\work", GitHub #52), for the files and folders named as
         // `text` says (scope, extensions and rankBy as for names). The rows
         // come in batches (driveResults), with how far it is (driveProgress);
-        // a new request stops it, as any search.
+        // a new request stops it, as any search. `walkFolders` walks several
+        // roots in the given priority order (excluded folders on demand).
         QString walkFolder;
+        QStringList walkFolders;
+        // One-off reveal of entries left out in the index (NameLeftOut): runs
+        // on the names lane and reports via driveResults / driveProgress.
+        NameSet nameSet = NameSet::Shown;
         KindOrder kindOrder = KindOrder::FilesFirst; // 全部, 文件
         // Files and folders, and content matches (全部: its apps, places and
         // web shortcuts stay first, by match).
@@ -258,6 +280,9 @@ public:
 signals:
     // Name search, or the (empty) start of a content search.
     void resultsReady(quint64 requestId, const ws::SearchResults& results, qint64 totalMatches, qint64 elapsedUs);
+    // Before resultsReady for a name search with a query: how many matches in
+    // the index were skipped only by hiddenFolders or excluded file rules.
+    void nameLeftOut(quint64 requestId, const ws::NameLeftOut& leftOut);
     // Content search delivers matches incrementally.
     void contentResults(quint64 requestId, const ws::SearchResults& results);
     void contentProgress(quint64 requestId, int scanned, int total, bool finished);
@@ -294,7 +319,9 @@ private:
     enum class Lane : std::uint8_t { Names, Scans };
     static Lane laneOf(const Request& request) noexcept
     {
-        return request.scope == Scope::Content || !request.walkFolder.isEmpty() ? Lane::Scans : Lane::Names;
+        return request.scope == Scope::Content || !request.walkFolder.isEmpty() || !request.walkFolders.isEmpty()
+            ? Lane::Scans
+            : Lane::Names;
     }
 
     void workerLoop(std::stop_token stop, Lane lane);
@@ -364,4 +391,5 @@ SearchResult appResult(const AppInfo& app, bool recent = false, int otherName = 
 
 Q_DECLARE_METATYPE(ws::ContentLeftOut)
 Q_DECLARE_METATYPE(ws::ContentScope)
+Q_DECLARE_METATYPE(ws::NameLeftOut)
 Q_DECLARE_METATYPE(ws::RemovableDrive)

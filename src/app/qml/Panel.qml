@@ -1311,28 +1311,127 @@ Item {
         onRowHoverMoved: (index, globalPos) => panel.rowHoverMoved(index, globalPos)
     }
 
-    Text { // nothing to list, or not yet
+    Column { // nothing to list, or not yet, with recovery hints underneath
+        id: panelEmpty
         readonly property string query: panel.launcher.query.trim().replace(/\s+/g, " ")
+        readonly property var hints: query.length > 0 && !panel.launcher.searching
+            ? panel.launcher.leftOutHints.filter(h => h.kind !== "deferred")
+            : []
         anchors.centerIn: panel.view
-        width: panel.view.width - 48
-        horizontalAlignment: Text.AlignHCenter
+        width: Math.max(0, panel.view.width - 48)
+        spacing: 6
         visible: panel.view.count === 0
-        text: panel.launcher.queryError.length > 0 ? panel.launcher.queryError
-            : panel.launcher.searching ? (panel.launcher.scope === Launcher.Content ? qsTr("正在搜索文件内容…") : qsTr("正在搜索…"))
-            : query.length > 0 ? qsTr("没有找到“%1”").arg(query)
-            : panel.launcher.filtersActive ? qsTr("没有符合筛选条件的文件")
-            : qsTr("输入名称或拼音，或加筛选条件")
-        textFormat: Text.PlainText
-        wrapMode: Text.Wrap
-        color: Theme.faint
-        font.pixelSize: Theme.uiBody
+
+        Text {
+            width: parent.width
+            horizontalAlignment: Text.AlignHCenter
+            text: panel.launcher.queryError.length > 0 ? panel.launcher.queryError
+                : panel.launcher.searching ? (panel.launcher.scope === Launcher.Content ? qsTr("正在搜索文件内容…") : qsTr("正在搜索…"))
+                : panelEmpty.query.length > 0 ? qsTr("没有找到“%1”").arg(panelEmpty.query)
+                : panel.launcher.filtersActive ? qsTr("没有符合筛选条件的文件")
+                : qsTr("输入名称或拼音，或加筛选条件")
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            color: Theme.faint
+            font.pixelSize: Theme.uiBody
+        }
+
+        Repeater {
+            model: panelEmpty.hints
+
+            delegate: Item {
+                id: panelEmptyHint
+
+                required property var modelData
+
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: Math.min(parent.width, panelHintLine.implicitWidth + 24)
+                height: Theme.labelRowHeight
+                Accessible.role: Accessible.Button
+                Accessible.name: modelData.text + " " + modelData.action
+
+                Hook {
+                    anchors.fill: parent
+                    part: Theme.rowHighlight
+                    hovered: panelHintArea.containsMouse
+                    role: "list"
+                    dpr: panel.dpr
+                }
+                Row {
+                    id: panelHintLine
+                    z: 1
+                    anchors.centerIn: parent
+
+                    Text {
+                        text: panelEmptyHint.modelData.text
+                        textFormat: Text.PlainText
+                        color: Theme.faint
+                        font.pixelSize: Theme.uiBody
+                        elide: Text.ElideRight
+                        width: Math.min(implicitWidth, Math.max(0, panelEmpty.width - 24
+                            - panelHintSep.implicitWidth - panelHintAct.implicitWidth
+                            - (panelHintAct2.visible ? panelHintGap.implicitWidth + panelHintAct2.implicitWidth : 0)))
+                    }
+                    Text {
+                        id: panelHintSep
+                        text: " · "
+                        color: Theme.faint
+                        font.pixelSize: Theme.uiBody
+                    }
+                    Text {
+                        id: panelHintAct
+                        text: panelEmptyHint.modelData.action
+                        color: Theme.accent
+                        font.pixelSize: Theme.uiBody
+                    }
+                    Text {
+                        id: panelHintGap
+                        visible: !!panelEmptyHint.modelData.action2
+                        text: "  "
+                        font.pixelSize: Theme.uiBody
+                    }
+                    Text {
+                        id: panelHintAct2
+                        visible: !!panelEmptyHint.modelData.action2
+                        text: panelEmptyHint.modelData.action2
+                        color: Theme.accent
+                        font.pixelSize: Theme.uiBody
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                panel.launcher.searchLeftOut(panelEmptyHint.modelData.kind2)
+                                panel.searchBar.focusAtEnd()
+                            }
+                        }
+                    }
+                }
+                MouseArea {
+                    id: panelHintArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        if (panelEmptyHint.modelData.running)
+                            panel.launcher.stopLeftOut()
+                        else
+                            panel.launcher.searchLeftOut(panelEmptyHint.modelData.kind)
+                        panel.searchBar.focusAtEnd()
+                    }
+                }
+            }
+        }
     }
 
     // Automatic 全部 searches can leave contents unread (#153). Keep the
-    // continuation reachable in both the table and gallery, even with rows.
+    // continuation reachable in both the table and gallery, even with rows,
+    // and surface active one-off walks or in-memory hidden matches there too.
     Item {
         id: contentOffer
         readonly property var hint: panel.launcher.leftOutHints.find(h => h.kind === "deferred")
+            ?? (panel.view.count > 0
+                ? panel.launcher.leftOutHints.find(h => h.running || h.kind === "hidden-folders" || h.kind === "excluded-files")
+                : null)
         visible: !!hint
         height: visible ? Theme.hintRowHeight : 0
         anchors.left: sidebar.right
@@ -1356,7 +1455,8 @@ Item {
             dpr: panel.dpr
             id: contentAction
             objectName: "panelContentSearch"
-            anchors.right: parent.right
+            anchors.right: contentAction2.visible ? contentAction2.left : parent.right
+            anchors.rightMargin: contentAction2.visible ? 4 : 0
             anchors.verticalCenter: parent.verticalCenter
             height: Theme.hintRowHeight - 4
             text: contentOffer.hint ? contentOffer.hint.action : ""
@@ -1365,7 +1465,26 @@ Item {
             Accessible.role: Accessible.Button
             Accessible.name: text
             onClicked: {
-                panel.launcher.searchLeftOut(contentOffer.hint.kind)
+                if (contentOffer.hint.running)
+                    panel.launcher.stopLeftOut()
+                else
+                    panel.launcher.searchLeftOut(contentOffer.hint.kind)
+                panel.searchBar.focusAtEnd()
+            }
+        }
+        FlatButton {
+            dpr: panel.dpr
+            id: contentAction2
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            height: Theme.hintRowHeight - 4
+            text: contentOffer.hint && contentOffer.hint.action2 ? contentOffer.hint.action2 : ""
+            flat: true
+            visible: contentOffer.visible && !!contentOffer.hint && !!contentOffer.hint.action2
+            Accessible.role: Accessible.Button
+            Accessible.name: text
+            onClicked: {
+                panel.launcher.searchLeftOut(contentOffer.hint.kind2)
                 panel.searchBar.focusAtEnd()
             }
         }
