@@ -71,7 +71,9 @@ Plan silentPlan(const QString& program, const QString& arguments, Kind kind, con
 // argument with no backslash before the closing quote ("C:\" is "C:\.");
 // Windows Terminal reads ; as the end of its command, so it is escaped there;
 // WSL cannot change to a share and starts at home for one.
-QString terminalArguments(const QString& id, const QString& folder);
+// When `asAdministrator` is true, terminals that support a working-directory
+// flag (`pwsh`) also pass it explicitly so elevation never falls back to System32.
+QString terminalArguments(const QString& id, const QString& folder, bool asAdministrator = false);
 
 // Whether text typed after the keyword may be an argument of a batch file.
 // cmd.exe reads & | < > ^ and %VARIABLES% even in an argument that is not

@@ -189,7 +189,7 @@ bool safeForCmd(const QString& words)
         && !words.contains(u'\n') && !words.contains(u'\r');
 }
 
-QString terminalArguments(const QString& id, const QString& folder)
+QString terminalArguments(const QString& id, const QString& folder, bool asAdministrator)
 {
     QString dir = QDir::toNativeSeparators(folder);
     const auto quoted = [](QString path) {
@@ -197,7 +197,9 @@ QString terminalArguments(const QString& id, const QString& folder)
             path += u'.';
         return u'"' + path + u'"';
     };
-    if (id == u"powershell" || id == u"pwsh")
+    if (id == u"pwsh")
+        return asAdministrator ? u"-NoLogo -NoExit -WorkingDirectory "_s + quoted(dir) : u"-NoLogo -NoExit"_s;
+    if (id == u"powershell")
         return u"-NoLogo -NoExit"_s;
     if (id == u"wt")
         return u"-d "_s + quoted(dir.replace(u';', u"\\;"_s));

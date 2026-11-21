@@ -663,7 +663,7 @@ Window {
             numberHints.leave()
             if (offset < 0)
                 return event.key === Qt.Key_Escape
-            if (!event.isAutoRepeat && bar !== null && bar.clickLettered(offset)
+            if (!event.isAutoRepeat && bar !== null && bar.clickLettered(offset, event.modifiers & Qt.ShiftModifier)
                     && view.currentItem && view.currentItem.deleteArmed)
                 numberHints.pick() // delete armed: its letter again deletes
             return true

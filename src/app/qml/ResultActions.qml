@@ -46,14 +46,17 @@ Item {
         return ""
     }
     // False: no button shown has that place.
-    function clickLettered(n: int): bool {
+    function clickLettered(n: int, modifiers): bool {
+        const mods = modifiers ?? Qt.NoModifier
         let shown = 0
         for (let i = 0; i < actions.children.length; ++i) {
             const child = actions.children[i]
             if (!child.visible)
                 continue
             if (shown === n) {
+                child.lastModifiers = mods
                 child.clicked()
+                child.lastModifiers = Qt.NoModifier
                 return true
             }
             ++shown
@@ -126,14 +129,16 @@ Item {
         }
         RowAction {
             id: terminalAction
+            objectName: "terminalAction"
             dpr: bar.dpr
             shared: true
             small: bar.small
             keyLetter: bar.letterOf(terminalAction)
             visible: bar.host !== null && !bar.host.isApp // a file's or folder's: its folder in cmd
             glyph: "" // CommandPrompt
-            tip: qsTranslate("ResultRow", "在终端中打开")
-            onClicked: bar.host.actionRequested(bar.host.index, Launcher.OpenTerminal)
+            tip: qsTranslate("ResultRow", "在终端中打开（Shift+点击以管理员身份）")
+            onClicked: bar.host.actionRequested(bar.host.index,
+                (lastModifiers & Qt.ShiftModifier) ? Launcher.OpenTerminalAdmin : Launcher.OpenTerminal)
         }
         RowAction {
             id: copyAction

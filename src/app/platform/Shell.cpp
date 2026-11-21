@@ -603,6 +603,40 @@ bool startViaHelperAsAdministrator(const commandlaunch::Plan& plan, const std::w
     return executeAsAdministrator(exe, parameters, dir, nullptr, SW_HIDE);
 }
 
+// Starts an elevated console program (cmd.exe, Windows PowerShell) with its
+// visible window in `dir`. Direct ShellExecuteExW("runas") drops lpDirectory
+// to System32 for those shells, so we spawn directly when Win顺 is already
+// elevated or via WinShun.exe --run-shown (which preserves `dir`) otherwise.
+// Declining UAC (ERROR_CANCELLED) is not a failure to report.
+bool startElevatedConsole(const QString& program, const QString& arguments, const std::wstring& dir)
+{
+    const commandlaunch::Plan plan = commandlaunch::silentPlan(
+        program, arguments, commandlaunch::Kind::Console, commandlaunch::systemTools(), true);
+    if (!plan.ok)
+        return false;
+    if (integrity::processElevated()) {
+        std::wstring line = plan.commandLine.toStdWString();
+        STARTUPINFOW startup {sizeof(STARTUPINFOW)};
+        PROCESS_INFORMATION started {};
+        if (!::CreateProcessW(nullptr, line.data(), nullptr, nullptr, FALSE, 0, nullptr,
+                dir.empty() ? nullptr : dir.c_str(), &startup, &started))
+            return false;
+        ::CloseHandle(started.hThread);
+        ::CloseHandle(started.hProcess);
+        return true;
+    }
+    const bool ok = startViaHelperAsAdministrator(plan, dir, false);
+    const DWORD error = ok ? ERROR_SUCCESS : ::GetLastError();
+    return ok || error == ERROR_CANCELLED;
+}
+
+bool executeAsAdministratorAllowCancel(const std::wstring& file, const std::wstring& args, const std::wstring& dir)
+{
+    const bool ok = executeAsAdministrator(file, args, dir);
+    const DWORD error = ok ? ERROR_SUCCESS : ::GetLastError();
+    return ok || error == ERROR_CANCELLED;
+}
+
 bool launchCustom(const QString& command, const QString& directory, const QString& query, CommandOptions options)
 {
     const auto [file, arguments] = splitCommand(command);
@@ -706,11 +740,11 @@ std::vector<InstalledBrowser> installedBrowsers()
     return found;
 }
 
-void openTerminal(const QString& folder, std::function<void(bool)> done)
+void openTerminal(const QString& folder, std::function<void(bool)> done, bool asAdministrator)
 {
     ::AllowSetForegroundWindow(ASFW_ANY);
     const QString native = QDir::toNativeSeparators(folder);
-    runOnShellThread([dir = native.toStdWString(), done = std::move(done)] {
+    runOnShellThread([dir = native.toStdWString(), asAdministrator, done = std::move(done)] {
         wchar_t system[MAX_PATH] = {};
         const UINT n = ::GetSystemDirectoryW(system, MAX_PATH);
         bool ok = false;
@@ -721,9 +755,12 @@ void openTerminal(const QString& folder, std::function<void(bool)> done)
                 std::wstring target = dir;
                 while (target.ends_with(L'\\'))
                     target.pop_back();
-                ok = executeUnelevated(cmd, L"/k pushd \"" + target + L'"', {});
+                const std::wstring args = L"/k pushd \"" + target + L'"';
+                ok = asAdministrator ? executeAsAdministratorAllowCancel(cmd, args, {})
+                                     : executeUnelevated(cmd, args, {});
             } else {
-                ok = executeUnelevated(cmd, {}, dir);
+                ok = asAdministrator ? startElevatedConsole(QString::fromStdWString(cmd), {}, dir)
+                                     : executeUnelevated(cmd, {}, dir);
             }
         }
         if (done)
@@ -731,19 +768,31 @@ void openTerminal(const QString& folder, std::function<void(bool)> done)
     });
 }
 
-void openPowerShell(const QString& folder, std::function<void(bool)> done)
+void openPowerShell(const QString& folder, std::function<void(bool)> done, bool asAdministrator)
 {
     ::AllowSetForegroundWindow(ASFW_ANY);
-    runOnShellThread([folder, done = std::move(done)] {
-        QString program = commandlaunch::resolveProgram(u"pwsh"_s, {});
-        if (program.isEmpty()) {
+    runOnShellThread([folder, asAdministrator, done = std::move(done)] {
+        const QString pwsh = commandlaunch::resolveProgram(u"pwsh"_s, {});
+        QString program = pwsh;
+        const bool isPwsh = !pwsh.isEmpty();
+        if (!isPwsh) {
             wchar_t system[MAX_PATH] {};
             const UINT length = ::GetSystemDirectoryW(system, MAX_PATH);
             if (length > 0 && length < MAX_PATH)
                 program = QString::fromWCharArray(system, length) + u"\\WindowsPowerShell\\v1.0\\powershell.exe"_s;
         }
-        const bool ok = !program.isEmpty() && executeUnelevated(program.toStdWString(), L"-NoLogo -NoExit",
-            QDir::toNativeSeparators(folder).toStdWString());
+        const std::wstring dir = QDir::toNativeSeparators(folder).toStdWString();
+        bool ok = false;
+        if (!program.isEmpty()) {
+            const QString id = isPwsh ? u"pwsh"_s : u"powershell"_s;
+            const QString args = commandlaunch::terminalArguments(id, folder, asAdministrator);
+            if (!asAdministrator)
+                ok = executeUnelevated(program.toStdWString(), args.toStdWString(), dir);
+            else if (isPwsh)
+                ok = executeAsAdministratorAllowCancel(program.toStdWString(), args.toStdWString(), dir);
+            else
+                ok = startElevatedConsole(program, args, dir);
+        }
         if (done)
             done(ok);
     });
@@ -822,21 +871,29 @@ std::vector<TerminalChoice> installedTerminals()
     return found;
 }
 
-void openTerminalIn(const QString& choice, const QString& command, const QString& folder, std::function<void(bool)> done)
+void openTerminalIn(const QString& choice, const QString& command, const QString& folder, std::function<void(bool)> done,
+    bool asAdministrator)
 {
     if (choice == u"custom" && !command.trimmed().isEmpty()) { // {query} is the folder, which it also runs in
-        runCustom(command, folder, QDir::toNativeSeparators(folder), std::move(done));
+        runCustom(command, folder, QDir::toNativeSeparators(folder), std::move(done), {.administrator = asAdministrator});
         return;
     }
     const QString program = choice == u"cmd" || choice == u"custom" ? QString() : terminalProgram(choice);
     if (program.isEmpty()) { // cmd, and any no longer there: a share needs its pushd
-        openTerminal(folder, std::move(done));
+        openTerminal(folder, std::move(done), asAdministrator);
         return;
     }
     ::AllowSetForegroundWindow(ASFW_ANY);
-    runOnShellThread([program = program.toStdWString(), arguments = commandlaunch::terminalArguments(choice, folder).toStdWString(),
-                         dir = QDir::toNativeSeparators(folder).toStdWString(), done = std::move(done)] {
-        const bool ok = executeUnelevated(program, arguments, dir);
+    const QString arguments = commandlaunch::terminalArguments(choice, folder, asAdministrator);
+    runOnShellThread([choice, program, arguments, dir = QDir::toNativeSeparators(folder).toStdWString(),
+                         asAdministrator, done = std::move(done)] {
+        bool ok = false;
+        if (!asAdministrator)
+            ok = executeUnelevated(program.toStdWString(), arguments.toStdWString(), dir);
+        else if (choice == u"powershell") // Windows PowerShell 5.1 has no -WorkingDirectory and ignores runas lpDirectory
+            ok = startElevatedConsole(program, arguments, dir);
+        else
+            ok = executeAsAdministratorAllowCancel(program.toStdWString(), arguments.toStdWString(), dir);
         if (done)
             done(ok);
     });

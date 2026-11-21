@@ -86,11 +86,12 @@ struct InstalledBrowser {
 };
 std::vector<InstalledBrowser> installedBrowsers();
 // A command prompt (cmd.exe; in Windows Terminal when that is the default)
-// in `folder`, with the user's normal rights. On a network share, pushd
-// gives it a drive letter: cmd cannot start in a UNC path.
-void openTerminal(const QString& folder, std::function<void(bool)> done = {});
+// in `folder`, with the user's normal rights (or as administrator when
+// `asAdministrator` is true, keeping `folder` instead of System32). On a
+// network share, pushd gives it a drive letter: cmd cannot start in a UNC path.
+void openTerminal(const QString& folder, std::function<void(bool)> done = {}, bool asAdministrator = false);
 // PowerShell 7 when installed, otherwise Windows PowerShell, in this folder.
-void openPowerShell(const QString& folder, std::function<void(bool)> done = {});
+void openPowerShell(const QString& folder, std::function<void(bool)> done = {}, bool asAdministrator = false);
 // What 在终端中打开 can start (GitHub #386), by the settings' ids: cmd,
 // powershell (Windows PowerShell), pwsh (PowerShell 7), wt (Windows
 // Terminal, its default profile), gitbash, wsl; those found here, in that
@@ -100,10 +101,12 @@ struct TerminalChoice {
     QString name;
 };
 std::vector<TerminalChoice> installedTerminals();
-// `folder` in the terminal chosen, with the user's normal rights; custom runs
-// `command` there, {query} the folder. One not found (uninstalled since), or
-// custom with no command: the command prompt.
-void openTerminalIn(const QString& choice, const QString& command, const QString& folder, std::function<void(bool)> done = {});
+// `folder` in the terminal chosen, with the user's normal rights (or as
+// administrator, GitHub #425); custom runs `command` there, {query} the
+// folder. One not found (uninstalled since), or custom with no command: the
+// command prompt.
+void openTerminalIn(const QString& choice, const QString& command, const QString& folder, std::function<void(bool)> done = {},
+    bool asAdministrator = false);
 // A command or shell location ("%windir%\system32\control.exe /name X",
 // "ms-settings:display"): a place in Windows (see SystemCatalog).
 void run(const QString& command, std::function<void(bool)> done = {});

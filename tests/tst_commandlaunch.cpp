@@ -65,8 +65,16 @@ private slots:
         QCOMPARE(terminalArguments(u"wsl"_s, uR"(D:\dev)"_s), uR"(--cd "D:\dev")"_s);
         QCOMPARE(terminalArguments(u"wsl"_s, uR"(\\server\share\docs)"_s), QString()); // at home: no share there
         QCOMPARE(terminalArguments(u"pwsh"_s, uR"(D:\dev)"_s), u"-NoLogo -NoExit"_s); // the folder is its working one
+        QCOMPARE(terminalArguments(u"pwsh"_s, uR"(D:\dev\my project)"_s, true),
+            uR"(-NoLogo -NoExit -WorkingDirectory "D:\dev\my project")"_s); // elevated pwsh passes -WorkingDirectory
+        QCOMPARE(terminalArguments(u"pwsh"_s, u"C:/"_s, true), uR"(-NoLogo -NoExit -WorkingDirectory "C:\.")"_s);
         QCOMPARE(terminalArguments(u"powershell"_s, uR"(D:\dev)"_s), u"-NoLogo -NoExit"_s);
+        QCOMPARE(terminalArguments(u"powershell"_s, uR"(D:\dev)"_s, true), u"-NoLogo -NoExit"_s);
+        QCOMPARE(terminalArguments(u"wt"_s, uR"(D:\dev)"_s, true), uR"(-d "D:\dev")"_s);
+        QCOMPARE(terminalArguments(u"gitbash"_s, uR"(D:\dev)"_s, true), uR"(--cd="D:\dev")"_s);
+        QCOMPARE(terminalArguments(u"wsl"_s, uR"(D:\dev)"_s, true), uR"(--cd "D:\dev")"_s);
         QCOMPARE(terminalArguments(u"cmd"_s, uR"(D:\dev)"_s), QString());
+        QCOMPARE(terminalArguments(u"cmd"_s, uR"(D:\dev)"_s, true), QString());
         QCOMPARE(terminalArguments(u"custom"_s, uR"(D:\dev)"_s), QString());
     }
 

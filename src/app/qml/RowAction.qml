@@ -38,6 +38,7 @@ Rectangle {
     // kept while it shows another, for the next row it is lent to.
     property bool shared: false
     readonly property bool held: area.pressed
+    property int lastModifiers: Qt.NoModifier // keyboard modifiers held during the click that fired clicked()
 
     signal clicked()
     signal dragMoved(point position)
@@ -115,7 +116,11 @@ Rectangle {
         preventStealing: button.draggable // the list does not scroll under a drag
         onPressed: used = true
         onContainsMouseChanged: if (!containsMouse) used = false
-        onClicked: button.clicked()
+        onClicked: (mouse) => {
+            button.lastModifiers = mouse.modifiers
+            button.clicked()
+            button.lastModifiers = Qt.NoModifier
+        }
         onPositionChanged: (mouse) => {
             if (button.draggable && pressed)
                 button.dragMoved(Qt.point(mouse.x, mouse.y))

@@ -305,7 +305,8 @@ public:
     // Alternate: Shift+Enter, a plugin row's third action (Open elsewhere).
     // FavoriteFolder: the folder a file is in into the favorites.
     // EditFavorite: the settings' 收藏夹 page, at the row's favorite.
-    // OpenTerminal: the terminal chosen (setTerminal) in a folder, or in the folder a file is in.
+    // OpenTerminal / OpenTerminalAdmin: the terminal chosen (setTerminal) in a
+    // folder, or in the folder a file is in (as administrator for OpenTerminalAdmin, GitHub #425).
     // PluginAction + n: the nth of a plugin row's actions (its context menu).
     // PluginFileAction + n: the nth of the plugins' `files` commands for a
     // file's or folder's row, or the selection (Catalog::fileCommands; #113).
@@ -325,6 +326,7 @@ public:
         FavoriteFolder,
         EditFavorite,
         OpenTerminal,
+        OpenTerminalAdmin,
         SearchInFolder, // 内容 in a folder's row (the strip shows it chosen)
         SystemMenu, // the shell's own menu for the row (更多选项 in Win顺's; see showSystemMenu)
         Preview, // the file or folder in a preview (Alt+P, togglePreview)
@@ -835,6 +837,10 @@ public:
     // window of the file manager (App: the Explorer tab the launcher was
     // opened from by typing, GitHub #39). Remembered as opened either way.
     void setFolderOpener(std::function<bool(const QString& folder)> opener) { m_folderOpener = std::move(opener); }
+    void setTerminalOpener(std::function<bool(const QString& folder, bool asAdministrator)> opener)
+    {
+        m_terminalOpener = std::move(opener);
+    }
     // The same for Ctrl+Enter on one file or folder (not a drive): true when
     // its folder was shown in that tab with the item selected (GitHub #60).
     void setRevealer(std::function<bool(const QString& path)> revealer) { m_revealer = std::move(revealer); }
@@ -1267,6 +1273,7 @@ private:
     std::unique_ptr<ContentPane> m_contentPane;
     QPointer<QWindow> m_window;
     std::function<bool(const QString& folder)> m_folderOpener; // setFolderOpener
+    std::function<bool(const QString& folder, bool asAdministrator)> m_terminalOpener; // setTerminalOpener (tests)
     std::function<bool(const QString& path)> m_revealer; // setRevealer
 
     QString m_query;

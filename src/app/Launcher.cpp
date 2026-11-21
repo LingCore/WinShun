@@ -5442,7 +5442,7 @@ void Launcher::trigger(int row, int action)
         return;
     }
     // A terminal opens for the row it was asked on, not for each of a selection.
-    if (action != OpenTerminal && m_results.isSelected(row) && m_results.selectedCount() > 1) {
+    if (action != OpenTerminal && action != OpenTerminalAdmin && m_results.isSelected(row) && m_results.selectedCount() > 1) {
         performMany(m_results.selection(), static_cast<Action>(action));
         return;
     }
@@ -5688,7 +5688,8 @@ void Launcher::perform(const SearchResult& result, Action action, bool fileCheck
         return;
     }
     const bool needsFile
-        = action == Open || action == Reveal || action == RunAsAdmin || action == Recycle || action == OpenTerminal;
+        = action == Open || action == Reveal || action == RunAsAdmin || action == Recycle
+        || action == OpenTerminal || action == OpenTerminalAdmin;
     const std::wstring sourcePath = r.path.toStdWString();
     const auto distro = unc::wslDistribution(sourcePath);
     if (needsFile && !distro.empty() && !fileChecked) {
@@ -5820,10 +5821,15 @@ void Launcher::perform(const SearchResult& result, Action action, bool fileCheck
     case AddFavorite:
     case RemoveFavorite:
     case OpenTerminal:
+    case OpenTerminalAdmin: {
+        const QString folder = r.isDir ? r.path : folderOf(r.path);
+        const bool asAdmin = action == OpenTerminalAdmin;
         remember(r.path, m_shownText);
-        shell::openTerminalIn(m_terminal, m_terminalCommand, r.isDir ? r.path : folderOf(r.path), reportFailure(r.name));
+        if (!m_terminalOpener || !m_terminalOpener(folder, asAdmin))
+            shell::openTerminalIn(m_terminal, m_terminalCommand, folder, reportFailure(r.name), asAdmin);
         emit dismissRequested();
         break;
+    }
     case FavoriteFolder:
     case EditFavorite:
     case SystemMenu:
@@ -5884,6 +5890,7 @@ void Launcher::performApp(const SearchResult& app, Action action)
     case FavoriteFolder:
     case EditFavorite:
     case OpenTerminal:
+    case OpenTerminalAdmin:
         break;
     }
 }
@@ -5949,6 +5956,7 @@ void Launcher::performPlace(const SearchResult& place, Action action)
     case FavoriteFolder:
     case EditFavorite:
     case OpenTerminal:
+    case OpenTerminalAdmin:
     case SwitchOn:
     case SwitchOff:
         break;
@@ -6121,6 +6129,7 @@ void Launcher::performWeb(const SearchResult& web, Action action)
     case FavoriteFolder:
     case EditFavorite:
     case OpenTerminal:
+    case OpenTerminalAdmin:
         break;
     }
 }
@@ -6882,6 +6891,8 @@ QVariantList Launcher::menuItems(int row) const
     if (!r->isDir && !r->missing && !r->offline && m_pictureVerbs.pin && pinnablePicture(r->path))
         items.append(entry(PinPicture, tr("贴到屏幕"), QString(), u"\uE718"_s)); // Pin
     items.append(entry(OpenTerminal, tr("在终端中打开"), QString(), u"\uE756"_s)); // CommandPrompt
+    if (!r->missing && !r->offline)
+        items.append(entry(OpenTerminalAdmin, tr("以管理员身份在终端中打开"), QString(), u"\uE7EF"_s)); // Admin shield
     if (r->isDir && m_contentEnabled && !r->path.startsWith(u"\\\\"_s)) // shares: contents are not read there
         items.append(entry(SearchInFolder, tr("在此文件夹中搜内容"), QString(), u"\uE721"_s)); // Search
     if (admin)
