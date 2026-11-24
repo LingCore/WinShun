@@ -25,6 +25,39 @@ Column {
         glyph: "ph:sliders-horizontal"
 
         SettingRow {
+            title: qsTr("触发手势的鼠标按键")
+            description: qsTr("可同时启用多个按键（至少保留一个）；左键仅作为组合手势的第二个按键，不影响正常点击和拖拽")
+
+            body: Flow {
+                width: parent.width
+                spacing: 8
+
+                Repeater {
+                    model: [
+                        { id: "right", label: qsTr("右键"), glyph: "ph:mouse-right-click" },
+                        { id: "middle", label: qsTr("中键"), glyph: "ph:mouse-middle-click" },
+                        { id: "x1", label: qsTr("侧键（后退）"), glyph: "ph:mouse" },
+                        { id: "x2", label: qsTr("侧键（前进）"), glyph: "ph:mouse" }
+                    ]
+
+                    delegate: FlatButton {
+                        required property var modelData
+                        readonly property bool active: page.editor.buttons.indexOf(modelData.id) >= 0
+
+                        objectName: "triggerBtn_" + modelData.id
+                        dpr: page.dpr
+                        implicitHeight: 32
+                        fontSize: Theme.fontCaption
+                        glyphSize: 14
+                        highlighted: active
+                        glyph: active ? "ph:check" : modelData.glyph
+                        text: modelData.label
+                        onClicked: page.editor.toggleButton(modelData.id)
+                    }
+                }
+            }
+        }
+        SettingRow {
             title: qsTr("画出轨迹和将要做的事")
             description: qsTr("画的时候显示轨迹和它要做什么；也管“已复制”这类小提示")
 
@@ -36,7 +69,7 @@ Column {
         }
         SettingRow {
             title: qsTr("全屏的程序里也用手势")
-            description: qsTr("关着时，游戏、放幻灯片、全屏看视频时右键和平常一样，角落和屏幕边也不触发")
+            description: qsTr("关着时，游戏、放幻灯片、全屏看视频时鼠标按键和平常一样，角落和屏幕边也不触发")
 
             ToggleSwitch {
                 dpr: page.dpr
@@ -46,7 +79,7 @@ Column {
         }
         SettingRow {
             title: qsTr("暂停鼠标手势")
-            description: qsTr("暂停后右键、角落和屏幕边都和平常一样；在 Win顺 里输入“手势”也能暂停和恢复")
+            description: qsTr("暂停后鼠标按键、角落和屏幕边都和平常一样；在 Win顺 里输入“手势”也能暂停和恢复")
 
             ToggleSwitch {
                 dpr: page.dpr
@@ -65,7 +98,7 @@ Column {
             id: leftAlone
 
             title: qsTr("这些程序里不用手势")
-            description: qsTr("这些程序里右键和平常一样，角落和屏幕边也不触发")
+            description: qsTr("这些程序里鼠标按键和平常一样，角落和屏幕边也不触发")
 
             FlatButton {
                 id: addExcluded

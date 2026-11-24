@@ -98,11 +98,23 @@ gestures::Settings settingsFrom(const Json& s)
     gestures::Settings out;
     out.rules = rulesFrom(s);
     out.excluded = gestures::programList(winshun::wide(s["exclude"].toString()));
+    out.buttons = gestures::parseTriggerButtons(s["buttons"].toString());
     if (s["trail"].isBool())
         out.trail = s["trail"].toBool();
     if (s["fullScreen"].isBool())
         out.fullScreen = s["fullScreen"].toBool();
     return out;
+}
+
+std::string triggerButtonNames(const std::vector<gestures::MouseButton>& buttons, bool zh)
+{
+    std::wstring joined;
+    for (std::size_t i = 0; i < buttons.size(); ++i) {
+        if (i > 0)
+            joined += zh ? L"、" : L", ";
+        joined += gestures::buttonTitle(buttons[i], zh);
+    }
+    return winshun::utf8(joined);
 }
 
 class Gestures : public winshun::Plugin {
@@ -234,6 +246,7 @@ protected:
         (void)q;
         const bool zh = chinese();
         const bool paused = m_engine && m_engine->paused();
+        const gestures::Settings s = settingsFrom(settings());
         Items items;
         Item status("status", "");
         if (paused) {
@@ -241,14 +254,14 @@ protected:
             status.subtitle = zh ? "Enter 恢复" : "Enter to resume";
             status.icon = kPlayIcon;
         } else {
-            status.title = zh ? "按住右键画出手势" : "Hold the right button and draw";
+            const std::string btns = triggerButtonNames(s.buttons, zh);
+            status.title = zh ? "按住" + btns + "画出手势" : "Hold " + btns + " and draw";
             const std::string count = std::to_string(m_engine ? m_engine->performed() : 0);
-            status.subtitle = zh ? "Win顺 启动后用了 " + count + " 次 · 右键按住停一下再拖，就是平常的右键拖动 · Enter 暂停"
-                                 : "Used " + count + " time(s) since WinShun started · hold still, then drag, for a plain right drag · Enter to pause";
+            status.subtitle = zh ? "Win顺 启动后用了 " + count + " 次 · 按住停一下再拖，就是平常的拖动 · Enter 暂停"
+                                 : "Used " + count + " time(s) since WinShun started · hold still, then drag, for a plain drag · Enter to pause";
             status.icon = kPauseIcon;
         }
         items.push_back(status);
-        const gestures::Settings s = settingsFrom(settings());
         int n = 0;
         for (const gestures::Rule& rule : s.rules) {
             if (rule.action.kind != gestures::Action::Kind::Nothing)
@@ -264,7 +277,7 @@ protected:
             const bool zh = chinese();
             const bool pause = !m_engine->paused();
             setPaused(pause);
-            effects.push_back(winshun::effect::notify(pause ? (zh ? "鼠标手势已暂停，右键照常" : "Mouse gestures paused: the right button is plain again")
+            effects.push_back(winshun::effect::notify(pause ? (zh ? "鼠标手势已暂停，鼠标按键照常" : "Mouse gestures paused: mouse buttons are plain again")
                                                             : (zh ? "鼠标手势已恢复" : "Mouse gestures resumed")));
         }
         effects.push_back(winshun::effect::hide());
@@ -299,6 +312,7 @@ private:
         const gestures::Settings g = settingsFrom(s);
         Json state = Json::Object {};
         state.set("rules", gestures::rulesJson(g.rules));
+        state.set("buttons", gestures::formatTriggerButtons(g.buttons));
         state.set("exclude", s["exclude"].toString());
         state.set("trail", g.trail);
         state.set("fullScreen", g.fullScreen);

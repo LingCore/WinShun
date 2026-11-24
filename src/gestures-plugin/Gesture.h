@@ -139,6 +139,33 @@ Action builtinAction(Builtin builtin);
 // language, the keys or the target as written. Empty for Nothing.
 std::wstring actionTitle(const Action& action, bool chinese);
 
+// ---- mouse buttons ----
+
+// A mouse button involved in a gesture: Right, Middle, X1 (side back) and X2
+// (side forward) may start a gesture or wheel rule; Left is only ever a
+// secondary chord button while a trigger button is held (never held back on
+// its own, so clicks and drags have zero latency).
+enum class MouseButton : std::uint8_t {
+    Any = 0, // matches any enabled trigger button (or no chord)
+    Right,
+    Middle,
+    X1,
+    X2,
+    Left,
+};
+
+const char* buttonId(MouseButton button); // "", "right", "middle", "x1", "x2", "left"
+const char* buttonShortId(MouseButton button); // "", "r", "m", "x1", "x2", "l"
+std::optional<MouseButton> buttonById(std::string_view id);
+bool isTriggerButton(MouseButton button);
+std::vector<MouseButton> defaultTriggerButtons(); // {Right}
+// "right, x1; middle" -> canonical list in Right/Middle/X1/X2 order; falls back to {Right} when empty.
+std::vector<MouseButton> parseTriggerButtons(std::string_view text);
+std::string formatTriggerButtons(const std::vector<MouseButton>& buttons);
+bool hasTriggerButton(const std::vector<MouseButton>& buttons, MouseButton button);
+const wchar_t* buttonTitle(MouseButton button, bool chinese); // 右键 / Right button ...
+const wchar_t* buttonShortTitle(MouseButton button, bool chinese); // 右 / R, 侧1 / X1 ...
+
 // ---- the rules ----
 
 enum class Zone { Anywhere, TopLeft, TopRight, BottomLeft, BottomRight };
@@ -146,10 +173,32 @@ const char* zoneId(Zone zone); // "", "tl", "tr", "bl", "br"
 std::optional<Zone> zoneById(std::string_view id);
 const wchar_t* zoneTitle(Zone zone, bool chinese); // 左上角 …; empty for Anywhere
 
-// What sets a rule off ("on"): a gesture drawn ("DR", "cw"), the pointer
-// pushed into a corner ("corner:tl" …) or rubbed along an edge
-// ("edge:top" …), the wheel turned with the right button held
-// ("wheel:up" / "wheel:down"), a shortcut pressed ("key:Ctrl+Alt+T").
+// A gesture trigger parsed: [ (r|m|x1|x2) ":" ] [ stroke ] [ "+" (l|r|m|x1|x2) ].
+// Either stroke is non-empty ("DR", "cw", "m:U", "D+l") or chord is non-Any ("+l", "r:+l", "x1:+r").
+struct ParsedGesture {
+    MouseButton trigger = MouseButton::Any;
+    std::string stroke;
+    MouseButton chord = MouseButton::Any;
+    bool operator==(const ParsedGesture&) const = default;
+};
+std::optional<ParsedGesture> parseGestureTrigger(std::string_view on);
+std::string formatGestureTrigger(MouseButton trigger, std::string_view stroke, MouseButton chord = MouseButton::Any);
+// Compact label for the HUD chip and rule tile: "↓→", "↓+左", "右+左", "侧1 ↑".
+std::wstring gestureBadge(std::string_view on, bool chinese);
+
+struct ParsedWheel {
+    MouseButton trigger = MouseButton::Any;
+    bool up = true;
+    bool operator==(const ParsedWheel&) const = default;
+};
+std::optional<ParsedWheel> parseWheelTrigger(std::string_view on);
+std::string formatWheelTrigger(MouseButton trigger, bool up);
+
+// What sets a rule off ("on"): a gesture drawn or chorded ("DR", "cw", "m:U",
+// "D+l", "r:+l"), the pointer pushed into a corner ("corner:tl" …) or rubbed
+// along an edge ("edge:top" …), the wheel turned with a trigger button held
+// ("wheel:up" / "wheel:down" or "<btn>:wheel:up|down"), or a shortcut pressed
+// ("key:Ctrl+Alt+T").
 enum class TriggerKind { Gesture, Corner, Edge, Wheel, Key, Unknown };
 TriggerKind triggerKind(std::string_view on);
 inline constexpr std::string_view kCorners[] = {"corner:tl", "corner:tr", "corner:bl", "corner:br"};
@@ -157,7 +206,7 @@ inline constexpr std::string_view kEdges[] = {"edge:top", "edge:bottom", "edge:l
 inline constexpr std::string_view kWheelUp = "wheel:up";
 inline constexpr std::string_view kWheelDown = "wheel:down";
 inline constexpr std::string_view kKeyPrefix = "key:";
-// "↓→", "左上角", "上边", "按住右键向上滚", "Ctrl+Alt+T" …: the trigger as the hint and the settings name it.
+// "↓→", "↓+左", "左上角", "上边", "按住手势键向上滚", "Ctrl+Alt+T" …: the trigger as the hint and the settings name it.
 std::wstring triggerTitle(std::string_view on, bool chinese);
 // A shortcut as a trigger: "ctrl + alt+t" -> "key:Ctrl+Alt+T" (the modifiers
 // in Windows' order Win, Ctrl, Alt, Shift, as the shortcut recorder writes
@@ -185,9 +234,14 @@ struct Rule {
     std::vector<std::wstring> apps;
     Action action;
     bool operator==(const Rule&) const = default;
-    // More specific rules win: a program's over the selection's over a
-    // corner's over the rest.
-    int specificity() const { return (apps.empty() ? 0 : 4) + (selection ? 2 : 0) + (where == Zone::Anywhere ? 0 : 1); }
+    MouseButton triggerButton() const;
+    // More specific rules win: a program's over a specific trigger button's
+    // over the selection's over a corner's over the rest.
+    int specificity() const
+    {
+        return (apps.empty() ? 0 : 8) + (triggerButton() == MouseButton::Any ? 0 : 4) + (selection ? 2 : 0)
+            + (where == Zone::Anywhere ? 0 : 1);
+    }
     // Whether two rules are for the same thing (the later one replaces the other).
     bool sameCase(const Rule& other) const;
 };
@@ -197,15 +251,20 @@ struct Context {
     Zone zone = Zone::Anywhere; // the corner of its screen a gesture was started in
     bool selection = false; // words selected in the window under the pointer
     std::wstring program; // that window's program, a file name in lower case
+    MouseButton button = MouseButton::Any; // the trigger button held (Right/Middle/X1/X2), or Any
 };
 
 // The rule for `on` in `context`, the most specific that holds (the first of
 // those equally specific); null when none.
 const Rule* match(const std::vector<Rule>& rules, std::string_view on, const Context& context);
+// Whether pressing `chord` right now (with `stroke` drawn so far while holding
+// `context.button`) could trigger an active (non-Nothing) rule (either plain
+// or with selected text).
+bool chordMatches(const std::vector<Rule>& rules, std::string_view stroke, MouseButton chord, const Context& context);
 // Whether a rule for words selected could hold for a gesture started with
 // `prefix` (directions so far; empty: any) in `program`: then it is worth
 // asking for the selection.
-bool selectionMatters(const std::vector<Rule>& rules, std::string_view prefix, std::wstring_view program);
+bool selectionMatters(const std::vector<Rule>& rules, std::string_view prefix, std::wstring_view program, MouseButton button = MouseButton::Any);
 // Whether any rule that does something is set off by this kind of trigger:
 // the corners and edges are watched only then.
 bool anyFor(const std::vector<Rule>& rules, TriggerKind kind);
@@ -223,9 +282,66 @@ std::vector<Rule> defaultRules();
 
 struct Settings {
     std::vector<Rule> rules;
-    std::vector<std::wstring> excluded; // programs whose windows keep the right button
+    std::vector<std::wstring> excluded; // programs whose windows keep trigger buttons
+    std::vector<MouseButton> buttons = defaultTriggerButtons(); // enabled trigger buttons
     bool trail = true; // draw the trail and the hint
     bool fullScreen = false; // gestures, corners and edges over a full-screen window too
+};
+
+// ---- mouse button & chord state machine (hook thread) ----
+
+struct SessionResult {
+    enum class Event { None, Move, End, Cancel, Click, PressThrough, Wheel };
+    bool swallow = false; // hook should return 1
+    bool startHoldTimer = false;
+    bool stopHoldTimer = false;
+    bool resetScreenWatches = false;
+    bool watchScreen = false;
+    bool cancelBefore = false; // cancel an earlier stale or gesturing session before proceeding
+    bool startBeforeMove = false; // post kStart before kMove
+    Event event = Event::None;
+    MouseButton button = MouseButton::Any; // active trigger button for the emitted event
+    std::string gesture; // for Move / End
+    bool wheelUp = false; // for Wheel
+    int wheelNotches = 0; // for Wheel
+};
+
+// Pure-logic state machine for the low-level mouse hook: manages multi-button
+// triggers (Right/Middle/X1/X2), plain click replay, hold-still pass-through,
+// strokes, pure rockers, stroke+chord combos (with symmetric simultaneous
+// release and repeat rockers), wheel gestures, and Esc / unmatched-left cancel.
+class GestureSession {
+public:
+    enum class State { Idle, Pressed, Gesturing, Wheeling, Rocked, Through, Canceled };
+
+    State state() const { return m_state; }
+    MouseButton activeButton() const { return m_activeButton; }
+    MouseButton chordButton() const { return m_chordButton; }
+
+    // True when `btn` down should run eligibility checks (window/process/exclusions)
+    // to potentially begin a new trigger session.
+    bool wantsTriggerCheck(MouseButton btn, const std::vector<MouseButton>& enabledButtons, bool activeStillDown = true) const;
+
+    SessionResult onButtonDown(MouseButton btn, int x, int y, int startDistance, int stroke, bool eligible,
+        const Settings& settings, const Context& context, bool activeStillDown = true);
+    SessionResult onButtonUp(MouseButton btn, int x, int y);
+    SessionResult onMove(int x, int y);
+    SessionResult onWheel(int delta, bool hasWheelRules, const Settings& settings, const Context& context);
+    SessionResult onHoldTimer();
+    SessionResult onAbort();
+    void reset();
+
+private:
+    State m_state = State::Idle;
+    MouseButton m_activeButton = MouseButton::Any;
+    MouseButton m_chordButton = MouseButton::Any;
+    std::string m_chordStroke;
+    std::uint8_t m_swallowedButtons = 0;
+    int m_downX = 0;
+    int m_downY = 0;
+    int m_startDistance = 6;
+    int m_wheelDelta = 0;
+    Recognizer m_recognizer;
 };
 
 // "a.exe; B.EXE, c" -> {"a.exe", "b.exe", "c.exe"}: separated by ; , or

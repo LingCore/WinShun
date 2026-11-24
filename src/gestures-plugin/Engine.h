@@ -118,6 +118,7 @@ private:
     // The hook thread.
     void hookThread(std::promise<bool>* ready);
     bool onMouse(WPARAM message, const MSLLHOOKSTRUCT& info);
+    void applySessionResult(const SessionResult& res, POINT at);
     void onHoldTimer();
     void onDwellTimer();
     void watchScreen(POINT pt);
@@ -128,7 +129,7 @@ private:
     // The window thread.
     void windowThread(std::promise<bool>* ready);
     LRESULT onWindowMessage(HWND window, UINT message, WPARAM wParam, LPARAM lParam);
-    void began(POINT down, HWND under);
+    void began(POINT down, HWND under, MouseButton button);
     void render();
     void hideTrail();
     // What the hint by the trail says, in its parts: the arrows on a chip,
@@ -148,7 +149,7 @@ private:
     void textAction(Builtin builtin, const Target& target);
     void askFirst(Builtin builtin, const Target& target);
     void triggered(std::string_view on, POINT at);
-    void wheel(bool up, POINT at, HWND root);
+    void wheel(bool up, POINT at, HWND root, MouseButton button);
     void registerShortcuts();
     void shortcutLetGo();
     void shortcutPressed(const std::string& on);
@@ -159,6 +160,7 @@ private:
     void sendKeys(const std::vector<std::uint16_t>& keys);
     void typeText(const std::wstring& words);
     void sendButton(DWORD down, DWORD up, DWORD data);
+    void replayButton(MouseButton button, bool click);
     void note(POINT at, NoteIcon icon, const std::wstring& text, const std::wstring& lead = {});
 
     EngineOptions m_options;
@@ -176,8 +178,7 @@ private:
     HWND m_window = nullptr; // the trail; messages from the hook thread
 
     // Hook thread only.
-    enum class State { Idle, Pressed, Gesturing, Wheeling, Through, Canceled };
-    State m_state = State::Idle;
+    GestureSession m_session;
     POINT m_down {};
     HWND m_under = nullptr;
     // Its top-level window, as it was then: a browser moves the window of a
@@ -185,11 +186,9 @@ private:
     // m_under's top-level window can be another one by the next notch.
     HWND m_pressedRoot = nullptr;
     std::wstring m_program; // of the window pressed on, a file name in lower case
-    int m_startDistance = 6;
+    Zone m_downZone = Zone::Anywhere;
     UINT_PTR m_holdTimer = 0;
     UINT_PTR m_dwellTimer = 0;
-    int m_wheelDelta = 0; // what is left of a turn smaller than a notch
-    Recognizer m_recognizer;
     CornerWatch m_cornerWatch;
     RubWatch m_rubWatch;
     HMONITOR m_monitor = nullptr; // the screen the pointer was last on

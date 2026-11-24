@@ -14,14 +14,14 @@ struct Text {
     Q_DECLARE_TR_FUNCTIONS(GesturesEditor)
 };
 
-QString directionWords(const std::string& on)
+QString strokeWords(std::string_view stroke)
 {
-    if (on == gestures::kClockwise)
+    if (stroke == gestures::kClockwise)
         return Text::tr("顺时针画圈");
-    if (on == gestures::kCounterClockwise)
+    if (stroke == gestures::kCounterClockwise)
         return Text::tr("逆时针画圈");
     QStringList parts;
-    for (const char c : on) {
+    for (const char c : stroke) {
         switch (c) {
         case 'L': parts << Text::tr("向左"); break;
         case 'R': parts << Text::tr("向右"); break;
@@ -31,6 +31,35 @@ QString directionWords(const std::string& on)
         }
     }
     return parts.join(Text::tr("，再"));
+}
+
+QString gestureWords(const std::string& on, bool chinese)
+{
+    const auto parsed = gestures::parseGestureTrigger(on);
+    if (!parsed)
+        return strokeWords(on);
+    const QString stroke = strokeWords(parsed->stroke);
+    const QString trigger = parsed->trigger == gestures::MouseButton::Any ? QString() : qstr(gestures::buttonTitle(parsed->trigger, chinese));
+    const QString chord = parsed->chord == gestures::MouseButton::Any ? QString() : qstr(gestures::buttonTitle(parsed->chord, chinese));
+    if (parsed->stroke.empty() && !chord.isEmpty()) {
+        if (!trigger.isEmpty())
+            return Text::tr("按住%1，再点%2").arg(trigger, chord);
+        return Text::tr("按住手势键，再点%1").arg(chord);
+    }
+    QString body = stroke;
+    if (!chord.isEmpty())
+        body = Text::tr("%1，再点%2").arg(body, chord);
+    if (!trigger.isEmpty())
+        return Text::tr("按住%1，%2").arg(trigger, body);
+    return body;
+}
+
+QString triggerScopeTitle(gestures::MouseButton button, bool chinese, bool disabled)
+{
+    if (button == gestures::MouseButton::Any)
+        return Text::tr("任意按键");
+    const QString label = Text::tr("仅%1").arg(qstr(gestures::buttonTitle(button, chinese)));
+    return disabled ? Text::tr("%1（未启用）").arg(label) : label;
 }
 
 bool hasApp(const gestures::Rule& rule, const std::wstring& app)
@@ -116,7 +145,9 @@ QHash<int, QByteArray> RulesModel::roleNames() const
 {
     return {
         {SourceRowRole, "sourceRow"}, {OnRole, "on"}, {ArrowsRole, "arrows"}, {DescriptionRole, "description"},
-        {WhereRole, "where"}, {WhereTitleRole, "whereTitle"}, {SelectionRole, "selection"}, {AppsRole, "apps"},
+        {WhereRole, "where"}, {WhereTitleRole, "whereTitle"},
+        {TriggerButtonRole, "triggerButton"}, {TriggerButtonTitleRole, "triggerButtonTitle"}, {TriggerButtonDisabledRole, "triggerButtonDisabled"},
+        {SelectionRole, "selection"}, {AppsRole, "apps"},
         {KindRole, "kind"}, {ActionTitleRole, "actionTitle"}, {ActionNoteRole, "actionNote"}, {ActionIconRole, "actionIcon"},
         {ActionIdRole, "actionId"}, {ProvisionalRole, "provisional"},
     };
@@ -130,20 +161,25 @@ QVariant RulesModel::data(const QModelIndex& index, int role) const
     const gestures::Action& action = rule.action;
     const bool key = gestures::triggerKind(rule.on) == gestures::TriggerKind::Key;
     const bool takesWords = action.kind == gestures::Action::Kind::Builtin && gestures::takesSelection(action.builtin);
+    const gestures::MouseButton trigBtn = rule.triggerButton();
+    const bool trigDisabled = trigBtn != gestures::MouseButton::Any && !gestures::hasTriggerButton(m_buttons, trigBtn);
     switch (role) {
     case SourceRowRole: return index.row();
     case OnRole: return QString::fromStdString(rule.on);
     case ArrowsRole:
-        return key ? qstr(gestures::triggerTitle(rule.on, m_chinese)) : QString::fromUtf8(gestures::arrows(rule.on));
+        return key ? qstr(gestures::triggerTitle(rule.on, m_chinese)) : qstr(gestures::gestureBadge(rule.on, m_chinese));
     case DescriptionRole:
         // A shortcut's section says it is for selected text: only one that is not says so.
         if (key)
             return rule.selection || takesWords ? QString() : Text::tr("不用选中文字");
-        return directionWords(rule.on);
+        return gestureWords(rule.on, m_chinese);
     case WhereRole: return static_cast<int>(rule.where);
     case WhereTitleRole:
         return rule.where == gestures::Zone::Anywhere ? Text::tr("任何位置")
                                                       : Text::tr("从%1开始画").arg(qstr(gestures::zoneTitle(rule.where, m_chinese)));
+    case TriggerButtonRole: return QString::fromLatin1(gestures::buttonId(trigBtn));
+    case TriggerButtonTitleRole: return triggerScopeTitle(trigBtn, m_chinese, trigDisabled);
+    case TriggerButtonDisabledRole: return trigDisabled;
     case SelectionRole: return rule.selection;
     case AppsRole: {
         QStringList apps;
@@ -194,6 +230,15 @@ void RulesModel::setChinese(bool chinese)
     if (m_chinese == chinese)
         return;
     m_chinese = chinese;
+    if (!m_rules.empty())
+        emit dataChanged(index(0), index(static_cast<int>(m_rules.size()) - 1));
+}
+
+void RulesModel::setButtons(const std::vector<gestures::MouseButton>& buttons)
+{
+    if (m_buttons == buttons)
+        return;
+    m_buttons = buttons;
     if (!m_rules.empty())
         emit dataChanged(index(0), index(static_cast<int>(m_rules.size()) - 1));
 }
@@ -251,6 +296,29 @@ bool RulesModel::setWhere(int row, gestures::Zone zone)
     if (const int other = find(probe); other >= 0 && other != row)
         return false;
     m_rules[static_cast<std::size_t>(row)].where = zone;
+    changed(row);
+    if (row != m_provisional)
+        emit edited();
+    return true;
+}
+
+bool RulesModel::setTriggerButton(int row, gestures::MouseButton button)
+{
+    if (row < 0 || row >= static_cast<int>(m_rules.size()))
+        return false;
+    gestures::Rule probe = m_rules[static_cast<std::size_t>(row)];
+    const auto parsed = gestures::parseGestureTrigger(probe.on);
+    if (!parsed)
+        return false;
+    if (parsed->trigger == button)
+        return true;
+    const std::string nextOn = gestures::formatGestureTrigger(button, parsed->stroke, parsed->chord);
+    if (nextOn.empty())
+        return false;
+    probe.on = nextOn;
+    if (const int other = find(probe); other >= 0 && other != row)
+        return false;
+    m_rules[static_cast<std::size_t>(row)].on = nextOn;
     changed(row);
     if (row != m_provisional)
         emit edited();

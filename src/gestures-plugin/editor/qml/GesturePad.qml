@@ -3,37 +3,109 @@ import QtQuick
 import QtQuick.Shapes
 import WinShun
 
-// Where a new gesture is drawn: a recessed area in its card, to be drawn on
-// with the right button (the left works too), read as the plugin reads a
-// drag on the desktop (PadReader). While drawing the trail is the accent's
-// and what is read shows large; on release the gesture is added to the list
-// (or, set already, shown where it is).
+// Where a new gesture or multi-button combo is drawn: a recessed area in its
+// card, driven by PadReader's window event filter so multi-button chords
+// (hold Right/Middle/Side + optional stroke + press a second button) are
+// captured directly without MouseArea's single-button limitation.
 Item {
     id: pad
 
     required property GestureEditor editor
     property string app // the program the new gesture is for ("" : all)
     property bool selection: false // for words selected
+    property bool blocked: false // true while a picker popup is open
     property real dpr: Screen.devicePixelRatio
-    property string message // why a drag was not taken, for a moment
-    property var points: []
-    readonly property bool drawing: area.pressed
+    property string message // why a recording was not taken, for a moment
+    property bool preferPin: true // in multi-button mode, scope newly drawn gestures to the held button by default
+    readonly property bool multiButton: editor.buttons.length > 1
+    readonly property bool effectivePin: multiButton && preferPin
+    readonly property bool drawing: reader.drawing
 
     width: parent ? parent.width : 0
-    height: 152
+    height: multiButton ? 188 : 152
 
-    PadReader { id: reader }
+    PadReader {
+        id: reader
+        target: area
+        dpr: pad.dpr
+        chinese: pad.editor.chinese
+        active: !pad.blocked
+        pinTrigger: pad.effectivePin
+        enabledButtons: pad.editor.buttons
+
+        onFinished: (gesture, tooLong, leftPrimaryChord) => {
+            if (leftPrimaryChord) {
+                pad.message = qsTr("左键只能作为组合手势的第二个按键，请先按住右键、中键或侧键")
+            } else if (tooLong) {
+                pad.message = qsTr("最多 6 段，画简单一点")
+            } else if (gesture.length === 0) {
+                pad.message = qsTr("没读出方向：请画长一点，或按住后再点另一个鼠标键")
+            } else {
+                pad.message = ""
+                pad.editor.addOrFind(gesture, 0, pad.selection, pad.app)
+                return
+            }
+            messageTimer.restart()
+        }
+    }
 
     Timer {
         id: messageTimer
-        interval: 2200
+        interval: 2800
         onTriggered: pad.message = ""
+    }
+
+    // Shown only when multiple trigger buttons are enabled: lets the user choose
+    // whether new gestures recorded on the pad bind to the button physically held
+    // (e.g. X1-only) or work with any enabled trigger button.
+    Row {
+        id: scopeBar
+        visible: pad.multiButton
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.leftMargin: 14
+        anchors.rightMargin: 14
+        anchors.topMargin: 10
+        height: visible ? 28 : 0
+        spacing: 8
+
+        Text {
+            anchors.verticalCenter: parent.verticalCenter
+            text: qsTr("录制按键范围：")
+            color: Theme.subtext
+            font.pixelSize: Theme.fontCaption
+        }
+        FlatButton {
+            objectName: "scopePinButton"
+            anchors.verticalCenter: parent.verticalCenter
+            implicitHeight: 26
+            fontSize: Theme.fontCaption
+            highlighted: pad.preferPin
+            text: qsTr("按所按按键")
+            dpr: pad.dpr
+            onClicked: pad.preferPin = true
+        }
+        FlatButton {
+            objectName: "scopeAnyButton"
+            anchors.verticalCenter: parent.verticalCenter
+            implicitHeight: 26
+            fontSize: Theme.fontCaption
+            highlighted: !pad.preferPin
+            text: qsTr("任意启用按键")
+            dpr: pad.dpr
+            onClicked: pad.preferPin = false
+        }
     }
 
     Rectangle { // the recess: darker than the card, an edge inside it
         id: recess
-        anchors.fill: parent
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.top: pad.multiButton ? scopeBar.bottom : parent.top
         anchors.margins: 12
+        anchors.topMargin: pad.multiButton ? 8 : 12
         radius: Theme.controlRadius
         color: Theme.page
 
@@ -61,7 +133,7 @@ Item {
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.Wrap
-                text: pad.message.length > 0 ? pad.message : qsTr("在这里按住右键画一个手势，松开后选它要做的事")
+                text: pad.message.length > 0 ? pad.message : qsTr("按住手势键画方向，或点另一个键组合，松开选动作")
                 color: pad.message.length > 0 ? Theme.danger : Theme.subtext
                 font.pixelSize: Theme.fontCaption
             }
@@ -74,7 +146,7 @@ Item {
 
             Shape {
                 anchors.fill: parent
-                visible: pad.drawing
+                visible: pad.drawing && reader.points.length >= 2
                 preferredRendererType: Shape.GeometryRenderer
 
                 ShapePath {
@@ -84,75 +156,46 @@ Item {
                     capStyle: ShapePath.RoundCap
                     joinStyle: ShapePath.RoundJoin
 
-                    PathPolyline { path: pad.points }
+                    PathPolyline { path: reader.points }
                 }
             }
         }
 
-        Column { // while drawing: what is read
+        Column { // while drawing: what is read (or prompt before movement/chord)
             anchors.centerIn: parent
+            width: parent.width - 24
             spacing: 4
-            visible: pad.drawing && reader.arrows.length > 0
+            visible: pad.drawing
 
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
+                visible: reader.arrows.length > 0
                 text: reader.arrows
                 color: Theme.text
-                font.pixelSize: 36
+                font.pixelSize: reader.arrows.length <= 3 ? 36 : 26
                 font.weight: Theme.fontStrong
             }
             Text {
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: reader.tooLong ? qsTr("最多 6 段，画简单一点") : qsTr("松开后选它要做的事")
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.Wrap
+                text: reader.tooLong ? qsTr("最多 6 段，画简单一点")
+                    : reader.hasChord ? qsTr("已记录组合键，松开后选它要做的事")
+                    : reader.arrows.length > 0 ? qsTr("松开选动作，或再点另一个鼠标键组合")
+                    : qsTr("拖动画出方向，或直接点另一个鼠标键组合")
                 color: reader.tooLong ? Theme.danger : Theme.subtext
                 font.pixelSize: Theme.fontCaption
             }
         }
 
-        MouseArea {
+        // PadReader's window event filter captures all 5 mouse buttons on this item;
+        // MouseArea only provides the crosshair cursor without stealing multi-button events.
+        Item {
             id: area
             objectName: "padArea"
             anchors.fill: parent
-            acceptedButtons: Qt.LeftButton | Qt.RightButton
-            preventStealing: true // a drag draws; the page does not scroll
-            cursorShape: Qt.CrossCursor
 
-            onPressed: (mouse) => {
-                pad.message = ""
-                pad.points = [Qt.point(mouse.x, mouse.y)]
-                reader.begin(mouse.x, mouse.y, pad.dpr)
-            }
-            onPositionChanged: (mouse) => {
-                if (!pressed)
-                    return
-                const last = pad.points[pad.points.length - 1]
-                if (Math.abs(mouse.x - last.x) + Math.abs(mouse.y - last.y) < 2)
-                    return
-                pad.points = pad.points.concat([Qt.point(mouse.x, mouse.y)])
-                reader.add(mouse.x, mouse.y)
-            }
-            onReleased: pad.finish()
-            onCanceled: {
-                pad.points = []
-                reader.clear()
-            }
+            HoverHandler { cursorShape: Qt.CrossCursor }
         }
-    }
-
-    function finish() {
-        const gesture = reader.gesture
-        const tooLong = reader.tooLong
-        pad.points = []
-        if (tooLong) {
-            pad.message = qsTr("最多 6 段，画简单一点")
-        } else if (gesture.length === 0) {
-            pad.message = qsTr("没读出方向，再画长一点")
-        } else {
-            pad.editor.addOrFind(gesture, 0, pad.selection, pad.app)
-            reader.clear()
-            return
-        }
-        messageTimer.restart()
-        reader.clear()
     }
 }

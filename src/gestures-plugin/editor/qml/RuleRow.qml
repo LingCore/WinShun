@@ -15,6 +15,9 @@ Item {
     required property string arrows
     required property string description
     required property string whereTitle
+    required property string triggerButton
+    required property string triggerButtonTitle
+    required property bool triggerButtonDisabled
     required property bool selection
     required property string kind
     required property string actionTitle
@@ -30,6 +33,7 @@ Item {
     property real dpr: Screen.devicePixelRatio
     readonly property real edge: Theme.edge(row.dpr)
     readonly property bool deleteShown: rowHover.hovered || removeArea.containsMouse
+    readonly property bool showTriggerButton: row.editor.buttons.length > 1 || row.triggerButton.length > 0
 
     // Asks what it does: its picker opens under the action. A gesture just drawn, not given one, is dropped if the picker closes without a choice.
     function askAction() {
@@ -88,9 +92,9 @@ Item {
 
     Rectangle { // the gesture: a tag, not a button
         id: tile
-        x: 18
+        x: row.width < 560 ? 14 : 18
         anchors.verticalCenter: parent.verticalCenter
-        width: 56
+        width: row.width < 560 ? 56 : 64
         height: 32
         radius: Theme.smallControlRadius
         color: Theme.tagFill
@@ -101,7 +105,7 @@ Item {
             horizontalAlignment: Text.AlignHCenter
             text: row.arrows
             color: Theme.text
-            font.pixelSize: 18
+            font.pixelSize: row.arrows.length <= 2 ? 18 : 14
             font.weight: Theme.fontStrong
             fontSizeMode: Text.HorizontalFit
             minimumPixelSize: 10
@@ -110,9 +114,9 @@ Item {
 
     Column {
         anchors.left: tile.right
-        anchors.leftMargin: 14
+        anchors.leftMargin: row.width < 560 ? 10 : 14
         anchors.right: actionButton.left
-        anchors.rightMargin: 16
+        anchors.rightMargin: row.width < 560 ? 10 : 16
         anchors.verticalCenter: parent.verticalCenter
         spacing: 2
 
@@ -124,17 +128,41 @@ Item {
             font.pixelSize: Theme.fontBody
         }
         Row {
+            id: metaRow
+            width: parent.width
             height: 20
             spacing: 6
+            clip: true
 
             Text {
+                id: selectionLabel
                 visible: row.showSelection && row.selection
                 anchors.verticalCenter: parent.verticalCenter
                 text: qsTr("选中文字时") + " ·"
                 color: Theme.subtext
                 font.pixelSize: Theme.fontCaption
             }
+            TriggerButton {
+                id: triggerBtn
+                visible: row.showTriggerButton
+                objectName: "triggerButton"
+                editor: row.editor
+                ruleRow: row.sourceRow
+                triggerTitle: row.triggerButtonTitle
+                triggerDisabled: row.triggerButtonDisabled
+                app: row.app
+                dpr: row.dpr
+            }
+            Text {
+                id: triggerSep
+                visible: row.showTriggerButton
+                anchors.verticalCenter: parent.verticalCenter
+                text: "·"
+                color: Theme.subtext
+                font.pixelSize: Theme.fontCaption
+            }
             ZoneButton {
+                id: zoneBtn
                 objectName: "zoneButton"
                 editor: row.editor
                 ruleRow: row.sourceRow
@@ -145,6 +173,11 @@ Item {
             Text {
                 visible: row.actionNote.length > 0
                 anchors.verticalCenter: parent.verticalCenter
+                width: Math.max(0, metaRow.width
+                    - (selectionLabel.visible ? selectionLabel.implicitWidth + metaRow.spacing : 0)
+                    - (triggerBtn.visible ? triggerBtn.implicitWidth + triggerSep.implicitWidth + 2 * metaRow.spacing : 0)
+                    - zoneBtn.implicitWidth - metaRow.spacing)
+                elide: Text.ElideRight
                 text: "· " + row.actionNote
                 color: Theme.subtext
                 font.pixelSize: Theme.fontCaption
@@ -158,7 +191,7 @@ Item {
         anchors.right: removeButton.left
         anchors.rightMargin: 6
         anchors.verticalCenter: parent.verticalCenter
-        width: row.width < 560 ? 176 : 224 // the program page has half the width
+        width: row.width < 560 ? 156 : 224 // the program page has half the width
         dpr: row.dpr
         open: row.picker.open && row.picker.anchor === actionButton
         asking: row.provisional

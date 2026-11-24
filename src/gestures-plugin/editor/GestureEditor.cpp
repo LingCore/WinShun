@@ -158,7 +158,44 @@ GestureEditor::GestureEditor(QObject* parent)
     connect(&m_saveLater, &QTimer::timeout, this, &GestureEditor::saveRules);
     connect(&m_rules, &RulesModel::edited, this, &GestureEditor::rulesEdited);
     m_rules.setRules(gestures::defaultRules());
+    m_rules.setButtons(m_buttons);
     rebuildPrograms();
+}
+
+QStringList GestureEditor::buttons() const
+{
+    QStringList out;
+    for (const gestures::MouseButton b : m_buttons)
+        out << QString::fromLatin1(gestures::buttonId(b));
+    return out;
+}
+
+bool GestureEditor::hasButton(const QString& id) const
+{
+    const auto btn = gestures::buttonById(id.toStdString());
+    return btn && gestures::hasTriggerButton(m_buttons, *btn);
+}
+
+void GestureEditor::toggleButton(const QString& id)
+{
+    const auto btn = gestures::buttonById(id.toStdString());
+    if (!btn || !gestures::isTriggerButton(*btn))
+        return;
+    std::vector<gestures::MouseButton> next = m_buttons;
+    if (gestures::hasTriggerButton(next, *btn)) {
+        if (next.size() <= 1)
+            return; // always keep at least one trigger button enabled
+        std::erase(next, *btn);
+    } else {
+        next.push_back(*btn);
+        next = gestures::parseTriggerButtons(gestures::formatTriggerButtons(next));
+    }
+    if (next == m_buttons)
+        return;
+    m_buttons = std::move(next);
+    m_rules.setButtons(m_buttons);
+    emit buttonsChanged();
+    saveButtons();
 }
 
 QVariantList GestureEditor::categories() const
@@ -263,6 +300,20 @@ void GestureEditor::applyState(const QJsonObject& state, bool first)
             rebuildPrograms();
         }
     }
+    if (state.contains(u"buttons"_s)) {
+        const std::vector<gestures::MouseButton> parsed = gestures::parseTriggerButtons(state.value(u"buttons"_s).toString().toStdString());
+        const QString incoming = QString::fromStdString(gestures::formatTriggerButtons(parsed));
+        const QString current = QString::fromStdString(gestures::formatTriggerButtons(m_buttons));
+        if (first) {
+            m_pendingButtons.clear();
+            m_heardButtons = incoming;
+        }
+        if (first || accept(m_pendingButtons, m_heardButtons, incoming, current)) {
+            m_buttons = parsed;
+            m_rules.setButtons(m_buttons);
+            emit buttonsChanged();
+        }
+    }
     if (state.contains(u"exclude"_s)) {
         const QStringList incoming = toList(gestures::programList(wstr(state.value(u"exclude"_s).toString())));
         if (first) {
@@ -319,6 +370,9 @@ void GestureEditor::useSample()
     add("DR", gestures::Action {}, {L"photoshop.exe"});
     add(gestures::kWheelUp.data(), gestures::keysAction(L"Ctrl+="), {L"photoshop.exe"});
     add("D", gestures::builtinAction(gestures::Builtin::Refresh), {L"chrome.exe"});
+    add("D+l", gestures::builtinAction(gestures::Builtin::ReopenTab));
+    add("r:+l", gestures::builtinAction(gestures::Builtin::CloseTab));
+    add("x1:U", gestures::builtinAction(gestures::Builtin::NewTab));
     add("cw", gestures::builtinAction(gestures::Builtin::Shutdown), {}, gestures::Zone::BottomRight);
     add("corner:tl", gestures::builtinAction(gestures::Builtin::TaskView));
     add("corner:br", gestures::openAction(L"C:\\Windows\\System32\\notepad.exe"));
@@ -333,6 +387,9 @@ void GestureEditor::useSample()
     }
     m_taken = {u"key:Ctrl+Alt+G"_s}; // as if another program held it
     emit takenChanged();
+    m_buttons = {gestures::MouseButton::Right, gestures::MouseButton::X1};
+    m_rules.setButtons(m_buttons);
+    emit buttonsChanged();
     m_rules.setRules(std::move(rules));
     m_excluded = {u"mstsc.exe"_s, u"vmware.exe"_s};
     ++m_revision;
@@ -354,6 +411,13 @@ void GestureEditor::saveRules()
     const QString json = QString::fromStdString(gestures::rulesJson(m_rules.saved()));
     remember(m_pendingRules, json);
     emit saveRequested({{u"rules"_s, json}});
+}
+
+void GestureEditor::saveButtons()
+{
+    const QString text = QString::fromStdString(gestures::formatTriggerButtons(m_buttons));
+    remember(m_pendingButtons, text);
+    emit saveRequested({{u"buttons"_s, text}});
 }
 
 void GestureEditor::saveExcluded()
@@ -472,6 +536,53 @@ QVariantList GestureEditor::zoneChoices(int row) const
         const QString text = zone == gestures::Zone::Anywhere ? Text::tr("任何位置")
                                                                : Text::tr("从%1开始画").arg(qstr(gestures::zoneTitle(zone, m_chinese)));
         out.append(QVariantMap {{u"text"_s, text}, {u"glyph"_s, QString::fromLatin1(icons[static_cast<int>(zone)])}, {u"zone"_s, static_cast<int>(zone)}});
+    }
+    return out;
+}
+
+void GestureEditor::setTriggerButton(int row, const QString& buttonId, const QString& app)
+{
+    const gestures::MouseButton btn = buttonId.isEmpty()
+        ? gestures::MouseButton::Any
+        : gestures::buttonById(buttonId.toStdString()).value_or(gestures::MouseButton::Any);
+    if (!app.isEmpty())
+        row = m_rules.isolate(row, wstr(app));
+    m_rules.setTriggerButton(row, btn);
+}
+
+QVariantList GestureEditor::buttonChoices(int row) const
+{
+    QVariantList out;
+    const auto& rules = m_rules.rules();
+    if (row < 0 || row >= static_cast<int>(rules.size()))
+        return out;
+    const auto parsed = gestures::parseGestureTrigger(rules[static_cast<std::size_t>(row)].on);
+    if (!parsed)
+        return out;
+    const auto iconOf = [](gestures::MouseButton b) -> QString {
+        switch (b) {
+        case gestures::MouseButton::Right: return u"ph:mouse-right-click"_s;
+        case gestures::MouseButton::Middle: return u"ph:mouse-middle-click"_s;
+        case gestures::MouseButton::X1:
+        case gestures::MouseButton::X2: return u"ph:mouse"_s;
+        default: return u"ph:mouse-simple"_s;
+        }
+    };
+    for (const gestures::MouseButton cand : {gestures::MouseButton::Any, gestures::MouseButton::Right,
+             gestures::MouseButton::Middle, gestures::MouseButton::X1, gestures::MouseButton::X2}) {
+        if (parsed->trigger == cand)
+            continue;
+        const std::string nextOn = gestures::formatGestureTrigger(cand, parsed->stroke, parsed->chord);
+        if (nextOn.empty())
+            continue;
+        gestures::Rule probe = rules[static_cast<std::size_t>(row)];
+        probe.on = nextOn;
+        if (const int other = m_rules.find(probe); other >= 0 && other != row)
+            continue;
+        const QString text = cand == gestures::MouseButton::Any
+            ? Text::tr("任意按键")
+            : Text::tr("仅%1").arg(qstr(gestures::buttonTitle(cand, m_chinese)));
+        out.append(QVariantMap {{u"text"_s, text}, {u"glyph"_s, iconOf(cand)}, {u"button"_s, QString::fromLatin1(gestures::buttonId(cand))}});
     }
     return out;
 }

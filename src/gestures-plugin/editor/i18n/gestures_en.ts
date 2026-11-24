@@ -134,6 +134,30 @@
         <translation>Gestures</translation>
     </message>
     <message>
+        <source>触发手势的鼠标按键</source>
+        <translation>Mouse buttons for gestures</translation>
+    </message>
+    <message>
+        <source>可同时启用多个按键（至少保留一个）；左键仅作为组合手势的第二个按键，不影响正常点击和拖拽</source>
+        <translation>Enable one or more trigger buttons (keep at least one). The left button only works as the second button in multi-button gestures so clicks and drags stay instant</translation>
+    </message>
+    <message>
+        <source>右键</source>
+        <translation>Right button</translation>
+    </message>
+    <message>
+        <source>中键</source>
+        <translation>Middle button</translation>
+    </message>
+    <message>
+        <source>侧键（后退）</source>
+        <translation>Side 1 (Back)</translation>
+    </message>
+    <message>
+        <source>侧键（前进）</source>
+        <translation>Side 2 (Forward)</translation>
+    </message>
+    <message>
         <source>画出轨迹和将要做的事</source>
         <translation>Draw the trail and what it will do</translation>
     </message>
@@ -146,16 +170,20 @@
         <translation>Gestures in full-screen programs too</translation>
     </message>
     <message>
-        <source>关着时，游戏、放幻灯片、全屏看视频时右键和平常一样，角落和屏幕边也不触发</source>
-        <translation>Off: in games, slide shows and full-screen video the right button is plain, and the corners and edges do nothing</translation>
+        <source>关着时，游戏、放幻灯片、全屏看视频时鼠标按键和平常一样，角落和屏幕边也不触发</source>
+        <translation>Off: in games, slide shows and full-screen video mouse buttons act normally, and corners and edges do nothing</translation>
+    </message>
+    <message>
+        <source>暂停后鼠标按键、角落和屏幕边都和平常一样；在 Win顺 里输入“手势”也能暂停和恢复</source>
+        <translation>While paused, mouse buttons, corners and edges act normally; type “gestures” in WinShun to pause or resume too</translation>
+    </message>
+    <message>
+        <source>这些程序里鼠标按键和平常一样，角落和屏幕边也不触发</source>
+        <translation>Mouse buttons act normally there, and corners and edges do nothing</translation>
     </message>
     <message>
         <source>暂停鼠标手势</source>
         <translation>Pause mouse gestures</translation>
-    </message>
-    <message>
-        <source>暂停后右键、角落和屏幕边都和平常一样；在 Win顺 里输入“手势”也能暂停和恢复</source>
-        <translation>While paused, the right button, corners and edges are plain; type “gestures” in WinShun to pause or resume too</translation>
     </message>
     <message>
         <source>不用手势的程序</source>
@@ -164,10 +192,6 @@
     <message>
         <source>这些程序里不用手势</source>
         <translation>No gestures in these programs</translation>
-    </message>
-    <message>
-        <source>这些程序里右键和平常一样，角落和屏幕边也不触发</source>
-        <translation>The right button is plain there, and the corners and edges do nothing</translation>
     </message>
     <message>
         <source>添加程序</source>
@@ -225,16 +249,16 @@
         <translation>Gestures drawn</translation>
     </message>
     <message>
-        <source>先选中一段文字，再按住右键画：只在有选中文字时生效，没选中时还是上一页的手势。浏览器、VS Code、微信等用 Chromium 做的程序和 Firefox 里读不到选中的字（读了会让它们变慢），在那里还是上一页的手势</source>
-        <translation>Select some words first, then draw with the right button: these count only while words are selected; with none selected the gestures of the Gestures page hold. Browsers, VS Code, WeChat and other programs made with Chromium, and Firefox, are not read (asking them makes them slower): the Gestures page holds there</translation>
-    </message>
-    <message>
         <source>这些手势只在这个程序里生效，并且优先于其它页上的同一个手势；设成“什么都不做”可以在这个程序里关掉某个手势</source>
         <translation>These gestures count only in this program and win over the same gesture on the other pages; set one to “Do nothing” to turn it off in this program</translation>
     </message>
     <message>
-        <source>还没有手势：在上面的框里按住右键画一个</source>
-        <translation>No gestures yet: hold the right button and draw one in the box above</translation>
+        <source>先选中一段文字，再按住手势键画：只在有选中文字时生效，没选中时还是上一页的手势。浏览器、VS Code、微信等用 Chromium 做的程序和 Firefox 里读不到选中的字（读了会让它们变慢），在那里还是上一页的手势</source>
+        <translation>Select some words first, then draw with a gesture button: these count only while words are selected; with none selected the gestures of the Gestures page hold. Browsers, VS Code, WeChat and other programs made with Chromium, and Firefox, are not read (asking them makes them slower): the Gestures page holds there</translation>
+    </message>
+    <message>
+        <source>还没有手势：在上面的框里画一个</source>
+        <translation>No gestures yet: draw one in the box above</translation>
     </message>
     <message>
         <source>选中文字后按快捷键</source>
@@ -257,8 +281,8 @@
         <translation>Add a shortcut that translates the selected text; you can change its action</translation>
     </message>
     <message>
-        <source>按住右键滚滚轮</source>
-        <translation>Right button + wheel</translation>
+        <source>按住手势键滚滚轮</source>
+        <translation>Trigger button + wheel</translation>
     </message>
     <message>
         <source>向上滚</source>
@@ -284,20 +308,44 @@
 <context>
     <name>GesturePad</name>
     <message>
-        <source>在这里按住右键画一个手势，松开后选它要做的事</source>
-        <translation>Hold the right button here and draw a gesture; let go to choose what it does</translation>
+        <source>左键只能作为组合手势的第二个按键，请先按住右键、中键或侧键</source>
+        <translation>The left button only works as the second button in a combo — hold Right, Middle or a side button first</translation>
     </message>
     <message>
         <source>最多 6 段，画简单一点</source>
         <translation>At most 6 strokes: draw it simpler</translation>
     </message>
     <message>
-        <source>松开后选它要做的事</source>
-        <translation>Let go to choose what it does</translation>
+        <source>没读出方向：请画长一点，或按住后再点另一个鼠标键</source>
+        <translation>No direction read: draw longer, or press a second mouse button while holding</translation>
     </message>
     <message>
-        <source>没读出方向，再画长一点</source>
-        <translation>No direction read: draw a longer stroke</translation>
+        <source>录制按键范围：</source>
+        <translation>Record for button:</translation>
+    </message>
+    <message>
+        <source>按所按按键</source>
+        <translation>Button held</translation>
+    </message>
+    <message>
+        <source>任意启用按键</source>
+        <translation>Any enabled</translation>
+    </message>
+    <message>
+        <source>按住手势键画方向，或点另一个键组合，松开选动作</source>
+        <translation>Hold a trigger button to draw, or click a second mouse button for a chord; release to choose an action</translation>
+    </message>
+    <message>
+        <source>已记录组合键，松开后选它要做的事</source>
+        <translation>Chord recorded — release to choose an action</translation>
+    </message>
+    <message>
+        <source>松开选动作，或再点另一个鼠标键组合</source>
+        <translation>Release to choose an action, or click a second mouse button</translation>
+    </message>
+    <message>
+        <source>拖动画出方向，或直接点另一个鼠标键组合</source>
+        <translation>Drag to draw, or click a second mouse button for a chord</translation>
     </message>
 </context>
 <context>
@@ -317,6 +365,14 @@
     <message>
         <source>从%1开始画</source>
         <translation>Started in: %1</translation>
+    </message>
+    <message>
+        <source>任意按键</source>
+        <translation>Any button</translation>
+    </message>
+    <message>
+        <source>仅%1</source>
+        <translation>%1 only</translation>
     </message>
     <message>
         <source>所有文件</source>
@@ -357,6 +413,26 @@
     <message>
         <source>，再</source>
         <translation>, then </translation>
+    </message>
+    <message>
+        <source>按住%1，再点%2</source>
+        <translation>Hold %1, click %2</translation>
+    </message>
+    <message>
+        <source>按住手势键，再点%1</source>
+        <translation>Hold trigger, click %1</translation>
+    </message>
+    <message>
+        <source>%1，再点%2</source>
+        <translation>%1, then click %2</translation>
+    </message>
+    <message>
+        <source>按住%1，%2</source>
+        <translation>%1: %2</translation>
+    </message>
+    <message>
+        <source>%1（未启用）</source>
+        <translation>%1 (not enabled)</translation>
     </message>
     <message>
         <source>不用选中文字</source>

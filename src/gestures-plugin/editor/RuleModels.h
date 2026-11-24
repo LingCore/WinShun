@@ -32,10 +32,13 @@ public:
     enum Role {
         SourceRowRole = Qt::UserRole + 1,
         OnRole,
-        ArrowsRole, // "↓→"; a shortcut's keys: "Ctrl+Alt+T"
-        DescriptionRole, // "向下，再向右"
+        ArrowsRole, // "↓→", "↓+左", "侧1 ↑"; a shortcut's keys: "Ctrl+Alt+T"
+        DescriptionRole, // "向下，再向右", "按住右键，再点左键"
         WhereRole, // gestures::Zone as a number
         WhereTitleRole, // "任何位置", "从右下角开始画"
+        TriggerButtonRole, // "", "right", "middle", "x1", "x2"
+        TriggerButtonTitleRole, // "任意按键", "仅右键" ...
+        TriggerButtonDisabledRole, // true when specific trigger button is not enabled in settings
         SelectionRole,
         AppsRole,
         KindRole, // "builtin" "keys" …
@@ -58,6 +61,7 @@ public:
     // Whole replacement (the plugin sent others): nothing in progress survives.
     void setRules(std::vector<gestures::Rule> rules);
     void setChinese(bool chinese);
+    void setButtons(const std::vector<gestures::MouseButton>& buttons);
 
     // The row of a rule for the same thing (gestures::Rule::sameCase), or -1.
     int find(const gestures::Rule& probe) const;
@@ -66,6 +70,8 @@ public:
     void setAction(int row, const gestures::Action& action);
     // False when another rule is for the same thing there already.
     bool setWhere(int row, gestures::Zone zone);
+    // Change a gesture rule's trigger button scope (Any / Right / Middle / X1 / X2).
+    bool setTriggerButton(int row, gestures::MouseButton button);
     // What sets it off ("key:Ctrl+Alt+T"); the caller has made sure no other rule is for it.
     void setTrigger(int row, const std::string& on);
     void removeAt(int row);
@@ -85,6 +91,7 @@ private:
     void changed(int row);
 
     std::vector<gestures::Rule> m_rules;
+    std::vector<gestures::MouseButton> m_buttons = gestures::defaultTriggerButtons();
     int m_provisional = -1;
     bool m_chinese = true;
 };

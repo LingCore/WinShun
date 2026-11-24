@@ -32,6 +32,8 @@ class GestureEditor : public QObject {
     Q_PROPERTY(bool trail READ trail WRITE setTrail NOTIFY trailChanged)
     Q_PROPERTY(bool fullScreen READ fullScreen WRITE setFullScreen NOTIFY fullScreenChanged)
     Q_PROPERTY(bool paused READ paused WRITE setPaused NOTIFY pausedChanged)
+    // Enabled trigger mouse buttons ("right", "middle", "x1", "x2"), at least one.
+    Q_PROPERTY(QStringList buttons READ buttons NOTIFY buttonsChanged)
     Q_PROPERTY(QStringList excluded READ excluded NOTIFY excludedChanged)
     // The programs with rules of their own ({name, count}), those added here after them.
     Q_PROPERTY(QVariantList programs READ programs NOTIFY programsChanged)
@@ -49,6 +51,7 @@ public:
     bool trail() const { return m_trail; }
     bool fullScreen() const { return m_fullScreen; }
     bool paused() const { return m_paused; }
+    QStringList buttons() const;
     QStringList excluded() const { return m_excluded; }
     QVariantList programs() const { return m_programs; }
     QVariantList categories() const;
@@ -60,18 +63,22 @@ public:
     void setChinese(bool chinese);
     void setWindow(QWindow* window) { m_window = window; }
 
-    // What the plugin says: {rules, exclude, trail, fullScreen, paused, taken}. `first`: the window was just
+    // What the plugin says: {rules, buttons, exclude, trail, fullScreen, paused, taken}. `first`: the window was just
     // opened, everything is taken as it is; later what differs from what this window saved is
     // taken (an edit made here is not undone by the answer to an earlier one).
     void applyState(const QJsonObject& state, bool first);
     // For the preview and the self test: sample settings, without a plugin.
     void useSample();
 
+    Q_INVOKABLE bool hasButton(const QString& id) const;
+    Q_INVOKABLE void toggleButton(const QString& id);
     Q_INVOKABLE int addOrFind(const QString& on, int where, bool selection, const QString& app);
     Q_INVOKABLE void discardProvisional();
     Q_INVOKABLE void setAction(int row, const QString& kind, const QString& value, const QString& app);
     Q_INVOKABLE void setWhere(int row, int zone, const QString& app);
     Q_INVOKABLE QVariantList zoneChoices(int row) const; // [{text, glyph, zone}]: where it can be moved to
+    Q_INVOKABLE void setTriggerButton(int row, const QString& buttonId, const QString& app);
+    Q_INVOKABLE QVariantList buttonChoices(int row) const; // [{text, glyph, button}]: trigger button scopes available
     Q_INVOKABLE void remove(int row, const QString& app);
     // A trigger that is one rule everywhere (a corner, an edge, the wheel), or a program's: {has, kind, title, icon, note, id}.
     Q_INVOKABLE QVariantMap slot(const QString& on, const QString& app) const;
@@ -104,6 +111,7 @@ signals:
     void trailChanged();
     void fullScreenChanged();
     void pausedChanged();
+    void buttonsChanged();
     void excludedChanged();
     void programsChanged();
     // A rule the pad drew: the one there was already (flash it) or a new one (ask for its action).
@@ -112,7 +120,7 @@ signals:
     void shortcutFocused(int sourceRow);
     void takenChanged();
     void recordingRequested(bool recording);
-    // Values to keep, as the plugin's settings name them: rules, exclude, trail, fullScreen.
+    // Values to keep, as the plugin's settings name them: rules, buttons, exclude, trail, fullScreen.
     void saveRequested(const QJsonObject& values);
     void pauseRequested(bool paused);
 
@@ -120,6 +128,7 @@ private:
     void rulesEdited();
     void rebuildPrograms();
     void saveRules();
+    void saveButtons();
     void saveExcluded();
     int slotRow(const QString& on, const QString& app) const;
     static bool accept(QStringList& pending, QString& heard, const QString& incoming, const QString& current);
@@ -130,6 +139,7 @@ private:
     bool m_trail = true;
     bool m_fullScreen = false;
     bool m_paused = false;
+    std::vector<gestures::MouseButton> m_buttons = gestures::defaultTriggerButtons();
     QStringList m_excluded;
     QStringList m_added; // programs added here that have no rule yet
     QVariantList m_programs;
@@ -139,6 +149,7 @@ private:
     QPointer<QWindow> m_window;
     // What was saved and not yet heard back, per setting (the answers come in order).
     QStringList m_pendingRules;
+    QStringList m_pendingButtons;
     QStringList m_pendingExclude;
     QStringList m_pendingTrail;
     QStringList m_pendingFullScreen;
@@ -146,6 +157,7 @@ private:
     // What the plugin said last, per setting: an answer that still says that carries a change of
     // another setting (the answers are of everything), not a change of this one.
     QString m_heardRules;
+    QString m_heardButtons;
     QString m_heardExclude;
     QString m_heardTrail;
     QString m_heardFullScreen;

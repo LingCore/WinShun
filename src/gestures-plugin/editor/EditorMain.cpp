@@ -356,8 +356,8 @@ extern "C" __declspec(dllexport) int winshunGesturesEditorMain(const wchar_t* ho
             if (type == u"settings") {
                 editor.applyState(message, false);
                 if (selftest) {
-                    say(u"selftest: state trail=%1 fullScreen=%2 paused=%3 excluded=%4 rules=%5"_s.arg(editor.trail())
-                            .arg(editor.fullScreen()).arg(editor.paused()).arg(editor.excluded().join(u','),
+                    say(u"selftest: state trail=%1 fullScreen=%2 paused=%3 buttons=%4 excluded=%5 rules=%6"_s.arg(editor.trail())
+                            .arg(editor.fullScreen()).arg(editor.paused()).arg(editor.buttons().join(u','), editor.excluded().join(u','),
                                 QString::fromStdString(gestures::rulesJson(editor.rules()->saved()))));
                 }
             } else if (type == u"appearance") {
@@ -404,25 +404,45 @@ extern "C" __declspec(dllexport) int winshunGesturesEditorMain(const wchar_t* ho
             settle(window, 3);
         }
         const QString path = option(u"--preview"_s);
-        // --draw DR: a gesture drawn on the pad with the right button (a picture of it half drawn too),
-        // --then builtin:close | keys:F5 | cancel: what the picker is then told.
+        // --draw DR (or D+l, r:+l, x1:U): a gesture drawn or chorded on the pad
+        // (a picture of it mid-gesture too); --then builtin:close | keys:F5 | cancel.
         if (const QString drawn = option(u"--draw"_s); !drawn.isEmpty()) {
             QQuickItem* pad = findItem(window->contentItem(), u"padArea"_s);
             if (!pad) {
                 say(u"no pad on this page"_s);
                 return 5;
             }
-            const QPointF start = pad->mapToScene(QPointF(pad->width() / 2 - 20, pad->height() / 2 + (drawn.startsWith(u'U') ? 30 : -30)));
-            const QList<QPointF> points = gesturePoints(drawn, start);
-            sendMouse(window, QEvent::MouseButtonPress, points.first(), Qt::RightButton, Qt::RightButton);
+            const auto qtButtonOf = [](gestures::MouseButton b) {
+                switch (b) {
+                case gestures::MouseButton::Middle: return Qt::MiddleButton;
+                case gestures::MouseButton::X1: return Qt::BackButton;
+                case gestures::MouseButton::X2: return Qt::ForwardButton;
+                case gestures::MouseButton::Left: return Qt::LeftButton;
+                default: return Qt::RightButton;
+                }
+            };
+            const auto parsed = gestures::parseGestureTrigger(drawn.toStdString());
+            const Qt::MouseButton trig = parsed ? qtButtonOf(parsed->trigger) : Qt::RightButton;
+            const QString stroke = parsed ? QString::fromStdString(parsed->stroke) : drawn;
+            const bool hasChord = parsed && parsed->chord != gestures::MouseButton::Any;
+            const Qt::MouseButton chordBtn = hasChord ? qtButtonOf(parsed->chord) : Qt::NoButton;
+            const QPointF start = pad->mapToScene(QPointF(pad->width() / 2 - 20, pad->height() / 2 + (stroke.startsWith(u'U') ? 30 : -30)));
+            const QList<QPointF> points = stroke.isEmpty() ? QList<QPointF> {start} : gesturePoints(stroke, start);
+            sendMouse(window, QEvent::MouseButtonPress, points.first(), trig, trig);
             for (qsizetype i = 1; i < points.size(); ++i) {
-                sendMouse(window, QEvent::MouseMove, points[i], Qt::NoButton, Qt::RightButton);
-                if (i == points.size() * 3 / 4) {
+                sendMouse(window, QEvent::MouseMove, points[i], Qt::NoButton, trig);
+                if (!hasChord && i == points.size() * 3 / 4) {
                     settle(window, 2);
                     window->grabWindow().save(path + u".drag.png"_s, "PNG");
                 }
             }
-            sendMouse(window, QEvent::MouseButtonRelease, points.last(), Qt::RightButton, Qt::NoButton);
+            if (hasChord) {
+                sendMouse(window, QEvent::MouseButtonPress, points.last(), chordBtn, trig | chordBtn);
+                settle(window, 2);
+                window->grabWindow().save(path + u".drag.png"_s, "PNG");
+                sendMouse(window, QEvent::MouseButtonRelease, points.last(), chordBtn, trig);
+            }
+            sendMouse(window, QEvent::MouseButtonRelease, points.last(), trig, Qt::NoButton);
             settle(window, 3);
             say(u"drawn %1: %2 row(s)"_s.arg(drawn).arg(editor.rules()->rowCount()));
         }
@@ -491,6 +511,7 @@ extern "C" __declspec(dllexport) int winshunGesturesEditorMain(const wchar_t* ho
         QTimer::singleShot(700, &app, [&] {
             say(u"selftest: changing"_s);
             editor.setAction(0, u"builtin"_s, u"refresh"_s, QString());
+            editor.toggleButton(u"x1"_s);
             editor.setTrail(false);
             editor.setFullScreen(true);
             editor.addExcluded(u"Notepad.EXE"_s);
@@ -498,6 +519,8 @@ extern "C" __declspec(dllexport) int winshunGesturesEditorMain(const wchar_t* ho
             const int row = editor.addOrFind(u"DL"_s, 0, false, QString());
             // Not kept until it has an action: the line after this one holds it.
             editor.setAction(row, u"keys"_s, u"Ctrl+Shift+T"_s, QString());
+            const int chordRow = editor.addOrFind(u"D+l"_s, 0, false, QString());
+            editor.setAction(chordRow, u"builtin"_s, u"reopentab"_s, QString());
         });
         QTimer::singleShot(1700, &app, [&] {
             say(u"selftest: changing again"_s);

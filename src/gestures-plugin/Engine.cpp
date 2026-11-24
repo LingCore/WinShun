@@ -29,14 +29,14 @@ constexpr std::size_t kMostShortcuts = 32; // the rules' shortcuts: hotkey ids 1
 
 enum : UINT {
     // From the hook thread to the window thread.
-    kStart = WM_APP + 1, // w: point, l: the window under it
-    kMove, // w: point, l: the gesture so far
-    kEnd, // w: point, l: the gesture
+    kStart = WM_APP + 1, // l: new StartPayload
+    kMove, // w: point, l: new std::string (gesture so far)
+    kEnd, // w: point, l: new std::string (final gesture)
     kCancel,
-    kClick, // the press held back and its release, sent again
-    kPressThrough, // the press held back, sent again (the rest goes through)
-    kWheeledUp, // w: point, l: the top-level window pressed on
-    kWheeledDown,
+    kClick, // w: MouseButton: the press held back and its release, sent again
+    kPressThrough, // w: MouseButton: the press held back, sent again (the rest goes through)
+    kWheeledUp, // l: new WheelPayload
+    kWheeledDown, // l: new WheelPayload
     kTrigger, // w: point, l: 0-3 a corner (kCorners), 4-7 an edge (kEdges)
     kPressed, // w: point: a button pressed anywhere while the bubble is up
     // Within the window thread, or from other threads.
@@ -55,6 +55,18 @@ constexpr ULONGLONG kShortcutLetGoMs = 1000; // a shortcut's modifiers held long
 
 Engine* g_engine = nullptr;
 
+struct StartPayload {
+    POINT down {};
+    HWND under = nullptr;
+    MouseButton button = MouseButton::Right;
+};
+
+struct WheelPayload {
+    POINT at {};
+    HWND root = nullptr;
+    MouseButton button = MouseButton::Right;
+};
+
 WPARAM packPoint(POINT p)
 {
     return static_cast<WPARAM>(static_cast<std::uint32_t>(p.x)) | (static_cast<WPARAM>(static_cast<std::uint32_t>(p.y)) << 32);
@@ -65,38 +77,61 @@ POINT unpackPoint(WPARAM w)
     return {static_cast<LONG>(static_cast<std::int32_t>(w & 0xffffffff)), static_cast<LONG>(static_cast<std::int32_t>(w >> 32))};
 }
 
-// Up to 8 letters in the 64 bits: directions (more than kMaxDirections is
-// too long whatever follows) or a circle's "cw" / "ccw".
-static_assert(kMaxDirections < 8);
-LPARAM packGesture(const std::string& d)
-{
-    std::uint64_t v = 0;
-    for (std::size_t i = 0; i < d.size() && i < 8; ++i)
-        v |= static_cast<std::uint64_t>(static_cast<unsigned char>(d[i])) << (8 * i);
-    return static_cast<LPARAM>(v);
-}
-
-std::string unpackGesture(LPARAM l)
-{
-    const auto v = static_cast<std::uint64_t>(l);
-    std::string d;
-    for (int i = 0; i < 8; ++i) {
-        const char c = static_cast<char>((v >> (8 * i)) & 0xff);
-        if (c == 0)
-            break;
-        d += c;
-    }
-    return d;
-}
-
-bool isCircle(std::string_view gesture)
-{
-    return gesture == kClockwise || gesture == kCounterClockwise;
-}
-
 bool tooLongGesture(std::string_view gesture)
 {
-    return !isCircle(gesture) && gesture.size() > kMaxDirections;
+    return !gesture.empty() && !parseGestureTrigger(gesture).has_value();
+}
+
+std::optional<MouseButton> mouseButtonOf(WPARAM message, const MSLLHOOKSTRUCT& info, bool* isDown)
+{
+    switch (message) {
+    case WM_LBUTTONDOWN: *isDown = true; return MouseButton::Left;
+    case WM_LBUTTONUP: *isDown = false; return MouseButton::Left;
+    case WM_RBUTTONDOWN: *isDown = true; return MouseButton::Right;
+    case WM_RBUTTONUP: *isDown = false; return MouseButton::Right;
+    case WM_MBUTTONDOWN: *isDown = true; return MouseButton::Middle;
+    case WM_MBUTTONUP: *isDown = false; return MouseButton::Middle;
+    case WM_XBUTTONDOWN:
+    case WM_XBUTTONUP: {
+        *isDown = message == WM_XBUTTONDOWN;
+        const WORD xb = HIWORD(info.mouseData);
+        if (xb == XBUTTON1)
+            return MouseButton::X1;
+        if (xb == XBUTTON2)
+            return MouseButton::X2;
+        return std::nullopt;
+    }
+    default:
+        return std::nullopt;
+    }
+}
+
+bool buttonPhysicallyDown(MouseButton button)
+{
+    switch (button) {
+    case MouseButton::Right: return (::GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
+    case MouseButton::Middle: return (::GetAsyncKeyState(VK_MBUTTON) & 0x8000) != 0;
+    case MouseButton::X1: return (::GetAsyncKeyState(VK_XBUTTON1) & 0x8000) != 0;
+    case MouseButton::X2: return (::GetAsyncKeyState(VK_XBUTTON2) & 0x8000) != 0;
+    case MouseButton::Left: return (::GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
+    case MouseButton::Any: return false;
+    }
+    return false;
+}
+
+Zone zoneOfPoint(POINT pt)
+{
+    MONITORINFO mi {sizeof mi};
+    if (::GetMonitorInfoW(::MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST), &mi))
+        return zoneAt(pt.x, pt.y, {mi.rcMonitor.left, mi.rcMonitor.top, mi.rcMonitor.right, mi.rcMonitor.bottom});
+    return Zone::Anywhere;
+}
+
+bool isPureArrows(std::wstring_view text)
+{
+    return !text.empty() && std::ranges::all_of(text, [](wchar_t c) {
+        return (c >= 0x2190 && c <= 0x2193) || c == 0x21BA || c == 0x21BB;
+    });
 }
 
 double scaleOf(HMONITOR monitor)
@@ -213,7 +248,8 @@ bool fullScreen(HWND root)
 
 bool anyButtonDown()
 {
-    return (::GetAsyncKeyState(VK_LBUTTON) & 0x8000) || (::GetAsyncKeyState(VK_RBUTTON) & 0x8000) || (::GetAsyncKeyState(VK_MBUTTON) & 0x8000);
+    return (::GetAsyncKeyState(VK_LBUTTON) & 0x8000) || (::GetAsyncKeyState(VK_RBUTTON) & 0x8000) || (::GetAsyncKeyState(VK_MBUTTON) & 0x8000)
+        || (::GetAsyncKeyState(VK_XBUTTON1) & 0x8000) || (::GetAsyncKeyState(VK_XBUTTON2) & 0x8000);
 }
 
 bool extendedKey(std::uint16_t vk)
@@ -378,11 +414,7 @@ void Engine::hookThread(std::promise<bool>* ready)
         }
         if (msg.hwnd == nullptr && msg.message == kAbort) {
             // Esc while drawing: nothing on release.
-            if (m_state == State::Pressed || m_state == State::Gesturing) {
-                endPress();
-                m_state = State::Canceled;
-                ::PostMessageW(m_window, kCancel, 0, 0);
-            }
+            applySessionResult(m_session.onAbort(), {});
             continue;
         }
         ::DispatchMessageW(&msg);
@@ -455,128 +487,123 @@ void Engine::endPress()
         ::KillTimer(nullptr, std::exchange(m_holdTimer, 0));
 }
 
+void Engine::applySessionResult(const SessionResult& res, POINT at)
+{
+    if (res.stopHoldTimer)
+        endPress();
+    if (res.resetScreenWatches) {
+        m_cornerWatch.reset();
+        m_rubWatch.reset();
+    }
+    if (res.cancelBefore)
+        ::PostMessageW(m_window, kCancel, 0, 0);
+    if (res.startHoldTimer)
+        m_holdTimer = ::SetTimer(nullptr, 0, kHoldMs, nullptr);
+    if (res.startBeforeMove) {
+        auto* payload = new StartPayload {m_down, m_under, res.button};
+        if (!::PostMessageW(m_window, kStart, 0, reinterpret_cast<LPARAM>(payload)))
+            delete payload;
+    }
+    switch (res.event) {
+    case SessionResult::Event::None:
+        break;
+    case SessionResult::Event::Move: {
+        auto* gesture = new std::string(res.gesture);
+        if (!::PostMessageW(m_window, kMove, packPoint(at), reinterpret_cast<LPARAM>(gesture)))
+            delete gesture;
+        break;
+    }
+    case SessionResult::Event::End: {
+        auto* gesture = new std::string(res.gesture);
+        if (!::PostMessageW(m_window, kEnd, packPoint(at), reinterpret_cast<LPARAM>(gesture)))
+            delete gesture;
+        break;
+    }
+    case SessionResult::Event::Cancel:
+        ::PostMessageW(m_window, kCancel, 0, 0);
+        break;
+    case SessionResult::Event::Click:
+        ::PostMessageW(m_window, kClick, static_cast<WPARAM>(res.button), 0);
+        break;
+    case SessionResult::Event::PressThrough:
+        ::PostMessageW(m_window, kPressThrough, static_cast<WPARAM>(res.button), 0);
+        break;
+    case SessionResult::Event::Wheel:
+        for (int i = 0; i < res.wheelNotches; ++i) {
+            auto* payload = new WheelPayload {at, m_pressedRoot, res.button};
+            if (!::PostMessageW(m_window, res.wheelUp ? kWheeledUp : kWheeledDown, 0, reinterpret_cast<LPARAM>(payload)))
+                delete payload;
+        }
+        break;
+    }
+    if (res.watchScreen)
+        watchScreen(at);
+}
+
 bool Engine::onMouse(WPARAM message, const MSLLHOOKSTRUCT& info)
 {
     // Sent by a program (this one's own clicks again among them), or made
     // from touch or a pen: never ours.
     if ((info.flags & (LLMHF_INJECTED | LLMHF_LOWER_IL_INJECTED)) || (info.dwExtraInfo & kTouchMask) == kTouchSignature)
         return false;
-    if (m_bubbleShown && (message == WM_LBUTTONDOWN || message == WM_RBUTTONDOWN || message == WM_MBUTTONDOWN))
+    if (m_bubbleShown && (message == WM_LBUTTONDOWN || message == WM_RBUTTONDOWN || message == WM_MBUTTONDOWN || message == WM_XBUTTONDOWN))
         ::PostMessageW(m_window, kPressed, packPoint(info.pt), 0);
-    switch (message) {
-    case WM_RBUTTONDOWN: {
-        if (m_state != State::Idle && m_state != State::Through) {
-            // A release never seen (the hook was late): start over.
-            endPress();
-            ::PostMessageW(m_window, kCancel, 0, 0);
+
+    bool isDown = false;
+    if (const auto btn = mouseButtonOf(message, info, &isDown)) {
+        if (isDown) {
+            const std::shared_ptr<const Shared> s = shared();
+            const bool stillDown = buttonPhysicallyDown(m_session.activeButton());
+            const bool wantTrigger = m_session.wantsTriggerCheck(*btn, s->settings.buttons, stillDown);
+            bool ok = false;
+            int startDist = kStartDistance;
+            int stroke = kStroke;
+            if (wantTrigger) {
+                HWND under = nullptr;
+                std::wstring program;
+                ok = eligible(info.pt, under, program);
+                if (ok) {
+                    const double scale = scaleAt(info.pt);
+                    m_down = info.pt;
+                    m_under = under;
+                    m_pressedRoot = ::GetAncestor(under, GA_ROOT);
+                    m_program = std::move(program);
+                    m_downZone = zoneOfPoint(info.pt);
+                    startDist = static_cast<int>(std::lround(kStartDistance * scale));
+                    stroke = static_cast<int>(std::lround(kStroke * scale));
+                }
+            }
+            const Context ctx {.zone = m_downZone, .selection = false, .program = m_program, .button = m_session.activeButton()};
+            const SessionResult res = m_session.onButtonDown(*btn, info.pt.x, info.pt.y, startDist, stroke, ok, s->settings, ctx, stillDown);
+            applySessionResult(res, info.pt);
+            return res.swallow;
         }
-        m_state = State::Idle;
-        m_cornerWatch.reset();
-        m_rubWatch.reset();
-        HWND under = nullptr;
-        std::wstring program;
-        if (!eligible(info.pt, under, program))
-            return false;
-        const double scale = scaleAt(info.pt);
-        m_state = State::Pressed;
-        m_down = info.pt;
-        m_under = under;
-        m_pressedRoot = ::GetAncestor(under, GA_ROOT);
-        m_program = std::move(program);
-        m_wheelDelta = 0;
-        m_startDistance = static_cast<int>(std::lround(kStartDistance * scale));
-        m_recognizer.reset(info.pt.x, info.pt.y, static_cast<int>(std::lround(kStroke * scale)));
-        m_holdTimer = ::SetTimer(nullptr, 0, kHoldMs, nullptr);
-        return true;
+        const SessionResult res = m_session.onButtonUp(*btn, info.pt.x, info.pt.y);
+        applySessionResult(res, info.pt);
+        return res.swallow;
     }
-    case WM_MOUSEMOVE:
-        if (m_state == State::Idle) {
-            watchScreen(info.pt);
-            return false;
-        }
-        if (m_state == State::Pressed) {
-            const int dx = info.pt.x - m_down.x;
-            const int dy = info.pt.y - m_down.y;
-            if (dx * dx + dy * dy < m_startDistance * m_startDistance)
-                return false;
-            endPress();
-            m_state = State::Gesturing;
-            ::PostMessageW(m_window, kStart, packPoint(m_down), reinterpret_cast<LPARAM>(m_under));
-        }
-        if (m_state == State::Gesturing) {
-            m_recognizer.add(info.pt.x, info.pt.y);
-            ::PostMessageW(m_window, kMove, packPoint(info.pt), packGesture(m_recognizer.gesture()));
-        }
-        return false;
-    case WM_MOUSEWHEEL: {
-        if (m_state != State::Pressed && m_state != State::Gesturing && m_state != State::Wheeling)
-            return false;
+
+    if (message == WM_MOUSEMOVE) {
+        const SessionResult res = m_session.onMove(info.pt.x, info.pt.y);
+        applySessionResult(res, info.pt);
+        return res.swallow;
+    }
+
+    if (message == WM_MOUSEWHEEL) {
         const std::shared_ptr<const Shared> s = shared();
-        if (!s->wheel)
-            return false;
         const int delta = static_cast<short>(HIWORD(info.mouseData));
-        if (delta == 0)
-            return false;
-        const bool up = delta > 0;
-        // Only when the wheel has a rule that way here; else it scrolls as ever.
-        const Rule* rule = match(s->settings.rules, up ? gestures::kWheelUp : gestures::kWheelDown, {.program = m_program});
-        if (!rule || rule->action.kind == Action::Kind::Nothing)
-            return false;
-        if (m_state != State::Wheeling) {
-            endPress();
-            if (m_state == State::Gesturing)
-                ::PostMessageW(m_window, kCancel, 0, 0); // the trail goes
-            m_state = State::Wheeling;
-            m_wheelDelta = 0;
-        }
-        if (m_wheelDelta != 0 && (m_wheelDelta > 0) != up)
-            m_wheelDelta = 0; // turned the other way: count afresh
-        m_wheelDelta += delta;
-        // A notch at a time (smooth wheels send parts of one).
-        while (std::abs(m_wheelDelta) >= WHEEL_DELTA) {
-            ::PostMessageW(m_window, up ? kWheeledUp : kWheeledDown, packPoint(info.pt), reinterpret_cast<LPARAM>(m_pressedRoot));
-            m_wheelDelta += up ? -WHEEL_DELTA : WHEEL_DELTA;
-        }
-        return true;
+        const Context ctx {.zone = m_downZone, .selection = false, .program = m_program, .button = m_session.activeButton()};
+        const SessionResult res = m_session.onWheel(delta, s->wheel, s->settings, ctx);
+        applySessionResult(res, info.pt);
+        return res.swallow;
     }
-    case WM_LBUTTONDOWN:
-        // The left button while drawing: no gesture after all.
-        if (m_state == State::Pressed || m_state == State::Gesturing) {
-            endPress();
-            m_state = State::Canceled;
-            ::PostMessageW(m_window, kCancel, 0, 0);
-        }
-        return false;
-    case WM_RBUTTONUP:
-        endPress();
-        switch (std::exchange(m_state, State::Idle)) {
-        case State::Pressed:
-            ::PostMessageW(m_window, kClick, 0, 0);
-            return true;
-        case State::Gesturing:
-            m_recognizer.add(info.pt.x, info.pt.y);
-            ::PostMessageW(m_window, kEnd, packPoint(info.pt), packGesture(m_recognizer.gesture()));
-            return true;
-        case State::Wheeling:
-        case State::Canceled:
-            return true;
-        case State::Idle:
-        case State::Through:
-            return false;
-        }
-        return false;
-    default:
-        return false;
-    }
+
+    return false;
 }
 
 void Engine::onHoldTimer()
 {
-    endPress();
-    if (m_state != State::Pressed)
-        return;
-    m_state = State::Through;
-    ::PostMessageW(m_window, kPressThrough, 0, 0);
+    applySessionResult(m_session.onHoldTimer(), {});
 }
 
 // The pointer moved with no button held for a gesture: into a corner, along
@@ -633,7 +660,7 @@ void Engine::onDwellTimer()
     if (m_dwellTimer)
         ::KillTimer(nullptr, std::exchange(m_dwellTimer, 0));
     const std::string_view corner = m_cornerWatch.due(static_cast<std::int64_t>(::GetTickCount64()));
-    if (corner.empty() || m_state != State::Idle || !frontEligible(nullptr))
+    if (corner.empty() || m_session.state() != GestureSession::State::Idle || !frontEligible(nullptr))
         return;
     POINT at {};
     ::GetCursorPos(&at);
@@ -685,12 +712,18 @@ LRESULT CALLBACK Engine::windowProc(HWND window, UINT message, WPARAM wParam, LP
 LRESULT Engine::onWindowMessage(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
 {
     switch (message) {
-    case kStart:
-        began(unpackPoint(wParam), reinterpret_cast<HWND>(lParam));
+    case kStart: {
+        std::unique_ptr<StartPayload> payload(reinterpret_cast<StartPayload*>(lParam));
+        if (payload)
+            began(payload->down, payload->under, payload->button);
         return 0;
+    }
     case kMove: {
-        m_points.push_back(unpackPoint(wParam));
-        m_gesture = unpackGesture(lParam);
+        std::unique_ptr<std::string> gesture(reinterpret_cast<std::string*>(lParam));
+        const POINT pt = unpackPoint(wParam);
+        if (m_points.empty() || m_points.back().x != pt.x || m_points.back().y != pt.y)
+            m_points.push_back(pt);
+        m_gesture = gesture ? std::move(*gesture) : std::string();
         if (!shared()->settings.trail)
             return 0;
         m_dirty = true;
@@ -724,7 +757,8 @@ LRESULT Engine::onWindowMessage(HWND window, UINT message, WPARAM wParam, LPARAM
         return 0;
     case kEnd: {
         hideTrail();
-        const std::string gesture = unpackGesture(lParam);
+        std::unique_ptr<std::string> payload(reinterpret_cast<std::string*>(lParam));
+        const std::string gesture = payload ? std::move(*payload) : std::string();
         const POINT end = unpackPoint(wParam);
         if (m_selectionAsked && !m_selectionKnown) {
             m_pending = true;
@@ -756,15 +790,18 @@ LRESULT Engine::onWindowMessage(HWND window, UINT message, WPARAM wParam, LPARAM
         return 0;
     }
     case kClick:
-        sendButton(MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, 0);
+        replayButton(static_cast<MouseButton>(wParam), true);
         return 0;
     case kPressThrough:
-        sendButton(MOUSEEVENTF_RIGHTDOWN, 0, 0);
+        replayButton(static_cast<MouseButton>(wParam), false);
         return 0;
     case kWheeledUp:
-    case kWheeledDown:
-        wheel(message == kWheeledUp, unpackPoint(wParam), reinterpret_cast<HWND>(lParam));
+    case kWheeledDown: {
+        std::unique_ptr<WheelPayload> payload(reinterpret_cast<WheelPayload*>(lParam));
+        if (payload)
+            wheel(message == kWheeledUp, payload->at, payload->root, payload->button);
         return 0;
+    }
     case kTrigger: {
         const auto index = static_cast<std::size_t>(lParam);
         if (index < 4)
@@ -840,7 +877,7 @@ LRESULT Engine::onWindowMessage(HWND window, UINT message, WPARAM wParam, LPARAM
 // A gesture began at `down` over `under`: where it is, which program's, and
 // (when a rule could care) the words selected there, asked for at once so
 // the hint can say what will happen before the button is let go.
-void Engine::began(POINT down, HWND under)
+void Engine::began(POINT down, HWND under, MouseButton button)
 {
     const std::shared_ptr<const Shared> s = shared();
     m_target = {};
@@ -848,9 +885,8 @@ void Engine::began(POINT down, HWND under)
     m_target.root = under ? ::GetAncestor(under, GA_ROOT) : nullptr;
     m_target.at = down;
     m_target.context.program = programOfWindow(m_target.root);
-    MONITORINFO mi {sizeof mi};
-    if (::GetMonitorInfoW(::MonitorFromPoint(down, MONITOR_DEFAULTTONEAREST), &mi))
-        m_target.context.zone = zoneAt(down.x, down.y, {mi.rcMonitor.left, mi.rcMonitor.top, mi.rcMonitor.right, mi.rcMonitor.bottom});
+    m_target.context.button = button;
+    m_target.context.zone = zoneOfPoint(down);
     m_points.assign(1, down);
     m_gesture.clear();
     m_scale = scaleAt(down);
@@ -859,10 +895,11 @@ void Engine::began(POINT down, HWND under)
     m_selection.clear();
     ++m_ask;
     const auto wantsWords = [&] {
-        if (selectionMatters(s->settings.rules, "", m_target.context.program))
+        if (selectionMatters(s->settings.rules, "", m_target.context.program, m_target.context.button))
             return true;
         return std::ranges::any_of(s->settings.rules, [&](const Rule& r) {
             return r.action.kind == Action::Kind::Builtin && takesSelection(r.action.builtin)
+                && (r.triggerButton() == MouseButton::Any || r.triggerButton() == m_target.context.button)
                 && (r.apps.empty() || listed(r.apps, m_target.context.program));
         });
     };
@@ -900,20 +937,29 @@ void Engine::hideTrail()
     }
 }
 
-// What the hint says for the gesture so far: its arrows, the corner it
-// counts for, and what letting go now will do (with the words it will do it
-// on).
+// What the hint says for the gesture so far: its arrows (or button combo),
+// the corner it counts for, and what letting go now will do (with the words
+// it will do it on).
 Engine::Hint Engine::hintFor(const std::string& gesture) const
 {
     const std::shared_ptr<const Shared> s = shared();
     const bool zh = s->look.chinese;
     Hint hint;
-    hint.arrows = fromUtf8(arrows(gesture.substr(0, kMaxDirections)));
     if (tooLongGesture(gesture)) {
+        hint.arrows = fromUtf8(arrows(gesture.substr(0, kMaxDirections)));
         hint.action = zh ? L"太长了，松开不做什么" : L"Too long: nothing on release";
         return hint;
     }
     const Rule* rule = match(s->settings.rules, gesture, m_target.context);
+    const auto parsed = parseGestureTrigger(gesture);
+    if (parsed && parsed->stroke.empty() && parsed->chord != MouseButton::Any) {
+        const MouseButton active = m_target.context.button != MouseButton::Any ? m_target.context.button : parsed->trigger;
+        hint.arrows = gestureBadge(formatGestureTrigger(active, "", parsed->chord), zh);
+    } else if (rule && rule->triggerButton() != MouseButton::Any) {
+        hint.arrows = gestureBadge(rule->on, zh);
+    } else {
+        hint.arrows = gestureBadge(gesture, zh);
+    }
     if (!rule) {
         hint.action = zh ? L"没有设置" : L"Not set";
         return hint;
@@ -963,12 +1009,12 @@ Gdiplus::REAL widthOf(Gdiplus::Graphics& g, const std::wstring& text, const Gdip
 
 } // namespace
 
-// The trail and, once it has a direction, the hint: the arrows and what
-// they do. The window covers only them, not the screen.
+// The trail and, once it has a direction (or a button chord), the hint: the
+// arrows/buttons and what they do. The window covers only them, not the screen.
 void Engine::render()
 {
     m_dirty = false;
-    if (m_points.size() < 2)
+    if (m_points.empty() || (m_points.size() < 2 && m_gesture.empty()))
         return;
     const std::shared_ptr<const Shared> s = shared();
     const Look& look = s->look;
@@ -996,6 +1042,7 @@ void Engine::render()
     Gdiplus::Font textFont(&textFamily, px(13), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     Gdiplus::Font strongFont(&textFamily, px(13), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
     Gdiplus::Font arrowFont(arrowFamily.IsAvailable() ? &arrowFamily : &textFamily, px(14), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+    const Gdiplus::Font& chipFont = isPureArrows(hint.arrows) ? arrowFont : strongFont;
     const Gdiplus::REAL height = px(32);
     const Gdiplus::REAL inset = px(4);
     const Gdiplus::REAL gap = px(8);
@@ -1009,7 +1056,7 @@ void Engine::render()
         Gdiplus::Bitmap probe(1, 1, PixelFormat32bppPARGB);
         Gdiplus::Graphics measure(&probe);
         measure.SetTextRenderingHint(Gdiplus::TextRenderingHintAntiAliasGridFit);
-        arrowsWidth = widthOf(measure, hint.arrows, arrowFont);
+        arrowsWidth = widthOf(measure, hint.arrows, chipFont);
         zoneWidth = widthOf(measure, hint.zone, textFont);
         actionWidth = widthOf(measure, hint.action, hint.known ? strongFont : textFont);
         wordsWidth = widthOf(measure, hint.words, textFont);
@@ -1073,15 +1120,17 @@ void Engine::render()
         g.Clear(Gdiplus::Color(0, 0, 0, 0));
         g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
         g.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
-        std::vector<Gdiplus::PointF> points;
-        points.reserve(m_points.size());
-        for (const POINT& p : m_points)
-            points.emplace_back(static_cast<Gdiplus::REAL>(p.x - box.left), static_cast<Gdiplus::REAL>(p.y - box.top));
-        Gdiplus::Pen line(color((look.accent & 0x00ffffff) | 0xe0000000), pen);
-        line.SetLineJoin(Gdiplus::LineJoinRound);
-        line.SetStartCap(Gdiplus::LineCapRound);
-        line.SetEndCap(Gdiplus::LineCapRound);
-        g.DrawLines(&line, points.data(), static_cast<INT>(points.size()));
+        if (m_points.size() >= 2) {
+            std::vector<Gdiplus::PointF> points;
+            points.reserve(m_points.size());
+            for (const POINT& p : m_points)
+                points.emplace_back(static_cast<Gdiplus::REAL>(p.x - box.left), static_cast<Gdiplus::REAL>(p.y - box.top));
+            Gdiplus::Pen line(color((look.accent & 0x00ffffff) | 0xe0000000), pen);
+            line.SetLineJoin(Gdiplus::LineJoinRound);
+            line.SetStartCap(Gdiplus::LineCapRound);
+            line.SetEndCap(Gdiplus::LineCapRound);
+            g.DrawLines(&line, points.data(), static_cast<INT>(points.size()));
+        }
         if (hinted) {
             const Gdiplus::RectF card(static_cast<Gdiplus::REAL>(label.left - box.left), static_cast<Gdiplus::REAL>(label.top - box.top),
                 static_cast<Gdiplus::REAL>(label.right - label.left), static_cast<Gdiplus::REAL>(label.bottom - label.top));
@@ -1128,7 +1177,7 @@ void Engine::render()
             oneLine.SetLineAlignment(Gdiplus::StringAlignmentCenter);
             oneLine.SetFormatFlags(oneLine.GetFormatFlags() | Gdiplus::StringFormatFlagsNoWrap | Gdiplus::StringFormatFlagsMeasureTrailingSpaces);
             Gdiplus::SolidBrush onChip(color(look.onAccent));
-            g.DrawString(hint.arrows.c_str(), static_cast<INT>(hint.arrows.size()), &arrowFont, chip, &centered, &onChip);
+            g.DrawString(hint.arrows.c_str(), static_cast<INT>(hint.arrows.size()), &chipFont, chip, &centered, &onChip);
             Gdiplus::SolidBrush ink(color(look.text));
             Gdiplus::SolidBrush caption(color(look.subtext));
             Gdiplus::REAL x = chip.X + chip.Width + gap;
@@ -1169,6 +1218,26 @@ void Engine::sendButton(DWORD down, DWORD up, DWORD data)
         ++n;
     }
     ::SendInput(n, in, sizeof(INPUT));
+}
+
+void Engine::replayButton(MouseButton button, bool click)
+{
+    switch (button) {
+    case MouseButton::Right:
+        sendButton(MOUSEEVENTF_RIGHTDOWN, click ? MOUSEEVENTF_RIGHTUP : 0, 0);
+        break;
+    case MouseButton::Middle:
+        sendButton(MOUSEEVENTF_MIDDLEDOWN, click ? MOUSEEVENTF_MIDDLEUP : 0, 0);
+        break;
+    case MouseButton::X1:
+        sendButton(MOUSEEVENTF_XDOWN, click ? MOUSEEVENTF_XUP : 0, XBUTTON1);
+        break;
+    case MouseButton::X2:
+        sendButton(MOUSEEVENTF_XDOWN, click ? MOUSEEVENTF_XUP : 0, XBUTTON2);
+        break;
+    default:
+        break;
+    }
 }
 
 void Engine::sendKeys(const std::vector<std::uint16_t>& keys)
@@ -1278,9 +1347,11 @@ NoteIcon triggerIcon(std::string_view on)
         return NoteIcon::DownLeft;
     if (on == "corner:br")
         return NoteIcon::DownRight;
-    if (on == "edge:top" || on == kWheelUp)
+    if (const auto w = parseWheelTrigger(on))
+        return w->up ? NoteIcon::Up : NoteIcon::Down;
+    if (on == "edge:top")
         return NoteIcon::Up;
-    if (on == "edge:bottom" || on == kWheelDown)
+    if (on == "edge:bottom")
         return NoteIcon::Down;
     if (on == "edge:left")
         return NoteIcon::Left;
@@ -1338,11 +1409,11 @@ void Engine::performWithWords(const Rule& rule, const Target& target)
     });
 }
 
-// A notch with the right button held: its rule over the window pressed on
+// A notch with a trigger button held: its rule over the window pressed on
 // (the top-level window it had then, m_pressedRoot), whatever the earlier
 // notches changed in it. The window under the pointer when it is still in
 // that one, else that one itself.
-void Engine::wheel(bool up, POINT at, HWND root)
+void Engine::wheel(bool up, POINT at, HWND root, MouseButton button)
 {
     Target t;
     t.root = root && ::IsWindow(root) ? root : nullptr;
@@ -1350,6 +1421,7 @@ void Engine::wheel(bool up, POINT at, HWND root)
     t.under = now && t.root && ::GetAncestor(now, GA_ROOT) == t.root ? now : t.root;
     t.at = at;
     t.context.program = programOfWindow(t.root);
+    t.context.button = button;
     const std::shared_ptr<const Shared> s = shared();
     if (const Rule* rule = match(s->settings.rules, up ? gestures::kWheelUp : gestures::kWheelDown, t.context))
         performWithWords(*rule, t);
