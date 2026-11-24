@@ -890,6 +890,7 @@ void Settings::load()
     settingsHotkey = readOrDefault(s, u"Launcher/SettingsHotkey"_s, d.settingsHotkey).trimmed();
     adminTapHinted = readOrDefault(s, u"Launcher/AdminTapHinted"_s, d.adminTapHinted);
     adminDialogHinted = readOrDefault(s, u"Launcher/AdminDialogHinted"_s, d.adminDialogHinted);
+    tessoaPickerHinted = readOrDefault(s, u"Launcher/TessoaPickerHinted"_s, d.tessoaPickerHinted);
     serviceUpdateHinted = readOrDefault(s, u"Launcher/ServiceUpdateHinted"_s, d.serviceUpdateHinted).trimmed();
     shortcutAgain = readOrDefault(s, u"Launcher/ShortcutAgain"_s, d.shortcutAgain).trimmed().toLower();
     if (shortcutAgain != u"panel")
@@ -1415,6 +1416,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Launcher/SettingsHotkey"_s, settingsHotkey);
     s.setValue(u"Launcher/AdminTapHinted"_s, adminTapHinted);
     s.setValue(u"Launcher/AdminDialogHinted"_s, adminDialogHinted);
+    s.setValue(u"Launcher/TessoaPickerHinted"_s, tessoaPickerHinted);
     s.setValue(u"Launcher/ServiceUpdateHinted"_s, serviceUpdateHinted);
     s.setValue(u"Launcher/ShortcutAgain"_s, shortcutAgain);
     s.setValue(u"Launcher/Renderer"_s, renderer);

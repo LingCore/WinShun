@@ -388,11 +388,13 @@ void DialogBar::setDialog(HWND dialog)
         const filedialog::Kind kind = filedialog::kind(dialog);
         const bool opens = filedialog::opensFiles(dialog, kind);
         const bool elevated = integrity::higherThanOurs(dialog);
-        const bool copyOnly = elevated && !m_elevatedNavAvailable;
-        if (kind != m_kind || opens != m_opens || copyOnly != m_copyOnly || elevated != m_elevated) {
+        const bool tessoa = filedialog::isTessoaPicker(dialog);
+        const bool copyOnly = tessoa || (elevated && !m_elevatedNavAvailable);
+        if (kind != m_kind || opens != m_opens || copyOnly != m_copyOnly || elevated != m_elevated || tessoa != m_tessoa) {
             m_kind = kind;
             m_opens = opens;
             m_copyOnly = copyOnly;
+            m_tessoa = tessoa;
             m_elevated = elevated;
             emit dialogKindChanged();
         }
@@ -994,8 +996,9 @@ void DialogBar::setElevatedNavAvailable(bool on)
     if (on == m_elevatedNavAvailable)
         return;
     m_elevatedNavAvailable = on;
-    // An elevated dialog is copy-only only when the service cannot drive it.
-    const bool copyOnly = m_elevated && !on;
+    // An elevated dialog is copy-only only when the service cannot drive it;
+    // Tessoa's own window is, whatever the service can do.
+    const bool copyOnly = m_tessoa || (m_elevated && !on);
     const bool copyOnlyChanged = copyOnly != m_copyOnly;
     m_copyOnly = copyOnly;
     emit dialogKindChanged(); // copyOnly / elevatedJump / canOpen for the current dialog

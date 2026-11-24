@@ -129,3 +129,28 @@ Bandizip 7.36 实测（本机已装；7-Zip、WinRAR 本机没有，也没有为
 - `tst_filedialog`、`tst_dialognav` 各加一项：界面端识别为选文件夹窗口、当前位置取自框里、跳转、不给文件名也不确认、认过之后保持；助手对不存在的文件夹和相对路径不动手。
 - 真实主程序：`./tools/verify-bandizip-dialog.ps1 -BuildDir build/dialog-pathbox -OutputDir build/dialog-pathbox/bandizip`。真实 `App`、`DialogJump`、`DialogBar` 和搜索引擎对着真实 Bandizip 窗口：搜索框出现在窗口下方并拿到焦点，搜到文件夹，选中后窗口的框里是该文件夹，窗口没有被关闭；随后取消窗口，确认什么都没解压。2026-11-13 通过，QML 运行告警 0。
 - **没有实机结果的部分**：7-Zip 和 WinRAR 只有替身窗口的结果（依据分别是 7-Zip 源码和 Listary 插件源码）；管理员权限下的 Bandizip 没有实测（助手一侧只有替身窗口）。这两个软件的“复制到/移动到”等其他窗口没有处理。
+
+## Tessoa 自己的打开、另存为窗口（2026-11-24）
+
+用户反馈：文件管理器用 Tessoa，WPS、CAD 另存为能自动转到 Tessoa 当前的文件夹；微信另存为弹出的却是 Tessoa 自己的窗口（下面有“改用系统窗口”），停在上次保存的文件夹，点“改用系统窗口”后才转过去。
+
+原因在 Tessoa 0.31 起的实验功能“接管打开 / 另存为窗口”（Tessoa 设置的安装页，只有安装版有）。打开后它在 HKCU 下把系统的 FileSaveDialog、FileOpenDialog 换成自己的 DLL（`HKCU\Software\Classes\CLSID\{C0B4E2F3-BA21-4773-8DBA-335EC946EB8B}` 与 `{DC1C5A9C-E88A-4DDE-A5A1-60F82A20AEF7}` 的 `InprocServer32` 指向 `%LOCALAPPDATA%\tessoa-file-dialog\tessoa-dialog-x64-*.dll`；32 位程序的在 `WOW6432Node\CLSID` 下，指向 x86 版）。用这两个系统接口的程序（微信等）弹出的就是 Tessoa 的窗口；WPS、CAD 用自己的窗口，没被接管，仍是 Win顺 认识的窗口。它另有“不接管的程序”名单和窗口里的“改用系统窗口”按钮。
+
+Tessoa 0.32.0 实测（本机临时装上并打开接管，测完关掉、核对注册表已还原）：
+
+- 窗口属于 tessoa.exe，类名 `Window Class`（winit），标题是调用方给的对话框标题，owner 是调用方的窗口（跨进程）。全部自绘：没有子控件，也没有 UI Automation。
+- Tessoa 给其他程序的[接口](https://github.com/Tessoa/Listary.FileAppPlugin.Tessoa/blob/main/docs/launcher-integration.zh-CN.md)不包括这个窗口：查询管道 `query-cwd` 对它回空，`query-tabs` 只回 `api 2`；`--open-window=<文件夹> --in-tab=<这个窗口>` 退出码为 0，文件夹却开在 Tessoa 主窗口的新标签里，这个窗口不动。
+- 它的文件名框不接受文件夹（提示“文件名与现有文件夹重名”），接受文件的完整路径；它的地址栏（点路径条，输入，回车）能转到文件夹。
+
+所以这个窗口 Win顺 转不过去，是 Tessoa 一侧的限制。Win顺 的做法（`filedialog::isTessoaPicker`：tessoa.exe 的顶层窗口，owner 在别的进程；不属于任何 `kind`）：
+
+- 不注册 `Ctrl+G`（按键留给 Tessoa），不自动转，管理员窗口的助手也不试。
+- 窗口下的搜索框照常出现，只复制路径。提示语：“Tessoa 的窗口不能自动跳转：搜索后复制路径，或点‘改用系统窗口’”；复制后改为“路径已复制：文件夹粘贴到 Tessoa 的地址栏，文件粘贴到文件名框”。
+- 每次运行、每个调用程序记一行日志（开了 `Ctrl+G` 或自动跳转时为警告级，默认就写进 `WinShun.log`）和一条诊断记录 `tessoa-picker`（调用程序、是否开了跳转、搜索框是否显示）。
+- 开了 `Ctrl+G` 或自动跳转，而这个窗口下又没有搜索框（关了搜索框，或把 tessoa.exe 加进了“不在这些程序的对话框下显示”）时：窗口在前台 1 秒后发一次通知，说明原因和办法，以后不再发（`Launcher/TessoaPickerHinted`）。
+
+用户的办法：在 Tessoa 的窗口里点“改用系统窗口”；或在 Tessoa 设置的安装页把这个程序（新版微信 `Weixin.exe`，旧版 `WeChat.exe`）加入“不接管的程序”；或关掉 Tessoa 的接管。之后弹出的是系统窗口，`Ctrl+G` 和自动跳转照常可用。
+
+验证：
+
+- `tst_filedialog` 的 `tessoaPicker`：测试副本改名 tessoa.exe，建一个隐藏窗口，owner 是测试进程的窗口：认出，`kind` 为 None，`goTo`、`setFileName` 不动手；没有 owner、owner 在 tessoa.exe 自己进程里、换成别的程序名、本进程里的同类窗口、空句柄，都不认。

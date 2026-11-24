@@ -80,17 +80,27 @@ struct CustomFileBoxes {
     HWND type = nullptr;
 };
 
-bool customCadProgram(HWND window)
+// The file name of the program a window belongs to ("acad.exe"); empty when
+// it cannot be told. Asked of an elevated program too: the limited query right
+// is granted across integrity levels.
+std::wstring programOf(HWND window)
 {
     DWORD pid = 0;
-    ::GetWindowThreadProcessId(window, &pid);
+    if (!::GetWindowThreadProcessId(window, &pid))
+        return {};
     const win32::UniqueHandle process(::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid));
     wchar_t image[1024] {};
     DWORD length = static_cast<DWORD>(std::size(image));
     if (!process.valid() || !::QueryFullProcessImageNameW(process.get(), 0, image, &length))
-        return false;
-    const wchar_t* leaf = ::wcsrchr(image, L'\\');
-    return leaf && (::_wcsicmp(leaf + 1, L"acad.exe") == 0 || ::_wcsicmp(leaf + 1, L"acadlt.exe") == 0);
+        return {};
+    const std::wstring_view path(image, length);
+    return std::wstring(path.substr(path.find_last_of(L'\\') + 1));
+}
+
+bool customCadProgram(HWND window)
+{
+    const std::wstring program = programOf(window);
+    return win32::equalsIgnoreCase(program, L"acad.exe") || win32::equalsIgnoreCase(program, L"acadlt.exe");
 }
 
 // Autodesk's CNavDialog uses its own control IDs and view host. Match the
@@ -433,23 +443,6 @@ void remember(HWND hwnd, Kind k)
     g_known.emplace_back(hwnd, k);
 }
 
-std::wstring programOf(HWND hwnd)
-{
-    DWORD pid = 0;
-    ::GetWindowThreadProcessId(hwnd, &pid);
-    const HANDLE process = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-    if (!process)
-        return {};
-    std::wstring path(MAX_PATH, L'\0');
-    DWORD size = MAX_PATH;
-    const bool ok = ::QueryFullProcessImageNameW(process, 0, path.data(), &size);
-    ::CloseHandle(process);
-    if (!ok)
-        return {};
-    path.resize(size);
-    return path.substr(path.find_last_of(L'\\') + 1);
-}
-
 // The dialog through UI Automation, made for each use: given up on soon
 // should the program hang.
 class Dialog {
@@ -715,8 +708,22 @@ bool mayBeKingsoft(HWND hwnd)
     const std::wstring_view className(name); // "Qt5QWindowIcon"
     if (!className.starts_with(L"Qt") || !className.ends_with(L"QWindowIcon") || !::GetWindow(hwnd, GW_OWNER))
         return false;
-    const std::wstring program = kingsoft::programOf(hwnd);
-    return std::ranges::any_of(kingsoft::kPrograms, [&](const wchar_t* p) { return ::_wcsicmp(program.c_str(), p) == 0; });
+    const std::wstring program = programOf(hwnd);
+    return std::ranges::any_of(kingsoft::kPrograms, [&](const wchar_t* p) { return win32::equalsIgnoreCase(program, p); });
+}
+
+bool isTessoaPicker(HWND hwnd)
+{
+    // Its owner is the calling program's window; Tessoa's own windows (the
+    // main ones, their menus and its own pickers) have none, or one of Tessoa's.
+    const HWND owner = hwnd ? ::GetWindow(hwnd, GW_OWNER) : nullptr;
+    if (!owner || ::GetAncestor(hwnd, GA_ROOT) != hwnd)
+        return false;
+    DWORD process = 0;
+    DWORD caller = 0;
+    if (!::GetWindowThreadProcessId(hwnd, &process) || !::GetWindowThreadProcessId(owner, &caller) || process == caller)
+        return false;
+    return win32::equalsIgnoreCase(programOf(hwnd), L"tessoa.exe");
 }
 
 bool probed(HWND hwnd)

@@ -80,6 +80,7 @@
 #include "DialogRuleStore.h"
 #include "platform/ExternalPreview.h"
 #include "platform/EverythingServer.h"
+#include "platform/FileDialog.h"
 #include "platform/FileManagers.h"
 #include "platform/Foreground.h"
 #include "platform/Http.h"
@@ -5318,6 +5319,8 @@ void App::applyDialogs()
                 // Once that answer has come: a word if nothing can take it anywhere (GitHub #216).
                 QTimer::singleShot(1500ms, this, [this, dialog] { adminDialogFront(dialog); });
             }
+            if (dialog && filedialog::isTessoaPicker(dialog))
+                tessoaPickerFront(dialog);
             if (m_dialogBar && (!dialog || m_barWindow || createBarWindow()))
                 m_dialogBar->setDialog(dialog);
         };
@@ -7664,6 +7667,52 @@ void App::adminDialogFront(HWND dialog)
     if (who.isEmpty())
         who = f.program;
     m_messages->showNotification(tr("“%1”以管理员身份运行").arg(admintap::shortTitle(who)), text, std::move(onClick));
+}
+
+// Tessoa's own Open or Save window, shown in place of Windows' for a program
+// (filedialog::isTessoaPicker): nothing can take it to a folder, so Ctrl+G and
+// going by itself do nothing there, and the bar under it only copies paths and
+// says why. In the log and the journal once a program a run. Told once ever
+// in a notification when it matters (Ctrl+G or going by itself is on) and the
+// bar is not there to say so, after a moment in front.
+void App::tessoaPickerFront(HWND dialog)
+{
+    const HWND owner = ::GetWindow(dialog, GW_OWNER);
+    const QString program = owner ? foreground::programOf(owner) : QString(); // "Weixin.exe"
+    const bool following = m_settings.dialogJump || m_settings.dialogAutoJump;
+    const auto barSays = [this, dialog] {
+        return m_settings.dialogBar
+            && !m_settings.dialogBarExcludedApps.contains(foreground::programOf(dialog), Qt::CaseInsensitive);
+    };
+    if (const QString seen = program.toLower(); !m_tessoaPickerLogged.contains(seen)) {
+        m_tessoaPickerLogged.push_back(seen);
+        diagnostics::record(u"tessoa-picker"_s,
+            {{u"program"_s, program}, {u"following"_s, following}, {u"bar"_s, barSays()}});
+        const QString line = u"File dialog of %1: Tessoa's own window (Tessoa takes over Open and Save). It cannot be "
+                             u"taken to a folder: no Ctrl+G, no going by itself; the bar copies paths"_s.arg(
+                                 program.isEmpty() ? u"a program"_s : program);
+        if (following) // what was asked for does not happen: in the log as it is by default
+            qWarning().noquote() << line;
+        else
+            qInfo().noquote() << line;
+    }
+    if (!following || m_settings.tessoaPickerHinted || barSays())
+        return;
+    QTimer::singleShot(1000ms, this, [this, dialog, program] {
+        if (m_settings.tessoaPickerHinted || !m_messages || !m_dialogJump || m_dialogJump->dialog() != dialog
+            || !::IsWindowVisible(dialog))
+            return;
+        m_settings.tessoaPickerHinted = true;
+        m_settings.save();
+        if (m_settingsEditor)
+            m_settingsEditor->setSettings(m_settings); // its copy must not forget it with its next change
+        m_backup->soon();
+        const QString text = program.isEmpty()
+            ? tr("Win顺 只能让系统的打开、另存为窗口转到文件管理器的文件夹。在 Tessoa 的窗口里点“改用系统窗口”就能转过去。")
+            : tr("Win顺 只能让系统的打开、另存为窗口转到文件管理器的文件夹。在 Tessoa 的窗口里点“改用系统窗口”，"
+                 "或在 Tessoa 设置的安装页把 %1 加入“不接管的程序”，就能转过去。").arg(program);
+        m_messages->showNotification(tr("Tessoa 的打开、另存为窗口不能自动跳转"), text);
+    });
 }
 
 void App::logLauncherLostFront(HWND front)

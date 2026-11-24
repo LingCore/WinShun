@@ -44,6 +44,13 @@ bool dialogLike(HWND hwnd)
         || blenderdialog::mayBe(hwnd);
 }
 
+// A file dialog for the bar: one we know, or Tessoa's own (filedialog::
+// isTessoaPicker), which we can only name and copy paths for.
+bool fileWindow(HWND hwnd)
+{
+    return filedialog::kind(hwnd) != filedialog::Kind::None || filedialog::isTessoaPicker(hwnd);
+}
+
 bool sameFolder(const std::wstring& a, const std::wstring& b)
 {
     return pathtext::sameFolder(QString::fromStdWString(a), QString::fromStdWString(b));
@@ -195,8 +202,8 @@ void DialogJump::follow(HWND foreground)
     // Elevated dialogs: the UI cannot send them navigation across UIPI, but
     // the index service's helper can (setDialog registers Ctrl+G and auto-jump
     // only when canFollow allows it); without the service, DialogBar copies
-    // the path for manual paste.
-    const bool fileDialog = filedialog::kind(foreground) != filedialog::Kind::None;
+    // the path for manual paste, as for Tessoa's own window.
+    const bool fileDialog = fileWindow(foreground);
     if (fileDialog && foreground == m_pending)
         stopAwaiting(); // up, and an event said so this time
     setDialog(fileDialog ? foreground : nullptr, fromManager);
@@ -259,14 +266,13 @@ void DialogJump::await(HWND candidate, bool fromManager)
     DWORD process = 0;
     const DWORD thread = ::GetWindowThreadProcessId(candidate, &process);
     if (!thread || (thread == ::GetCurrentThreadId() && process == ::GetCurrentProcessId()) || isCompanion(candidate)
-        || (!dialogLike(candidate) && filedialog::kind(candidate) == filedialog::Kind::None))
+        || (!dialogLike(candidate) && !fileWindow(candidate)))
         return;
     const bool front = ::GetForegroundWindow() == candidate;
     if (candidate != m_pending) {
         // A file dialog left behind stays awaited over a window that is
         // neither in front nor a file dialog yet (a message box, say).
-        if (m_pending && !front && ::IsWindow(m_pending) && filedialog::kind(candidate) == filedialog::Kind::None
-            && filedialog::kind(m_pending) != filedialog::Kind::None)
+        if (m_pending && !front && ::IsWindow(m_pending) && !fileWindow(candidate) && fileWindow(m_pending))
             return;
         stopAwaiting();
         m_pending = candidate;
@@ -293,7 +299,7 @@ void DialogJump::recheck()
     }
     // Taken once in front with all a file dialog has; asked again each time,
     // as what the event named may since have become something else.
-    const bool fileDialog = filedialog::kind(dialog) != filedialog::Kind::None;
+    const bool fileDialog = fileWindow(dialog);
     const bool front = ::GetForegroundWindow() == dialog;
     if (fileDialog && front) {
         const bool fromManager = std::erase(m_wentToManager, dialog) > 0 || m_pendingFromManager;
@@ -380,7 +386,8 @@ void DialogJump::setHotkeyEnabled(bool on)
 
 bool DialogJump::canFollow(HWND dialog) const
 {
-    if (!dialog)
+    // Tessoa's own: nothing can take it anywhere, the service's helper neither.
+    if (!dialog || filedialog::isTessoaPicker(dialog))
         return false;
     if (!integrity::higherThanOurs(dialog))
         return true;
@@ -389,8 +396,8 @@ bool DialogJump::canFollow(HWND dialog) const
 
 bool DialogJump::elevatedNav(HWND dialog) const
 {
-    return dialog && integrity::higherThanOurs(dialog) && m_callbacks.navigateElevated
-        && m_callbacks.elevatedNavAvailable && m_callbacks.elevatedNavAvailable();
+    return dialog && integrity::higherThanOurs(dialog) && !filedialog::isTessoaPicker(dialog)
+        && m_callbacks.navigateElevated && m_callbacks.elevatedNavAvailable && m_callbacks.elevatedNavAvailable();
 }
 
 void DialogJump::refreshElevated()

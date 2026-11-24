@@ -99,6 +99,9 @@ struct Settings {
     QStringList adminTapHinted;
     // ... and that their file dialogs cannot be taken anywhere (AdminDialogHint, GitHub #216).
     QStringList adminDialogHinted;
+    // Told once that Tessoa's own Open and Save windows cannot be taken
+    // anywhere (App::tessoaPickerFront), the bar being off to say so.
+    bool tessoaPickerHinted = false;
     // The Win顺 version that last said its index service is older and can be
     // updated in one click (a portable copy, ServiceUpdate.h): once a version.
     QString serviceUpdateHinted;

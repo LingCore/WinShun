@@ -75,10 +75,12 @@ class DialogBar : public QObject {
     Q_PROPERTY(bool foldersOnly READ foldersOnly NOTIFY dialogKindChanged FINAL) // a folder picker
     Q_PROPERTY(bool canOpen READ canOpen NOTIFY dialogKindChanged FINAL) // a dialog that opens files: Enter opens one (#353)
     Q_PROPERTY(bool copyOnly READ copyOnly NOTIFY dialogKindChanged FINAL)
-    // Why an elevated dialog is copy-only, for the bar's hint: "service" (no
-    // service runs: installing it lets this copy jump), "other" (the service
-    // was installed by another copy of Win顺 and keeps the navigator for it),
-    // or "" (no reason worth telling, e.g. an older service).
+    // Why the dialog is copy-only, for the bar's hint: "tessoa" (Tessoa's own
+    // window, filedialog::isTessoaPicker: nothing can take it anywhere); or,
+    // for an elevated one, "service" (no service runs: installing it lets this
+    // copy jump), "other" (the service was installed by another copy of Win顺
+    // and keeps the navigator for it), or "" (no reason worth telling, e.g. an
+    // older service).
     Q_PROPERTY(QString copyOnlyHint READ copyOnlyHint NOTIFY dialogKindChanged FINAL)
     // An elevated dialog the index service's helper can navigate for us: it
     // jumps (to a folder), but never opens a file and never types a name.
@@ -240,8 +242,8 @@ public:
     bool foldersOnly() const { return m_kind == filedialog::Kind::Folder || m_kind == filedialog::Kind::Browse; }
     bool canOpen() const { return !m_elevated && m_opens; }
     bool copyOnly() const { return m_copyOnly; }
-    QString copyOnlyHint() const { return m_copyOnlyHint; }
-    bool elevatedJump() const { return m_elevated && m_elevatedNavAvailable; }
+    QString copyOnlyHint() const { return m_tessoa ? QStringLiteral("tessoa") : m_copyOnlyHint; }
+    bool elevatedJump() const { return !m_tessoa && m_elevated && m_elevatedNavAvailable; }
     bool pathCopied() const { return m_pathCopied; }
     bool nothingFound() const { return m_nothingFound; }
     QString browsedFolder() const { return m_browsed; }
@@ -332,7 +334,10 @@ private:
     QString m_dialogApp; // its program file, "notepad.exe"
     filedialog::Kind m_kind = filedialog::Kind::None;
     bool m_opens = false; // pressing its button opens the file: Ctrl+Enter (filedialog::opensFiles, #353)
-    bool m_copyOnly = false; // UIPI: search is available, applying the path is manual (no service helper)
+    // Search is available, applying the path is manual: Tessoa's own window,
+    // or UIPI (an elevated dialog, no service helper).
+    bool m_copyOnly = false;
+    bool m_tessoa = false; // Tessoa's own window (filedialog::isTessoaPicker)
     bool m_elevated = false; // the dialog is of a higher-integrity (elevated) process
     bool m_elevatedNavAvailable = false; // the service can drive elevated dialogs (#104)
     QString m_copyOnlyHint = QStringLiteral("service"); // as for no service, until App says otherwise

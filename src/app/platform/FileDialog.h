@@ -42,6 +42,17 @@ Kind kind(HWND hwnd);
 // a folder is typed and confirmed there (goTo).
 bool byRule(HWND hwnd);
 
+// Tessoa's own Open and Save window, shown in place of Windows' once Tessoa
+// takes them over (its 接管打开 / 另存为窗口, 0.31 and later): a window of
+// tessoa.exe owned by one of the calling program's. Tessoa draws all of it
+// itself (no controls, no UI Automation), and its interface for other
+// programs leaves it out: the query pipe has no folder for it and
+// --in-tab=<it> opens a tab in Tessoa's main window instead (0.32.0,
+// docs/dialog-compatibility.md). So it is no kind() and cannot be driven:
+// DialogJump and DialogBar only name it, and offer to copy paths for it.
+// Quick, for any thread.
+bool isTessoaPicker(HWND hwnd);
+
 // Could the window be a WPS Office file dialog: a Qt window of one of its
 // programs, owned by another. Quick, for any thread; probe() tells.
 bool mayBeKingsoft(HWND hwnd);

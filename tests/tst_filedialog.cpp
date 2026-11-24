@@ -13,6 +13,7 @@
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QProcess>
 #include <QScopeGuard>
 #include <QSaveFile>
 #include <QTemporaryDir>
@@ -21,7 +22,10 @@
 #include <windows.h>
 
 #include <chrono>
+#include <cstdio>
+#include <cstdlib>
 #include <future>
+#include <string_view>
 
 using ws::filedialog::Kind;
 namespace fd = ws::filedialog;
@@ -60,6 +64,55 @@ struct FixtureWindow {
         const ws::win32::UniqueHandle process(::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid));
         BOOL belongs = FALSE;
         return process.valid() && ::IsProcessInJob(process.get(), job, &belongs) && belongs;
+    }
+};
+
+// A stand-in for Tessoa's own Open and Save window, run from a copy of this
+// test named tessoa.exe: a hidden window of Tessoa's class owned by the
+// window "owner" names (a handle, "0" for none, or "self" for one of its
+// own, as Tessoa's settings windows are). It prints its handle, then waits
+// for its standard input to close.
+int pickerFixture(std::string_view owner)
+{
+    registerClass(L"Window Class");
+    HWND parent = nullptr;
+    if (owner == "self")
+        parent = ::CreateWindowExW(0, L"Window Class", L"Tessoa", WS_OVERLAPPED, 0, 0, 200, 100,
+            nullptr, nullptr, ::GetModuleHandleW(nullptr), nullptr);
+    else
+        parent = reinterpret_cast<HWND>(static_cast<quintptr>(std::strtoull(owner.data(), nullptr, 10)));
+    const HWND window = ::CreateWindowExW(0, L"Window Class", L"另存为", WS_POPUP | WS_CAPTION | WS_SYSMENU,
+        0, 0, 400, 300, parent, nullptr, ::GetModuleHandleW(nullptr), nullptr);
+    if (!window)
+        return 1;
+    std::printf("%llu\n", static_cast<unsigned long long>(reinterpret_cast<quintptr>(window)));
+    std::fflush(stdout);
+    char buffer[64];
+    while (std::fread(buffer, 1, sizeof buffer, stdin) > 0) {
+    }
+    ::DestroyWindow(window);
+    return 0;
+}
+
+// Runs pickerFixture in "program" and hands back its window.
+struct PickerFixture {
+    QProcess process;
+    HWND window = nullptr;
+    PickerFixture(const QString& program, const QString& owner)
+    {
+        process.start(program, {QStringLiteral("--tessoa-picker-fixture"), owner});
+        if (!process.waitForStarted(5000))
+            return;
+        for (QElapsedTimer waited; !process.canReadLine() && waited.elapsed() < 5000;)
+            process.waitForReadyRead(100);
+        window = reinterpret_cast<HWND>(static_cast<quintptr>(process.readLine().trimmed().toULongLong()));
+    }
+    ~PickerFixture()
+    {
+        process.closeWriteChannel();
+        if (!process.waitForFinished(5000))
+            process.kill();
+        process.waitForFinished();
     }
 };
 
@@ -283,6 +336,48 @@ private slots:
         QCOMPARE(dialog.fileName(), std::wstring(L"keep-name.dwg"));
         QCOMPARE(dialog.notifications(), 0);
         QVERIFY(!dialog.accepted());
+    }
+
+    // Tessoa's own Open and Save window (its 接管打开 / 另存为窗口): a window
+    // of tessoa.exe owned by one of the calling program's. It is named, never
+    // driven: no kind(), so nothing is typed into it.
+    void tessoaPicker()
+    {
+        QTemporaryDir folder;
+        QVERIFY(folder.isValid());
+        const QString tessoa = folder.filePath(QStringLiteral("tessoa.exe"));
+        QVERIFY(QFile::copy(QCoreApplication::applicationFilePath(), tessoa));
+        registerClass(L"WsPickerCaller");
+        const Window caller(L"WsPickerCaller");
+        QVERIFY(caller.handle);
+        const QString callerHandle = QString::number(reinterpret_cast<quintptr>(caller.handle));
+        {
+            PickerFixture picker(tessoa, callerHandle);
+            QVERIFY(picker.window);
+            QVERIFY(fd::isTessoaPicker(picker.window));
+            QCOMPARE(fd::kind(picker.window), Kind::None);
+            QVERIFY(!fd::goTo(picker.window, QDir::tempPath().toStdWString()));
+            QVERIFY(!fd::setFileName(picker.window, L"unused.txt"));
+        }
+        {
+            PickerFixture mainWindow(tessoa, QStringLiteral("0")); // Tessoa's own windows
+            QVERIFY(mainWindow.window);
+            QVERIFY(!fd::isTessoaPicker(mainWindow.window));
+        }
+        {
+            PickerFixture settings(tessoa, QStringLiteral("self"));
+            QVERIFY(settings.window);
+            QVERIFY(!fd::isTessoaPicker(settings.window));
+        }
+        {
+            PickerFixture other(QCoreApplication::applicationFilePath(), callerHandle); // another program
+            QVERIFY(other.window);
+            QVERIFY(!fd::isTessoaPicker(other.window));
+        }
+        const Window ownedHere(L"WsPickerCaller");
+        ::SetWindowLongPtrW(ownedHere.handle, GWLP_HWNDPARENT, reinterpret_cast<LONG_PTR>(caller.handle));
+        QVERIFY(!fd::isTessoaPicker(ownedHere.handle));
+        QVERIFY(!fd::isTessoaPicker(nullptr));
     }
 
     void initTestCase()
@@ -552,5 +647,13 @@ private slots:
     }
 };
 
-QTEST_GUILESS_MAIN(TestFileDialog)
+int main(int argc, char** argv)
+{
+    if (argc == 3 && std::string_view(argv[1]) == "--tessoa-picker-fixture")
+        return pickerFixture(argv[2]);
+    QCoreApplication app(argc, argv);
+    TestFileDialog test;
+    return QTest::qExec(&test, argc, argv);
+}
+
 #include "tst_filedialog.moc"

@@ -403,8 +403,12 @@ Window {
                 id: placeholder
                 anchors.fill: parent
                 verticalAlignment: Text.AlignVCenter
-                text: window.bar.pathCopied ? qsTr("路径已复制，请粘贴到对话框的路径输入框")
-                      : window.bar.copyOnly ? (window.bar.copyOnlyHint === "other" ? qsTr("管理员窗口：搜索后复制路径再手动粘贴（服务属于另一份 Win顺）")
+                // Tessoa's own window takes a folder only in its address bar
+                // (its file name box refuses one), a file's whole path in either.
+                text: window.bar.pathCopied ? (window.bar.copyOnlyHint === "tessoa" ? qsTr("路径已复制：文件夹粘贴到 Tessoa 的地址栏，文件粘贴到文件名框")
+                                                                                   : qsTr("路径已复制，请粘贴到对话框的路径输入框"))
+                      : window.bar.copyOnly ? (window.bar.copyOnlyHint === "tessoa" ? qsTr("Tessoa 的窗口不能自动跳转：搜索后复制路径，或点“改用系统窗口”")
+                                               : window.bar.copyOnlyHint === "other" ? qsTr("管理员窗口：搜索后复制路径再手动粘贴（服务属于另一份 Win顺）")
                                                : window.bar.copyOnlyHint === "service" ? qsTr("管理员窗口：搜索后复制路径再手动粘贴（装 Win顺 服务可直接跳转）")
                                                : qsTr("管理员窗口：搜索后复制路径再手动粘贴"))
                       : window.bar.elevatedJump ? qsTr("管理员窗口：转过去并填好文件名，由你点打开")
