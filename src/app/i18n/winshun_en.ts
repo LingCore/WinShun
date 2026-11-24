@@ -11136,16 +11136,16 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>WinShun cannot take its dialogs to a folder, only copy the path. Run WinShun as administrator and they go straight there.</translation>
     </message>
     <message>
-        <source>Win顺 只能让系统的打开、另存为窗口转到文件管理器的文件夹。在 Tessoa 的窗口里点“改用系统窗口”就能转过去。</source>
-        <translation>WinShun can only take Windows’ own Open and Save dialogs to the file manager’s folder. Click “Use system dialog” in Tessoa’s window and it goes there.</translation>
+        <source>点 Tessoa 窗口里的“改用系统窗口”，就能转过去。</source>
+        <translation>Click “Use system dialog” in Tessoa’s window, and WinShun takes it there.</translation>
     </message>
     <message>
-        <source>Win顺 只能让系统的打开、另存为窗口转到文件管理器的文件夹。在 Tessoa 的窗口里点“改用系统窗口”，或在 Tessoa 设置的安装页把 %1 加入“不接管的程序”，就能转过去。</source>
-        <translation>WinShun can only take Windows’ own Open and Save dialogs to the file manager’s folder. Click “Use system dialog” in Tessoa’s window, or add %1 to the programs Tessoa leaves alone (Tessoa settings, Install page), and it goes there.</translation>
+        <source>点 Tessoa 窗口里的“改用系统窗口”，或在 Tessoa 设置的安装页把 %1 加入“不接管的程序”，就能转过去。</source>
+        <translation>Click “Use system dialog” in Tessoa’s window, or add %1 to the programs Tessoa leaves alone (Tessoa settings, Install page), and WinShun takes it there.</translation>
     </message>
     <message>
-        <source>Tessoa 的打开、另存为窗口不能自动跳转</source>
-        <translation>Tessoa’s Open and Save windows can’t follow your folder</translation>
+        <source>Tessoa 的窗口不能自动跳转</source>
+        <translation>Tessoa’s window can’t jump by itself</translation>
     </message>
     <message>
         <source>正在加载索引…</source>

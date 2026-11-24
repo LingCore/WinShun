@@ -154,3 +154,7 @@ Tessoa 0.32.0 实测（本机临时装上并打开接管，测完关掉、核对
 验证：
 
 - `tst_filedialog` 的 `tessoaPicker`：测试副本改名 tessoa.exe，建一个隐藏窗口，owner 是测试进程的窗口：认出，`kind` 为 None，`goTo`、`setFileName` 不动手；没有 owner、owner 在 tessoa.exe 自己进程里、换成别的程序名、本进程里的同类窗口、空句柄，都不认。
+- 真实主程序（隔离 `--profile`，`Ctrl+G` 与自动跳转都开）对真实 Tessoa 0.32.0 窗口（WinForms 另存为被接管后弹出），2026-11-24：
+  - 搜索框开着：窗口在前台时搜索框出现在它正下方，显示 Tessoa 的提示语，窗口没被移动或改尺寸；此时 `Ctrl+G` 仍可被别的程序注册（Win顺 没占）；`WinShun.log` 默认就有一行警告，诊断记录 `tessoa-picker` 为 `bar: true, following: true`。
+  - 搜索框关着：同样的日志与记录（`bar: false`），1 秒后系统通知“Tessoa 的窗口不能自动跳转”，正文带上调用程序名，完整显示（通知正文只有约四行，原先较长的一版被截断，已压短），`TessoaPickerHinted` 写为 true。
+  - 没实测：选中结果后的“路径已复制”提示（复制会进 Windows 剪贴板历史；只复制的逻辑与管理员窗口共用）；没有托盘图标时不发通知、不记为已提示（按代码）。
