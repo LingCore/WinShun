@@ -265,27 +265,46 @@ Handle makeJob(bool limited, const JobLimits& limits, DWORD* error)
         return {};
     }
     if (limited) {
-        JOBOBJECT_BASIC_UI_RESTRICTIONS ui {};
-        if (!limits.clipboardRead)
-            ui.UIRestrictionsClass |= JOB_OBJECT_UILIMIT_READCLIPBOARD;
-        if (!limits.clipboardWrite)
-            ui.UIRestrictionsClass |= JOB_OBJECT_UILIMIT_WRITECLIPBOARD;
-        if (!limits.ui) {
-            ui.UIRestrictionsClass |= JOB_OBJECT_UILIMIT_DESKTOP | JOB_OBJECT_UILIMIT_EXITWINDOWS | JOB_OBJECT_UILIMIT_SYSTEMPARAMETERS
-                | JOB_OBJECT_UILIMIT_DISPLAYSETTINGS;
-            // UILIMIT_HANDLES keeps it from USER handles of processes outside
-            // the job -- the clipboard's data among them (GetClipboardData
-            // fails with ERROR_INVALID_HANDLE even with READCLIPBOARD
-            // allowed; tst_plugin found it). So only without the clipboard.
-            if (!limits.clipboardRead && !limits.clipboardWrite)
-                ui.UIRestrictionsClass |= JOB_OBJECT_UILIMIT_HANDLES;
-        }
+        JOBOBJECT_BASIC_UI_RESTRICTIONS ui {uiRestrictions(limits, windowsBuild())};
         if (ui.UIRestrictionsClass && !::SetInformationJobObject(job.get(), JobObjectBasicUIRestrictions, &ui, sizeof ui)) {
             *error = ::GetLastError();
             return {};
         }
     }
     return job;
+}
+
+DWORD uiRestrictions(const JobLimits& limits, unsigned build)
+{
+    if (limits.clipboardRead && build < kUiLimitsKeepClipboardBuild)
+        return 0;
+    DWORD ui = 0;
+    if (!limits.clipboardRead)
+        ui |= JOB_OBJECT_UILIMIT_READCLIPBOARD;
+    if (!limits.clipboardWrite)
+        ui |= JOB_OBJECT_UILIMIT_WRITECLIPBOARD;
+    if (!limits.ui) {
+        ui |= JOB_OBJECT_UILIMIT_DESKTOP | JOB_OBJECT_UILIMIT_EXITWINDOWS | JOB_OBJECT_UILIMIT_SYSTEMPARAMETERS | JOB_OBJECT_UILIMIT_DISPLAYSETTINGS;
+        // UILIMIT_HANDLES keeps it from USER handles of processes outside
+        // the job -- the clipboard's data among them (GetClipboardData
+        // fails with ERROR_INVALID_HANDLE even with READCLIPBOARD
+        // allowed; tst_plugin found it). So only without the clipboard.
+        if (!limits.clipboardRead && !limits.clipboardWrite)
+            ui |= JOB_OBJECT_UILIMIT_HANDLES;
+    }
+    return ui;
+}
+
+unsigned windowsBuild()
+{
+    static const unsigned build = [] {
+        using Get = LONG(WINAPI*)(OSVERSIONINFOW*);
+        const HMODULE ntdll = ::GetModuleHandleW(L"ntdll.dll");
+        const auto get = ntdll ? reinterpret_cast<Get>(reinterpret_cast<void*>(::GetProcAddress(ntdll, "RtlGetVersion"))) : nullptr;
+        OSVERSIONINFOW version {sizeof version};
+        return get && get(&version) == 0 ? static_cast<unsigned>(version.dwBuildNumber) : 0u;
+    }();
+    return build;
 }
 
 std::vector<wchar_t> environmentFor(HANDLE token, const std::vector<std::pair<std::wstring, std::wstring>>& extra)
@@ -648,6 +667,7 @@ json::Value collectFacts(const FactsOptions& options)
         int formats = 0;
         const std::string hash = clipboardHash(&error, &formats);
         j["clipRead"] = !hash.empty();
+        j["clipHash"] = hash; // "format:size:hash" of what it read
         j["clipError"] = static_cast<unsigned long>(error);
         j["clipFormats"] = formats;
     }

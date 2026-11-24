@@ -37,6 +37,21 @@ lite::Handle restrictedToken(DWORD integrity, DWORD* error);
 // runner's own: ending with the job and nothing else (it must start plugins).
 lite::Handle makeJob(bool limited, const JobLimits& limits, DWORD* error);
 
+// Before this Windows build, a process in a job with any UI restriction gets
+// none of the clipboard's data another program put there: GetClipboardData
+// fails with ERROR_INVALID_HANDLE, files copied in Explorer and text alike
+// (GitHub #435; measured on 19045, while 26200 refuses it only with
+// UILIMIT_HANDLES; the builds between were not measured, so they get the
+// side where the clipboard works).
+inline constexpr unsigned kUiLimitsKeepClipboardBuild = 26100;
+// The job's JOB_OBJECT_UILIMIT_* for `limits` on Windows build `build`. A
+// plugin allowed to read the clipboard gets none before
+// kUiLimitsKeepClipboardBuild: reading it is what it asked for, and the
+// rest (its own process limit, memory, mitigations, token) stays.
+DWORD uiRestrictions(const JobLimits& limits, unsigned build);
+// This Windows' build (RtlGetVersion: no compatibility shim in the way).
+unsigned windowsBuild();
+
 // The user's environment from `token` (CreateEnvironmentBlock: the registry,
 // never this process's variables), with `extra` added (replacing any of the
 // same name), as the block CreateProcess wants.

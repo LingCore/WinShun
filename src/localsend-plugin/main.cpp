@@ -162,6 +162,18 @@ struct Clip {
     bool operator==(const Clip&) const = default;
 };
 
+// GetClipboardData for `format`, with a line in the log when the clipboard
+// lists it and still refuses it (a sandbox that keeps the data away: GitHub
+// #435, Windows 10's job UI limits; the next report says so by itself).
+HANDLE clipboardData(UINT format, const char* what)
+{
+    const HANDLE h = ::GetClipboardData(format);
+    const DWORD error = h ? 0 : ::GetLastError(); // before IsClipboardFormatAvailable sets its own
+    if (!h && ::IsClipboardFormatAvailable(format))
+        logWarning(std::string("clipboard: ") + what + " listed but not readable (error " + std::to_string(error) + ")");
+    return h;
+}
+
 // On the clipboard's own thread (Background): a program that renders what
 // it copied only when asked answers GetClipboardData in its own time.
 std::optional<Clip> readClipboard(DWORD sequence)
@@ -177,7 +189,7 @@ std::optional<Clip> readClipboard(DWORD sequence)
     if (!open)
         return std::nullopt; // busy (another program writing it): read next time
     c.read = true;
-    if (const HANDLE h = ::GetClipboardData(CF_HDROP)) {
+    if (const HANDLE h = clipboardData(CF_HDROP, "files")) {
         const HDROP drop = static_cast<HDROP>(h);
         const UINT count = ::DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
         for (UINT i = 0; i < count && i < 1000; ++i) {
@@ -190,7 +202,7 @@ std::optional<Clip> readClipboard(DWORD sequence)
         }
     }
     if (c.files.empty()) {
-        if (const HANDLE h = ::GetClipboardData(CF_UNICODETEXT)) {
+        if (const HANDLE h = clipboardData(CF_UNICODETEXT, "text")) {
             if (const auto* p = static_cast<const wchar_t*>(::GlobalLock(h))) {
                 const std::size_t max = ::GlobalSize(h) / sizeof(wchar_t);
                 c.text = narrow(std::wstring(p, ::wcsnlen(p, std::min<std::size_t>(max, 512 * 1024))));
