@@ -62,6 +62,8 @@ template <RankBy By> constexpr std::uint32_t timeKey(FileTime modified) noexcept
 template <RankBy By> bool better(const NameHit& a, const NameHit& b) noexcept
 {
     if constexpr (By == RankBy::Match) {
+        if (a.fuzzy != b.fuzzy)
+            return !a.fuzzy; // normal hits always rank before fuzzy-only hits
         if (a.score != b.score)
             return a.score > b.score;
         if (a.modified != b.modified)
@@ -124,12 +126,18 @@ private:
 // testing the names first and then a bit each about 2.
 class NameBits {
 public:
-    // False when cancelled. `test(name, fileExtLength, han)`.
-    template <typename Test>
-    bool build(const FileIndex& index, WorkerPool& pool, const std::function<bool()>& isCancelled, Test&& test)
+    // False when cancelled. `classify(name, fileExtLength, han)` returns
+    // NameMatcher::NameCandidate. When `trackFuzzy` is false, the second
+    // bitset is untouched (zero overhead for normal searches).
+    template <typename Classify>
+    bool build(const FileIndex& index, WorkerPool& pool, const std::function<bool()>& isCancelled, bool trackFuzzy,
+        Classify&& classify)
     {
         const std::size_t chunks = index.nameChunkCount();
         m_words.resize(chunks * kWordsPerChunk); // kept from search to search: no zeroing, no page faults
+        m_hasFuzzy = trackFuzzy;
+        if (trackFuzzy)
+            m_fuzzyOnly.resize(chunks * kWordsPerChunk);
         std::atomic<bool> cancelled {false};
         pool.parallelFor(chunks, [&](std::size_t chunk) {
             if (cancelled.load(std::memory_order_relaxed) || (isCancelled && isCancelled())) {
@@ -137,10 +145,16 @@ public:
                 return;
             }
             std::fill_n(m_words.data() + chunk * kWordsPerChunk, kWordsPerChunk, 0);
+            if (trackFuzzy)
+                std::fill_n(m_fuzzyOnly.data() + chunk * kWordsPerChunk, kWordsPerChunk, 0);
             index.forEachName(chunk, [&](std::uint32_t offset, std::string_view name) {
-                if (test(name, index.nameExtLength(offset), index.nameHasHan(offset))) {
+                const auto kind = classify(name, index.nameExtLength(offset), index.nameHasHan(offset));
+                if (kind != NameMatcher::NameCandidate::None) {
                     const std::size_t bit = bitOf(offset);
-                    m_words[bit >> 6] |= std::uint64_t {1} << (bit & 63);
+                    const std::uint64_t mask = std::uint64_t {1} << (bit & 63);
+                    m_words[bit >> 6] |= mask;
+                    if (trackFuzzy && kind == NameMatcher::NameCandidate::FuzzyOnly)
+                        m_fuzzyOnly[bit >> 6] |= mask;
                 }
             });
         });
@@ -151,6 +165,14 @@ public:
     {
         const std::size_t bit = bitOf(nameOffset);
         return (m_words[bit >> 6] >> (bit & 63)) & 1;
+    }
+
+    bool isFuzzyOnly(std::uint32_t nameOffset) const noexcept
+    {
+        if (!m_hasFuzzy)
+            return false;
+        const std::size_t bit = bitOf(nameOffset);
+        return (m_fuzzyOnly[bit >> 6] >> (bit & 63)) & 1;
     }
 
     // One per searching thread, reused.
@@ -172,7 +194,9 @@ private:
             + (offset & (FileIndex::kNameChunkSize - 1)) / kMinRecord;
     }
 
+    bool m_hasFuzzy = false;
     std::vector<std::uint64_t> m_words;
+    std::vector<std::uint64_t> m_fuzzyOnly;
 };
 
 // The best `limit` of `hits`, best first. Picked, then only those sorted:
@@ -209,6 +233,14 @@ public:
     bool mayAccept(const NameHit& hit) const noexcept
     {
         return m_heap.size() < m_capacity || m_order(hit, m_heap.front());
+    }
+
+    // In RankBy::Match, m_heap.front() is the worst hit kept; if it is non-fuzzy,
+    // all `m_capacity` slots are filled with normal hits and no fuzzy-only hit
+    // can enter the heap.
+    bool fullOfNonFuzzy() const noexcept
+    {
+        return !m_all && m_heap.size() >= m_capacity && !m_heap.front().fuzzy;
     }
 
     void push(const NameHit& hit)
@@ -493,12 +525,14 @@ NameSearchOutput search(const FileIndex& index, const NameMatcher& matcher, cons
         = options.insideFirst == kNoEntry ? std::vector<EntryId>() : std::vector<EntryId> {options.insideFirst};
 
     NameBits* names = nullptr;
+    const bool rankByMatch = options.order.key == SortKey::Rank && options.rankBy == RankBy::Match;
     if (matcher.filtersNames()) {
         names = &NameBits::forThisThread();
-        const bool built
-            = names->build(index, pool, isCancelled, [&](std::string_view name, std::size_t extLength, bool han) {
-                  return matcher.nameMayMatch(name, extLength, han);
-              });
+        const bool trackFuzzy = matcher.hasFuzzyTerms();
+        const bool built = names->build(
+            index, pool, isCancelled, trackFuzzy, [&](std::string_view name, std::size_t extLength, bool han) {
+                return matcher.classifyName(name, extLength, han);
+            });
         if (!built) {
             output.cancelled = true;
             return output;
@@ -561,9 +595,13 @@ NameSearchOutput search(const FileIndex& index, const NameMatcher& matcher, cons
                     continue;
                 if (filter.directIn != kNoEntry && e.parent != filter.directIn)
                     continue;
+                TopHits<decltype(order)>& heap = apart && e.isDir() ? folders : top;
+                const bool skipFuzzyScore = rankByMatch && !inside && names && names->isFuzzyOnly(e.nameOffset)
+                    && heap.fullOfNonFuzzy();
                 NameMatcher::SkipReason skipped = NameMatcher::SkipReason::None;
-                int score = matcher.matchDetailed(index, e, seen, id, skipped, checkExcluded);
-                if (score < 0)
+                const NameMatcher::MatchResult matched
+                    = matcher.matchDetailed(index, e, seen, id, skipped, checkExcluded, skipFuzzyScore);
+                if (!matched.matched())
                     continue;
                 if (skipMode == NameSearchOptions::SkipMode::Shown) {
                     if (skipped == NameMatcher::SkipReason::HiddenFolder) {
@@ -582,13 +620,12 @@ NameSearchOutput search(const FileIndex& index, const NameMatcher& matcher, cons
                         continue;
                 }
                 ++matches;
-                score += staticBonus(e);
+                int score = matched.score + staticBonus(e);
                 // Before mayAccept, which takes the score for the most it can be:
                 // asking it first with the most this could add let many more
                 // through each slice's heap (1 ms slower for "a", not faster).
                 if (prefer && !e.isDir())
                     score += preferredBonus(index, e, matcher, options.preferred);
-                TopHits<decltype(order)>& heap = apart && e.isDir() ? folders : top;
                 // Asked first as if it were in the folder typed in (InsideFirst
                 // puts those first), so its parents are walked only for hits
                 // that could still make the list; one found elsewhere is asked
@@ -597,6 +634,7 @@ NameSearchOutput search(const FileIndex& index, const NameMatcher& matcher, cons
                     .score = score,
                     .modified = modified > options.trustedUntil ? FileTime {0} : modified,
                     .inside = inside.has_value(),
+                    .fuzzy = matched.fuzzy,
                     .size = size};
                 if (!heap.mayAccept(hit))
                     continue;
@@ -999,8 +1037,10 @@ std::vector<EntryId> findRelativePath(const FileIndex& index, const std::vector<
     std::vector<std::vector<EntryId>> partial(slices);
     std::atomic<bool> cancelled {false};
     NameBits& named = NameBits::forThisThread();
-    if (!named.build(index, pool, isCancelled, [&](std::string_view name, std::size_t, bool) {
-            return name.size() == last.size() && text::equalsIgnoreAsciiCase(name, last);
+    if (!named.build(index, pool, isCancelled, false, [&](std::string_view name, std::size_t, bool) {
+            return name.size() == last.size() && text::equalsIgnoreAsciiCase(name, last)
+                ? NameMatcher::NameCandidate::Normal
+                : NameMatcher::NameCandidate::None;
         }))
         return {};
 

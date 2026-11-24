@@ -118,6 +118,7 @@ struct AppHit {
     int score = 0; // higher is better; may be negative for weak matches
     int otherName = -1; // found by otherNames[otherName], not by its name: shown by that one
     bool exact = false; // its name, another name of it, or an abbreviation of it is what was typed
+    bool fuzzy = false; // matched via FZF subsequence (ranked after normal app matches)
 };
 
 // The apps matching `query`, best first: by name (as NameMatcher matches
@@ -125,10 +126,12 @@ struct AppHit {
 // in full); an abbreviation typed in full (112); the program's file name
 // ("winword", 6 below a name); the initials of the name's words ("vsc": 45
 // all of them, 30 the first few); the word-prefix span ("vscode": 30-42).
+// When `fuzzyMode != FuzzyMode::Off`, also allows word-boundary FZF matches
+// (>=3 chars, e.g. "vcode" -> Visual Studio Code), strictly below normal hits.
 // Uninstallers and documents rank lower; recently opened apps (their launch
 // paths in `history`, newest first) higher.
 std::vector<AppHit> searchApps(const AppList& apps, const ParsedQuery& query, const NameMatcher& matcher,
-    const QStringList& history, const History::Affinities& affinities = {});
+    const QStringList& history, const History::Affinities& affinities = {}, FuzzyMode fuzzyMode = FuzzyMode::Off);
 
 // Something Windows saw started from the shell (Start menu, taskbar,
 // Explorer): its UserAssist record.

@@ -222,6 +222,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool searchApps READ searchApps WRITE setSearchApps NOTIFY changed FINAL)
     Q_PROPERTY(bool searchSystem READ searchSystem WRITE setSearchSystem NOTIFY changed FINAL)
     Q_PROPERTY(bool regexMode READ regexMode WRITE setRegexMode NOTIFY changed FINAL)
+    Q_PROPERTY(QString fuzzyMode READ fuzzyMode WRITE setFuzzyMode NOTIFY changed FINAL) // off | fallback | on
     Q_PROPERTY(bool thumbnails READ thumbnails WRITE setThumbnails NOTIFY changed FINAL)
     Q_PROPERTY(bool rowDeleteButton READ rowDeleteButton WRITE setRowDeleteButton NOTIFY changed FINAL)
     Q_PROPERTY(bool webSuggestions READ webSuggestions WRITE setWebSuggestions NOTIFY changed FINAL)
@@ -881,6 +882,8 @@ public:
     void setSearchSystem(bool on);
     bool regexMode() const { return m_settings.regexMode; }
     void setRegexMode(bool on);
+    QString fuzzyMode() const { return m_settings.fuzzyMode; }
+    void setFuzzyMode(const QString& mode);
     bool thumbnails() const { return m_settings.thumbnails; }
     void setThumbnails(bool on);
     bool rowDeleteButton() const { return m_settings.rowDeleteButton; }

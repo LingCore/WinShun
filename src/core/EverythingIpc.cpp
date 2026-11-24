@@ -645,8 +645,9 @@ Rows find(const FileIndex& index, WorkerPool& pool, const Query& query, const st
             out.rows.resize(query.maxResults);
         return out;
     }
-    // Nothing asked for is everything (in the folders named).
-    const ParsedQuery parsed = parseQuery(search.query.isEmpty() ? u"*"_s : search.query, search.regex);
+    // Nothing asked for is everything (in the folders named). Everything
+    // protocol stays strictly deterministic (no fz:/fuzzy: prefix).
+    const ParsedQuery parsed = parseQuery(search.query.isEmpty() ? u"*"_s : search.query, search.regex, false);
     if (!parsed.error.isEmpty())
         return out;
 

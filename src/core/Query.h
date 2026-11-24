@@ -46,6 +46,8 @@ QuickFilterQuery splitQuickFilterQuery(const QString& text, const QuickFilters& 
 //   *.pdf  a?c      wildcard match against the whole name
 //   proj\readme     "readme" in the name, under a folder containing "proj"
 //   regex:^IMG_\d+  a regular expression on the name (any case; (?-i) for exact)
+//   fz:rpt          FZF fuzzy subsequence match on the name (fuzzy: works too);
+//                   independent of normal syntax and usable even when fuzzy mode is off
 //   C:\My Files\a   a path from a drive (or share) is one term, spaces and all
 //   ext:pdf,docx    only files with these extensions
 //   size:>10mb      only files of such a size: >, >=, <, <=, 1mb..5mb (or 1mb-5mb),
@@ -60,6 +62,8 @@ struct QueryTerm {
     std::vector<std::string> ancestors; // folded folder segments, outermost first
     bool negated = false;
     bool wildcard = false;
+    bool quoted = false; // surrounded by quotes: always literal, never fuzzy
+    bool fuzzy = false; // explicit fz:/fuzzy: subsequence term (independent of normal syntax)
     // A cheap pre-filter, folded: wildcard terms' longest part without * or ?;
     // a regular expression's longest run every match has (may be empty).
     std::string literal;
@@ -90,6 +94,7 @@ struct ParsedQuery {
     std::shared_ptr<const HiddenFolders> hiddenFolders;
     EntryFilter filter; // size: and dm: (never folders)
     QStringList highlights; // plain terms to highlight in result names
+    QStringList fuzzyHighlights; // explicit fz:/fuzzy: terms (discrete highlight)
 
     // Nothing to find by: a filter alone (size:>1gb) lists what fits it.
     bool isEmpty() const noexcept { return error.isEmpty() && alternatives.empty() && terms.empty() && extensions.empty() && !filter.any(); }
@@ -143,7 +148,13 @@ ContentQuery splitContentQuery(const QString& text, bool regexMode = false);
 // `regexTerms`: every term is a regular expression, as if each had regex:
 // before it (the search box's regex mode, Ctrl+R, as Everything's); ext:,
 // size:, dm:, ! and " | " still work, and a path typed is no path.
-ParsedQuery parseQuery(const QString& text, bool regexTerms = false);
+// `allowFuzzyPrefix`: recognizes independent fz:/fuzzy: tokens (false for
+// Everything IPC compatibility).
+ParsedQuery parseQuery(const QString& text, bool regexTerms = false, bool allowFuzzyPrefix = true);
+
+// Whether `query` has at least one unquoted plain term eligible for automatic
+// FZF fuzzy matching (>=3 code points, no wildcard/regex/explicit fz:).
+bool isFuzzyEligible(const ParsedQuery& query) noexcept;
 
 // Saved queries to narrow a search with (ParsedQuery::conditions), read: one
 // that says nothing or cannot be read (a broken regex:) is left out.
@@ -167,7 +178,20 @@ std::vector<ParsedQuery> homophoneQueries(const ParsedQuery& query);
 // lower, in the name of a folder the item is in; at least one is in the name.
 class NameMatcher {
 public:
-    explicit NameMatcher(const ParsedQuery& query);
+    struct MatchResult {
+        int score = -1;
+        bool fuzzy = false; // matched only via FZF subsequence (explicit fz: or auto fuzzy)
+        bool matched() const noexcept { return score >= 0; }
+    };
+
+    // Classification of a distinct index name for NameBits pre-filtering:
+    // FuzzyOnly entries can skip V2 DP scoring once Top-K is full of Normal hits.
+    enum class NameCandidate : std::uint8_t { None = 0, Normal = 1, FuzzyOnly = 2 };
+
+    // `autoFuzzy`: enables FZF subsequence fallback on eligible unquoted plain
+    // terms (>=3 chars, passing fuzzy::passesAutoThreshold). Off by default so
+    // Everything IPC, QuickFilters and existing callers stay strictly deterministic.
+    explicit NameMatcher(const ParsedQuery& query, bool autoFuzzy = false);
 
     // Which terms the folders of an index hold, kept while one search looks
     // at many entries (siblings share them): one per thread and query.
@@ -191,8 +215,11 @@ public:
     // at the entries whose name may match. `fileExtLength` as for a file;
     // `han`: whether it has Chinese characters.
     bool nameMayMatch(std::string_view name, std::size_t fileExtLength, bool han) const;
+    NameCandidate classifyName(std::string_view name, std::size_t fileExtLength, bool han) const;
     // Whether nameMayMatch() ever says no (a query of folders alone does not).
     bool filtersNames() const noexcept;
+    // Whether this matcher has any explicit fz: or automatic fuzzy terms.
+    bool hasFuzzyTerms() const noexcept { return m_hasFuzzy; }
 
     // Why an entry that matched the query was left out.
     enum class SkipReason : std::uint8_t { None, ExcludedFile, HiddenFolder };
@@ -200,17 +227,22 @@ public:
     // Caller holds index.readLock().
     int match(const FileIndex& index, const EntryScan& entry, Folders& folders, EntryId id = kNoEntry) const;
     int match(const FileIndex& index, const EntryScan& entry) const;
-    // Like match(), but when the entry would match and is left out only by
+    // Like match(), but says whether FZF subsequence matching was needed, and
+    // when the entry would match and is left out only by
     // excludedExtensions/excludedFileNames (when `checkExcluded`) or
-    // hiddenFolders, returns its match score and reports why in `reason`.
-    int matchDetailed(const FileIndex& index, const EntryScan& entry, Folders& folders, EntryId id,
-        SkipReason& reason, bool checkExcluded = true) const;
+    // hiddenFolders, returns its match and reports why in `reason`.
+    // `skipFuzzyScore`: when true and the name was already classified FuzzyOnly
+    // by classifyName(), skips redundant V2 DP scoring on single-term queries
+    // while keeping every filter/exclusion check exact for totalMatches.
+    MatchResult matchDetailed(const FileIndex& index, const EntryScan& entry, Folders& folders, EntryId id,
+        SkipReason& reason, bool checkExcluded = true, bool skipFuzzyScore = false) const;
     bool hasExcludedFiles() const noexcept;
     // Matches a full path that is not (necessarily) in the index, e.g. history.
     int matchPath(const QString& fullPath, bool isDir, FileTime modified = 0, FileSize size = kUnknownSize) const;
     // Matches a bare UTF-8 name with no folders or extension, such as an
     // app's display name: folder terms and ext: never match it.
     int matchName(std::string_view name) const;
+    MatchResult matchNameDetailed(std::string_view name) const;
     // Whether the query is one plain term that is the whole name (UTF-8),
     // with or without its extension: "readme" for "README.md".
     bool isExactName(std::string_view name, bool isDir) const;
@@ -220,10 +252,11 @@ public:
 
 private:
     // matchDetailed() but for ParsedQuery::hiddenFolders.
-    int matchShownDetailed(const FileIndex& index, const EntryScan& entry, Folders& folders, EntryId id,
-        SkipReason& reason, bool checkExcluded) const;
+    MatchResult matchShownDetailed(const FileIndex& index, const EntryScan& entry, Folders& folders, EntryId id,
+        SkipReason& reason, bool checkExcluded, bool skipFuzzyScore) const;
 
     bool m_invalid = false;
+    bool m_hasFuzzy = false;
     std::shared_ptr<const HiddenFolders> m_hidden;
     EntryFilter m_filter;
     std::vector<NameMatcher> m_alternatives;
@@ -234,13 +267,16 @@ private:
         pinyin::Matcher commonPinyin; // the same with each character's most common reading only
         std::vector<pinyin::Matcher> folders; // the same for each ancestor segment
         bool initials = false; // a short ASCII term may name a program by word initials
+        bool explicitFuzzy = false; // fz:/fuzzy: prefix
+        bool autoFuzzy = false; // eligible for automatic FZF fallback/mode
+        std::size_t patternChars = 0; // code-point count when explicitFuzzy || autoFuzzy
     };
 
     // `han()`: whether the name has Chinese characters (asked only when it
     // matters, as working it out reads the name).
     template <bool Padded, typename Han, typename AncestorsMatch, typename FolderTerms>
-    int score(std::string_view name, bool isDir, Han&& han, std::size_t extLength, AncestorsMatch&& ancestorsMatch,
-        FolderTerms&& folderTerms) const;
+    MatchResult score(std::string_view name, bool isDir, Han&& han, std::size_t extLength, AncestorsMatch&& ancestorsMatch,
+        FolderTerms&& folderTerms, bool skipFuzzyScore = false) const;
     // Which of m_folderTerms a folder's own name has.
     std::uint64_t termsInFolder(std::string_view name, bool han, bool padded) const;
     // ... it or any folder it is in.

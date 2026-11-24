@@ -1,5 +1,6 @@
 #include "Query.h"
 
+#include "FuzzyMatch.h"
 #include "PathText.h"
 #include "TextUtil.h"
 #include "Wtf8.h"
@@ -713,7 +714,7 @@ QString sizeText(std::uint64_t bytes)
     return QString::number(value, 'f', decimals) + u' ' + kUnits[unit];
 }
 
-ParsedQuery parseQuery(const QString& text, bool regexTerms)
+ParsedQuery parseQuery(const QString& text, bool regexTerms, bool allowFuzzyPrefix)
 {
     ParsedQuery q;
     qsizetype start = 0;
@@ -726,7 +727,7 @@ ParsedQuery parseQuery(const QString& text, bool regexTerms)
             q.error = branch.isEmpty() ? QObject::tr("“|”两侧都需要搜索条件") : QObject::tr("搜索条件过多");
             return q;
         }
-        q.alternatives.push_back(parseQuery(branch, regexTerms));
+        q.alternatives.push_back(parseQuery(branch, regexTerms, allowFuzzyPrefix));
         start = piece.end;
     }
     if (!q.alternatives.empty()) {
@@ -735,13 +736,15 @@ ParsedQuery parseQuery(const QString& text, bool regexTerms)
             q.error = QObject::tr("“|”两侧都需要搜索条件");
             return q;
         }
-        q.alternatives.push_back(parseQuery(branch, regexTerms));
+        q.alternatives.push_back(parseQuery(branch, regexTerms, allowFuzzyPrefix));
         for (const ParsedQuery& group : q.alternatives) {
             q.highlights.append(group.highlights);
+            q.fuzzyHighlights.append(group.fuzzyHighlights);
             if (!group.error.isEmpty())
                 q.error = group.error;
         }
         q.highlights.removeDuplicates();
+        q.fuzzyHighlights.removeDuplicates();
         return q;
     }
     // A path typed or pasted whole ("C:\Users\me\Tencent Files\x") is one
@@ -777,6 +780,7 @@ ParsedQuery parseQuery(const QString& text, bool regexTerms)
         }
 
         QueryTerm term;
+        term.quoted = quotedLiteral;
         if (token.size() > 1 && token.startsWith(u'!')) {
             term.negated = true;
             token.remove(0, 1);
@@ -816,6 +820,17 @@ ParsedQuery parseQuery(const QString& text, bool regexTerms)
             continue;
         }
 
+        if (!quotedLiteral && allowFuzzyPrefix) {
+            const qsizetype fuzzyPrefix = token.startsWith(u"fuzzy:", Qt::CaseInsensitive) ? 6
+                : token.startsWith(u"fz:", Qt::CaseInsensitive) ? 3 : 0;
+            if (fuzzyPrefix != 0) {
+                token = token.mid(fuzzyPrefix);
+                if (token.isEmpty())
+                    continue;
+                term.fuzzy = true;
+            }
+        }
+
         if (std::any_of(token.cbegin(), token.cend(), isPathSeparator)) {
             QStringList parts = token.split(separatorRegex());
             const QString last = parts.takeLast();
@@ -824,9 +839,11 @@ ParsedQuery parseQuery(const QString& text, bool regexTerms)
                     term.ancestors.push_back(foldedUtf8(part));
             }
             token = last;
+            if (token.isEmpty())
+                term.fuzzy = false;
         }
 
-        term.wildcard = token.contains(u'*') || token.contains(u'?');
+        term.wildcard = !term.fuzzy && (token.contains(u'*') || token.contains(u'?'));
         term.text = foldedUtf8(token);
         if (term.wildcard) {
             std::size_t run = 0; // where the literal run between wildcards began
@@ -840,11 +857,26 @@ ParsedQuery parseQuery(const QString& text, bool regexTerms)
         }
         if (term.text.empty() && term.ancestors.empty())
             continue;
-        if (!term.negated && !term.wildcard && !token.isEmpty())
+        if (!term.negated && !term.wildcard && !token.isEmpty()) {
             q.highlights.append(token);
+            if (term.fuzzy)
+                q.fuzzyHighlights.append(token);
+        }
         q.terms.push_back(std::move(term));
     }
     return q;
+}
+
+bool isFuzzyEligible(const ParsedQuery& query) noexcept
+{
+    if (!query.error.isEmpty())
+        return false;
+    if (!query.alternatives.empty())
+        return std::ranges::any_of(query.alternatives, [](const ParsedQuery& b) { return isFuzzyEligible(b); });
+    return std::ranges::any_of(query.terms, [](const QueryTerm& t) {
+        return !t.negated && !t.wildcard && !t.regex && !t.quoted && !t.fuzzy
+            && fuzzy::isEligibleAutoTerm(t.text);
+    });
 }
 
 bool ParsedQuery::hasFilters() const noexcept
@@ -855,7 +887,7 @@ bool ParsedQuery::hasFilters() const noexcept
 std::vector<ParsedQuery> homophoneQueries(const ParsedQuery& query)
 {
     if (!query.alternatives.empty() || !query.error.isEmpty()
-        || std::ranges::any_of(query.terms, [](const QueryTerm& t) { return t.regex; }))
+        || std::ranges::any_of(query.terms, [](const QueryTerm& t) { return t.regex || t.fuzzy; }))
         return {};
     constexpr std::size_t kMostQueries = 8; // each is a search over the whole index
     // Each term to read, in pieces: a Chinese character's readings, or a run
@@ -966,7 +998,7 @@ std::vector<ParsedQuery> parseConditions(const QStringList& texts)
     return conditions;
 }
 
-NameMatcher::NameMatcher(const ParsedQuery& query)
+NameMatcher::NameMatcher(const ParsedQuery& query, bool autoFuzzy)
     : m_extensions(query.extensions)
     , m_excluded(query.excludedExtensions)
     , m_excludedNames(query.excludedFileNames)
@@ -974,22 +1006,34 @@ NameMatcher::NameMatcher(const ParsedQuery& query)
 {
     m_invalid = !query.error.isEmpty();
     m_filter = query.filter;
-    for (const ParsedQuery& branch : query.alternatives)
-        m_alternatives.emplace_back(branch);
+    for (const ParsedQuery& branch : query.alternatives) {
+        m_alternatives.emplace_back(branch, autoFuzzy);
+        m_hasFuzzy = m_hasFuzzy || m_alternatives.back().hasFuzzyTerms();
+    }
     for (const ParsedQuery& condition : query.conditions)
-        m_conditions.emplace_back(condition);
+        m_conditions.emplace_back(condition, false); // saved filters stay deterministic
     for (const std::string& e : m_excluded)
         m_excludedLongest = std::max(m_excludedLongest, e.size());
     for (const auto& t : query.terms) {
         if (t.negated) {
-            m_negative.push_back(t); // exclusions stay literal: no surprises
+            m_negative.push_back(t); // plain exclusions stay literal; only explicit !fz: is fuzzy
+            if (t.fuzzy)
+                m_hasFuzzy = true;
             continue;
         }
-        const std::string_view text = t.wildcard || t.regex ? std::string_view() : std::string_view(t.text);
-        Positive p {t, pinyin::Matcher(text), pinyin::Matcher(text, true), {}};
-        p.initials = text.size() >= 2 && text.size() <= 12 && std::ranges::all_of(text, [](unsigned char c) {
-            return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9');
-        });
+        const bool explicitFuzzy = t.fuzzy && !t.text.empty();
+        const bool termAutoFuzzy = autoFuzzy && !explicitFuzzy && !t.wildcard && !t.regex && !t.quoted
+            && fuzzy::isEligibleAutoTerm(t.text);
+        const std::string_view text
+            = t.wildcard || t.regex || explicitFuzzy ? std::string_view() : std::string_view(t.text);
+        Positive p {t, pinyin::Matcher(text), pinyin::Matcher(text, true), {}, false, explicitFuzzy, termAutoFuzzy,
+            (explicitFuzzy || termAutoFuzzy) ? fuzzy::codePointCount(t.text) : 0};
+        p.initials = !explicitFuzzy && text.size() >= 2 && text.size() <= 12
+            && std::ranges::all_of(text, [](unsigned char c) {
+                   return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9');
+               });
+        if (explicitFuzzy || termAutoFuzzy)
+            m_hasFuzzy = true;
         for (const std::string& segment : t.ancestors)
             p.folders.emplace_back(segment);
         m_positive.push_back(std::move(p));
@@ -1003,7 +1047,7 @@ NameMatcher::NameMatcher(const ParsedQuery& query)
     if (m_positive.size() + (m_extensions.empty() ? 0 : 1) >= 2) {
         for (std::size_t i = 0; i < m_positive.size() && i < 64; ++i) {
             const QueryTerm& t = m_positive[i].term;
-            if (!t.wildcard && !t.regex && !t.text.empty() && t.ancestors.empty())
+            if (!t.wildcard && !t.regex && !t.fuzzy && !t.text.empty() && t.ancestors.empty())
                 m_folderTerms |= std::uint64_t {1} << i;
         }
     }
@@ -1018,6 +1062,17 @@ NameMatcher::NameMatcher(const ParsedQuery& query)
 }
 
 namespace {
+
+NameMatcher::MatchResult betterMatch(NameMatcher::MatchResult a, NameMatcher::MatchResult b) noexcept
+{
+    if (!a.matched())
+        return b;
+    if (!b.matched())
+        return a;
+    if (a.fuzzy != b.fuzzy)
+        return a.fuzzy ? b : a;
+    return a.score >= b.score ? a : b;
+}
 
 bool programInitials(std::string_view name, std::size_t extLength, std::string_view initials)
 {
@@ -1042,16 +1097,25 @@ template <bool Padded> std::size_t find(std::string_view haystack, std::string_v
 } // namespace
 
 template <bool Padded, typename Han, typename AncestorsMatch, typename FolderTerms>
-int NameMatcher::score(std::string_view name, bool isDir, Han&& han, std::size_t extLength,
-    AncestorsMatch&& ancestorsMatch, FolderTerms&& folderTerms) const
+NameMatcher::MatchResult NameMatcher::score(std::string_view name, bool isDir, Han&& han, std::size_t extLength,
+    AncestorsMatch&& ancestorsMatch, FolderTerms&& folderTerms, bool skipFuzzyScore) const
 {
     if (m_invalid)
-        return -1;
+        return {};
     int score = 0;
+    bool usedFuzzy = false;
+    int literalNameTerms = 0;
     std::size_t covered = 0;
     std::optional<pinyin::Span> pinyinMatch; // of a lone term, for the exact-name bonus
     std::uint64_t elsewhere = 0; // terms not in the name, to be found in its folders
-    bool inName = !m_extensions.empty(); // something is in the name (checked below)
+    std::uint64_t deferredFuzzy = 0; // fuzzy-candidate terms deferred until cheap filters & folders pass
+    bool nonDeferredInName = !m_extensions.empty(); // something non-deferred is in the name (checked below)
+    std::size_t nameChars = 0;
+    const auto countNameChars = [&] {
+        if (nameChars == 0)
+            nameChars = fuzzy::codePointCount(name);
+        return nameChars;
+    };
 
     for (std::size_t i = 0; i < m_positive.size(); ++i) {
         const Positive& p = m_positive[i];
@@ -1059,18 +1123,35 @@ int NameMatcher::score(std::string_view name, bool isDir, Han&& han, std::size_t
         if (!t.text.empty() || t.regex) {
             if (t.regex) {
                 if (!t.literal.empty() && find<Padded>(name, t.literal) == text::npos)
-                    return -1;
+                    return {};
                 if (!regexMatches(t.expression, name))
-                    return -1;
+                    return {};
                 score += 20;
+                ++literalNameTerms;
+                nonDeferredInName = true;
             } else if (t.wildcard) {
                 if (!t.literal.empty() && find<Padded>(name, t.literal) == text::npos)
-                    return -1;
+                    return {};
                 if (!text::globMatch(name, t.text))
-                    return -1;
+                    return {};
                 score += 10;
                 covered += static_cast<std::size_t>(
                     std::count_if(t.text.begin(), t.text.end(), [](char c) { return c != '*' && c != '?'; }));
+                ++literalNameTerms;
+                nonDeferredInName = true;
+            } else if (p.explicitFuzzy) {
+                if (!fuzzy::isSubsequence(name, t.text))
+                    return {};
+                if (i < 64) {
+                    deferredFuzzy |= std::uint64_t {1} << i;
+                } else {
+                    const auto matched = fuzzy::match(name, t.text);
+                    if (!matched)
+                        return {};
+                    score += fuzzy::normalizedScore(matched->score, p.patternChars, countNameChars());
+                    usedFuzzy = true;
+                    nonDeferredInName = true;
+                }
             } else if (std::size_t pos = find<Padded>(name, t.text); pos == text::npos) {
                 // Not spelled out: maybe as pinyin ("bg" for 报告), ranked a little lower,
                 // and lower still when it takes a less common reading (解 as xie).
@@ -1078,12 +1159,32 @@ int NameMatcher::score(std::string_view name, bool isDir, Han&& han, std::size_t
                 if (!span && p.initials && !isDir && programInitials(name, extLength, t.text)) {
                     score += 12; // below literal word matches, above a word's middle
                     covered += t.text.size();
+                    ++literalNameTerms;
+                    nonDeferredInName = true;
+                } else if (!span && p.autoFuzzy) {
+                    if (fuzzy::isSubsequence(name, t.text)) {
+                        if (i < 64) {
+                            deferredFuzzy |= std::uint64_t {1} << i;
+                        } else if (const auto matched = fuzzy::match(name, t.text);
+                                   matched && fuzzy::passesAutoThreshold(matched->score, p.patternChars)) {
+                            score += fuzzy::normalizedScore(matched->score, p.patternChars, countNameChars());
+                            usedFuzzy = true;
+                            nonDeferredInName = true;
+                        } else {
+                            return {};
+                        }
+                    } else if (i < 64 && (m_folderTerms >> i & 1)) {
+                        elsewhere |= std::uint64_t {1} << i;
+                        continue;
+                    } else {
+                        return {};
+                    }
                 } else if (!span) {
                     if (i < 64 && (m_folderTerms >> i & 1)) {
                         elsewhere |= std::uint64_t {1} << i;
                         continue;
                     }
-                    return -1;
+                    return {};
                 } else {
                     int bonus = -12;
                     if (const auto common = p.commonPinyin.findUtf8(name)) {
@@ -1094,6 +1195,8 @@ int NameMatcher::score(std::string_view name, bool isDir, Han&& han, std::size_t
                     score += bonus;
                     covered += span->length;
                     pinyinMatch = span;
+                    ++literalNameTerms;
+                    nonDeferredInName = true;
                 }
             } else {
                 int bonus = 4;
@@ -1111,41 +1214,87 @@ int NameMatcher::score(std::string_view name, bool isDir, Han&& han, std::size_t
                 }
                 score += bonus;
                 covered += t.text.size();
+                ++literalNameTerms;
+                nonDeferredInName = true;
             }
-            inName = true;
         }
         if (!t.ancestors.empty() && !ancestorsMatch(t.ancestors, p.folders.data()))
-            return -1;
+            return {};
     }
 
     // "!draft" leaves out names with "draft"; "!node_modules\" everything in
-    // such a folder; "!tmp\*.log" only the .log files in one.
+    // such a folder; "!tmp\*.log" only the .log files in one; "!fz:abc" fuzzy exclusion.
     for (const auto& t : m_negative) {
         const bool nameHit
             = t.regex ? (t.literal.empty() || find<Padded>(name, t.literal) != text::npos) && regexMatches(t.expression, name)
+            : t.fuzzy ? fuzzy::isSubsequence(name, t.text)
             : t.text.empty() || (t.wildcard ? text::globMatch(name, t.text) : find<Padded>(name, t.text) != text::npos);
         if (nameHit && (t.ancestors.empty() || ancestorsMatch(t.ancestors, nullptr)))
-            return -1;
+            return {};
     }
 
     if (!m_extensions.empty()) {
         if (isDir || extLength == 0)
-            return -1;
+            return {};
         const std::string_view ext = name.substr(name.size() - extLength);
         const bool ok = std::any_of(
             m_extensions.begin(), m_extensions.end(), [&](const std::string& e) { return text::equalsFolded(ext, e); });
         if (!ok)
-            return -1;
+            return {};
+    }
+
+    // Check known folder terms before running deferred Smith-Waterman V2 DP so
+    // multi-term queries (e.g. "core nsrch") reject entries with non-matching
+    // ancestor folders without paying for fuzzy DP on every candidate name.
+    bool foldersLoaded = false;
+    std::uint64_t cachedFolders = 0;
+    const auto loadFolders = [&] {
+        if (!foldersLoaded) {
+            cachedFolders = folderTerms();
+            foldersLoaded = true;
+        }
+        return cachedFolders;
+    };
+    if (elsewhere != 0) {
+        if ((!nonDeferredInName && deferredFuzzy == 0) || (loadFolders() & elsewhere) != elsewhere)
+            return {};
+    }
+
+    int fuzzyInName = 0;
+    for (std::uint64_t bits = deferredFuzzy; bits != 0; bits &= bits - 1) {
+        const auto i = static_cast<std::size_t>(std::countr_zero(bits));
+        const Positive& p = m_positive[i];
+        const QueryTerm& t = p.term;
+        if (skipFuzzyScore && m_quickDecides && t.ancestors.empty()) {
+            score += 1;
+            usedFuzzy = true;
+            ++fuzzyInName;
+        } else if (const auto matched = fuzzy::match(name, t.text);
+                   matched && (p.explicitFuzzy || fuzzy::passesAutoThreshold(matched->score, p.patternChars))) {
+            score += fuzzy::normalizedScore(matched->score, p.patternChars, countNameChars());
+            usedFuzzy = true;
+            ++fuzzyInName;
+        } else if (!p.explicitFuzzy && (m_folderTerms >> i & 1) && (loadFolders() >> i & 1)) {
+            elsewhere |= std::uint64_t {1} << i;
+        } else {
+            return {};
+        }
     }
 
     // The rest in the folders it is in: a little, below any place in the name.
     if (elsewhere != 0) {
-        if (!inName || (folderTerms() & elsewhere) != elsewhere)
-            return -1;
+        if (!nonDeferredInName && fuzzyInName == 0)
+            return {};
         score += 3 * std::popcount(elsewhere);
     }
 
-    if (m_positive.size() == 1 && !m_positive[0].term.wildcard && !m_positive[0].term.regex && !m_positive[0].term.text.empty()) {
+    // In multi-term queries mixing literal/folder terms and fuzzy terms, keep
+    // literal matches ahead of entries where all terms matched only fuzzily.
+    if (usedFuzzy && m_positive.size() > 1)
+        score += literalNameTerms * 100 + std::popcount(elsewhere) * 85;
+
+    if (!usedFuzzy && m_positive.size() == 1 && !m_positive[0].term.wildcard && !m_positive[0].term.regex
+        && !m_positive[0].term.text.empty()) {
         const std::string& t = m_positive[0].term.text;
         const std::size_t stem
             = extLength > 0 && name.size() > extLength + 1 ? name.size() - extLength - 1 : name.size();
@@ -1159,9 +1308,9 @@ int NameMatcher::score(std::string_view name, bool isDir, Han&& han, std::size_t
         }
     }
 
-    if (!name.empty())
+    if (!name.empty() && covered > 0)
         score += static_cast<int>(25 * std::min(covered, name.size()) / name.size());
-    return score;
+    return {score, usedFuzzy};
 }
 
 namespace {
@@ -1232,17 +1381,17 @@ bool NameMatcher::hasExcludedFiles() const noexcept
 int NameMatcher::match(const FileIndex& index, const EntryScan& entry, Folders& folders, EntryId id) const
 {
     SkipReason reason = SkipReason::None;
-    const int scored = matchDetailed(index, entry, folders, id, reason, false);
-    return reason == SkipReason::None ? scored : -1;
+    const MatchResult scored = matchDetailed(index, entry, folders, id, reason, false);
+    return reason == SkipReason::None ? scored.score : -1;
 }
 
-int NameMatcher::matchDetailed(const FileIndex& index, const EntryScan& entry, Folders& folders, EntryId id,
-    SkipReason& reason, bool checkExcluded) const
+NameMatcher::MatchResult NameMatcher::matchDetailed(const FileIndex& index, const EntryScan& entry, Folders& folders,
+    EntryId id, SkipReason& reason, bool checkExcluded, bool skipFuzzyScore) const
 {
     reason = SkipReason::None;
-    const int scored = matchShownDetailed(index, entry, folders, id, reason, checkExcluded);
-    if (scored < 0)
-        return -1;
+    const MatchResult scored = matchShownDetailed(index, entry, folders, id, reason, checkExcluded, skipFuzzyScore);
+    if (!scored.matched())
+        return {};
     // Last: only what matches is looked up in its folders.
     if (m_hidden && m_hidden->hides(index, entry, folders.m_hidden)) {
         if (reason == SkipReason::None) {
@@ -1251,59 +1400,59 @@ int NameMatcher::matchDetailed(const FileIndex& index, const EntryScan& entry, F
         }
         // Skipped by both a hidden folder and a file rule: not shown under either alone.
         reason = SkipReason::None;
-        return -1;
+        return {};
     }
     return scored;
 }
 
-int NameMatcher::matchShownDetailed(const FileIndex& index, const EntryScan& entry, Folders& folders, EntryId id,
-    SkipReason& reason, bool checkExcluded) const
+NameMatcher::MatchResult NameMatcher::matchShownDetailed(const FileIndex& index, const EntryScan& entry,
+    Folders& folders, EntryId id, SkipReason& reason, bool checkExcluded, bool skipFuzzyScore) const
 {
     reason = SkipReason::None;
     if (m_invalid)
-        return -1;
+        return {};
     if (!m_conditions.empty()) {
         folders.m_conditions.resize(m_conditions.size());
         for (std::size_t i = 0; i < m_conditions.size(); ++i) {
             if (m_conditions[i].match(index, entry, folders.m_conditions[i], id) < 0)
-                return -1;
+                return {};
         }
     }
     if (!m_alternatives.empty()) {
         folders.m_alternatives.resize(m_alternatives.size());
-        int bestShown = -1;
-        int bestExcluded = -1;
-        int bestHidden = -1;
+        MatchResult bestShown;
+        MatchResult bestExcluded;
+        MatchResult bestHidden;
         for (std::size_t i = 0; i < m_alternatives.size(); ++i) {
             SkipReason branchReason = SkipReason::None;
-            const int s = m_alternatives[i].matchDetailed(
-                index, entry, folders.m_alternatives[i], id, branchReason, checkExcluded);
-            if (s < 0)
+            const MatchResult s = m_alternatives[i].matchDetailed(
+                index, entry, folders.m_alternatives[i], id, branchReason, checkExcluded, false);
+            if (!s.matched())
                 continue;
             if (branchReason == SkipReason::None)
-                bestShown = std::max(bestShown, s);
+                bestShown = betterMatch(bestShown, s);
             else if (branchReason == SkipReason::ExcludedFile)
-                bestExcluded = std::max(bestExcluded, s);
+                bestExcluded = betterMatch(bestExcluded, s);
             else if (branchReason == SkipReason::HiddenFolder)
-                bestHidden = std::max(bestHidden, s);
+                bestHidden = betterMatch(bestHidden, s);
         }
-        if (bestShown >= 0)
+        if (bestShown.matched())
             return bestShown;
-        if (bestExcluded >= 0) {
+        if (bestExcluded.matched()) {
             reason = SkipReason::ExcludedFile;
             return bestExcluded;
         }
-        if (bestHidden >= 0) {
+        if (bestHidden.matched()) {
             reason = SkipReason::HiddenFolder;
             return bestHidden;
         }
-        return -1;
+        return {};
     }
     if (m_filter.any()) {
         if (id == kNoEntry)
             id = index.findChild(entry.parent, index.name(entry), true);
         if (id == kNoEntry || !m_filter.fits(index.modified(id), index.size(id), entry.isDir()))
-            return -1;
+            return {};
     }
     // A skipped type: a file only (a folder named "x.bak" stays), and before
     // the rest when skipped counts are not asked for, so that the name is not
@@ -1318,12 +1467,12 @@ int NameMatcher::matchShownDetailed(const FileIndex& index, const EntryScan& ent
             if (std::any_of(m_excluded.begin(), m_excluded.end(),
                     [&](const std::string& e) { return text::equalsFolded(ext, e); })) {
                 if (!checkExcluded)
-                    return -1;
+                    return {};
                 excludedExt = true;
             }
         }
     }
-    const int scored = score<true>(
+    const MatchResult scored = score<true>(
         index.name(entry), entry.isDir(), [&] { return (entry.flags & EntryFlag::Han) != 0; }, index.extLength(entry),
         [&](const std::vector<std::string>& segments, const pinyin::Matcher* folders) {
             // Walk up from the parent, consuming segments innermost-first.
@@ -1337,42 +1486,75 @@ int NameMatcher::matchShownDetailed(const FileIndex& index, const EntryScan& ent
             }
             return j < 0;
         },
-        [&] { return termsInFolders(index, entry.parent, &folders); });
-    if (scored < 0)
-        return -1;
+        [&] { return termsInFolders(index, entry.parent, &folders); }, skipFuzzyScore);
+    if (!scored.matched())
+        return {};
     // A skipped file name, files only as above; after the rest, as a pattern
     // costs more than an extension and few names that match are skipped.
     if (excludedExt || (!m_excludedNames.empty() && !entry.isDir() && nameMatchesAny(index.name(entry), m_excludedNames))) {
         if (!checkExcluded)
-            return -1;
+            return {};
         reason = SkipReason::ExcludedFile;
         return scored;
     }
     return scored;
 }
 
-bool NameMatcher::nameMayMatch(std::string_view name, std::size_t fileExtLength, bool han) const
+NameMatcher::NameCandidate NameMatcher::classifyName(std::string_view name, std::size_t fileExtLength, bool han) const
 {
     if (m_invalid)
-        return false;
-    if (!m_alternatives.empty())
-        return std::ranges::any_of(m_alternatives, [&](const NameMatcher& m) { return m.nameMayMatch(name, fileExtLength, han); });
+        return NameCandidate::None;
+    if (!m_alternatives.empty()) {
+        NameCandidate best = NameCandidate::None;
+        for (const NameMatcher& m : m_alternatives) {
+            const NameCandidate c = m.classifyName(name, fileExtLength, han);
+            if (c == NameCandidate::Normal)
+                return NameCandidate::Normal;
+            if (c == NameCandidate::FuzzyOnly)
+                best = NameCandidate::FuzzyOnly;
+        }
+        return best;
+    }
     if (m_quick >= 0) {
         const Positive& p = m_positive[static_cast<std::size_t>(m_quick)];
-        if (text::findFoldedPadded(name, p.term.text) == text::npos && !(han && p.pinyin.valid() && p.pinyin.findUtf8(name))
-            && !(p.initials && programInitials(name, fileExtLength, p.term.text)))
-            return false;
-        if (m_quickDecides)
-            return true; // the term in the name; its folders, if any, are the entry's
+        if (p.explicitFuzzy) {
+            if (!fuzzy::isSubsequence(name, p.term.text))
+                return NameCandidate::None;
+            if (m_quickDecides)
+                return NameCandidate::FuzzyOnly;
+        } else {
+            const bool normal = text::findFoldedPadded(name, p.term.text) != text::npos
+                || (han && p.pinyin.valid() && p.pinyin.findUtf8(name))
+                || (p.initials && programInitials(name, fileExtLength, p.term.text));
+            if (normal) {
+                if (m_quickDecides)
+                    return NameCandidate::Normal;
+            } else {
+                if (!p.autoFuzzy || !fuzzy::isSubsequence(name, p.term.text))
+                    return NameCandidate::None;
+                const auto matched = fuzzy::match(name, p.term.text);
+                if (!matched || !fuzzy::passesAutoThreshold(matched->score, p.patternChars))
+                    return NameCandidate::None;
+                if (m_quickDecides)
+                    return NameCandidate::FuzzyOnly;
+            }
+        }
     }
     // What depends on the entry, at its most lenient: a file, in folders
     // that hold every term. Exclusions by folder rule nothing out here (they
     // are the calls without pinyin).
-    return score<true>(
-               name, false, [han] { return han; }, fileExtLength,
-               [](const std::vector<std::string>&, const pinyin::Matcher* folders) { return folders != nullptr; },
-               [] { return ~std::uint64_t {0}; })
-        >= 0;
+    const MatchResult res = score<true>(
+        name, false, [han] { return han; }, fileExtLength,
+        [](const std::vector<std::string>&, const pinyin::Matcher* folders) { return folders != nullptr; },
+        [] { return ~std::uint64_t {0}; });
+    if (!res.matched())
+        return NameCandidate::None;
+    return res.fuzzy ? NameCandidate::FuzzyOnly : NameCandidate::Normal;
+}
+
+bool NameMatcher::nameMayMatch(std::string_view name, std::size_t fileExtLength, bool han) const
+{
+    return classifyName(name, fileExtLength, han) != NameCandidate::None;
 }
 
 bool NameMatcher::filtersNames() const noexcept
@@ -1431,7 +1613,8 @@ int NameMatcher::matchPath(const QString& fullPath, bool isDir, FileTime modifie
                 terms |= termsInFolder(folder, pinyin::hasHan(folder), false);
             }
             return terms;
-        });
+        })
+        .score;
 }
 
 bool NameMatcher::isExactName(std::string_view name, bool isDir) const
@@ -1462,20 +1645,25 @@ bool NameMatcher::isExactName(QStringView name, bool isDir) const
 
 int NameMatcher::matchName(std::string_view name) const
 {
+    return matchNameDetailed(name).score;
+}
+
+NameMatcher::MatchResult NameMatcher::matchNameDetailed(std::string_view name) const
+{
     if (m_invalid)
-        return -1;
+        return {};
     // As if typed: an app or a place is in no folder and has no size, so
     // "!$RECYCLE.BIN\" leaves it be, and ext: or size: leaves it out.
     if (std::ranges::any_of(m_conditions, [&](const NameMatcher& m) { return m.matchName(name) < 0; }))
-        return -1;
+        return {};
     if (!m_alternatives.empty()) {
-        int best = -1;
+        MatchResult best;
         for (const NameMatcher& m : m_alternatives)
-            best = std::max(best, m.matchName(name));
+            best = betterMatch(best, m.matchNameDetailed(name));
         return best;
     }
     if (m_filter.any())
-        return -1;
+        return {};
     return score<false>(
         name, false, [&] { return pinyin::hasHan(name); }, 0,
         [](const std::vector<std::string>&, const pinyin::Matcher*) { return false; },

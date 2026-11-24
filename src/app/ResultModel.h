@@ -143,7 +143,7 @@ public:
     Q_INVOKABLE static QString elidedHtml(const QString& text, const QVariantList& matches, qreal width, const QFont& font,
         const QColor& color, int weight = QFont::Bold);
 
-    void assign(SearchResults items, QStringList highlights); // changes only the rows that differ
+    void assign(SearchResults items, QStringList highlights, QStringList fuzzyHighlights = {}); // changes only the rows that differ
     void update(int row, const SearchResult& item);
     void append(const SearchResults& items);
     void insert(int row, const SearchResult& item);
@@ -194,6 +194,7 @@ private:
     QString m_startPath; // the Launcher's, for the rows of the query it was set with
     SearchResults m_items;
     QStringList m_highlights;
+    QStringList m_fuzzyHighlights;
     QColor m_highlightColor {0x00, 0x5F, 0xB8};
     int m_highlightWeight = QFont::Bold;
     bool m_thumbnails = true;

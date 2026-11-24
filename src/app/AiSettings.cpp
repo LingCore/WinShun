@@ -723,6 +723,15 @@ std::vector<Entry> buildCatalog()
     add(boolean({"Results/RegexMode", QT_TRANSLATE_NOOP("AiSettings", "正则模式"), "results", 1,
                     "Every word typed is a regular expression: on names in All and Files, on the text of files in Content (Ctrl+R in the search box toggles it). A single word can be one with regex: before it either way."},
         &Settings::regexMode));
+    add(choice({"Results/FuzzyMode", QT_TRANSLATE_NOOP("AiSettings", "模糊匹配（FZF）"), "results", 1,
+                    "Independent FZF subsequence matching (e.g. nsrch -> NameSearch.cpp, vcode -> Visual Studio Code). Off: deterministic search only (explicit fz:/fuzzy: still works). Fallback: normal search stays untouched and falls back to FZF (>=3 chars) on 0 hits, plus word-boundary FZF for apps. On: always includes FZF (>=3 chars) ranked strictly below normal hits."},
+        &Settings::fuzzyMode,
+        {{u"off"_s, u"deterministic search only; explicit fz:/fuzzy: prefix still works"_s,
+             QT_TRANSLATE_NOOP("AiSettings", "关闭")},
+            {u"fallback"_s, u"only fall back to FZF when normal search finds nothing (and word-boundary FZF for apps)"_s,
+                QT_TRANSLATE_NOOP("AiSettings", "无结果时")},
+            {u"on"_s, u"always include FZF matches ranked strictly below normal matches"_s,
+                QT_TRANSLATE_NOOP("AiSettings", "始终开启")}}));
     add(boolean({"Results/ShowModified", QT_TRANSLATE_NOOP("AiSettings", "显示修改日期"), "results", 1,
                     "Each result says when the file was last written."},
         &Settings::showModified));

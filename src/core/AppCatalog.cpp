@@ -1,5 +1,6 @@
 #include "AppCatalog.h"
 
+#include "FuzzyMatch.h"
 #include "History.h"
 #include "Pinyin.h"
 #include "Query.h"
@@ -542,7 +543,7 @@ QString appIdOf(QStringView launchPath)
 
 std::vector<AppHit> searchApps(
     const AppList& apps, const ParsedQuery& query, const NameMatcher& matcher, const QStringList& history,
-    const History::Affinities& affinities)
+    const History::Affinities& affinities, FuzzyMode fuzzyMode)
 {
     std::vector<AppHit> hits;
     if (query.isEmpty())
@@ -559,7 +560,7 @@ std::vector<AppHit> searchApps(
     std::string_view initials;
     if (query.terms.size() == 1 && query.extensions.empty()) {
         const QueryTerm& t = query.terms.front();
-        if (!t.negated && !t.wildcard && t.ancestors.empty() && t.text.size() >= 2
+        if (!t.negated && !t.wildcard && !t.fuzzy && t.ancestors.empty() && t.text.size() >= 2
             && std::all_of(t.text.begin(), t.text.end(), isAsciiAlnum))
             initials = t.text;
     }
@@ -567,16 +568,27 @@ std::vector<AppHit> searchApps(
     // Plain ASCII terms only ("vscode", "vs code"): the word-prefix span match
     // takes them joined, so Visual Studio Code is v|s|code.
     std::string joined;
-    if (query.extensions.empty() && !query.filter.any()) {
+    bool joinedQuoted = false;
+    if (query.extensions.empty() && !query.filter.any() && query.alternatives.empty()) {
         for (const QueryTerm& t : query.terms) {
-            if (t.negated || t.wildcard || !t.ancestors.empty() || t.text.empty()
+            if (t.negated || t.wildcard || t.regex || t.fuzzy || !t.ancestors.empty() || t.text.empty()
                 || !std::all_of(t.text.begin(), t.text.end(), isAsciiAlnum)) {
                 joined.clear();
                 break;
             }
+            if (t.quoted)
+                joinedQuoted = true;
             joined += t.text;
         }
     }
+
+    // Explicit fz:/fuzzy: terms score on the normal 0..100 plugin/app scale;
+    // automatic fuzzy stays strictly below initials (28) and wordSpan (30).
+    const bool explicitFuzzyQuery = std::ranges::any_of(
+        query.terms, [](const QueryTerm& t) { return !t.negated && t.fuzzy; });
+    const bool allowAppAutoFuzzy = fuzzyMode != FuzzyMode::Off && !explicitFuzzyQuery && !joinedQuoted
+        && !joined.empty() && fuzzy::isEligibleAutoTerm(joined, 3);
+    const std::size_t joinedChars = allowAppAutoFuzzy ? fuzzy::codePointCount(joined) : 0;
 
     // One letter alone is not read as pinyin (it is in most Chinese names),
     // but it brings back an app opened before whose name has a character
@@ -584,62 +596,112 @@ std::vector<AppHit> searchApps(
     char letter = 0;
     if (query.terms.size() == 1 && query.extensions.empty() && !query.filter.any()) {
         const QueryTerm& t = query.terms.front();
-        if (!t.negated && !t.wildcard && !t.regex && t.ancestors.empty() && t.text.size() == 1 && isAsciiAlnum(t.text.front()))
+        if (!t.negated && !t.wildcard && !t.regex && !t.fuzzy && t.ancestors.empty() && t.text.size() == 1
+            && isAsciiAlnum(t.text.front()))
             letter = t.text.front();
     }
 
+    const auto scaleMatcherFuzzy = [explicitFuzzyQuery](int score) noexcept {
+        if (explicitFuzzyQuery)
+            return 20 + std::clamp(score, 1, 200) * 65 / 200; // 20..85
+        return 5 + std::clamp(score, 1, 200) * 20 / 200; // 5..25: below initials/wordSpan
+    };
+
+    const auto tryAutoFuzzy = [&](std::string_view candidate) -> int {
+        const auto m = fuzzy::match(candidate, joined);
+        if (!m || !fuzzy::passesAutoThreshold(m->score, joinedChars) || !text::isWordStart(candidate, m->start))
+            return -1;
+        const int norm = fuzzy::normalizedScore(m->score, joinedChars, fuzzy::codePointCount(candidate));
+        return 5 + std::clamp(norm, 1, 200) * 20 / 200;
+    };
+
     for (std::size_t i = 0; i < apps.size(); ++i) {
         const AppInfo& app = apps[i];
-        int score = matcher.matchName(app.nameUtf8);
+        int score = -1;
+        bool isFuzzy = false;
         int otherName = -1;
-        const auto better = [&](int s, int other) {
-            if (s > score) {
+
+        const auto consider = [&](int s, int other, bool fuzzyHit) {
+            if (s < 0)
+                return;
+            // A non-fuzzy hit always outranks a fuzzy hit regardless of raw score.
+            if (score < 0 || (isFuzzy && !fuzzyHit) || (isFuzzy == fuzzyHit && s > score)) {
                 score = s;
                 otherName = other;
+                isFuzzy = fuzzyHit;
             }
         };
+        const auto considerMatcher = [&](const std::string& candidate, int penalty, int floor, int other) {
+            const auto res = matcher.matchNameDetailed(candidate);
+            if (!res.matched())
+                return;
+            const int s = res.fuzzy ? scaleMatcherFuzzy(res.score) : res.score;
+            const int adjusted = penalty > 0 ? std::max(s - penalty, floor) : s;
+            consider(adjusted, other, res.fuzzy);
+        };
+
+        considerMatcher(app.nameUtf8, 0, 0, -1);
         // "计算器" for Calculator, and "微信" (or "wx") for WeChat.exe whatever
         // its shortcut is named, as much as its own name.
         for (std::size_t k = 0; k < app.otherNamesUtf8.size(); ++k)
-            better(matcher.matchName(app.otherNamesUtf8[k]), static_cast<int>(k));
+            considerMatcher(app.otherNamesUtf8[k], 0, 0, static_cast<int>(k));
         for (const std::string& alias : app.aliases)
-            better(matcher.matchName(alias), -1);
-        if (!app.program.empty()) {
-            if (const int s = matcher.matchName(app.program); s >= 0)
-                better(s - 6, -1); // "winword" finds Word, a little below a name match
-        }
+            considerMatcher(alias, 0, 0, -1);
+        if (!app.program.empty())
+            considerMatcher(app.program, 6, 1, -1); // "winword" finds Word, a little below a name match
         // "office ltsc" finds Word and Excel, below every app named so itself:
         // "visio" is Visio first, then the suite it was installed with.
-        for (const std::string& installed : app.installedNames) {
-            if (const int s = matcher.matchName(installed); s >= 0)
-                better(std::max(s - kInstalledNamePenalty, 1), -1);
-        }
+        for (const std::string& installed : app.installedNames)
+            considerMatcher(installed, kInstalledNamePenalty, 1, -1);
+
         // Whole or not at all: "p" and "s" are in too many names to pull in Photoshop.
         const bool abbreviation
             = !initials.empty() && std::ranges::find(app.abbreviations, initials) != app.abbreviations.end();
         if (abbreviation)
-            better(kAbbreviationScore, -1);
+            consider(kAbbreviationScore, -1, false);
         if (!initials.empty() && app.initials.starts_with(initials))
-            better(initials.size() == app.initials.size() ? 45 : 30, -1);
+            consider(initials.size() == app.initials.size() ? 45 : 30, -1, false);
         else if (!initials.empty() && text::wordInitialsMatch(app.nameUtf8, initials))
-            better(28, -1);
+            consider(28, -1, false);
         if (!joined.empty())
-            better(wordSpanScore(app, joined), -1);
-        if (score < 0 && letter != 0 && recent.contains(app.id) && pinyin::findInitialUtf16(wtf8::view(app.name), letter))
+            consider(wordSpanScore(app, joined), -1, false);
+
+        // Small-set FZF matching for installed apps ("vcode" -> Visual Studio Code),
+        // strictly below literal, initials and wordSpan hits, and disabled when FuzzyMode::Off.
+        if ((score < 0 || isFuzzy) && allowAppAutoFuzzy) {
+            consider(tryAutoFuzzy(app.nameUtf8), -1, true);
+            for (std::size_t k = 0; k < app.otherNamesUtf8.size(); ++k)
+                consider(tryAutoFuzzy(app.otherNamesUtf8[k]), static_cast<int>(k), true);
+            for (const std::string& alias : app.aliases)
+                consider(tryAutoFuzzy(alias), -1, true);
+            if (!app.program.empty()) {
+                if (const int s = tryAutoFuzzy(app.program); s >= 0)
+                    consider(std::max(s - 3, 1), -1, true);
+            }
+        }
+
+        if (score < 0 && letter != 0 && recent.contains(app.id) && pinyin::findInitialUtf16(wtf8::view(app.name), letter)) {
             score = 20; // below what has the letter itself, until its use lifts it
+            isFuzzy = false;
+        }
         if (score < 0)
             continue;
         const auto typed = [&](const std::string& n) { return matcher.isExactName(n, false); };
-        const bool exact = abbreviation || typed(app.nameUtf8) || std::ranges::any_of(app.otherNamesUtf8, typed)
-            || std::ranges::any_of(app.aliases, typed);
+        const bool exact = !isFuzzy
+            && (abbreviation || typed(app.nameUtf8) || std::ranges::any_of(app.otherNamesUtf8, typed)
+                || std::ranges::any_of(app.aliases, typed));
         if (app.auxiliary)
             score -= 30;
         if (recent.contains(app.id))
             score += affinities.isEmpty() ? 4 : History::affinity(affinities, app.launchPath()).bonus();
-        hits.push_back({i, score, otherName, exact});
+        hits.push_back({i, score, otherName, exact, isFuzzy});
     }
-    // Stable: equal scores keep the list's alphabetical order.
-    std::stable_sort(hits.begin(), hits.end(), [](const AppHit& a, const AppHit& b) { return a.score > b.score; });
+    // Stable: normal matches before fuzzy matches; equal scores keep alphabetical order.
+    std::stable_sort(hits.begin(), hits.end(), [](const AppHit& a, const AppHit& b) {
+        if (a.fuzzy != b.fuzzy)
+            return !a.fuzzy;
+        return a.score > b.score;
+    });
     return hits;
 }
 

@@ -892,6 +892,16 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
         if (m_settingsEditor)
             m_settingsEditor->setSettings(m_settings);
     });
+    connect(m_launcher.get(), &Launcher::fuzzyModeChanged, this, [this] {
+        if (m_settings.fuzzyMode == m_launcher->fuzzyMode())
+            return;
+        m_settings.fuzzyMode = m_launcher->fuzzyMode();
+        m_settings.save();
+        if (m_dialogBar)
+            m_dialogBar->setFuzzyMode(m_settings.fuzzyMode);
+        if (m_settingsEditor)
+            m_settingsEditor->setSettings(m_settings);
+    });
     createPluginHost();
     moveCapture();
 
@@ -2120,6 +2130,7 @@ void App::applySettings(bool initial)
     m_launcher->setTabEntersFavoriteFolder(m_settings.tabEntersFavoriteFolder);
     m_launcher->setSearchKinds(m_settings.searchApps, m_settings.searchSystem);
     m_launcher->setRegexMode(m_settings.regexMode);
+    m_launcher->setFuzzyMode(m_settings.fuzzyMode);
     m_launcher->setFolderTyping(m_settings.folderTyping);
     m_launcher->results()->setShowModifiedTime(m_settings.showModifiedTime);
     m_launcher->setPreferredTypes(m_settings.preferredTypes);
@@ -5240,6 +5251,7 @@ void App::applyDialogs()
     }
     if (m_dialogBar) {
         m_dialogBar->setRecordHistory(m_settings.recordHistory);
+        m_dialogBar->setFuzzyMode(m_settings.fuzzyMode);
         m_dialogBar->setExcludedFiles(m_settings.excludedTypes, m_settings.excludedFileNames);
         m_dialogBar->setExcludedApps(m_settings.dialogBarExcludedApps);
         m_dialogBar->setPlace(m_settings.dialogBarPlace);

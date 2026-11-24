@@ -31,6 +31,32 @@ enum class RankBy : std::uint8_t { Match, Newest, Oldest };
 // (History), or the files written last (the folders, in 文件夹).
 enum class StartList : std::uint8_t { Opened, Modified };
 
+// Independent FZF subsequence matching policy (Settings: Results/FuzzyMode):
+//   Off      - deterministic substring/pinyin only; explicit fz:/fuzzy: still works
+//   Fallback - normal search untouched; falls back to FZF (>=3 chars) on 0 hits,
+//              plus word-boundary FZF on installed apps
+//   On       - always includes FZF (>=3 chars) ranked strictly after normal hits
+enum class FuzzyMode : std::uint8_t { Off, Fallback, On };
+
+inline FuzzyMode fuzzyModeFromName(QStringView name) noexcept
+{
+    if (name.compare(u"off", Qt::CaseInsensitive) == 0)
+        return FuzzyMode::Off;
+    if (name.compare(u"on", Qt::CaseInsensitive) == 0)
+        return FuzzyMode::On;
+    return FuzzyMode::Fallback;
+}
+
+inline QString fuzzyModeName(FuzzyMode mode)
+{
+    switch (mode) {
+    case FuzzyMode::Off: return QStringLiteral("off");
+    case FuzzyMode::Fallback: return QStringLiteral("fallback");
+    case FuzzyMode::On: return QStringLiteral("on");
+    }
+    return QStringLiteral("fallback");
+}
+
 // How files and folders are listed in the search panel: as ranked (RankBy),
 // or by one of its columns, up or down. By name and by size, a tie goes as
 // ranked; by path, a folder's files stay together (its path, then the
@@ -165,9 +191,13 @@ struct SearchResult {
     // share (emptyInIndex).
     bool emptyFolder = false;
     bool offline = false; // on a network share that cannot be reached now (ShareIndexer::offline)
-    // Found by how its name reads, not by what was typed (年度报告 for
-    // 年度报高; homophoneQueries): listed under a heading that says so.
+    // Found by how its name reads (年度报告 for 年度报高; homophoneQueries),
+    // or by automatic FZF fuzzy fallback when fuzzy is also true: listed under
+    // a heading that says so.
     bool approximate = false;
+    // Matched via FZF subsequence matching (explicit fz:, always-on fuzzy, or
+    // fuzzy fallback when approximate is also true): uses discrete highlights.
+    bool fuzzy = false;
     // Typed in a folder's window (SearchEngine::Request::currentFolder,
     // GitHub #110): not in that folder. Listed after the rows that are,
     // under a caption that says so (其他位置).

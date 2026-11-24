@@ -1020,6 +1020,9 @@ void Settings::load()
     searchApps = readOrDefault(s, u"Results/SearchApps"_s, d.searchApps);
     searchSystem = readOrDefault(s, u"Results/SearchSystem"_s, d.searchSystem);
     regexMode = readOrDefault(s, u"Results/RegexMode"_s, d.regexMode);
+    fuzzyMode = readOrDefault(s, u"Results/FuzzyMode"_s, d.fuzzyMode).trimmed().toLower();
+    if (fuzzyMode != u"off" && fuzzyMode != u"fallback" && fuzzyMode != u"on")
+        fuzzyMode = d.fuzzyMode;
     if (!s.contains(u"Results/Sort"_s) && s.value(u"Results/SortByModified"_s).toBool())
         s.setValue(u"Results/Sort"_s, u"newest"_s); // 0.6.0's switch: newest first, or best match
     s.remove(u"Results/SortByModified"_s);
@@ -1493,6 +1496,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Results/SearchApps"_s, searchApps);
     s.setValue(u"Results/SearchSystem"_s, searchSystem);
     s.setValue(u"Results/RegexMode"_s, regexMode);
+    s.setValue(u"Results/FuzzyMode"_s, fuzzyMode);
     s.setValue(u"Results/Sort"_s, sort);
     s.setValue(u"Results/StartList"_s, startList);
     s.setValue(u"Results/RecentItems"_s, recentItems);

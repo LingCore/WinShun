@@ -4963,6 +4963,21 @@ Window {
                         onToggled: (on) => window.editor.regexMode = on
                     }
                 }
+
+                SettingRow {
+                    title: qsTr("模糊匹配（FZF）")
+                    keywords: qsTr("模糊;跳字;fzf;fuzzy;subsequence;缩写;匹配;关闭").split(";")
+                    description: qsTr("按字符顺序跳字查找（如 nsrch 找 NameSearch.cpp、vcode 找 Visual Studio Code）；与现有搜索语法独立，可随时关闭")
+                    tip: qsTr("无结果时：常规搜索完全不变，仅在无匹配时自动兜底（≥3 字符），零额外开销；始终开启：常规结果优先，模糊结果排后，搜索框旁显示 fz。关闭后仍可用 fz: 前缀按需触发（如 fz:rpt）")
+
+                    ScopeTabs {
+                        objectName: "fuzzyModeTabs"
+                        readonly property var modes: ["off", "fallback", "on"]
+                        labels: [qsTr("关闭"), qsTr("无结果时"), qsTr("始终开启")]
+                        current: Math.max(0, modes.indexOf(window.editor.fuzzyMode))
+                        onActivated: (index) => window.editor.fuzzyMode = modes[index]
+                    }
+                }
             }
 
             SettingsSection {

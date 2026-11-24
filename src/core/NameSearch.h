@@ -59,6 +59,7 @@ struct NameHit {
     int score = 0;
     FileTime modified = 0;
     bool inside = false; // lies in NameSearchOptions::insideFirst (at any depth)
+    bool fuzzy = false; // matched via FZF subsequence (ranked after normal hits in RankBy::Match)
     FileSize size = kUnknownSize; // read when the search is by size, or filters by it
 };
 

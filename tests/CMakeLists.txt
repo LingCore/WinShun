@@ -298,6 +298,13 @@ add_test(NAME tst_querysyntax COMMAND tst_querysyntax)
 set_tests_properties(tst_querysyntax PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+qt_add_executable(tst_fuzzymatch tst_fuzzymatch.cpp)
+target_link_libraries(tst_fuzzymatch PRIVATE wscore Qt6::Test)
+set_target_properties(tst_fuzzymatch PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_fuzzymatch COMMAND tst_fuzzymatch)
+set_tests_properties(tst_fuzzymatch PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 qt_add_executable(tst_syntax tst_syntax.cpp)
 target_link_libraries(tst_syntax PRIVATE wscore Qt6::Test)
 set_target_properties(tst_syntax PROPERTIES WIN32_EXECUTABLE FALSE)

@@ -7118,12 +7118,17 @@ int main(int argc, char* argv[])
         inside = ws::pathtext::pathFromText(args[at + 1]);
         args.remove(at, 2);
     }
+    bool autoFuzzy = false;
+    if (const qsizetype at = args.indexOf(u"--fuzzy"_s); at >= 0) {
+        autoFuzzy = true;
+        args.removeAt(at);
+    }
     int failures = 0;
     ws::WorkerPool pool(ws::WorkerPool::defaultThreadCount());
     const auto lock = index->readLock();
     for (const QString& q : args) {
         const ws::ParsedQuery parsed = ws::parseQuery(q);
-        const ws::NameMatcher matcher(parsed);
+        const ws::NameMatcher matcher(parsed, autoFuzzy);
         const ws::NameSearchOptions options {
             .limit = limit, .filter = parsed.filter, .order = order, .preferred = ws::PreferredTypes(preferred)};
         double best = 1e9;
