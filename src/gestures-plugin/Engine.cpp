@@ -1636,8 +1636,9 @@ void Engine::textAction(Builtin builtin, const Target& target)
             case Translation::State::Ok:
                 m_cards.update(BubbleState::Result, t.text);
                 break;
-            case Translation::State::NoService:
-                m_cards.update(BubbleState::NoService, zh ? L"翻译插件还没设好翻译服务" : L"The translate plugin has no service yet");
+            case Translation::State::NoService: // the plugin's own words when it said what (a key refused)
+                m_cards.update(BubbleState::NoService,
+                    !t.text.empty() ? t.text : zh ? L"翻译插件还没设好翻译服务" : L"The translate plugin has no service yet");
                 break;
             case Translation::State::NoPlugin:
                 m_cards.update(BubbleState::NoPlugin, zh ? L"还没有翻译插件，可以在插件库里装上" : L"No translate plugin yet, but the plugin library has one");

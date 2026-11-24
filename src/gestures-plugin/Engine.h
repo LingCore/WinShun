@@ -43,7 +43,7 @@ namespace gestures {
 struct Translation {
     enum class State { Ok, NoService, NoPlugin, Failed };
     State state = State::Failed;
-    std::wstring text; // Ok: the translation; Failed: why
+    std::wstring text; // Ok: the translation; Failed: why; NoService: what to set, when said
 };
 
 // What the engine asks of Win顺. Called on the window thread, except where

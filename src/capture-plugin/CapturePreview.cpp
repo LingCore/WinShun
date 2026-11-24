@@ -580,6 +580,7 @@ int runOcr(const QStringList& args)
             {u"done"_s, Translated::Done, u"截图在这台电脑上识别。在你要求翻译之前，什么都不会离开这台电脑；翻译时也只有文字会发给你选的服务。\n文件\n编辑\n视图"_s},
             {u"failed"_s, Translated::Failed, u"接口返回 401: Incorrect API key provided"_s},
             {u"service"_s, Translated::NoService, QString()},
+            {u"key"_s, Translated::NoService, u"翻译服务的密钥不对或没有权限（接口返回 401）"_s}, // GitHub #444
             {u"plugin"_s, Translated::NoPlugin, QString()},
             {u"off"_s, Translated::PluginOff, QString()},
         };

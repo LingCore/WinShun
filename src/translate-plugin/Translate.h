@@ -80,7 +80,11 @@ std::string cut(const std::string& utf8, std::size_t limit = 200);
 winshun::Item hintRow(bool chinese);
 winshun::Item setupRow(bool chinese);
 winshun::Item workingRow(const std::string& text, bool chinese);
-winshun::Item statusRow(long status, const std::string& body, bool chinese); // a non-2xx answer
+// A non-2xx answer, said plainly with the status after it. 401 and 403 (a key
+// wrong, expired or not allowed this model) are a "setup" row whose Enter
+// opens the settings: translate_text then tells the screenshot's Translate
+// to set it up, and tries the next translate plugin (GitHub #444).
+winshun::Item statusRow(long status, const std::string& body, bool chinese);
 winshun::Item failedRow(const std::string& reason, bool chinese); // no answer, or one that cannot be used
 winshun::Item emptyRow(const std::string& text, bool chinese);
 winshun::Items resultRows(const std::string& text, const std::string& translated, const std::string& target,

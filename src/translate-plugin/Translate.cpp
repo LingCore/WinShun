@@ -370,9 +370,25 @@ winshun::Item workingRow(const std::string& text, bool chinese)
 
 winshun::Item statusRow(long status, const std::string& body, bool chinese)
 {
-    return Item("error", (chinese ? "接口返回 " : "The service answered ") + std::to_string(status), cut(serviceMessage(body)))
-        .withIcon(kIcon)
-        .invalid();
+    const std::string said = cut(serviceMessage(body));
+    const std::string code = std::to_string(status);
+    if (status == 401 || status == 403) {
+        return Item("setup", chinese ? "翻译服务的密钥不对或没有权限（接口返回 " + code + "）" : "The translation service refused the key (" + code + ")",
+            (chinese ? "Enter 打开设置 → 插件 → 翻译，重新填密钥" : "Enter opens Settings → Plugins → Translate to enter the key again")
+                + (said.empty() ? std::string() : " · " + said))
+            .withIcon(kIcon)
+            .withUrl("winshun:settings");
+    }
+    std::string title;
+    if (status == 402)
+        title = chinese ? "翻译服务的余额不足（接口返回 402）" : "The translation service's balance ran out (402)";
+    else if (status == 429)
+        title = chinese ? "请求太多或额度用完了（接口返回 429），稍后再试" : "Too many requests or the quota is used up (429): try again later";
+    else if (status >= 500)
+        title = chinese ? "翻译服务暂时出错（接口返回 " + code + "），稍后再试" : "The translation service failed (" + code + "): try again later";
+    else
+        title = chinese ? "接口返回 " + code : "The service answered " + code;
+    return Item("error", title, said).withIcon(kIcon).invalid();
 }
 
 winshun::Item failedRow(const std::string& reason, bool chinese)

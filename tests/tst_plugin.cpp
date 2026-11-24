@@ -2416,7 +2416,9 @@ private slots:
         unset.keywords = {u"us"_s};
         unset.extra = {{u"translate"_s, u"main"_s}};
         QVERIFY(!f.install(unset).isEmpty());
-        QCOMPARE(translate(*f.host, u"hi"_s).value(u"state"_s), u"service"_s);
+        const QJsonObject service = translate(*f.host, u"hi"_s);
+        QCOMPARE(service.value(u"state"_s), u"service"_s);
+        QCOMPARE(service.value(u"message"_s), u"set up a service"_s); // its words on what to set (a key refused: #444)
 
         Spec other;
         other.id = u"b.other"_s;
