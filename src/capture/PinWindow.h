@@ -139,6 +139,9 @@ public:
     // Original writable image file path (#427), empty for captures/bitmaps/non-writable files.
     const QString& sourcePath() const { return m_sourcePath; }
     void setSourcePath(QString path) { m_sourcePath = std::move(path); }
+    // Pin group id (#451): empty string = built-in default group.
+    const QString& groupId() const { return m_groupId; }
+    void setGroupId(QString id) { m_groupId = std::move(id); }
 
     // A new picture where this one is (the editing window's 完成): the top
     // left and the zoom stay, the window follows the new size. A null picture
@@ -163,8 +166,11 @@ public:
     void setShown(bool shown);
     // Out of sight for 隐藏全部贴图, and back; independent of setShown.
     void setAllHidden(bool hidden);
+    // Out of sight because another pin group is active (#451); independent of setShown and setAllHidden.
+    bool groupHidden() const { return m_groupHidden; }
+    void setGroupHidden(bool hidden);
     void restyle(); // PinManager::restyle
-    bool visibleNow() const { return m_shown && !m_allHidden; }
+    bool visibleNow() const { return m_shown && !m_allHidden && !m_groupHidden; }
 
     void setTopmost(bool on);
     // The mouse goes through it to what is under it (WS_EX_TRANSPARENT).
@@ -294,8 +300,10 @@ private:
     QString m_copiedText; // copiedText()
     quint64 m_historyId = 0; // PinHistory entry id (#446)
     QString m_sourcePath; // original writable image file path (#427)
+    QString m_groupId; // pin group id (#451), empty = default group
     bool m_shown = true;
     bool m_allHidden = false;
+    bool m_groupHidden = false;
     QByteArray m_project;
     QImage m_other; // the side not shown (the original under its translation, or the other way round); null: none
     QString m_translatedWords;

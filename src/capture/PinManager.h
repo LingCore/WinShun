@@ -1,5 +1,6 @@
 #pragma once
 
+#include "PinGroups.h"
 #include "PinKeyCard.h"
 #include "PinWindow.h"
 #include "platform/Shell.h"
@@ -55,6 +56,12 @@ public:
         std::function<int(HWND, const std::vector<shell::MenuItem>&, POINT)> popupMenu;
         // The key card's colours (the 界面风格's); empty: PinKeyCard::Look::fallback.
         std::function<PinKeyCard::Look()> keyCardLook;
+        // Pin groups (#451): notified whenever groups or active group change (for persistence),
+        // when a user-facing notice should be shown (e.g., pin moved to a hidden group), or
+        // when the pin context menu asks to create a new group and move `pin` into it.
+        std::function<void()> groupsChanged;
+        std::function<void(const QString& text)> groupNotice;
+        std::function<void(PinWindow* moveTarget)> requestNewGroup;
     };
 
     explicit PinManager(Callbacks callbacks, QObject* parent = nullptr);
@@ -107,7 +114,22 @@ public:
     // True while the Ctrl watcher runs (some pin is click-through), else no timer at all.
     bool watching() const { return m_watch.isActive(); }
 
+    // Pin groups (#451): organize pins by work context, switching visibility per group.
+    const PinGroupStore& groups() const { return m_groups; }
+    void loadGroups(const QString& serialized, const QString& activeToken);
+    std::optional<PinGroup> createGroup(const QString& name, PinWindow* movePin = nullptr, QString* error = nullptr);
+    bool renameGroup(const QString& id, const QString& name, QString* error = nullptr);
+    bool deleteGroup(const QString& id);
+    void switchGroup(const QString& id);
+    void showAllGroups();
+    std::optional<QString> cycleGroup();
+    void movePinToGroup(PinWindow* pin, const QString& groupId);
+    int pinCountInGroup(const QString& groupId) const;
+    int visiblePinCount() const;
+    void closeActiveGroup();
+
 private:
+    void syncGroupVisibility();
     void setWatching(); // starts or stops the watcher to match anyClickThrough()
     void watch(); // one tick: Ctrl and the cursor against every click-through pin
     PinWindow* add(const QImage& image, QPoint origin, bool screenshot, QByteArray project, std::optional<QPoint> fitAbout,
@@ -123,6 +145,7 @@ private:
     void syncHints();
 
     Callbacks m_callbacks;
+    PinGroupStore m_groups;
     std::vector<std::unique_ptr<PinWindow>> m_pins;
     QTimer m_watch; // a click-through pin under the cursor with Ctrl held takes the mouse (#59)
     bool m_hidden = false; // 隐藏全部贴图

@@ -759,7 +759,9 @@ set_tests_properties(tst_settings PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
 # The screenshot plugin's settings, capture.ini (src/capture-plugin/CaptureSettings).
-qt_add_executable(tst_capturesettings tst_capturesettings.cpp ${PROJECT_SOURCE_DIR}/src/capture-plugin/CaptureSettings.cpp)
+qt_add_executable(tst_capturesettings tst_capturesettings.cpp
+    ${PROJECT_SOURCE_DIR}/src/capture-plugin/CaptureSettings.cpp
+    ${PROJECT_SOURCE_DIR}/src/capture/PinGroups.cpp)
 target_include_directories(tst_capturesettings PRIVATE ${PROJECT_SOURCE_DIR}/src/capture-plugin ${PROJECT_SOURCE_DIR}/src/capture ${PROJECT_SOURCE_DIR}/src/app ${PROJECT_SOURCE_DIR}/src/core)
 target_link_libraries(tst_capturesettings PRIVATE winshun_options Qt6::Gui Qt6::Qml Qt6::Test)
 set_target_properties(tst_capturesettings PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
@@ -1835,6 +1837,19 @@ target_link_libraries(tst_pinhistory PRIVATE wscapture Qt6::Test)
 set_target_properties(tst_pinhistory PROPERTIES WIN32_EXECUTABLE FALSE)
 add_test(NAME tst_pinhistory COMMAND tst_pinhistory -o -,txt)
 set_tests_properties(tst_pinhistory PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
+# Pin groups (#451): pure group store CRUD/cycling/JSON serialization plus real
+# PinManager visibility switching, moving, non-destructive deletion, and closeOthers.
+qt_add_executable(tst_pingroups tst_pingroups.cpp
+    ${PROJECT_SOURCE_DIR}/src/capture/PinManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/capture/PinWindow.cpp)
+target_include_directories(tst_pingroups PRIVATE ${PROJECT_SOURCE_DIR}/src/app ${PROJECT_SOURCE_DIR}/src/core)
+target_link_libraries(tst_pingroups PRIVATE wscapture Qt6::Test dwmapi gdi32 imm32 shcore user32)
+set_target_properties(tst_pingroups PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_pingroups COMMAND tst_pingroups -o -,txt)
+set_tests_properties(tst_pingroups PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 

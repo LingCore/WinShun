@@ -773,7 +773,7 @@ Column {
         group: 4
         content: Component {
             GroupPage {
-                recordingHotkey: lastPinHotkeyRow.recording || pinsHotkeyRow.recording || restoreHotkeyRow.recording || presentHotkeyRow.recording
+                recordingHotkey: lastPinHotkeyRow.recording || pinsHotkeyRow.recording || pinGroupHotkeyRow.recording || restoreHotkeyRow.recording || presentHotkeyRow.recording
 
                 SettingsSection {
                     page: 0
@@ -830,6 +830,156 @@ Column {
                     }
                 }
 
+                SettingsSection { // #451: pin groups by work context
+                    page: 0
+                    tab: 4
+                    width: parent.width
+                    title: qsTr("贴图分组")
+                    glyph: "" // Folder
+
+                    SettingRow {
+                        id: pinGroupsRow
+                        property string groupError: ""
+                        title: qsTr("分组管理")
+                        description: qsTr("为不同工作场景建立贴图分组，切换分组时只显示当前组的贴图；删除分组后，里面的贴图会安全回到“默认”分组。也可从贴图右键菜单、托盘菜单或 cap 搜索里操作")
+
+                        InputBox {
+                            id: newPinGroupInput
+                            objectName: "capturePinGroupInput"
+                            dpr: card.dpr
+                            implicitWidth: 168
+                            maximumLength: 32
+                            placeholder: qsTr("新分组名称")
+                            error: pinGroupsRow.groupError.length > 0
+                            onTextChanged: if (pinGroupsRow.groupError.length > 0) pinGroupsRow.groupError = ""
+                            onAccepted: {
+                                const err = card.editor.addPinGroup(text)
+                                pinGroupsRow.groupError = err
+                                if (err.length === 0)
+                                    text = ""
+                            }
+                        }
+                        FlatButton {
+                            objectName: "capturePinGroupAddButton"
+                            dpr: card.dpr
+                            text: qsTr("新建")
+                            enabled: newPinGroupInput.text.trim().length > 0
+                            onClicked: {
+                                const err = card.editor.addPinGroup(newPinGroupInput.text)
+                                pinGroupsRow.groupError = err
+                                if (err.length === 0)
+                                    newPinGroupInput.text = ""
+                            }
+                        }
+
+                        body: [
+                            Text {
+                                width: parent ? parent.width : 0
+                                visible: pinGroupsRow.groupError.length > 0
+                                text: pinGroupsRow.groupError
+                                color: Theme.danger
+                                font.pixelSize: Theme.fontCaption
+                                wrapMode: Text.WordWrap
+                            },
+                            Flow {
+                                width: parent ? parent.width : 0
+                                spacing: 8
+
+                                Repeater {
+                                    model: card.editor.capturePinGroups
+
+                                    Rectangle {
+                                        id: groupChip
+                                        required property var modelData
+                                        readonly property bool active: modelData.active === true
+                                        readonly property bool builtin: modelData.builtin === true
+                                        height: 28
+                                        width: chipRow.implicitWidth + 16
+                                        radius: Theme.controlRadius
+                                        color: active ? Theme.accentFill : chipArea.containsMouse ? Theme.hover : Theme.card
+                                        border.width: active ? 0 : Theme.edge(card.dpr)
+                                        border.color: Theme.cardBorder
+
+                                        MouseArea {
+                                            id: chipArea
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: card.editor.selectPinGroup(groupChip.modelData.id)
+                                        }
+
+                                        Row {
+                                            id: chipRow
+                                            anchors.centerIn: parent
+                                            spacing: 6
+
+                                            Text {
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                text: groupChip.modelData.name
+                                                color: groupChip.active ? Theme.accentText : Theme.text
+                                                font.pixelSize: Theme.fontCaption
+                                                font.weight: groupChip.active ? Font.DemiBold : Font.Normal
+                                            }
+                                            Item {
+                                                visible: !groupChip.builtin
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                width: 16
+                                                height: 16
+
+                                                Glyph {
+                                                    anchors.centerIn: parent
+                                                    glyph: "" // Cancel
+                                                    size: 10
+                                                    color: groupChip.active ? Theme.accentText
+                                                         : removeArea.containsMouse ? Theme.danger : Theme.subtext
+                                                }
+                                                MouseArea {
+                                                    id: removeArea
+                                                    anchors.fill: parent
+                                                    hoverEnabled: true
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: (mouse) => {
+                                                        mouse.accepted = true
+                                                        card.editor.removePinGroup(groupChip.modelData.id)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Rectangle {
+                                    id: allGroupsChip
+                                    visible: card.editor.capturePinGroups.length > 1
+                                    readonly property bool active: card.editor.capturePinGroupsShowAll
+                                    height: 28
+                                    width: allChipText.implicitWidth + 20
+                                    radius: Theme.controlRadius
+                                    color: active ? Theme.accentFill : allChipArea.containsMouse ? Theme.hover : Theme.card
+                                    border.width: active ? 0 : Theme.edge(card.dpr)
+                                    border.color: Theme.cardBorder
+
+                                    Text {
+                                        id: allChipText
+                                        anchors.centerIn: parent
+                                        text: qsTr("显示全部")
+                                        color: allGroupsChip.active ? Theme.accentText : Theme.text
+                                        font.pixelSize: Theme.fontCaption
+                                        font.weight: allGroupsChip.active ? Font.DemiBold : Font.Normal
+                                    }
+                                    MouseArea {
+                                        id: allChipArea
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: card.editor.selectPinGroup("*")
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                }
+
                 SettingsSection {
                     page: 0
                     tab: 4
@@ -853,6 +1003,15 @@ Column {
                         hotkey: card.editor.capturePinsHotkey
                         error: card.editor.capturePinsHotkeyError
                         onRecorded: (hotkey) => card.editor.capturePinsHotkey = hotkey
+                    }
+                    HotkeyRow { // #451: cycle pin groups
+                        id: pinGroupHotkeyRow
+                        objectName: "capturePinGroupHotkey"
+                        title: qsTr("切换贴图分组的快捷键")
+                        description: qsTr("按一下依次切换贴图分组，只显示当前分组的贴图；不设时仍可从贴图右键菜单、托盘菜单或 cap 搜索切换")
+                        hotkey: card.editor.capturePinGroupHotkey
+                        error: card.editor.capturePinGroupHotkeyError
+                        onRecorded: (hotkey) => card.editor.capturePinGroupHotkey = hotkey
                     }
                     HotkeyRow {
                         id: restoreHotkeyRow

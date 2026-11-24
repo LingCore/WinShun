@@ -80,6 +80,7 @@ enum class HotkeySlot : std::size_t {
     Ocr,
     Translate,
     PinCapture,
+    PinGroup,
 };
 
 std::vector<std::pair<QString, const char*>> ownHotkeys(const CaptureOptions& o)
@@ -94,6 +95,7 @@ std::vector<std::pair<QString, const char*>> ownHotkeys(const CaptureOptions& o)
         {o.ocrHotkey, QT_TRANSLATE_NOOP("ws::captureplugin::CaptureSettings", "识别屏幕文字")},
         {o.translateHotkey, QT_TRANSLATE_NOOP("ws::captureplugin::CaptureSettings", "截图翻译")},
         {o.pinCaptureHotkey, QT_TRANSLATE_NOOP("ws::captureplugin::CaptureSettings", "截图并直接贴图")},
+        {o.pinGroupHotkey, QT_TRANSLATE_NOOP("ws::captureplugin::CaptureSettings", "切换贴图分组")},
     };
 }
 
@@ -192,6 +194,12 @@ CaptureOptions CaptureOptions::load(const QString& file)
     o.ocrHotkey = readOrDefault(s, u"Capture/OcrHotkey"_s, d.ocrHotkey).trimmed();
     o.translateHotkey = readOrDefault(s, u"Capture/TranslateHotkey"_s, d.translateHotkey).trimmed();
     o.pinCaptureHotkey = readOrDefault(s, u"Capture/PinCaptureHotkey"_s, d.pinCaptureHotkey).trimmed();
+    o.pinGroupHotkey = readOrDefault(s, u"Capture/PinGroupHotkey"_s, d.pinGroupHotkey).trimmed();
+    capture::PinGroupStore groups;
+    groups.loadGroups(listOrText(s, u"Capture/PinGroups"_s, d.pinGroups));
+    groups.setActiveStateToken(readOrDefault(s, u"Capture/ActivePinGroup"_s, d.activePinGroup));
+    o.pinGroups = groups.serializeGroups();
+    o.activePinGroup = groups.activeStateToken();
     o.saveFolder = readOrDefault(s, u"Capture/SaveFolder"_s, d.saveFolder).trimmed();
     o.recordingFolder = readOrDefault(s, u"Capture/RecordingFolder"_s, d.recordingFolder).trimmed();
     o.recordingSystemAudio = readOrDefault(s, u"Capture/RecordingSystemAudio"_s, d.recordingSystemAudio);
@@ -272,6 +280,9 @@ void CaptureOptions::save(const QString& file) const
     s.setValue(u"Capture/OcrHotkey"_s, ocrHotkey);
     s.setValue(u"Capture/TranslateHotkey"_s, translateHotkey);
     s.setValue(u"Capture/PinCaptureHotkey"_s, pinCaptureHotkey);
+    s.setValue(u"Capture/PinGroupHotkey"_s, pinGroupHotkey);
+    s.setValue(u"Capture/PinGroups"_s, pinGroups);
+    s.setValue(u"Capture/ActivePinGroup"_s, activePinGroup);
     s.setValue(u"Capture/SaveFolder"_s, saveFolder);
     s.setValue(u"Capture/RecordingFolder"_s, recordingFolder);
     s.setValue(u"Capture/RecordingSystemAudio"_s, recordingSystemAudio);
@@ -349,7 +360,8 @@ void CaptureSettings::setProblems(const Problems& p)
     if (p.hotkey == m_hotkeyError && p.pinsHotkey == m_pinsHotkeyError && p.pinsRestoreHotkey == m_pinsRestoreHotkeyError
         && p.lastPinHotkey == m_lastPinHotkeyError && p.presentHotkey == m_presentHotkeyError
         && p.ocrHotkey == m_ocrHotkeyError && p.translateHotkey == m_translateHotkeyError
-        && p.pinCaptureHotkey == m_pinCaptureHotkeyError && p.note == m_note)
+        && p.pinCaptureHotkey == m_pinCaptureHotkeyError && p.pinGroupHotkey == m_pinGroupHotkeyError
+        && p.note == m_note)
         return;
     m_hotkeyError = p.hotkey;
     m_pinsHotkeyError = p.pinsHotkey;
@@ -359,6 +371,7 @@ void CaptureSettings::setProblems(const Problems& p)
     m_ocrHotkeyError = p.ocrHotkey;
     m_translateHotkeyError = p.translateHotkey;
     m_pinCaptureHotkeyError = p.pinCaptureHotkey;
+    m_pinGroupHotkeyError = p.pinGroupHotkey;
     m_note = p.note;
     emit problemsChanged();
 }
@@ -466,6 +479,81 @@ QString CaptureSettings::translateHotkeyClash() const
 QString CaptureSettings::pinCaptureHotkeyClash() const
 {
     return clashBefore(ownHotkeys(m_options), static_cast<std::size_t>(HotkeySlot::PinCapture));
+}
+
+QString CaptureSettings::pinGroupHotkeyClash() const
+{
+    return clashBefore(ownHotkeys(m_options), static_cast<std::size_t>(HotkeySlot::PinGroup));
+}
+
+QVariantList CaptureSettings::capturePinGroups() const
+{
+    capture::PinGroupStore store;
+    store.loadGroups(m_options.pinGroups);
+    store.setActiveStateToken(m_options.activePinGroup);
+    QVariantList list;
+    for (const capture::PinGroup& g : store.groups()) {
+        list.append(QVariantMap {
+            {u"id"_s, g.id},
+            {u"name"_s, g.name},
+            {u"builtin"_s, g.id.isEmpty()},
+            {u"active"_s, !store.showingAll() && store.activeGroupId() == g.id},
+        });
+    }
+    return list;
+}
+
+QString CaptureSettings::addPinGroup(const QString& name)
+{
+    capture::PinGroupStore store;
+    store.loadGroups(m_options.pinGroups);
+    store.setActiveStateToken(m_options.activePinGroup);
+    QString error;
+    if (!store.createGroup(name, &error))
+        return error;
+    m_options.pinGroups = store.serializeGroups();
+    commit();
+    return {};
+}
+
+QString CaptureSettings::renamePinGroup(const QString& id, const QString& name)
+{
+    capture::PinGroupStore store;
+    store.loadGroups(m_options.pinGroups);
+    store.setActiveStateToken(m_options.activePinGroup);
+    QString error;
+    if (!store.renameGroup(id, name, &error))
+        return error;
+    m_options.pinGroups = store.serializeGroups();
+    commit();
+    return {};
+}
+
+void CaptureSettings::removePinGroup(const QString& id)
+{
+    capture::PinGroupStore store;
+    store.loadGroups(m_options.pinGroups);
+    store.setActiveStateToken(m_options.activePinGroup);
+    if (!store.deleteGroup(id))
+        return;
+    m_options.pinGroups = store.serializeGroups();
+    m_options.activePinGroup = store.activeStateToken();
+    commit();
+}
+
+void CaptureSettings::selectPinGroup(const QString& id)
+{
+    capture::PinGroupStore store;
+    store.loadGroups(m_options.pinGroups);
+    store.setActiveStateToken(id);
+    change(m_options.activePinGroup, store.activeStateToken());
+}
+
+QString CaptureSettings::suggestedPinGroupName() const
+{
+    capture::PinGroupStore store;
+    store.loadGroups(m_options.pinGroups);
+    return store.suggestedNewName();
 }
 
 QString CaptureSettings::pickFolder(const QString& title)

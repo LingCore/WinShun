@@ -41,8 +41,14 @@ enum MenuCommand {
     CopyTranslationCommand,
     TranslateCommand,
     CopyPictureCommand,
-    OcrCopyCommand
+    OcrCopyCommand,
+    CloseGroupCommand,
+    NewGroupMoveCommand,
+    ShowAllGroupsCommand
 };
+
+constexpr int kMoveGroupBase = 1000;
+constexpr int kSwitchGroupBase = 2000;
 
 shell::MenuItem command(int id, QString text, char16_t glyph, bool checked = false, bool enabled = true)
 {
@@ -141,7 +147,7 @@ PinWindow* PinManager::add(const QImage& image, QPoint origin, bool screenshot, 
     host.takenTabs = [this](const PinWindow* self) {
         std::vector<QRect> tabs;
         for (const auto& p : m_pins) {
-            if (p.get() != self) {
+            if (p.get() != self && !p->groupHidden()) {
                 if (const std::optional<QRect> tab = p->edgeTab())
                     tabs.push_back(*tab);
             }
@@ -163,6 +169,7 @@ PinWindow* PinManager::add(const QImage& image, QPoint origin, bool screenshot, 
     pin->setProject(std::move(project));
     pin->setDoubleClick(m_doubleClick);
     pin->setKeys(m_keys);
+    pin->setGroupId(m_groups.targetGroupForNewPin());
     if (!pin->hwnd())
         return nullptr;
     if (recognizedLines)
@@ -186,7 +193,7 @@ bool PinManager::hasHistoryPin(quint64 historyId) const
 
 bool PinManager::anyClickThrough() const
 {
-    return std::ranges::any_of(m_pins, [](const auto& p) { return p->clickThrough(); });
+    return std::ranges::any_of(m_pins, [](const auto& p) { return p->clickThrough() && !p->groupHidden(); });
 }
 
 void PinManager::clearClickThrough()
@@ -218,8 +225,10 @@ void PinManager::watch()
     ::GetCursorPos(&cursor);
     if (previous)
         ::SetThreadDpiAwarenessContext(previous);
-    for (const auto& p : m_pins)
-        p->updateReachable(ctrl, QPoint(cursor.x, cursor.y), p.get() == m_menuPin);
+    for (const auto& p : m_pins) {
+        if (!p->groupHidden())
+            p->updateReachable(ctrl, QPoint(cursor.x, cursor.y), p.get() == m_menuPin);
+    }
 }
 
 void PinManager::closeAll()
@@ -236,11 +245,153 @@ void PinManager::closeOthers(const PinWindow* keep)
 {
     std::vector<PinWindow*> others;
     for (const auto& p : m_pins) {
-        if (p.get() != keep)
+        if (p.get() != keep && !p->groupHidden())
             others.push_back(p.get());
     }
     for (PinWindow* p : others)
         p->close();
+}
+
+void PinManager::closeActiveGroup()
+{
+    if (m_groups.showingAll()) {
+        closeAll();
+        return;
+    }
+    std::vector<PinWindow*> targets;
+    for (const auto& p : m_pins) {
+        if (m_groups.normalizePinGroup(p->groupId()) == m_groups.activeGroupId())
+            targets.push_back(p.get());
+    }
+    for (PinWindow* p : targets)
+        p->close();
+}
+
+// ---- pin groups (#451) ------------------------------------------------------------------------
+
+void PinManager::syncGroupVisibility()
+{
+    for (const auto& p : m_pins) {
+        const QString normalized = m_groups.normalizePinGroup(p->groupId());
+        if (normalized != p->groupId())
+            p->setGroupId(normalized);
+        p->setGroupHidden(!m_groups.isPinVisibleInActiveView(normalized));
+    }
+    if (m_hintPin && m_hintPin->groupHidden())
+        m_hints.stop();
+    setWatching();
+    syncHints();
+}
+
+void PinManager::loadGroups(const QString& serialized, const QString& activeToken)
+{
+    m_groups.loadGroups(serialized);
+    m_groups.setActiveStateToken(activeToken);
+    syncGroupVisibility();
+}
+
+std::optional<PinGroup> PinManager::createGroup(const QString& name, PinWindow* movePin, QString* error)
+{
+    const std::optional<PinGroup> created = m_groups.createGroup(name, error);
+    if (!created)
+        return std::nullopt;
+    if (movePin && contains(movePin)) {
+        movePin->setGroupId(created->id);
+        syncGroupVisibility();
+        if (!m_groups.showingAll() && created->id != m_groups.activeGroupId()) {
+            if (m_callbacks.groupNotice)
+                m_callbacks.groupNotice(tr("已新建分组「%1」并移入贴图").arg(created->name));
+        } else {
+            movePin->note(tr("已移至「%1」").arg(created->name));
+        }
+    }
+    if (m_callbacks.groupsChanged)
+        m_callbacks.groupsChanged();
+    return created;
+}
+
+bool PinManager::renameGroup(const QString& id, const QString& name, QString* error)
+{
+    if (!m_groups.renameGroup(id, name, error))
+        return false;
+    if (m_callbacks.groupsChanged)
+        m_callbacks.groupsChanged();
+    return true;
+}
+
+bool PinManager::deleteGroup(const QString& id)
+{
+    if (!m_groups.deleteGroup(id))
+        return false;
+    // Non-destructive: rescue pins in the deleted group back into the default group.
+    for (const auto& p : m_pins) {
+        if (p->groupId() == id)
+            p->setGroupId({});
+    }
+    syncGroupVisibility();
+    if (m_callbacks.groupsChanged)
+        m_callbacks.groupsChanged();
+    return true;
+}
+
+void PinManager::switchGroup(const QString& id)
+{
+    m_groups.setActiveGroup(id);
+    if (m_hidden)
+        setAllHidden(false);
+    syncGroupVisibility();
+    if (m_callbacks.groupsChanged)
+        m_callbacks.groupsChanged();
+}
+
+void PinManager::showAllGroups()
+{
+    m_groups.setShowingAll(true);
+    if (m_hidden)
+        setAllHidden(false);
+    syncGroupVisibility();
+    if (m_callbacks.groupsChanged)
+        m_callbacks.groupsChanged();
+}
+
+std::optional<QString> PinManager::cycleGroup()
+{
+    const std::optional<QString> next = m_groups.nextGroupId();
+    if (!next)
+        return std::nullopt;
+    switchGroup(*next);
+    return *next;
+}
+
+void PinManager::movePinToGroup(PinWindow* pin, const QString& groupId)
+{
+    if (!pin || !contains(pin))
+        return;
+    const QString target = m_groups.normalizePinGroup(groupId);
+    if (pin->groupId() == target)
+        return;
+    pin->setGroupId(target);
+    syncGroupVisibility();
+    const QString label = m_groups.nameOf(target);
+    if (pin->groupHidden()) {
+        if (m_callbacks.groupNotice)
+            m_callbacks.groupNotice(tr("已移至分组「%1」").arg(label));
+    } else {
+        pin->note(tr("已移至「%1」").arg(label));
+    }
+}
+
+int PinManager::pinCountInGroup(const QString& groupId) const
+{
+    const QString target = m_groups.normalizePinGroup(groupId);
+    return static_cast<int>(std::ranges::count_if(m_pins, [&](const auto& p) {
+        return m_groups.normalizePinGroup(p->groupId()) == target;
+    }));
+}
+
+int PinManager::visiblePinCount() const
+{
+    return static_cast<int>(std::ranges::count_if(m_pins, [](const auto& p) { return !p->groupHidden(); }));
 }
 
 void PinManager::setAllHidden(bool hidden)
@@ -449,12 +600,39 @@ void PinManager::showMenu(PinWindow* pin, POINT at)
         command(CollapseTileCommand, tr("收成小块") + hint(KeyAction::PinCollapse), 0xE73F),
         command(CollapseEdgeCommand, tr("收到屏幕顶边") + hint(KeyAction::PinCollapseEdge), 0xE74A),
     };
+    const std::vector<PinGroup> groupList = m_groups.groups();
+    const QString pinGroup = m_groups.normalizePinGroup(pin->groupId());
+    auto groupMenu = command(0, tr("分组"), 0xE8B7); // Folder / Group
+    for (int i = 0; i < static_cast<int>(groupList.size()); ++i) {
+        const PinGroup& g = groupList[static_cast<std::size_t>(i)];
+        groupMenu.children.push_back(command(kMoveGroupBase + i, g.name, 0xE8B7, pinGroup == g.id));
+    }
+    groupMenu.children.push_back(shell::MenuItem::separator());
+    groupMenu.children.push_back(command(NewGroupMoveCommand, tr("新建分组并移入…"), 0xE710)); // Add
+    if (m_groups.hasCustomGroups()) {
+        groupMenu.children.push_back(shell::MenuItem::separator());
+        auto switchMenu = command(0, tr("切换当前分组"), 0xE8AB); // Switch
+        for (int i = 0; i < static_cast<int>(groupList.size()); ++i) {
+            const PinGroup& g = groupList[static_cast<std::size_t>(i)];
+            const int n = pinCountInGroup(g.id);
+            const QString label = n > 0 ? tr("%1（%2）").arg(g.name).arg(n) : g.name;
+            switchMenu.children.push_back(
+                command(kSwitchGroupBase + i, label, 0xE8B7, !m_groups.showingAll() && m_groups.activeGroupId() == g.id));
+        }
+        switchMenu.children.push_back(shell::MenuItem::separator());
+        switchMenu.children.push_back(command(ShowAllGroupsCommand,
+            tr("显示全部分组（%1）").arg(count()), 0xE8A9, m_groups.showingAll()));
+        groupMenu.children.push_back(std::move(switchMenu));
+    }
+
     auto all = command(0, tr("全部贴图"), 0xE8A9);
     all.children = {
         command(HideAllCommand, m_hidden ? tr("显示全部贴图") : tr("隐藏全部贴图"), 0xE890),
         command(AllTopmostCommand, tr("全部置顶"), 0xE718, allTopmost()),
-        command(CloseAllCommand, tr("关闭全部贴图"), 0xE8BB),
     };
+    if (m_groups.hasCustomGroups() && !m_groups.showingAll())
+        all.children.push_back(command(CloseGroupCommand, tr("关闭当前分组（%1）").arg(m_groups.nameOf(m_groups.activeGroupId())), 0xE8BB));
+    all.children.push_back(command(CloseAllCommand, tr("关闭全部贴图"), 0xE8BB));
     // Copied words pinned (GitHub #388) or text currently highlighted on the pin:
     // 复制 takes the text, with 复制图片 offered right beside it.
     const bool words = !pin->copiedText().isEmpty();
@@ -501,6 +679,7 @@ void PinManager::showMenu(PinWindow* pin, POINT at)
         items.push_back(command(TopmostCommand, tr("置顶"), 0xE718, pin->topmost()));
     }
     items.push_back(shell::MenuItem::separator());
+    items.push_back(std::move(groupMenu));
     items.push_back(command(CloseCommand, tr("关闭") + hint(KeyAction::PinClose), 0xE8BB));
     items.push_back(command(CloseOthersCommand, tr("关闭其他"), 0xE8BB));
     items.push_back(std::move(all));
@@ -614,6 +793,9 @@ void PinManager::showMenu(PinWindow* pin, POINT at)
     case CloseOthersCommand:
         closeOthers(pin);
         break;
+    case CloseGroupCommand:
+        closeActiveGroup();
+        break;
     case CloseAllCommand:
         closeAll();
         break;
@@ -623,7 +805,19 @@ void PinManager::showMenu(PinWindow* pin, POINT at)
     case AllTopmostCommand:
         setAllTopmost(!allTopmost());
         break;
+    case NewGroupMoveCommand:
+        if (m_callbacks.requestNewGroup)
+            m_callbacks.requestNewGroup(pin);
+        break;
+    case ShowAllGroupsCommand:
+        showAllGroups();
+        break;
     default:
+        if (chosen >= kMoveGroupBase && chosen < kMoveGroupBase + static_cast<int>(groupList.size())) {
+            movePinToGroup(pin, groupList[static_cast<std::size_t>(chosen - kMoveGroupBase)].id);
+        } else if (chosen >= kSwitchGroupBase && chosen < kSwitchGroupBase + static_cast<int>(groupList.size())) {
+            switchGroup(groupList[static_cast<std::size_t>(chosen - kSwitchGroupBase)].id);
+        }
         break;
     }
 }

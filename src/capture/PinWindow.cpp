@@ -714,6 +714,14 @@ void PinWindow::setAllHidden(bool hidden)
     applyVisibility();
 }
 
+void PinWindow::setGroupHidden(bool hidden)
+{
+    if (m_groupHidden == hidden)
+        return;
+    m_groupHidden = hidden;
+    applyVisibility();
+}
+
 void PinWindow::applyVisibility()
 {
     if (m_hwnd)

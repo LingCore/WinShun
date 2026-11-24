@@ -131,9 +131,21 @@ private:
     void editFile(const QString& path);
     void editPin(capture::PinWindow* pin);
     void showSettings();
+    void persistPinGroups();
+    capture::PinGroupStore effectivePinGroups() const;
+    void cyclePinGroup();
+    void promptNewPinGroup(capture::PinWindow* moveTarget = nullptr);
+    void promptRenamePinGroup(const QString& groupId);
+    void ensureGroupPrompt();
     QJsonArray trayMenu() const;
     void menuChosen(const QString& id);
     void prepareWindow(QQuickWindow* window, bool backdrop);
+
+private slots:
+    void onGroupPromptSubmitted(const QString& name);
+    void onGroupPromptCancelled();
+
+private:
 
     // ---- Win顺's side ----
     // Into the clipboard history (copy: and onto the clipboard), as a
@@ -182,6 +194,11 @@ private:
     std::unique_ptr<WindowFrame> m_settingsFrame;
     QPointer<QQuickWindow> m_settingsWindow;
     QPointer<SavedWindowSize> m_settingsSize; // owned by m_settingsWindow (state.ini [SettingsWindow])
+    std::unique_ptr<WindowFrame> m_groupPromptFrame;
+    QPointer<QQuickWindow> m_groupPromptWindow;
+    QString m_groupPromptRenameId;
+    capture::PinWindow* m_groupPromptMovePin = nullptr;
+    bool m_persistingPinGroups = false;
     std::unique_ptr<RawClicks> m_clicks; // while a recording shows the clicks
     QStringList m_reportedHotkeys; // what Win顺 was told it holds (applyHotkeys)
     bool m_hostHotkeys = false;

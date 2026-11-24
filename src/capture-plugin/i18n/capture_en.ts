@@ -1362,6 +1362,30 @@
         <translation>By capture time</translation>
     </message>
     <message>
+        <source>贴图分组</source>
+        <translation>Pin groups</translation>
+    </message>
+    <message>
+        <source>分组管理</source>
+        <translation>Manage groups</translation>
+    </message>
+    <message>
+        <source>为不同工作场景建立贴图分组，切换分组时只显示当前组的贴图；删除分组后，里面的贴图会安全回到“默认”分组。也可从贴图右键菜单、托盘菜单或 cap 搜索里操作</source>
+        <translation>Organize pins by workflow. Switching groups shows only the active group; deleting a group safely moves its pins back to Default. Also available from a pin’s right-click menu, the tray menu, and cap search</translation>
+    </message>
+    <message>
+        <source>新分组名称</source>
+        <translation>New group name</translation>
+    </message>
+    <message>
+        <source>新建</source>
+        <translation>Add</translation>
+    </message>
+    <message>
+        <source>显示全部</source>
+        <translation>Show all</translation>
+    </message>
+    <message>
         <source>贴图的快捷键</source>
         <translation>Pin image shortcut</translation>
     </message>
@@ -1376,6 +1400,14 @@
     <message>
         <source>按一下藏起所有贴图，再按一下放回来；新贴一张图时也会放回来。不设就只能从托盘菜单或贴图的右键菜单操作</source>
         <translation>Press once to hide every pin and again to bring them back; pinning a new picture brings them back too. Without one, use the tray menu or a pin’s right-click menu</translation>
+    </message>
+    <message>
+        <source>切换贴图分组的快捷键</source>
+        <translation>Switch pin group shortcut</translation>
+    </message>
+    <message>
+        <source>按一下依次切换贴图分组，只显示当前分组的贴图；不设时仍可从贴图右键菜单、托盘菜单或 cap 搜索切换</source>
+        <translation>Cycles through pin groups to show only the active group. You can still switch from a pin’s right-click menu, the tray menu, or cap search without a shortcut</translation>
     </message>
     <message>
         <source>找回穿透贴图的快捷键</source>
@@ -1851,6 +1883,29 @@
     <message>
         <source>安装增强文字识别…</source>
         <translation>Install enhanced text recognition…</translation>
+    </message>
+</context>
+<context>
+    <name>PinGroupPrompt</name>
+    <message>
+        <source>新建贴图分组</source>
+        <translation>New pin group</translation>
+    </message>
+    <message>
+        <source>输入分组名称，用于按工作场景分组显示贴图</source>
+        <translation>Enter a group name to organize pins by workflow</translation>
+    </message>
+    <message>
+        <source>确定</source>
+        <translation>OK</translation>
+    </message>
+    <message>
+        <source>例如：工作、参考、设计</source>
+        <translation>e.g. Work, Reference, Design</translation>
+    </message>
+    <message>
+        <source>取消</source>
+        <translation>Cancel</translation>
     </message>
 </context>
 <context>
@@ -2656,6 +2711,53 @@ click here to cancel</translation>
     </message>
 </context>
 <context>
+    <name>ws::capture::PinGroups</name>
+    <message>
+        <source>默认</source>
+        <translation>Default</translation>
+    </message>
+    <message>
+        <source>全部分组</source>
+        <translation>All groups</translation>
+    </message>
+    <message>
+        <source>请输入分组名称</source>
+        <translation>Please enter a group name</translation>
+    </message>
+    <message>
+        <source>分组名称最多 %1 个字</source>
+        <translation>Group name can be at most %1 characters</translation>
+    </message>
+    <message>
+        <source>不能使用内置分组名称</source>
+        <translation>Cannot use a built-in group name</translation>
+    </message>
+    <message>
+        <source>已有同名分组</source>
+        <translation>A group with this name already exists</translation>
+    </message>
+    <message>
+        <source>最多可创建 %1 个自定义分组</source>
+        <translation>Up to %1 custom groups can be created</translation>
+    </message>
+    <message>
+        <source>默认分组不能重命名</source>
+        <translation>The default group cannot be renamed</translation>
+    </message>
+    <message>
+        <source>未找到该分组</source>
+        <translation>Group not found</translation>
+    </message>
+    <message>
+        <source>分组 %1</source>
+        <translation>Group %1</translation>
+    </message>
+    <message>
+        <source>新分组</source>
+        <translation>New group</translation>
+    </message>
+</context>
+<context>
     <name>ws::capture::PinKeyCard</name>
     <message>
         <source>Ctrl+滚轮</source>
@@ -2749,8 +2851,44 @@ click here to cancel</translation>
         <translation>Rotate and flip</translation>
     </message>
     <message>
+        <source>已新建分组「%1」并移入贴图</source>
+        <translation>Created group “%1” and moved pin into it</translation>
+    </message>
+    <message>
+        <source>已移至「%1」</source>
+        <translation>Moved to “%1”</translation>
+    </message>
+    <message>
+        <source>已移至分组「%1」</source>
+        <translation>Moved to group “%1”</translation>
+    </message>
+    <message>
         <source>识别文字</source>
         <translation>Read text</translation>
+    </message>
+    <message>
+        <source>分组</source>
+        <translation>Group</translation>
+    </message>
+    <message>
+        <source>新建分组并移入…</source>
+        <translation>New group &amp; move here…</translation>
+    </message>
+    <message>
+        <source>切换当前分组</source>
+        <translation>Switch active group</translation>
+    </message>
+    <message>
+        <source>%1（%2）</source>
+        <translation>%1 (%2)</translation>
+    </message>
+    <message>
+        <source>显示全部分组（%1）</source>
+        <translation>Show all groups (%1)</translation>
+    </message>
+    <message>
+        <source>关闭当前分组（%1）</source>
+        <translation>Close current group (%1)</translation>
     </message>
     <message>
         <source>复制</source>
@@ -3075,12 +3213,60 @@ Original video kept at: %2</translation>
         <translation>Pin image</translation>
     </message>
     <message>
+        <source>当前分组 · %1 张贴图</source>
+        <translation>Active group · %1 pin(s)</translation>
+    </message>
+    <message>
+        <source>切换到该分组 · %1 张贴图</source>
+        <translation>Switch to this group · %1 pin(s)</translation>
+    </message>
+    <message>
+        <source>贴图分组：%1</source>
+        <translation>Pin group: %1</translation>
+    </message>
+    <message>
+        <source>贴图分组：显示全部</source>
+        <translation>Pin groups: Show all</translation>
+    </message>
+    <message>
+        <source>当前已显示全部分组 · 共 %1 张</source>
+        <translation>Showing all groups · %1 total</translation>
+    </message>
+    <message>
+        <source>同时显示所有分组的贴图 · 共 %1 张</source>
+        <translation>Show pins from every group · %1 total</translation>
+    </message>
+    <message>
+        <source>新建并切换到贴图分组「%1」</source>
+        <translation>Create &amp; switch to pin group “%1”</translation>
+    </message>
+    <message>
+        <source>创建新分组并设为当前贴图分组</source>
+        <translation>Create a new group and make it active</translation>
+    </message>
+    <message>
         <source>截图设置</source>
         <translation>Screenshot settings</translation>
     </message>
     <message>
         <source>快捷键、鼠标、贴图、打码和工具条</source>
         <translation>Shortcuts, mouse, pins, redaction and toolbar</translation>
+    </message>
+    <message>
+        <source>贴图分组</source>
+        <translation>Pin groups</translation>
+    </message>
+    <message>
+        <source>已新建并切换到分组「%1」</source>
+        <translation>Created and switched to group “%1”</translation>
+    </message>
+    <message>
+        <source>已显示全部分组（共 %1 张）</source>
+        <translation>Showing all groups (%1 total)</translation>
+    </message>
+    <message>
+        <source>已切换到分组「%1」（%2 张）</source>
+        <translation>Switched to group “%1” (%2)</translation>
     </message>
     <message>
         <source>长截图</source>
@@ -3187,6 +3373,50 @@ Original video kept at: %2</translation>
         <translation>There is no picture or text on the clipboard and no recent screenshot. Copy something, or take a screenshot, first.</translation>
     </message>
     <message>
+        <source>还没有其他贴图分组，可在贴图右键菜单或截图设置里新建。</source>
+        <translation>No other pin groups yet. Create one from a pin’s right-click menu or Screenshot settings.</translation>
+    </message>
+    <message>
+        <source>已切换到「%1」（%2 张贴图）</source>
+        <translation>Switched to “%1” (%2 pins)</translation>
+    </message>
+    <message>
+        <source>已切换到「%1」（暂无贴图）</source>
+        <translation>Switched to “%1” (no pins)</translation>
+    </message>
+    <message>
+        <source>新建分组并移入贴图</source>
+        <translation>New group &amp; move pin</translation>
+    </message>
+    <message>
+        <source>新建贴图分组</source>
+        <translation>New pin group</translation>
+    </message>
+    <message>
+        <source>为新分组命名，当前贴图将移入该分组</source>
+        <translation>Name the new group; this pin will move into it</translation>
+    </message>
+    <message>
+        <source>输入分组名称，用于按工作场景分组显示贴图</source>
+        <translation>Enter a group name to organize pins by workflow</translation>
+    </message>
+    <message>
+        <source>创建</source>
+        <translation>Create</translation>
+    </message>
+    <message>
+        <source>重命名贴图分组</source>
+        <translation>Rename pin group</translation>
+    </message>
+    <message>
+        <source>输入新的分组名称</source>
+        <translation>Enter a new group name</translation>
+    </message>
+    <message>
+        <source>保存</source>
+        <translation>Save</translation>
+    </message>
+    <message>
         <source>延时截图</source>
         <translation>Delayed capture</translation>
     </message>
@@ -3205,6 +3435,30 @@ Original video kept at: %2</translation>
     <message>
         <source>找回刚放弃的标注</source>
         <translation>Get back the annotations just given up</translation>
+    </message>
+    <message>
+        <source>%1（%2）</source>
+        <translation>%1 (%2)</translation>
+    </message>
+    <message>
+        <source>显示全部分组（%1）</source>
+        <translation>Show all groups (%1)</translation>
+    </message>
+    <message>
+        <source>新建分组…</source>
+        <translation>New group…</translation>
+    </message>
+    <message>
+        <source>重命名当前分组…</source>
+        <translation>Rename current group…</translation>
+    </message>
+    <message>
+        <source>删除当前分组</source>
+        <translation>Delete current group</translation>
+    </message>
+    <message>
+        <source>贴图分组（%1）</source>
+        <translation>Pin groups (%1)</translation>
     </message>
     <message>
         <source>取消所有贴图的穿透（单个：按住 Ctrl 点它）</source>
@@ -3229,6 +3483,10 @@ Original video kept at: %2</translation>
     <message>
         <source>截图设置…</source>
         <translation>Screenshot settings…</translation>
+    </message>
+    <message>
+        <source>已删除分组「%1」，组内贴图已移回默认分组</source>
+        <translation>Deleted group “%1”; its pins moved back to Default</translation>
     </message>
     <message>
         <source>优先剪贴板图片，否则贴回最近截图并保留标注</source>
@@ -3292,6 +3550,10 @@ Original video kept at: %2</translation>
     <message>
         <source>截图并直接贴图</source>
         <translation>Capture and pin</translation>
+    </message>
+    <message>
+        <source>切换贴图分组</source>
+        <translation>Switch pin group</translation>
     </message>
     <message>
         <source>和“%1”的快捷键相同，按下时会先被它用掉</source>

@@ -79,7 +79,8 @@ enum Hotkey : int {
     OcrKey,
     TranslateKey,
     PinCaptureKey,
-    LastRegisteredKey = PinCaptureKey,
+    PinGroupKey,
+    LastRegisteredKey = PinGroupKey,
     ProbeKey = 0x0BFF,
 };
 
@@ -297,6 +298,8 @@ CaptureApp::~CaptureApp()
     delete m_bubbleWindow.data();
     m_bubbleFrame.reset();
     delete m_settingsWindow.data();
+    delete m_groupPromptWindow.data();
+    m_groupPromptFrame.reset();
     if (m_window)
         ::DestroyWindow(m_window);
 }
@@ -334,7 +337,7 @@ void CaptureApp::requested(const QJsonValue& id, const QString& method, const QJ
         QJsonArray items;
         if (text == u"__selftest") { // whether each window's QML loads on this Win顺's Qt (made hidden, then let go of)
             for (const QString& type : {u"EditWindow"_s, u"OcrPanel"_s, u"OcrBubble"_s, u"CaptureSettingsWindow"_s, u"LongCapturePanel"_s, u"RecordingPanel"_s,
-                     u"PresenterOverlay"_s, u"PresenterToolbar"_s}) {
+                     u"PresenterOverlay"_s, u"PresenterToolbar"_s, u"PinGroupPrompt"_s}) {
                 QQmlComponent component(&m_qml, u"WinShun"_s, type);
                 const QString problem = component.isError() ? component.errorString().trimmed() : QString();
                 items.append(QJsonObject {{u"id"_s, type}, {u"title"_s, (problem.isEmpty() ? u"ok  "_s : u"FAIL  "_s) + type},
@@ -371,6 +374,41 @@ void CaptureApp::requested(const QJsonValue& id, const QString& method, const QJ
         add(u"present"_s, presenterOpen() ? tr("结束演示") : tr("演示 / 白板"),
             m_settings.options().presentHotkey.isEmpty() ? tr("在屏幕上画、激光笔、白板黑板") : tr("快捷键 %1").arg(m_settings.options().presentHotkey),
             u"E70F"_s, u"演示 白板 黑板 激光笔 画笔 present presenter whiteboard blackboard draw pen laser"_s);
+        // Pin groups (#451): switch or quick-create directly from `cap` search.
+        const capture::PinGroupStore groups = effectivePinGroups();
+        const bool askingGroup = text.contains(u"分组"_s) || text.contains(u"group"_s, Qt::CaseInsensitive);
+        if (groups.hasCustomGroups() || askingGroup) {
+            for (const capture::PinGroup& g : groups.groups()) {
+                const int n = m_pins ? m_pins->pinCountInGroup(g.id) : 0;
+                const bool active = !groups.showingAll() && groups.activeGroupId() == g.id;
+                const QString sub = active ? tr("当前分组 · %1 张贴图").arg(n) : tr("切换到该分组 · %1 张贴图").arg(n);
+                add(u"pinGroup:"_s + g.id, tr("贴图分组：%1").arg(g.name), sub, u"E8B7"_s,
+                    u"分组 贴图分组 group pin "_s + g.name);
+            }
+            if (groups.hasCustomGroups()) {
+                const int total = m_pins ? m_pins->count() : 0;
+                add(u"pinGroup:*"_s, tr("贴图分组：显示全部"),
+                    groups.showingAll() ? tr("当前已显示全部分组 · 共 %1 张").arg(total) : tr("同时显示所有分组的贴图 · 共 %1 张").arg(total),
+                    u"E8A9"_s, u"分组 贴图分组 全部 显示全部 group all pin"_s);
+            }
+            // Quick-create: "cap 分组 <名称>" or "cap group <name>" or "cap 新建分组 <名称>"
+            QString newName;
+            for (const QStringView prefix : {QStringView(u"新建分组 "), QStringView(u"分组 "), QStringView(u"group ")}) {
+                if (text.startsWith(prefix, Qt::CaseInsensitive)) {
+                    newName = text.mid(prefix.size()).trimmed();
+                    break;
+                }
+            }
+            if (!newName.isEmpty()) {
+                capture::PinGroupStore probe = groups;
+                QString err;
+                if (probe.createGroup(newName, &err)) {
+                    items.append(QJsonObject {{u"id"_s, u"pinGroupCreate:"_s + newName},
+                        {u"title"_s, tr("新建并切换到贴图分组「%1」").arg(newName)},
+                        {u"subtitle"_s, tr("创建新分组并设为当前贴图分组")}, {u"icon"_s, u"glyph:U+E710"_s}});
+                }
+            }
+        }
         add(u"settings"_s, tr("截图设置"), tr("快捷键、鼠标、贴图、打码和工具条"), u"E713"_s, u"设置 选项 配置 快捷键 settings options preferences config hotkey"_s);
         m_protocol.respond(id, QJsonObject {{u"items"_s, items}});
     } else if (method == u"action") {
@@ -380,7 +418,24 @@ void CaptureApp::requested(const QJsonValue& id, const QString& method, const QJ
         QTimer::singleShot(200ms, this, [this, item] {
             if (item == u"settings")
                 showSettings();
-            else if (m_capture && item == u"delay")
+            else if (item.startsWith(u"pinGroupCreate:")) {
+                const QString name = item.mid(15).trimmed();
+                QString err;
+                if (const auto created = pins().createGroup(name, nullptr, &err)) {
+                    pins().switchGroup(created->id);
+                    notify(tr("贴图分组"), tr("已新建并切换到分组「%1」").arg(created->name));
+                } else if (!err.isEmpty()) {
+                    notify(tr("贴图分组"), err);
+                }
+            } else if (item == u"pinGroup:*") {
+                pins().showAllGroups();
+                notify(tr("贴图分组"), tr("已显示全部分组（共 %1 张）").arg(pins().count()));
+            } else if (item.startsWith(u"pinGroup:")) {
+                const QString groupId = item.mid(9);
+                pins().switchGroup(groupId);
+                notify(tr("贴图分组"), tr("已切换到分组「%1」（%2 张）")
+                    .arg(pins().groups().nameOf(groupId)).arg(pins().pinCountInGroup(groupId)));
+            } else if (m_capture && item == u"delay")
                 m_capture->startDelayed(m_settings.options().delay);
             else if (item == u"last")
                 pinCurrentImage();
@@ -442,7 +497,7 @@ void CaptureApp::notified(const QString& method, const QJsonObject& params)
         const std::pair<int, QString> shortcuts[] {{CaptureKey, o.hotkey}, {PinsKey, o.pinsHotkey},
             {PinsRestoreKey, o.pinsRestoreHotkey}, {LastPinKey, o.lastPinHotkey}, {PresentKey, o.presentHotkey},
             {PrintScreenKey, o.printScreen ? u"PrintScreen"_s : QString()}, {OcrKey, o.ocrHotkey},
-            {TranslateKey, o.translateHotkey}, {PinCaptureKey, o.pinCaptureHotkey}};
+            {TranslateKey, o.translateHotkey}, {PinCaptureKey, o.pinCaptureHotkey}, {PinGroupKey, o.pinGroupHotkey}};
         for (const auto& [id, shortcut] : shortcuts) {
             if (!key.isEmpty() && key == hotkeys::normalized(shortcut)) {
                 hotkey(id);
@@ -646,6 +701,8 @@ void CaptureApp::apply()
         m_pins->setKeys(o.keys);
         m_pins->setKeyHints(o.keyHints);
         m_pins->setAutoOcr(o.pinAutoOcr);
+        if (!m_persistingPinGroups)
+            m_pins->loadGroups(o.pinGroups, o.activePinGroup);
     }
     if (m_editor) {
         m_editor->setKeys(o.keys);
@@ -738,7 +795,7 @@ void CaptureApp::printScreenChanged()
         m_settings.setProblems({m_settings.captureHotkeyError(), m_settings.capturePinsHotkeyError(),
             m_settings.capturePinsRestoreHotkeyError(), m_settings.captureLastPinHotkeyError(),
             m_settings.capturePresentHotkeyError(), m_settings.captureOcrHotkeyError(), m_settings.captureTranslateHotkeyError(),
-            m_settings.capturePinCaptureHotkeyError(), note});
+            m_settings.capturePinCaptureHotkeyError(), m_settings.capturePinGroupHotkeyError(), note});
         if (!(m_settingsWindow && m_settingsWindow->isVisible()))
             notify(tr("截图"), note);
         return;
@@ -794,6 +851,9 @@ void CaptureApp::applyHotkeys()
         problems.pinCaptureHotkey = m_settings.pinCaptureHotkeyClash();
         if (problems.pinCaptureHotkey.isEmpty())
             problems.pinCaptureHotkey = take(PinCaptureKey, o.pinCaptureHotkey);
+        problems.pinGroupHotkey = m_settings.pinGroupHotkeyClash();
+        if (problems.pinGroupHotkey.isEmpty())
+            problems.pinGroupHotkey = take(PinGroupKey, o.pinGroupHotkey);
         if (m_presenter)
             m_presenter->setHotkeyText(o.presentHotkey);
         m_settings.setProblems(problems); // shown next to each shortcut
@@ -849,6 +909,10 @@ void CaptureApp::applyHotkeys()
                     problems.pinCaptureHotkey = clash;
                 else
                     problems.pinCaptureHotkey = problem(o.pinCaptureHotkey);
+                if (const QString clash = m_settings.pinGroupHotkeyClash(); !clash.isEmpty())
+                    problems.pinGroupHotkey = clash;
+                else
+                    problems.pinGroupHotkey = problem(o.pinGroupHotkey);
                 if (o.printScreen && (!error.isEmpty() || errors.contains(u"PrintScreen"_s)))
                     problems.note = hotkeyProblem(u"PrintScreen"_s);
                 m_settings.setProblems(problems);
@@ -865,7 +929,8 @@ void CaptureApp::reportHotkeyProblems(const CaptureSettings::Problems& problems)
         return;
     if (!(m_settingsWindow && m_settingsWindow->isVisible())) {
         for (const QString& error : {problems.hotkey, problems.pinsHotkey, problems.pinsRestoreHotkey, problems.lastPinHotkey,
-                 problems.presentHotkey, problems.ocrHotkey, problems.translateHotkey, problems.pinCaptureHotkey}) {
+                 problems.presentHotkey, problems.ocrHotkey, problems.translateHotkey, problems.pinCaptureHotkey,
+                 problems.pinGroupHotkey}) {
             if (!error.isEmpty()) {
                 notify(tr("快捷键不可用"), error);
                 break;
@@ -1496,11 +1561,15 @@ capture::PinManager& CaptureApp::pins()
             ensureTheme();
             return pinKeyCardLook(m_qml.singletonInstance<QObject*>(u"WinShun"_s, u"Theme"_s), isDarkMode(), win::roundedCorners());
         };
+        callbacks.groupsChanged = [this] { persistPinGroups(); };
+        callbacks.groupNotice = [this](const QString& text) { notify(tr("贴图分组"), text); };
+        callbacks.requestNewGroup = [this](capture::PinWindow* pin) { promptNewPinGroup(pin); };
         m_pins = std::make_unique<capture::PinManager>(std::move(callbacks));
         m_pins->setDoubleClick(capture::pinDoubleClickFromName(m_settings.options().pinDoubleClick));
         m_pins->setKeys(m_settings.options().keys);
         m_pins->setKeyHints(m_settings.options().keyHints);
         m_pins->setAutoOcr(m_settings.options().pinAutoOcr);
+        m_pins->loadGroups(m_settings.options().pinGroups, m_settings.options().activePinGroup);
     }
     return *m_pins;
 }
@@ -2135,6 +2204,133 @@ void CaptureApp::showSettings()
     m_settingsWindow->requestActivate();
 }
 
+void CaptureApp::persistPinGroups()
+{
+    if (!m_pins)
+        return;
+    const QString serialized = m_pins->groups().serializeGroups();
+    const QString active = m_pins->groups().activeStateToken();
+    if (m_settings.options().pinGroups == serialized && m_settings.options().activePinGroup == active)
+        return;
+    m_persistingPinGroups = true;
+    m_settings.update([&](CaptureOptions& next) {
+        next.pinGroups = serialized;
+        next.activePinGroup = active;
+    });
+    m_persistingPinGroups = false;
+}
+
+capture::PinGroupStore CaptureApp::effectivePinGroups() const
+{
+    if (m_pins)
+        return m_pins->groups();
+    capture::PinGroupStore store;
+    store.loadGroups(m_settings.options().pinGroups);
+    store.setActiveStateToken(m_settings.options().activePinGroup);
+    return store;
+}
+
+void CaptureApp::cyclePinGroup()
+{
+    capture::PinManager& manager = pins();
+    const std::optional<QString> next = manager.cycleGroup();
+    if (!next) {
+        notify(tr("贴图分组"), tr("还没有其他贴图分组，可在贴图右键菜单或截图设置里新建。"));
+        return;
+    }
+    const QString name = manager.groups().nameOf(*next);
+    const int n = manager.pinCountInGroup(*next);
+    notify(tr("贴图分组"), n > 0 ? tr("已切换到「%1」（%2 张贴图）").arg(name).arg(n)
+                                 : tr("已切换到「%1」（暂无贴图）").arg(name));
+}
+
+void CaptureApp::ensureGroupPrompt()
+{
+    if (m_groupPromptWindow)
+        return;
+    m_groupPromptFrame = std::make_unique<WindowFrame>(false);
+    QQmlComponent component(&m_qml, u"WinShun"_s, u"PinGroupPrompt"_s);
+    QObject* created = component.createWithInitialProperties({{u"frame"_s, QVariant::fromValue(m_groupPromptFrame.get())}});
+    m_groupPromptWindow = qobject_cast<QQuickWindow*>(created);
+    if (!m_groupPromptWindow) {
+        qWarning() << "PinGroupPrompt:" << component.errorString();
+        delete created;
+        m_groupPromptFrame.reset();
+        return;
+    }
+    prepareWindow(m_groupPromptWindow, SystemTheme::backdropAvailable());
+    m_groupPromptFrame->setWindow(m_groupPromptWindow);
+    m_groupPromptFrame->setFixedSize(true);
+    connect(m_groupPromptWindow, SIGNAL(submitted(QString)), this, SLOT(onGroupPromptSubmitted(QString)));
+    connect(m_groupPromptWindow, SIGNAL(cancelled()), this, SLOT(onGroupPromptCancelled()));
+}
+
+void CaptureApp::promptNewPinGroup(capture::PinWindow* moveTarget)
+{
+    ensureGroupPrompt();
+    if (!m_groupPromptWindow)
+        return;
+    m_groupPromptRenameId.clear();
+    m_groupPromptMovePin = moveTarget;
+    const QString heading = moveTarget ? tr("新建分组并移入贴图") : tr("新建贴图分组");
+    const QString hint = moveTarget ? tr("为新分组命名，当前贴图将移入该分组")
+                                    : tr("输入分组名称，用于按工作场景分组显示贴图");
+    const QString initial = effectivePinGroups().suggestedNewName();
+    QMetaObject::invokeMethod(m_groupPromptWindow, "openWith",
+        Q_ARG(QString, heading), Q_ARG(QString, hint), Q_ARG(QString, initial), Q_ARG(QString, tr("创建")));
+    win::bringToFront(m_groupPromptWindow);
+}
+
+void CaptureApp::promptRenamePinGroup(const QString& groupId)
+{
+    if (groupId.isEmpty())
+        return;
+    ensureGroupPrompt();
+    if (!m_groupPromptWindow)
+        return;
+    m_groupPromptRenameId = groupId;
+    m_groupPromptMovePin = nullptr;
+    const QString current = effectivePinGroups().nameOf(groupId);
+    QMetaObject::invokeMethod(m_groupPromptWindow, "openWith",
+        Q_ARG(QString, tr("重命名贴图分组")), Q_ARG(QString, tr("输入新的分组名称")),
+        Q_ARG(QString, current), Q_ARG(QString, tr("保存")));
+    win::bringToFront(m_groupPromptWindow);
+}
+
+void CaptureApp::onGroupPromptSubmitted(const QString& name)
+{
+    if (!m_groupPromptWindow)
+        return;
+    QString error;
+    if (!m_groupPromptRenameId.isEmpty()) {
+        if (!pins().renameGroup(m_groupPromptRenameId, name, &error)) {
+            m_groupPromptWindow->setProperty("errorText", error);
+            return;
+        }
+        m_groupPromptRenameId.clear();
+        m_groupPromptWindow->hide();
+        return;
+    }
+    capture::PinWindow* target = (m_pins && m_pins->contains(m_groupPromptMovePin)) ? m_groupPromptMovePin : nullptr;
+    const std::optional<capture::PinGroup> created = pins().createGroup(name, target, &error);
+    if (!created) {
+        m_groupPromptWindow->setProperty("errorText", error);
+        return;
+    }
+    m_groupPromptMovePin = nullptr;
+    m_groupPromptWindow->hide();
+    if (!target) {
+        pins().switchGroup(created->id);
+        notify(tr("贴图分组"), tr("已新建并切换到分组「%1」").arg(created->name));
+    }
+}
+
+void CaptureApp::onGroupPromptCancelled()
+{
+    m_groupPromptRenameId.clear();
+    m_groupPromptMovePin = nullptr;
+}
+
 // The 截图 submenu of Win顺's tray menu, asked for as it opens (trayMenu);
 // what is chosen comes back as menu {id}.
 QJsonArray CaptureApp::trayMenu() const
@@ -2142,6 +2338,7 @@ QJsonArray CaptureApp::trayMenu() const
     const CaptureOptions& o = m_settings.options();
     const QString key = !o.hotkey.isEmpty() ? o.hotkey : o.printScreen ? u"PrtScn"_s : QString();
     const int pinCount = m_pins ? m_pins->count() : 0;
+    const capture::PinGroupStore groups = effectivePinGroups();
     QJsonArray items;
     if (m_capture) {
         items.append(menuItem(u"capture"_s, withKey(tr("开始截图"), key)));
@@ -2157,6 +2354,28 @@ QJsonArray CaptureApp::trayMenu() const
         items.append(menuItem(u"restoreDraft"_s, tr("找回刚放弃的标注"), false, m_capture->hasDraft()));
         items.append(separator());
     }
+    QJsonArray groupChildren;
+    for (const capture::PinGroup& g : groups.groups()) {
+        const int n = m_pins ? m_pins->pinCountInGroup(g.id) : 0;
+        const QString title = n > 0 ? tr("%1（%2）").arg(g.name).arg(n) : g.name;
+        groupChildren.append(menuItem(u"pinGroup:"_s + g.id, title, !groups.showingAll() && groups.activeGroupId() == g.id));
+    }
+    if (groups.hasCustomGroups()) {
+        groupChildren.append(separator());
+        groupChildren.append(menuItem(u"pinGroup:*"_s, tr("显示全部分组（%1）").arg(pinCount), groups.showingAll()));
+    }
+    groupChildren.append(separator());
+    groupChildren.append(menuItem(u"pinGroupNew"_s, tr("新建分组…")));
+    const bool customActive = !groups.showingAll() && !groups.activeGroupId().isEmpty();
+    if (groups.hasCustomGroups()) {
+        groupChildren.append(menuItem(u"pinGroupRename"_s, tr("重命名当前分组…"), false, customActive));
+        groupChildren.append(menuItem(u"pinGroupDelete"_s, tr("删除当前分组"), false, customActive));
+    }
+    const QString groupMenuTitle = groups.hasCustomGroups()
+        ? withKey(tr("贴图分组（%1）").arg(groups.showingAll() ? capture::PinGroupStore::allGroupsName() : groups.nameOf(groups.activeGroupId())),
+              o.pinGroupHotkey)
+        : withKey(tr("贴图分组"), o.pinGroupHotkey);
+    items.append(QJsonObject {{u"title"_s, groupMenuTitle}, {u"children"_s, groupChildren}});
     items.append(menuItem(u"clickThrough"_s, withKey(tr("取消所有贴图的穿透（单个：按住 Ctrl 点它）"), o.pinsRestoreHotkey), false,
         m_pins && m_pins->anyClickThrough()));
     items.append(menuItem(u"hidePins"_s,
@@ -2188,6 +2407,23 @@ void CaptureApp::menuChosen(const QString& id)
         QTimer::singleShot(200ms, this, &CaptureApp::togglePresenter); // once the menu is gone
     } else if (id == u"restoreDraft" && m_capture) {
         m_capture->restoreDraft();
+    } else if (id == u"pinGroupNew") {
+        promptNewPinGroup();
+    } else if (id == u"pinGroupRename") {
+        const capture::PinGroupStore groups = effectivePinGroups();
+        if (!groups.showingAll() && !groups.activeGroupId().isEmpty())
+            promptRenamePinGroup(groups.activeGroupId());
+    } else if (id == u"pinGroupDelete") {
+        const capture::PinGroupStore groups = effectivePinGroups();
+        if (!groups.showingAll() && !groups.activeGroupId().isEmpty()) {
+            const QString removedName = groups.nameOf(groups.activeGroupId());
+            if (pins().deleteGroup(groups.activeGroupId()))
+                notify(tr("贴图分组"), tr("已删除分组「%1」，组内贴图已移回默认分组").arg(removedName));
+        }
+    } else if (id == u"pinGroup:*") {
+        pins().showAllGroups();
+    } else if (id.startsWith(u"pinGroup:")) {
+        pins().switchGroup(id.mid(9));
     } else if (id == u"clickThrough" && m_pins) {
         m_pins->clearClickThrough();
     } else if (id == u"closePins" && m_pins) {
@@ -2336,6 +2572,9 @@ void CaptureApp::hotkey(int id)
     case PinsRestoreKey:
         if (m_pins)
             m_pins->clearClickThrough();
+        break;
+    case PinGroupKey:
+        cyclePinGroup();
         break;
     default:
         break;

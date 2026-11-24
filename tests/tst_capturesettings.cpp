@@ -628,6 +628,57 @@ private slots:
         QCOMPARE(CaptureOptions::load(file).smartWords, u"Atlas,Beta"_s);
         QCOMPARE(CaptureOptions::normalizedSmartWords(u"a，b、c；d\n e ,a"_s), (QStringList {u"a"_s, u"b"_s, u"c"_s, u"d"_s, u"e"_s}));
     }
+
+    // Pin groups and group cycle hotkey (#451): INI round-trip (with commas in JSON),
+    // add/rename/remove/select Q_INVOKABLEs, and hotkey clash detection.
+    void pinGroupSettings()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString file = dir.filePath(u"capture.ini"_s);
+        ws::captureplugin::CaptureSettings settings(file);
+
+        QCOMPARE(settings.capturePinGroups().size(), 1);
+        QVERIFY(!settings.capturePinGroupsShowAll());
+        QVERIFY(settings.capturePinGroupHotkey().isEmpty());
+
+        QVERIFY(settings.addPinGroup(u"工作"_s).isEmpty());
+        QVERIFY(settings.addPinGroup(u"设计参考"_s).isEmpty());
+        QVERIFY(!settings.addPinGroup(u"工作"_s).isEmpty()); // duplicate refused
+        QCOMPARE(settings.capturePinGroups().size(), 3);
+
+        const QString workId = settings.capturePinGroups().at(1).toMap().value(u"id"_s).toString();
+        QVERIFY(!workId.isEmpty());
+        QVERIFY(settings.renamePinGroup(workId, u"日常工作"_s).isEmpty());
+        settings.selectPinGroup(workId);
+        settings.setCapturePinGroupHotkey(u"Ctrl+Alt+G"_s);
+
+        // Reload from capture.ini: JSON with commas survives QSettings::IniFormat cleanly.
+        const CaptureOptions reloaded = CaptureOptions::load(file);
+        QCOMPARE(reloaded.pinGroupHotkey, u"Ctrl+Alt+G"_s);
+        QCOMPARE(reloaded.activePinGroup, workId);
+        ws::capture::PinGroupStore store;
+        store.loadGroups(reloaded.pinGroups);
+        QCOMPARE(store.customGroups().size(), std::size_t {2});
+        QCOMPARE(store.nameOf(workId), u"日常工作"_s);
+
+        // Show-all token persists cleanly.
+        settings.selectPinGroup(u"*"_s);
+        QVERIFY(settings.capturePinGroupsShowAll());
+        QCOMPARE(CaptureOptions::load(file).activePinGroup, u"*"_s);
+
+        // Removing a group persists and resets if active.
+        settings.selectPinGroup(workId);
+        settings.removePinGroup(workId);
+        QCOMPARE(settings.capturePinGroups().size(), 2);
+        QCOMPARE(CaptureOptions::load(file).activePinGroup, QString());
+
+        // Hotkey clash detection with existing hotkeys.
+        settings.setCaptureLastPinHotkey(u"Ctrl+Alt+G"_s);
+        QVERIFY(!settings.pinGroupHotkeyClash().isEmpty());
+        settings.setCapturePinGroupHotkey(u"Ctrl+Alt+Shift+G"_s);
+        QVERIFY(settings.pinGroupHotkeyClash().isEmpty());
+    }
 };
 
 QTEST_GUILESS_MAIN(CaptureSettingsTest)
