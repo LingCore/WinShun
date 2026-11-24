@@ -2,7 +2,7 @@
   "manifest": 1,
   "id": "winshun.devtools",
   "name": {"zh": "开发工具", "en": "Developer tools"},
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": {"zh": "给开发的小工具，先有 JSON：格式化、压缩、转义，树形查看，搜索键名和值。日志里夹着的、转义过的、一行一段的 JSON 都能认出来。搜索框输入 json 加空格看剪贴板里的 JSON，也可以直接把 JSON 粘贴进搜索框；.json 文件右键「用 JSON 工具查看」。", "en": "Small tools for development, starting with JSON: format, minify, escape, a tree to browse and search names and values. Finds JSON inside log lines, escaped JSON and one-per-line JSON. Type json and a space for the JSON on the clipboard, or paste JSON straight into the search box; right-click a .json file for View in JSON tool."},
   "author": "LingCore",
   "homepage": "https://github.com/LingCore/WinShun",
