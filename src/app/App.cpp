@@ -1376,6 +1376,16 @@ bool App::createWindow()
     m_window->installEventFilter(this);
     diagnostics::watchWindow(m_window, u"launcher"_s);
     shellcontext::watchKeys(reinterpret_cast<HWND>(m_window->winId())); // which key asks for a context menu (eventFilter)
+    m_inputModeWatch = std::make_unique<win::InputModeWatch>(
+        reinterpret_cast<HWND>(m_window->winId()),
+        [this] {
+            if (!m_switchingLetters && (m_lettersPending || m_lettersGuard))
+                QMetaObject::invokeMethod(this, &App::recheckLettersOnOpen, Qt::QueuedConnection);
+        },
+        [this] { disarmLettersGuard(); });
+    m_lettersSettleTimer.setSingleShot(true);
+    m_lettersSettleTimer.setTimerType(Qt::PreciseTimer);
+    connect(&m_lettersSettleTimer, &QTimer::timeout, this, &App::advanceLettersGuard);
     m_launcher->setWindow(m_window);
     m_preview->setLauncherWindow(m_window);
     m_placement->setWindow(m_window);
@@ -1401,6 +1411,9 @@ bool App::createWindow()
         m_searchField->installEventFilter(this); // the input method's questions, while it is in the box
     connect(m_window, &QWindow::activeChanged, this, [this] {
         if (m_window && !m_window->isActive()) {
+            if (!m_lettersPending)
+                m_lettersFirstActivation = false;
+            disarmLettersGuard();
             launcherLostFront();
         } else if (m_window && m_window->isActive()) {
             if (::GetForegroundWindow() == reinterpret_cast<HWND>(m_window->winId()))
@@ -3398,7 +3411,7 @@ void App::deliverTyping()
         // No input method composes them, nor the ones after (KeyRouter).
         m_typing->handOver();
     } else {
-        lettersOnOpen(); // ahead of the keys, which go through the input method (at the cap, maybe not focused yet)
+        applyLettersOnOpen(/*forceRecheck=*/true); // ahead of the keys, including any async TSF reset during reveal wait
         m_typing->deliver();
     }
     m_keysWatch->start(window);
@@ -3454,29 +3467,88 @@ void App::endHandoff()
     diagnostics::record(u"typing-handoff"_s, details);
 }
 
-// Once an opening, when its field (the box's or the panel's) has the focus:
-// Qt has given the window its input method context by then. The user
-// switching back to Chinese in the box is not undone. Set however it reads
-// (WeChat's Chinese can read as letters). Only Win顺's own context (this thread's):
-// the program it came from keeps its input method as it was.
+void App::armLettersOnOpen()
+{
+    m_lettersSettleTimer.stop();
+    m_lettersGuardStep = 0;
+    m_lettersGuardRetries = 0;
+    if (!m_settings.englishOnOpen) {
+        m_lettersPending = false;
+        m_lettersGuard = false;
+        return;
+    }
+    win::prepareTextInput();
+    m_lettersPending = true;
+    m_lettersGuard = true;
+    const auto schedule = win::lettersSettleSchedule(m_lettersFirstActivation);
+    if (!schedule.empty())
+        m_lettersSettleTimer.start(schedule.front());
+}
+
+void App::disarmLettersGuard()
+{
+    m_lettersGuard = false;
+    m_lettersSettleTimer.stop();
+}
+
 void App::lettersOnOpen()
 {
-    if (!m_lettersPending || !m_window || !m_window->isActive())
+    applyLettersOnOpen(false);
+}
+
+void App::recheckLettersOnOpen()
+{
+    applyLettersOnOpen(true);
+}
+
+void App::advanceLettersGuard()
+{
+    if (!m_lettersGuard)
+        return;
+    applyLettersOnOpen(true);
+    if (!m_lettersGuard)
+        return;
+    const auto schedule = win::lettersSettleSchedule(m_lettersFirstActivation);
+    ++m_lettersGuardStep;
+    if (static_cast<std::size_t>(m_lettersGuardStep) < schedule.size()) {
+        m_lettersSettleTimer.start(schedule[static_cast<std::size_t>(m_lettersGuardStep)]);
+    } else {
+        m_lettersFirstActivation = false;
+        disarmLettersGuard();
+    }
+}
+
+// Once an opening, when its field (the box's or the panel's) has the focus:
+// Qt has given the window its input method context by then. A brief settle
+// guard also catches cold-boot async TSF initialization pushing Chinese back
+// before any user key arrives; any fresh key press (including Shift) disarms
+// the guard immediately so switching back to Chinese in the box is never
+// undone. Only Win顺's own context (this thread's): the program it came from
+// keeps its input method as it was.
+void App::applyLettersOnOpen(bool forceRecheck)
+{
+    if ((!m_lettersPending && (!forceRecheck || !m_lettersGuard)) || !m_window || !m_window->isActive())
         return;
     const QObject* focus = QGuiApplication::focusObject();
     if (!focus || (focus != m_searchField && focus->objectName() != u"panelSearchField"))
         return;
-    const win::LettersSwitch done = win::switchToLetters(reinterpret_cast<HWND>(m_window->winId()));
+    const HWND hwnd = reinterpret_cast<HWND>(m_window->winId());
+    if (!m_lettersPending) {
+        if (m_lettersGuardRetries >= win::kMaxLettersGuardRetries || !win::inputModeNeedsLetters(hwnd))
+            return;
+    }
+    QScopedValueRollback switching(m_switchingLetters, true);
+    const win::LettersSwitch done = win::switchToLetters(hwnd);
     if (!done.context)
         return; // none yet: when it has one
-    m_lettersPending = false;
+    const bool wasPending = std::exchange(m_lettersPending, false);
+    if (!wasPending)
+        ++m_lettersGuardRetries;
+    m_lettersSwitch = win::mergeLettersSwitch(m_lettersSwitch, done);
     if (!done.changed)
         return;
-    // Asked for again while up (pinned): put back, on hiding, as it was first.
-    const win::InputMode before = m_lettersSwitch.changed ? m_lettersSwitch.before : done.before;
-    m_lettersSwitch = done;
-    m_lettersSwitch.before = before;
-    qInfo().noquote() << u"Input method to English on opening: open %1 -> %2, conversion 0x%3 -> 0x%4"_s
+    qInfo().noquote() << u"Input method to English on opening%1: open %2 -> %3, conversion 0x%4 -> 0x%5"_s
+                             .arg(wasPending ? QString() : u" (settle guard)"_s)
                              .arg(int(done.before.open))
                              .arg(int(done.after.open))
                              .arg(done.before.conversion, 0, 16)
@@ -3485,7 +3557,10 @@ void App::lettersOnOpen()
 
 void App::restoreLauncherInputMode()
 {
+    if (!m_lettersPending)
+        m_lettersFirstActivation = false;
     m_lettersPending = false;
+    disarmLettersGuard();
     win::restoreInputMode(std::exchange(m_lettersSwitch, {}));
 }
 
@@ -5882,7 +5957,7 @@ void App::showLauncher(const QString& asked, const std::optional<taskbar::Spot>&
     hideClipboard(false); // from under its search box: searching again
     // Each time it is asked for, pinned and up already too: English once its
     // field has the focus (lettersOnOpen). A click into it is not asked for.
-    m_lettersPending = m_settings.englishOnOpen;
+    armLettersOnOpen();
     m_boxPressGrace.stop();
     m_launcherShown.start();
     m_frontTakenBack = 0;

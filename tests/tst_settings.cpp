@@ -676,8 +676,72 @@ private slots:
         QVERIFY(secondChanged);
         QCOMPARE(second, (InputMode {.open = false, .conversion = 0}));
         QVERIFY(!opening({.open = false, .conversion = 0}).second); // English already: nothing to put back
-    }
 
+        // Cold first-boot TSF desync and post-open settle guard merge semantics.
+        QVERIFY(!ws::win::needsLettersSwitch({.open = false, .conversion = IME_CMODE_SYMBOL}));
+        QVERIFY(ws::win::needsLettersSwitch({.open = true, .conversion = 0}));
+        QVERIFY(ws::win::needsLettersSwitch({.open = false, .conversion = IME_CMODE_NATIVE}));
+        QVERIFY(ws::win::needsLettersSwitch({.open = false, .conversion = IME_CMODE_FULLSHAPE}));
+
+        // IMM32 reads English at t=0 while TSF compartment already reports Chinese: combined view catches it.
+        const InputMode desynced = ws::win::combineInputMode(
+            {.open = false, .conversion = IME_CMODE_SYMBOL, .sentence = 4},
+            true,
+            DWORD {IME_CMODE_NATIVE | IME_CMODE_SYMBOL});
+        QVERIFY(desynced.open);
+        QCOMPARE(desynced.conversion, DWORD {IME_CMODE_NATIVE | IME_CMODE_SYMBOL});
+        QCOMPARE(desynced.sentence, DWORD {4});
+        QVERIFY(ws::win::needsLettersSwitch(desynced));
+
+        // Initial t=0 switch saw cold uninitialized context (changed=false);
+        // 40 ms later cold TSF pushed Chinese and settle guard re-switched (changed=true).
+        // Merging records the true Chinese before-state so hiding restores it.
+        const HIMC fakeContext = reinterpret_cast<HIMC>(static_cast<std::uintptr_t>(0x1234));
+        const ws::win::LettersSwitch coldInitial {
+            .context = fakeContext,
+            .changed = false,
+            .before = {.open = false, .conversion = 0},
+            .after = {.open = false, .conversion = 0},
+        };
+        const ws::win::LettersSwitch asyncChinese {
+            .context = fakeContext,
+            .changed = true,
+            .before = {.open = true, .conversion = IME_CMODE_NATIVE},
+            .after = {.open = false, .conversion = 0},
+            .tsfBeforeConversion = DWORD {IME_CMODE_NATIVE},
+        };
+        const ws::win::LettersSwitch mergedCold = ws::win::mergeLettersSwitch(coldInitial, asyncChinese);
+        QVERIFY(mergedCold.changed);
+        QCOMPARE(mergedCold.before, asyncChinese.before);
+        QCOMPARE(mergedCold.tsfBeforeConversion, std::optional<DWORD> {IME_CMODE_NATIVE});
+
+        // If t=0 already recorded a real before-state, a later settle retry keeps that original before-state.
+        const ws::win::LettersSwitch warmInitial {
+            .context = fakeContext,
+            .changed = true,
+            .before = {.open = true, .conversion = IME_CMODE_NATIVE | IME_CMODE_SYMBOL, .sentence = 8},
+            .after = {.open = false, .conversion = IME_CMODE_SYMBOL, .sentence = 8},
+            .tsfBeforeConversion = DWORD {IME_CMODE_NATIVE | IME_CMODE_SYMBOL},
+        };
+        const ws::win::LettersSwitch mergedWarm = ws::win::mergeLettersSwitch(warmInitial, asyncChinese);
+        QVERIFY(mergedWarm.changed);
+        QCOMPARE(mergedWarm.before, warmInitial.before);
+        QCOMPARE(mergedWarm.tsfBeforeConversion, warmInitial.tsfBeforeConversion);
+
+        // First activation after boot uses a wider bounded settle schedule than warm openings.
+        const auto firstSched = ws::win::lettersSettleSchedule(true);
+        const auto warmSched = ws::win::lettersSettleSchedule(false);
+        QVERIFY(!firstSched.empty() && !warmSched.empty());
+        int firstTotal = 0;
+        for (int ms : firstSched)
+            firstTotal += ms;
+        int warmTotal = 0;
+        for (int ms : warmSched)
+            warmTotal += ms;
+        QVERIFY(firstTotal > warmTotal);
+        QVERIFY(firstTotal <= 650);
+        QVERIFY(warmTotal <= 200);
+    }
 
     void explorerPinPicture()
     {

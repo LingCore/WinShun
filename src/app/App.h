@@ -466,9 +466,16 @@ private:
     // the focus object, revealLauncher) and at the cap.
     void deliverTyping();
     // The launcher just opened, its field focused: the input method into its
-    // English mode (Settings::englishOnOpen), once an opening; put back as it
-    // was on hiding unless the user changed it meanwhile (GitHub #201).
+    // English mode (Settings::englishOnOpen), once an opening, with a brief
+    // post-open guard that catches cold-boot async TSF resets until the first
+    // user key press; put back as it was on hiding unless the user changed it
+    // meanwhile (GitHub #201).
+    void armLettersOnOpen();
+    void disarmLettersGuard();
     void lettersOnOpen();
+    void applyLettersOnOpen(bool forceRecheck);
+    void recheckLettersOnOpen();
+    void advanceLettersGuard();
     void restoreLauncherInputMode();
     void beginHandoff(const QString& surface); // typed in "start", "explorer", "opus", "onecommander" or "desktop": the launcher comes for the keys
     void endHandoff(); // its diagnostics recorded (one entry each, times alone), its watch over
@@ -807,6 +814,13 @@ private:
     std::optional<std::function<void(QQuickWindow*)>> m_pendingSettings;
     bool m_launcherOpening = false; // query/focus/caret still being prepared; no typing replay yet (#140)
     bool m_lettersPending = false; // opened with englishOnOpen, its field not yet switched (lettersOnOpen)
+    bool m_lettersGuard = false; // post-open guard catching cold-boot async TSF resets until first user key
+    bool m_lettersFirstActivation = true; // true until the launcher's first activation after startup settles
+    bool m_switchingLetters = false; // re-entrancy guard while switchToLetters writes IMM32/TSF
+    int m_lettersGuardStep = 0;
+    int m_lettersGuardRetries = 0;
+    QTimer m_lettersSettleTimer;
+    std::unique_ptr<win::InputModeWatch> m_inputModeWatch;
     // 打开时填入刚复制的文字 (Settings::clipboardFillSeconds): since another
     // program last put something on the clipboard; watched only while the
     // setting is on, invalid once the copy was taken (or before any).

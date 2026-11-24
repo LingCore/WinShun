@@ -922,22 +922,34 @@ void setMenuTheme(bool dark)
         flush();
 }
 
-void prepareTextInput()
+bool textInputThread(::ITfThreadMgr** outManager, DWORD* outClient)
 {
     // Kept active for the life of the thread, and never released: COM is
     // gone by the time statics are destroyed.
-    static ITfThreadMgr* manager = nullptr;
-    if (manager)
-        return;
-    ITfThreadMgr* created = nullptr;
-    TfClientId client = TF_CLIENTID_NULL;
-    if (FAILED(::CoCreateInstance(CLSID_TF_ThreadMgr, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&created))))
-        return;
-    if (FAILED(created->Activate(&client))) {
-        created->Release();
-        return;
+    static ::ITfThreadMgr* manager = nullptr;
+    static TfClientId client = TF_CLIENTID_NULL;
+    if (!manager) {
+        ::ITfThreadMgr* created = nullptr;
+        TfClientId id = TF_CLIENTID_NULL;
+        if (FAILED(::CoCreateInstance(CLSID_TF_ThreadMgr, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&created))))
+            return false;
+        if (FAILED(created->Activate(&id))) {
+            created->Release();
+            return false;
+        }
+        manager = created;
+        client = id;
     }
-    manager = created;
+    if (outManager)
+        *outManager = manager;
+    if (outClient)
+        *outClient = client;
+    return true;
+}
+
+void prepareTextInput()
+{
+    textInputThread(nullptr, nullptr);
 }
 
 bool isChineseLayout(HKL layout)

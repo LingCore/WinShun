@@ -11,6 +11,8 @@
 
 class QWindow;
 
+struct ITfThreadMgr;
+
 namespace ws::win {
 
 // Windows 11 look for a frameless window: rounded corners and the standard
@@ -174,6 +176,9 @@ void setMenuTheme(bool dark);
 // the first tray menu about 14 ms slower (a Chinese IME brings a dozen DLLs).
 // Nothing shows; call it on the GUI thread.
 void prepareTextInput();
+// Returns the GUI thread's active TSF thread manager and client id (creating
+// and activating it on first call, as prepareTextInput does).
+bool textInputThread(::ITfThreadMgr** manager, DWORD* client);
 
 // Whether a keyboard layout (GetKeyboardLayout) is for Chinese: Simplified
 // or Traditional, whichever input method.
