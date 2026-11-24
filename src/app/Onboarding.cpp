@@ -66,12 +66,13 @@ bool available(const QString& shortcut)
     return true;
 }
 
-// The screenshot's shortcut offered at first: the one people know from QQ,
-// unless something (QQ itself) holds it now, then the next free one.
+// The screenshot's shortcut offered at first: F1, one key, as Snipaste and
+// PixPin have it; when something holds it (one of them), the one people
+// know from QQ, then the next free one.
 // Empty when none is free: the screenshot starts off then, to be recorded.
 QString freeCaptureHotkey()
 {
-    for (const QString& shortcut : {u"Ctrl+Alt+A"_s, u"Ctrl+Alt+S"_s, u"Ctrl+Alt+X"_s}) {
+    for (const QString& shortcut : {u"F1"_s, u"Ctrl+Alt+A"_s, u"Ctrl+Alt+S"_s, u"Ctrl+Alt+X"_s}) {
         if (available(shortcut))
             return shortcut;
     }
