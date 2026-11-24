@@ -69,6 +69,16 @@ bool userIsAdministrator();
 // something: an administrator's account, Win顺 running with normal rights.
 inline constexpr QStringView kRestartElevatedCommand = u"winshun:restart-as-administrator";
 
+// Built-in Windows power and session actions in places.txt (GitHub #428):
+// "winshun:power/shutdown", "restart", "sleep", "hibernate", "lock", "signout".
+// Carried out directly by Win顺 (platform/Power) rather than the shell;
+// disruptive actions require a second press to confirm, and weak guesses rank
+// behind apps and ordinary pages so an accidental Enter never acts on them.
+inline constexpr QStringView kPowerCommandPrefix = u"winshun:power/";
+bool isPowerCommand(QStringView command) noexcept;
+QStringView powerCommandAction(QStringView command) noexcept;
+bool powerCommandNeedsConfirm(QStringView command) noexcept;
+
 // Win顺's own places (SystemCatalog::setOwnPlaces, GitHub #389, #390): its
 // settings ("winshun/settings") and each plugin's ("winshun/settings/plugin/
 // <id>"), named in Win顺's language. Found, remembered and kept among the

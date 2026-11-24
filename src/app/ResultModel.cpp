@@ -151,6 +151,21 @@ QString appOrigin(const SearchResult& r)
     case AppKind::Tool:
         if (r.target == ws::kRestartElevatedCommand) // Win顺's own (GitHub #288): what Enter leads to, not the command
             return ResultModel::tr("Windows 会请你确认一次");
+        if (ws::isPowerCommand(r.target)) { // Win顺's own power/session actions (GitHub #428)
+            const QStringView action = ws::powerCommandAction(r.target);
+            if (action == u"shutdown")
+                return ResultModel::tr("关闭电脑 · 需二次确认");
+            if (action == u"restart")
+                return ResultModel::tr("重新启动电脑 · 需二次确认");
+            if (action == u"sleep")
+                return ResultModel::tr("进入睡眠状态 · 需二次确认");
+            if (action == u"hibernate")
+                return ResultModel::tr("进入休眠状态 · 需二次确认");
+            if (action == u"signout")
+                return ResultModel::tr("退出当前 Windows 账户 · 需二次确认");
+            if (action == u"lock")
+                return ResultModel::tr("锁定当前 Windows 会话");
+        }
         if (r.target.startsWith(u"https://")) // a page of Win顺's own (GitHub #254): where it leads
             return displayWebUrl(r.target);
         return describeCommand(r.target); // "diskmgmt.msc", the folder
@@ -428,7 +443,7 @@ QVariant ResultModel::data(const QModelIndex& index, int role) const
             if (r->isPlace() && r->icon.startsWith(u"app:")) // the logo of Settings, of Windows Security
                 return FileIconProvider::appIconUrl(r->icon.mid(4), true, dark);
             if (r->isPlace())
-                return FileIconProvider::placeIconUrl(r->icon);
+                return FileIconProvider::placeIconUrl(r->icon, dark);
             return FileIconProvider::appIconUrl(appIdOf(r->path), r->isPackagedApp(), dark);
         }
         return FileIconProvider::iconUrl(r->path, r->isDir);
@@ -479,7 +494,7 @@ QVariant ResultModel::data(const QModelIndex& index, int role) const
     case CopyableRole:
         return !r->isApp() || r->hasCopyableTarget();
     case SettingsActionRole:
-        return r->isSettings();
+        return r->isSettings() || (r->isPlace() && (r->target == ws::kRestartElevatedCommand || ws::isPowerCommand(r->target)));
     case SelectedRole:
         return m_selected.contains(r->path);
     case ModifiedRole:

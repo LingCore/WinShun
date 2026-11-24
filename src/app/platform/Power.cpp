@@ -72,11 +72,19 @@ QString enableShutdownPrivilege()
 
 QString performForReal(Action action)
 {
-    if (const QString error = enableShutdownPrivilege(); !error.isEmpty())
-        return error;
     switch (action) {
+    case Action::Lock:
+        return ::LockWorkStation() ? QString() : windowsError(::GetLastError());
+    case Action::SignOut:
+        // No EWX_FORCE: programs with unsaved work still prompt the user.
+        return ::ExitWindowsEx(EWX_LOGOFF,
+                   SHTDN_REASON_MAJOR_OTHER | SHTDN_REASON_MINOR_OTHER | SHTDN_REASON_FLAG_PLANNED)
+            ? QString()
+            : windowsError(::GetLastError());
     case Action::Shutdown:
     case Action::Restart: {
+        if (const QString error = enableShutdownPrivilege(); !error.isEmpty())
+            return error;
         // Neither SHUTDOWN_FORCE_OTHERS nor SHUTDOWN_FORCE_SELF: a program with
         // unsaved work gets to say so, and the shutdown waits for the user.
         const DWORD flags = action == Action::Restart ? SHUTDOWN_RESTART : SHUTDOWN_POWEROFF;
@@ -86,10 +94,14 @@ QString performForReal(Action action)
     }
     case Action::Sleep:
     case Action::Hibernate: {
+        if (const QString error = enableShutdownPrivilege(); !error.isEmpty())
+            return error;
         const bool hibernate = action == Action::Hibernate;
         // Without it the call would put the computer to sleep instead.
         if (hibernate && !::IsPwrHibernateAllowed())
-            return u"这台电脑没开休眠"_s;
+            return QCoreApplication::translate("ws::power", "这台电脑没开休眠");
+        if (!hibernate && !::IsPwrSuspendAllowed())
+            return QCoreApplication::translate("ws::power", "这台电脑不支持睡眠");
         // Returns after the computer has woken up (true), or at once with an error.
         if (!::SetSuspendState(hibernate ? TRUE : FALSE, FALSE, FALSE))
             return windowsError(::GetLastError());
@@ -97,6 +109,42 @@ QString performForReal(Action action)
     }
     }
     return {};
+}
+
+void runAction(Action action, std::function<void(QString)> done)
+{
+    const Performer perform = testPerformer() ? testPerformer() : Performer(performForReal);
+    if (action != Action::Sleep && action != Action::Hibernate) {
+        if (done)
+            done(perform(action)); // Windows takes the request and returns immediately
+        return;
+    }
+    // Sleep and hibernate come back only when the computer has woken: on a
+    // thread of its own, never this one. Its answer, if it is a refusal, and
+    // otherwise the clock's, whichever comes first; the other finds it answered.
+    struct Pending {
+        std::function<void(QString)> done;
+        bool answered = false; // the calling thread's alone
+    };
+    const auto pending = std::make_shared<Pending>(Pending {std::move(done), false});
+    const auto settle = [pending](const QString& error) {
+        if (std::exchange(pending->answered, true))
+            return;
+        auto callback = std::move(pending->done);
+        if (callback)
+            callback(error);
+    };
+    QTimer::singleShot(kSuspendFailsWithinMs, QCoreApplication::instance(), [settle] { settle({}); });
+    std::thread([perform, action, settle] {
+        QString error;
+        try {
+            error = perform(action);
+        } catch (...) {
+            error = QCoreApplication::translate("ws::power", "执行电源操作时出错");
+        }
+        if (QCoreApplication* app = QCoreApplication::instance())
+            QMetaObject::invokeMethod(app, [settle, error] { settle(error); }, Qt::QueuedConnection);
+    }).detach();
 }
 
 } // namespace
@@ -111,6 +159,10 @@ std::optional<Action> parseAction(const QString& name)
         return Action::Sleep;
     if (name == u"hibernate")
         return Action::Hibernate;
+    if (name == u"lock")
+        return Action::Lock;
+    if (name == u"signout")
+        return Action::SignOut;
     return std::nullopt;
 }
 
@@ -121,6 +173,8 @@ QString actionName(Action action)
     case Action::Restart: return u"restart"_s;
     case Action::Sleep: return u"sleep"_s;
     case Action::Hibernate: return u"hibernate"_s;
+    case Action::Lock: return u"lock"_s;
+    case Action::SignOut: return u"signout"_s;
     }
     return {};
 }
@@ -130,44 +184,26 @@ void setPerformerForTest(Performer performer)
     testPerformer() = std::move(performer);
 }
 
+void execute(Action action, std::function<void(QString)> done)
+{
+    qInfo().noquote() << u"Power: launcher asks for \"%1\""_s.arg(actionName(action));
+    runAction(action, std::move(done));
+}
+
 void run(const QString& pluginId, const QJsonObject& arguments, std::function<void(mcp::ToolResult)> done)
 {
     // One line a call, whatever it asks for (a plugin's own words, cut short).
     const QString asked = arguments.value(u"action"_s).toString();
     qInfo().noquote() << u"Power: %1 asks for \"%2\""_s.arg(pluginId, asked.simplified().left(40));
     const std::optional<Action> action = parseAction(asked);
-    if (!action) {
+    if (!action || (*action != Action::Shutdown && *action != Action::Restart
+                       && *action != Action::Sleep && *action != Action::Hibernate)) {
         done(failure(u"action must be shutdown, restart, sleep or hibernate"_s));
         return;
     }
-    const Performer perform = testPerformer() ? testPerformer() : Performer(performForReal);
-    const auto answer = [](const std::function<void(mcp::ToolResult)>& to, const QString& error) {
-        to(error.isEmpty() ? mcp::ToolResult {QJsonObject {{u"ok"_s, true}}} : failure(error));
-    };
-    if (*action == Action::Shutdown || *action == Action::Restart) {
-        answer(done, perform(*action)); // Windows takes the request and returns
-        return;
-    }
-    // Sleep and hibernate come back only when the computer has woken: on a
-    // thread of its own, never this one. Its answer, if it is a refusal, and
-    // otherwise the clock's, whichever comes first; the other finds it answered.
-    struct Pending {
-        std::function<void(mcp::ToolResult)> done;
-        bool answered = false; // the calling thread's alone
-    };
-    const auto pending = std::make_shared<Pending>(Pending {std::move(done), false});
-    const auto settle = [pending, answer](const QString& error) {
-        if (std::exchange(pending->answered, true))
-            return;
-        answer(pending->done, error);
-        pending->done = nullptr;
-    };
-    QTimer::singleShot(kSuspendFailsWithinMs, QCoreApplication::instance(), [settle] { settle({}); });
-    std::thread([perform, action = *action, settle] {
-        const QString error = perform(action);
-        if (QCoreApplication* app = QCoreApplication::instance())
-            QMetaObject::invokeMethod(app, [settle, error] { settle(error); }, Qt::QueuedConnection);
-    }).detach();
+    runAction(*action, [done = std::move(done)](const QString& error) {
+        done(error.isEmpty() ? mcp::ToolResult {QJsonObject {{u"ok"_s, true}}} : failure(error));
+    });
 }
 
 } // namespace ws::power

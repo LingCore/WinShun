@@ -5171,10 +5171,45 @@ private slots:
         QCOMPARE(power::parseAction(u"restart"_s), std::optional(power::Action::Restart));
         QCOMPARE(power::parseAction(u"sleep"_s), std::optional(power::Action::Sleep));
         QCOMPARE(power::parseAction(u"hibernate"_s), std::optional(power::Action::Hibernate));
+        QCOMPARE(power::parseAction(u"lock"_s), std::optional(power::Action::Lock));
+        QCOMPARE(power::parseAction(u"signout"_s), std::optional(power::Action::SignOut));
         for (const QString& other : {QString(), u"Shutdown"_s, u"reboot"_s, u"suspend"_s, u"shutdown "_s, u"off"_s})
             QVERIFY2(!power::parseAction(other), qPrintable(other));
-        for (const power::Action a : {power::Action::Shutdown, power::Action::Restart, power::Action::Sleep, power::Action::Hibernate})
+        for (const power::Action a : {power::Action::Shutdown, power::Action::Restart, power::Action::Sleep,
+                 power::Action::Hibernate, power::Action::Lock, power::Action::SignOut})
             QCOMPARE(power::parseAction(power::actionName(a)), std::optional(a));
+    }
+
+    // Launcher-initiated power/session commands (GitHub #428): all six actions
+    // run through power::execute while plugin tool `power` stays on its four
+    // documented actions.
+    void powerExecuteLauncher()
+    {
+        std::vector<power::Action> seen;
+        power::setPerformerForTest([&](power::Action action) -> QString {
+            seen.push_back(action);
+            return action == power::Action::Hibernate ? u"休眠未开启"_s : QString();
+        });
+        const auto reset = qScopeGuard([] { power::setPerformerForTest({}); });
+
+        for (const power::Action a : {power::Action::Shutdown, power::Action::Restart, power::Action::Lock,
+                 power::Action::SignOut}) {
+            QString err = u"unset"_s;
+            power::execute(a, [&](QString error) { err = std::move(error); });
+            QCOMPARE(err, QString());
+        }
+        // Async failure on Hibernate surfaces immediately to the callback.
+        QString hibError = u"unset"_s;
+        power::execute(power::Action::Hibernate, [&](QString error) { hibError = std::move(error); });
+        QTRY_COMPARE_WITH_TIMEOUT(hibError, u"休眠未开启"_s, 2000);
+
+        // Plugin tool `power` still rejects lock/signout cleanly.
+        bool rejected = false;
+        power::run(u"test.plugin"_s, QJsonObject {{u"action"_s, u"lock"_s}},
+            [&](mcp::ToolResult result) { rejected = result.isError; });
+        QVERIFY(rejected);
+        QCOMPARE(seen, (std::vector<power::Action> {power::Action::Shutdown, power::Action::Restart,
+                            power::Action::Lock, power::Action::SignOut, power::Action::Hibernate}));
     }
 
     // The `selected_text` tool (0.41.0): held to selection:read. A window

@@ -13193,6 +13193,14 @@ Content index: %5</translation>
 <context>
     <name>ws::FolderMenu</name>
     <message>
+        <source>没能执行“%1”：%2</source>
+        <translation>Could not run “%1”: %2</translation>
+    </message>
+    <message>
+        <source>请在搜索框中搜索“%1”并二次确认执行</source>
+        <translation>Search “%1” in WinShun and confirm twice to run it</translation>
+    </message>
+    <message>
         <source>在“%1”里搜索</source>
         <translation>Search in “%1”</translation>
     </message>
@@ -13428,6 +13436,30 @@ Content index: %5</translation>
 </context>
 <context>
     <name>ws::Launcher</name>
+    <message>
+        <source>确认%1</source>
+        <translation>Confirm %1</translation>
+    </message>
+    <message>
+        <source>锁定</source>
+        <translation>Lock</translation>
+    </message>
+    <message>
+        <source>执行</source>
+        <translation>Run</translation>
+    </message>
+    <message>
+        <source>暂不支持“%1”</source>
+        <translation>“%1” is not supported</translation>
+    </message>
+    <message>
+        <source>再按一次 Enter 或再点一次确认%1 · Esc 取消</source>
+        <translation>Press Enter or click again to confirm %1 · Esc to cancel</translation>
+    </message>
+    <message>
+        <source>“%1”没有可复制的命令</source>
+        <translation>“%1” has no command to copy</translation>
+    </message>
     <message>
         <source>搜索应用</source>
         <translation>Search apps</translation>
@@ -15680,6 +15712,30 @@ Content index: %5</translation>
 </context>
 <context>
     <name>ws::ResultModel</name>
+    <message>
+        <source>关闭电脑 · 需二次确认</source>
+        <translation>Shut down computer · press twice to confirm</translation>
+    </message>
+    <message>
+        <source>重新启动电脑 · 需二次确认</source>
+        <translation>Restart computer · press twice to confirm</translation>
+    </message>
+    <message>
+        <source>进入睡眠状态 · 需二次确认</source>
+        <translation>Put computer to sleep · press twice to confirm</translation>
+    </message>
+    <message>
+        <source>进入休眠状态 · 需二次确认</source>
+        <translation>Hibernate computer · press twice to confirm</translation>
+    </message>
+    <message>
+        <source>退出当前 Windows 账户 · 需二次确认</source>
+        <translation>Sign out of Windows · press twice to confirm</translation>
+    </message>
+    <message>
+        <source>锁定当前 Windows 会话</source>
+        <translation>Lock current Windows session</translation>
+    </message>
     <message numerus="yes">
         <source>%n 分钟</source>
         <translation>
@@ -17323,6 +17379,21 @@ Content index: %5</translation>
     <message>
         <source>无法完成增强识别安装，原来的文件已保留。</source>
         <translation>Installation could not finish. Your existing recognition files have been kept.</translation>
+    </message>
+</context>
+<context>
+    <name>ws::power</name>
+    <message>
+        <source>这台电脑没开休眠</source>
+        <translation>Hibernation is not enabled on this PC</translation>
+    </message>
+    <message>
+        <source>这台电脑不支持睡眠</source>
+        <translation>Sleep is not supported on this PC</translation>
+    </message>
+    <message>
+        <source>执行电源操作时出错</source>
+        <translation>Could not carry out the power action</translation>
     </message>
 </context>
 </TS>

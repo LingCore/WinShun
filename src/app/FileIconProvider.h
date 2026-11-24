@@ -43,8 +43,9 @@ public:
     // An installed app (AppCatalog). Packaged apps' logos differ by theme.
     static QString appIconUrl(const QString& appId, bool packaged, bool dark);
     // A place in Windows (SystemCatalog), by its icon: one in a module
-    // ("%SystemRoot%\System32\netcenter.dll,-1"), or that of a file or shell path.
-    static QString placeIconUrl(const QString& icon);
+    // ("%SystemRoot%\System32\netcenter.dll,-1"), a bundled Phosphor glyph
+    // ("ph:power"), or that of a file or shell path.
+    static QString placeIconUrl(const QString& icon, bool dark = false);
     // A web shortcut by its home page: its site's own icon once it is kept
     // (siteicons; asking for it starts fetching it), until then and for
     // other schemes the icon of the program that opens it, the default

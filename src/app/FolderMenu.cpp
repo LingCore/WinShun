@@ -11,6 +11,7 @@
 #include "platform/FileManagers.h"
 #include "platform/Integrity.h"
 #include "platform/KeyRouter.h"
+#include "platform/Power.h"
 #include "platform/Shell.h"
 #include "platform/WindowEffects.h"
 
@@ -838,7 +839,7 @@ void FolderMenu::populate(const QString& folder, const QStringList& recent, cons
                 glyph = u"\uE713"_s;
                 if (const PlaceInfo* place = places ? findPlace(*places, f.path) : nullptr) {
                     icon = place->icon.startsWith(u"app:") ? FileIconProvider::appIconUrl(place->icon.mid(4), true, dark)
-                                                           : FileIconProvider::placeIconUrl(place->icon);
+                                                           : FileIconProvider::placeIconUrl(place->icon, dark);
                     tooltip = place->command;
                 }
                 break;
@@ -1063,7 +1064,17 @@ void FolderMenu::trigger(int index)
                 emit settingsRequested();
             else if (place->command.startsWith(kPluginSettingsCommand))
                 emit pluginSettingsRequested(place->command.mid(kPluginSettingsCommand.size()));
-            else
+            else if (ws::isPowerCommand(place->command)) {
+                const auto action = power::parseAction(ws::powerCommandAction(place->command).toString());
+                if (action && !ws::powerCommandNeedsConfirm(place->command)) {
+                    power::execute(*action, [this, name = place->name](const QString& error) {
+                        if (!error.isEmpty())
+                            emit notice(tr("没能执行“%1”：%2").arg(name, error));
+                    });
+                } else {
+                    emit notice(tr("请在搜索框中搜索“%1”并二次确认执行").arg(place->name));
+                }
+            } else
                 shell::run(place->command);
             break;
         }

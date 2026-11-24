@@ -1679,6 +1679,13 @@ private:
 
     QPointer<FilePreview> m_preview;
     QPoint m_pointerAtKeys {-1, -1}; // where the pointer was when the keyboard last moved (keyboardMoved)
+    // Power/session confirmation state (GitHub #428): disruptive commands require
+    // a second Enter or click within 5 s to execute.
+    QString m_armedPowerCommand;
+    QString m_armedPowerFlash;
+    QTimer m_armedPowerTimer;
+    void disarmPower();
+    bool isPowerArmed(QStringView command) const noexcept;
 };
 
 } // namespace ws

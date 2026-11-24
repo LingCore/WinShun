@@ -34,6 +34,7 @@
 #include "DragPicture.h"
 #include "platform/DragOut.h"
 #include "platform/FileManagers.h"
+#include "platform/Power.h"
 #include "platform/Shell.h"
 #include "platform/ShellContextMenu.h"
 #include "platform/WindowEffects.h"
@@ -596,6 +597,10 @@ Launcher::Launcher(IndexService* index, AppCatalog* apps, SystemCatalog* places,
         emit statusChanged();
     });
 
+    m_armedPowerTimer.setSingleShot(true);
+    m_armedPowerTimer.setInterval(5s);
+    connect(&m_armedPowerTimer, &QTimer::timeout, this, [this] { disarmPower(); });
+
     m_runningTick.setInterval(1500ms);
     connect(&m_runningTick, &QTimer::timeout, this, &Launcher::runningTicked);
 
@@ -802,6 +807,7 @@ void Launcher::setQuery(const QString& query)
 {
     if (query == m_query)
         return;
+    disarmPower();
     m_query = query;
     m_queryRecorded = false;
     if (!m_recallingQuery) m_queryHistory.resetNavigation();
@@ -3067,6 +3073,11 @@ void Launcher::showRows(SearchResults rows, QStringList highlights)
         // Its first row is the list's choice, not the user's; back out of a
         // folder, the folder's row (GitHub #361), chosen as it was.
         m_chosenPath = m_results.startRow() >= 0 ? m_results.startPath() : QString();
+        if (!m_armedPowerCommand.isEmpty()) {
+            const SearchResult* cur = m_results.at(m_currentRow);
+            if (!cur || !cur->isPlace() || cur->target != m_armedPowerCommand)
+                disarmPower();
+        }
         emit resultsReplaced();
         if (const auto held = std::exchange(m_held, std::nullopt))
             emit heldKey(held->first, held->second); // on the rows it was pressed for
@@ -4326,6 +4337,7 @@ void Launcher::setCurrentRow(int row)
     if (row == m_currentRow)
         return;
     m_currentRow = row;
+    disarmPower();
     // The keyboard chose another row: that one is meant, unless it changed a
     // moment ago by itself (a number key, an arrow onto a row that just
     // came): then Enter waits a moment as for a row that went. Moving with
@@ -4409,7 +4421,13 @@ void Launcher::refreshKeyHints()
     } else if (r->isWeb()) {
         enter = r->words.isEmpty() ? tr("打开网站") : tr("搜索");
     } else if (r->isPlace()) {
-        enter = ws::isOwnCommand(r->target) ? tr("打开设置") : tr("打开");
+        if (ws::isPowerCommand(r->target)) {
+            enter = isPowerArmed(r->target) ? tr("确认%1").arg(r->name)
+                  : !ws::powerCommandNeedsConfirm(r->target) ? tr("锁定")
+                  : tr("执行");
+        } else {
+            enter = ws::isOwnCommand(r->target) ? tr("打开设置") : tr("打开");
+        }
         if (!r->switchId.isEmpty())
             switchKeyHints(*r, enter, secondKeys, second);
         if (steppable(*r)) {
@@ -4496,6 +4514,26 @@ void Launcher::dropServerWait()
         emit statusChanged();
     }
     m_serverWaitFlash.clear();
+}
+
+void Launcher::disarmPower()
+{
+    if (m_armedPowerCommand.isEmpty())
+        return;
+    m_armedPowerCommand.clear();
+    m_armedPowerTimer.stop();
+    if (!m_armedPowerFlash.isEmpty() && m_flash == m_armedPowerFlash) {
+        m_flashTimer.stop();
+        m_flash.clear();
+        emit statusChanged();
+    }
+    m_armedPowerFlash.clear();
+    refreshKeyHints();
+}
+
+bool Launcher::isPowerArmed(QStringView command) const noexcept
+{
+    return !m_armedPowerCommand.isEmpty() && m_armedPowerTimer.isActive() && m_armedPowerCommand == command;
 }
 
 // `r`, which an action needed, is not there (any more): out of the history
@@ -5267,6 +5305,7 @@ void Launcher::editFolderChips()
 
 void Launcher::dismiss()
 {
+    disarmPower();
     emit escaped();
     emit dismissRequested();
 }
@@ -6072,6 +6111,28 @@ void Launcher::performPlace(const SearchResult& place, Action action)
             emit elevatedRestartRequested();
             return;
         }
+        if (ws::isPowerCommand(place.target)) { // Win顺's own power/session commands (GitHub #428)
+            const auto powerAction = power::parseAction(ws::powerCommandAction(place.target).toString());
+            if (!powerAction) {
+                flash(tr("暂不支持“%1”").arg(place.name));
+                return;
+            }
+            if (ws::powerCommandNeedsConfirm(place.target) && !isPowerArmed(place.target)) {
+                m_armedPowerCommand = place.target;
+                m_armedPowerFlash = tr("再按一次 Enter 或再点一次确认%1 · Esc 取消").arg(place.name);
+                m_armedPowerTimer.start(5s);
+                flash(m_armedPowerFlash, 5s);
+                refreshKeyHints();
+                return;
+            }
+            disarmPower();
+            emit dismissRequested();
+            power::execute(*powerAction, [self = QPointer(this), name = place.name](const QString& error) {
+                if (!error.isEmpty() && self)
+                    emit self->openFailed(u"%1（%2）"_s.arg(name, error));
+            });
+            return;
+        }
         remember(place.path, m_shownText); // the next time the same words put it first
         if (own) {
             if (place.target == ws::kSettingsCommand)
@@ -6093,6 +6154,10 @@ void Launcher::performPlace(const SearchResult& place, Action action)
         break;
     case CopyItem:
     case CopyPath:
+        if (place.target == ws::kRestartElevatedCommand || ws::isPowerCommand(place.target)) {
+            flash(tr("“%1”没有可复制的命令").arg(place.name));
+            break;
+        }
         if (own) { // as a winshun:// link opens it (WinShunUri)
             shell::copyText(u"winshun://"_s + place.target.mid(place.target.indexOf(u':') + 1));
             flash(tr("已复制链接"));
@@ -6419,8 +6484,8 @@ void Launcher::performMany(const SearchResults& items, Action action, const Serv
                 continue; // not remembered (see performWeb)
             }
             if (r.isPlace()) {
-                if (admin || drawsSwitch(r)) // a switch is not "opened" with the others
-                    continue;
+                if (admin || drawsSwitch(r) || ws::isPowerCommand(r.target) || r.target == ws::kRestartElevatedCommand)
+                    continue; // switches and power/elevation actions are never batch-opened with others
                 if (r.target == ws::kSettingsCommand) // Win顺's own (GitHub #389, #390): never the shell
                     openSettings();
                 else if (r.target.startsWith(ws::kPluginSettingsCommand))
@@ -7019,6 +7084,15 @@ QVariantList Launcher::menuItems(int row) const
             items.append(separator);
             items.append(entry(ForgetRecent, tr("从最近使用中移除"), QString(), u"\uE711"_s));
         }
+        return items;
+    }
+    if (r->isPlace() && ws::isPowerCommand(r->target)) { // Win顺's own power/session actions (GitHub #428)
+        const QString label = isPowerArmed(r->target) ? tr("确认%1").arg(r->name)
+                            : !ws::powerCommandNeedsConfirm(r->target) ? tr("锁定")
+                            : tr("执行");
+        items.append(entry(Open, label, u"Enter"_s, u"\uE7E8"_s)); // Power
+        items.append(separator);
+        items.append(entry(CopyName, tr("复制名称"), QString(), u"\uE8AC"_s));
         return items;
     }
     if (r->isPlace()) {

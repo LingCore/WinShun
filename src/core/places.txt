@@ -369,6 +369,46 @@ open = winshun:restart-as-administrator
 keywords = 管理员; 管理员身份; 管理员权限; 管理员运行; 提权; 提升权限; 重启 Win顺; run as administrator; administrator; admin; elevate; elevated
 icon = %SystemRoot%\System32\imageres.dll,-78
 
+# ---------------------------------------------------------------- 电源与会话
+# Win顺 直接执行（GitHub #428）：关机、重启、睡眠、休眠、注销均需二次确认，
+# 锁屏不丢失未保存内容可直接锁定；休眠与睡眠按本机电源能力自动过滤。
+
+[power-shutdown]
+name = 关机 | Shut down
+open = winshun:power/shutdown
+keywords = 关机; 关闭电脑; 关闭计算机; 电源; shutdown; shut down; power off; poweroff
+icon = ph:power
+
+[power-restart]
+name = 重启电脑 | Restart computer
+open = winshun:power/restart
+keywords = 重启; 重新启动; 重启电脑; 重启计算机; 电源; restart; reboot
+icon = ph:arrow-clockwise
+
+[power-sleep]
+name = 睡眠 | Sleep
+open = winshun:power/sleep
+keywords = 睡眠; 待机; 电源; sleep; standby; suspend
+icon = ph:moon
+
+[power-hibernate]
+name = 休眠 | Hibernate
+open = winshun:power/hibernate
+keywords = 休眠; 深度休眠; 电源; hibernate
+icon = ph:moon-stars
+
+[power-lock]
+name = 锁定屏幕 | Lock screen
+open = winshun:power/lock
+keywords = 锁屏; 锁定; 锁定屏幕; 锁电脑; 锁定电脑; 离开; lock; lock screen; win+l
+icon = ph:lock
+
+[power-signout]
+name = 注销 | Sign out
+open = winshun:power/signout
+keywords = 注销; 退出登录; 切换用户; 登出; sign out; signout; log off; logoff; logout
+icon = ph:sign-out
+
 # Win顺 自己的网页（GitHub #254）：搜 winshun、反馈、issue 就能到，不用翻书签。
 # icon = winshun 是 Win顺 自己的图标。项目主页已经有网页快捷方式 winshun。
 [winshun-issues]

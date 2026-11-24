@@ -97,4 +97,4 @@ target_include_directories(wscore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories(wscore PRIVATE "${CMAKE_BINARY_DIR}/generated")
 target_link_libraries(wscore
     PUBLIC Qt6::Core Qt6::Sql winshun_options wsextract_api
-    PRIVATE miniz kernel32 advapi32 bcrypt cabinet cfgmgr32 mpr netapi32 ole32 shell32 shlwapi user32 ws2_32)
+    PRIVATE miniz kernel32 advapi32 bcrypt cabinet cfgmgr32 mpr netapi32 ole32 powrprof shell32 shlwapi user32 ws2_32)

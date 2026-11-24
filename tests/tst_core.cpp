@@ -11664,6 +11664,108 @@ private slots:
             QVERIFY2(names(typed).contains(u"以管理员身份重新启动 Win顺"_s), qPrintable(typed));
     }
 
+    // Built-in Windows power and session actions (GitHub #428): bilingual
+    // names, Phosphor icons, confirmation rules, and weak-guess demotion.
+    void powerPlaces()
+    {
+        QVERIFY(isPowerCommand(u"winshun:power/shutdown"_s));
+        QCOMPARE(powerCommandAction(u"winshun:power/shutdown"_s), u"shutdown"_s);
+        QVERIFY(powerCommandNeedsConfirm(u"winshun:power/shutdown"_s));
+        QVERIFY(powerCommandNeedsConfirm(u"winshun:power/restart"_s));
+        QVERIFY(powerCommandNeedsConfirm(u"winshun:power/sleep"_s));
+        QVERIFY(powerCommandNeedsConfirm(u"winshun:power/hibernate"_s));
+        QVERIFY(powerCommandNeedsConfirm(u"winshun:power/signout"_s));
+        QVERIFY(!powerCommandNeedsConfirm(u"winshun:power/lock"_s));
+        QVERIFY(!isPowerCommand(u"winshun:power/"_s));
+        QVERIFY(!isPowerCommand(kSettingsCommand));
+        QVERIFY(powerCommandAction(kSettingsCommand).isEmpty());
+
+        const PlaceList zh = switchPlaces();
+        PlaceList en;
+        QFile file(u":/winshun/places.txt"_s);
+        QVERIFY(file.open(QIODevice::ReadOnly | QIODevice::Text));
+        applyPlaceExtras(en, QString::fromUtf8(file.readAll()), false);
+        for (PlaceInfo& p : en)
+            p.prepare();
+
+        const auto findByCommand = [](const PlaceList& list, QStringView cmd) -> const PlaceInfo* {
+            for (const PlaceInfo& p : list) {
+                if (p.command == cmd)
+                    return &p;
+            }
+            return nullptr;
+        };
+        struct Expected {
+            QStringView cmd;
+            QStringView zhName;
+            QStringView enName;
+            QStringView icon;
+        };
+        const Expected expected[] = {
+            {u"winshun:power/shutdown", u"关机", u"Shut down", u"ph:power"},
+            {u"winshun:power/restart", u"重启电脑", u"Restart computer", u"ph:arrow-clockwise"},
+            {u"winshun:power/sleep", u"睡眠", u"Sleep", u"ph:moon"},
+            {u"winshun:power/hibernate", u"休眠", u"Hibernate", u"ph:moon-stars"},
+            {u"winshun:power/lock", u"锁定屏幕", u"Lock screen", u"ph:lock"},
+            {u"winshun:power/signout", u"注销", u"Sign out", u"ph:sign-out"},
+        };
+        for (const Expected& e : expected) {
+            const PlaceInfo* pZh = findByCommand(zh, e.cmd);
+            const PlaceInfo* pEn = findByCommand(en, e.cmd);
+            QVERIFY2(pZh != nullptr, qPrintable(e.cmd.toString()));
+            QVERIFY2(pEn != nullptr, qPrintable(e.cmd.toString()));
+            QCOMPARE(pZh->name, e.zhName.toString());
+            QCOMPARE(pEn->name, e.enName.toString());
+            QCOMPARE(pZh->icon, e.icon.toString());
+        }
+
+        const auto topCommand = [&](const PlaceList& list, const QString& text) {
+            const ParsedQuery query = ws::parseQuery(text);
+            const NameMatcher matcher(query);
+            const std::vector<PlaceHit> hits = searchPlaces(list, query, matcher, {});
+            return hits.empty() ? QString() : list[hits.front().index].command;
+        };
+        QCOMPARE(topCommand(zh, u"关机"_s), u"winshun:power/shutdown"_s);
+        QCOMPARE(topCommand(zh, u"shutdown"_s), u"winshun:power/shutdown"_s);
+        QCOMPARE(topCommand(zh, u"重启电脑"_s), u"winshun:power/restart"_s);
+        QCOMPARE(topCommand(zh, u"reboot"_s), u"winshun:power/restart"_s);
+        QCOMPARE(topCommand(zh, u"睡眠"_s), u"winshun:power/sleep"_s);
+        QCOMPARE(topCommand(zh, u"休眠"_s), u"winshun:power/hibernate"_s);
+        QCOMPARE(topCommand(zh, u"锁屏"_s), u"winshun:power/lock"_s);
+        QCOMPARE(topCommand(zh, u"注销"_s), u"winshun:power/signout"_s);
+        QCOMPARE(topCommand(en, u"hibernate"_s), u"winshun:power/hibernate"_s);
+        QCOMPARE(topCommand(en, u"lock screen"_s), u"winshun:power/lock"_s);
+
+        // Weak pinyin initials ("gj") must rank behind a matching app so an
+        // accidental Enter never triggers a power action over real apps.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        IndexService::Options options;
+        options.content.enabled = false;
+        IndexService service(dir.filePath(u"index"_s), options);
+        AppCatalog apps;
+        auto programs = std::make_shared<AppList>();
+        AppInfo app;
+        app.name = u"GJ Notes"_s;
+        app.id = u"Test.GJNotes"_s;
+        app.prepare();
+        programs->push_back(app);
+        apps.setApps(programs);
+        SystemCatalog catalog;
+        catalog.setPlaces(std::make_shared<PlaceList>(zh));
+        SearchEngine engine(&service, &apps, &catalog);
+        QSignalSpy spy(&engine, &SearchEngine::resultsReady);
+        SearchEngine::Request req;
+        req.text = u"gj"_s;
+        req.scope = Scope::All;
+        req.limit = 20;
+        engine.submit(std::move(req));
+        QVERIFY(spy.wait(5000));
+        const SearchResults rows = spy.first().at(1).value<SearchResults>();
+        QVERIFY(rows.size() >= 2);
+        QCOMPARE(rows.first().name, u"GJ Notes"_s);
+    }
+
     void switchPlaceSearch()
     {
         const PlaceList places = switchPlaces();

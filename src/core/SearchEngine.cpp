@@ -1825,7 +1825,7 @@ void SearchEngine::runNameSearch(const Job& job)
             struct Ranked {
                 int score;
                 SearchResult result;
-                bool guessedSwitch = false; // a switch found by a guess (PlaceHit::weak)
+                bool guessedAction = false; // a switch or power command found by a guess (PlaceHit::weak)
             };
             std::vector<Ranked> ranked;
             // Win顺's own places (GitHub #389, #390), whether or not places
@@ -1864,6 +1864,7 @@ void SearchEngine::runNameSearch(const Job& job)
                 if (isOwnPlace(place)) // above
                     continue;
                 const bool isSwitch = !place.switchId.isEmpty();
+                const bool isPower = isPowerCommand(place.command);
                 if (!isSwitch && shown >= kPlacesShown)
                     continue;
                 // An app of that name (控制面板) is the same thing.
@@ -1871,19 +1872,20 @@ void SearchEngine::runNameSearch(const Job& job)
                     [&](const Ranked& r) { return r.result.name.compare(place.name, Qt::CaseInsensitive) == 0; });
                 if (isApp)
                     continue;
-                ranked.push_back({hit.score, fromPlace(place, false), isSwitch && hit.weak});
+                ranked.push_back({hit.score, fromPlace(place, false), (isSwitch || isPower) && hit.weak});
                 shown += isSwitch ? 0 : 1;
             }
-            // A wrong Enter on an app opens it; on a switch it changes the
-            // system. So a switch found by a guess ("ly") goes behind every
-            // app and page found as well, and first only where there are none.
+            // A wrong Enter on an app opens it; on a switch or power command it
+            // changes system state. So one found only by a weak guess ("ly", "gj")
+            // goes behind every app and page found as well, and first only where
+            // there are none.
             int behind = std::numeric_limits<int>::max();
             for (const Ranked& r : ranked) {
-                if (r.result.switchId.isEmpty())
+                if (r.result.switchId.isEmpty() && !isPowerCommand(r.result.target))
                     behind = std::min(behind, r.score);
             }
             for (Ranked& r : ranked) {
-                if (r.guessedSwitch)
+                if (r.guessedAction)
                     r.score = std::min(r.score, behind - 1);
             }
             // "关蓝牙", "音量 30", "蓝牙设置": the switch with what was asked of
@@ -1926,11 +1928,11 @@ void SearchEngine::runNameSearch(const Job& job)
             if (commandRow)
                 top.push_back(std::move(*commandRow));
             const qsizetype explicitRows = top.size();
-            QSet<QString> guessedSwitches;
+            QSet<QString> guessedActions;
             total += static_cast<qint64>(ranked.size()) + top.size();
             for (Ranked& r : ranked) {
-                if (r.guessedSwitch)
-                    guessedSwitches.insert(r.result.path);
+                if (r.guessedAction)
+                    guessedActions.insert(r.result.path);
                 r.result.score = r.score;
                 top.push_back(std::move(r.result));
             }
@@ -1941,7 +1943,7 @@ void SearchEngine::runNameSearch(const Job& job)
                 top.append(std::move(results));
                 if (rankBy == RankBy::Match && request.order.key == SortKey::Rank && !filtered && !insideFirst) {
                     const auto learned = [&](const SearchResult& r) {
-                        return !guessedSwitches.contains(r.path) && History::affinity(request.historyAffinity, r.path).learned();
+                        return !guessedActions.contains(r.path) && History::affinity(request.historyAffinity, r.path).learned();
                     };
                     std::stable_sort(top.begin() + explicitRows, top.end(), [&](const SearchResult& a, const SearchResult& b) {
                         const bool aLearned = learned(a);

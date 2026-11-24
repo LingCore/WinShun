@@ -250,7 +250,7 @@ void FavoritesSettings::refresh()
             const PlaceInfo* place = places ? findPlace(*places, f.path) : nullptr;
             if (place) {
                 icon = place->icon.startsWith(u"app:") ? FileIconProvider::appIconUrl(place->icon.mid(4), true, dark())
-                                                       : FileIconProvider::placeIconUrl(place->icon);
+                                                       : FileIconProvider::placeIconUrl(place->icon, dark());
             }
             shownPath = tr("系统");
             missing = places && windowsPlacesRead(*places) && !place; // not read yet: not known to be missing

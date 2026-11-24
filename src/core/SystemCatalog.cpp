@@ -19,6 +19,7 @@
 // After windows.h; ole2.h first, as WIN32_LEAN_AND_MEAN keeps it out of windows.h.
 #include <ole2.h>
 
+#include <powrprof.h>
 #include <shlwapi.h>
 #include <versionhelpers.h>
 
@@ -867,6 +868,21 @@ bool isOwnCommand(QStringView command) noexcept
     return command == kSettingsCommand || command.startsWith(kPluginSettingsCommand);
 }
 
+bool isPowerCommand(QStringView command) noexcept
+{
+    return command.startsWith(kPowerCommandPrefix) && command.size() > kPowerCommandPrefix.size();
+}
+
+QStringView powerCommandAction(QStringView command) noexcept
+{
+    return isPowerCommand(command) ? command.mid(kPowerCommandPrefix.size()) : QStringView {};
+}
+
+bool powerCommandNeedsConfirm(QStringView command) noexcept
+{
+    return isPowerCommand(command) && powerCommandAction(command) != u"lock";
+}
+
 void SystemCatalog::refresh(bool force)
 {
     if (m_busy) {
@@ -1000,6 +1016,10 @@ PlaceList loadPlaces(const std::stop_token& stop)
     std::erase_if(places, [](const PlaceInfo& p) { return p.key.startsWith(u"winshun/") && !commandRunsHere(p.command); });
     if (!userIsAdministrator() || processElevated())
         std::erase_if(places, [](const PlaceInfo& p) { return p.command == kRestartElevatedCommand; });
+    if (!::IsPwrHibernateAllowed())
+        std::erase_if(places, [](const PlaceInfo& p) { return p.command == u"winshun:power/hibernate"; });
+    if (!::IsPwrSuspendAllowed())
+        std::erase_if(places, [](const PlaceInfo& p) { return p.command == u"winshun:power/sleep"; });
     for (PlaceInfo& p : places) {
         if (p.icon == u"winshun") // Win顺's own pages (GitHub #254): its logo
             p.icon = QCoreApplication::applicationFilePath();

@@ -604,8 +604,10 @@ QString FileIconProvider::appIconUrl(const QString& appId, bool packaged, bool d
     return url + (dark ? u"/dark"_s : u"/light"_s); // its logo has a variant per theme
 }
 
-QString FileIconProvider::placeIconUrl(const QString& icon)
+QString FileIconProvider::placeIconUrl(const QString& icon, bool dark)
 {
+    if (icon.startsWith(u"ph:") || icon.startsWith(u"ph-fill:"))
+        return u"image://fileicon/ph/"_s + encode(icon) + (dark ? u"/dark"_s : u"/light"_s);
     return u"image://fileicon/place/"_s + encode(icon);
 }
 
