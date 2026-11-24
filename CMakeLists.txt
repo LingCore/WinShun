@@ -109,6 +109,9 @@ install(DIRECTORY "${bundled_plugins_dir}/" DESTINATION plugins)
 # staged as its package will hold it -- the files of src/<name>/package and
 # its program -- in library-plugins/<id>; release.ps1 zips each folder into
 # <id>-<version>.wsplugin for the library, wsbench --semantic reads them there.
+# The screenshot's folder also comes with Win顺 (library-plugins\winshun.capture
+# beside WinShun.exe): the first-run guide installs it from there, with no
+# network (Onboarding::copyOfCapture); the library updates it from then on.
 set(library_plugins_dir "${CMAKE_BINARY_DIR}/library-plugins")
 file(READ "${PROJECT_SOURCE_DIR}/src/web-plugin/package/plugin.json" web_plugin_manifest)
 string(JSON web_plugin_manifest SET "${web_plugin_manifest}" minWinShun "\"${PROJECT_VERSION}\"")
@@ -185,6 +188,7 @@ add_custom_target(library_plugins ALL
         WinShunDevTools WinShunDevToolsApp
     COMMENT "Staging the library plugins into ${library_plugins_dir}"
     VERBATIM)
+install(DIRECTORY "${library_plugins_dir}/winshun.capture" DESTINATION library-plugins)
 
 # Developer tool: index memory and search timings on the real snapshot.
 qt_add_executable(wsbench tools/wsbench.cpp src/app/Settings.cpp

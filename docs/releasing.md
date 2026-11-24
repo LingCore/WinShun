@@ -39,7 +39,7 @@
 
 构建依赖与应用内公开 GitHub 文件的默认镜像统一维护在 `resources/downloads/github-mirrors.txt`；修改后重新配置并构建。`cmake/Download.cmake` 优先镜像、再原站，每个响应都按固定 SHA256 检查，失败不使用半个文件；下载回归包含本地故障注入，公网验证需显式开启 `WINSHUN_UPDATE_LIVE=1`，不会运行安装程序。
 
-标准包只带完整常规字体，不带独立粗体、ONNX Runtime 和 OCR 模型。`tools/package_ocr.py` 依据 `resources/ocr/package.json` 校验每个原文件的大小与 SHA256，再生成 `WinShun-ocr-ppocr-v6-ort1.30.0-x64.zip`；完整离线安装包由标准目录加同一份已校验组件构成，文件名为 `WinShun-<版本>-x64-offline-setup.exe`。组件 ZIP 必须随同一版本 Release 一起上传，应用内下载地址使用该版本标签；只上传主安装包会使首次安装增强识别失败。组件换版本或原文件时，同步更新清单、`OcrFiles::kVersion` 和下载大小，再验证取消、损坏包、离线安装、截图续识别及旧文件兼容。
+标准包只带完整常规字体，不带独立粗体、ONNX Runtime 和 OCR 模型。截图插件 `winshun.capture` 的解包副本（`library-plugins\winshun.capture`，本次构建产物）随安装包、离线安装包和便携包附带，供首次引导不联网安装；它与插件库里同版本号的包必须是同一份源码，所以截图源码（含编译进去的共享文件）有变化就升截图插件版本并发布到插件库。`tools/package_ocr.py` 依据 `resources/ocr/package.json` 校验每个原文件的大小与 SHA256，再生成 `WinShun-ocr-ppocr-v6-ort1.30.0-x64.zip`；完整离线安装包由标准目录加同一份已校验组件构成，文件名为 `WinShun-<版本>-x64-offline-setup.exe`。组件 ZIP 必须随同一版本 Release 一起上传，应用内下载地址使用该版本标签；只上传主安装包会使首次安装增强识别失败。组件换版本或原文件时，同步更新清单、`OcrFiles::kVersion` 和下载大小，再验证取消、损坏包、离线安装、截图续识别及旧文件兼容。
 
 按改动验证实际生产路径。涉及录屏时，检查真实 MP4 / GIF 能解码、分辨率与帧率、暂停继续、再录一段及旧文件保留；音频未实测就不要写“音频已实测”。明确区分当前系统上的验证与尚未覆盖的系统。
 

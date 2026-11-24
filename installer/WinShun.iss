@@ -231,6 +231,10 @@ Type: filesandordirs; Name: "{app}\plugins\winshun.semantic"
 Type: filesandordirs; Name: "{app}\plugins\winshun.translate"
 Type: filesandordirs; Name: "{app}\plugins\winshun.bookmarks"
 Type: filesandordirs; Name: "{app}\plugins\winshun.web"
+; The library plugins' copies that come with Win顺 (the screenshot's, which the
+; first-run guide installs from): this version's only, none of an older one's
+; files left among them.
+Type: filesandordirs; Name: "{app}\library-plugins"
 
 #ifndef TestInstall
 [Icons]

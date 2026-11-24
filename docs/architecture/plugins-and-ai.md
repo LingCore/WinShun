@@ -37,6 +37,7 @@
 - **声明式动作与通知策略**：`OpenPolicy` 对未声明 `processes` 的插件仅放行 `http`/`https`/`mailto` 链接及绝对路径的现有目录/非危险文件，永不以管理员身份运行插件结果；`ToastPolicy` 强制通知标题带插件名前缀，点击动作仅限白名单行为。
 - **共享宿主 Qt 模式**：带 Qt Quick 界面的官方插件拆为“无 Qt 启动器 `*.exe` + 业务 DLL（`*App.dll` / `*Editor.dll`）”，经 `WS_APP_DIR` 加载宿主 Qt/PDFium/ONNX/OCR，QML 编译为 `--only-bytecode` 并由 `minWinShun` 锁定兼容版本。
 - **随包 vs 插件库**：随包插件（`bundled_plugins`，`<安装目录>\plugins`，默认停用，含 `go`/`kill`/`tools`/`switches`）；插件库插件（`library_plugins`，发布至 `LingCore/WinShun-plugins`，用户安装至 `%LOCALAPPDATA%\WinShun\plugins`，同 ID 用户目录优先）。
+- **插件库插件的附带副本**：`winshun.capture` 仍是插件库插件，但安装版与便携版另带其解包副本 `<安装目录>\library-plugins\winshun.capture`（`build.ps1 -Deploy` 从构建目录同名文件夹复制，CMake `install` 同步；不在 `plugins\` 下，`Catalog` 不把它当随包插件扫描）。首次引导选了截图时，`Onboarding::copyOfCapture` 找到它就经 `PluginSettings::installFrom` 直接装进用户插件目录并启用，不联网；没有副本、装不上（日志记原因）或用户目录已有不可用副本时才走插件库下载。装好后与插件库安装的完全相同，由后台插件更新照常升级。副本以原文件随包而不预先压缩：安装包的 LZMA2 固实压缩能与主程序里重复的内容一起去重，实测只让安装包大 1.16 MB（单独 zip 约 3.0 MB，且每版整包都变），增量更新也可按文件打补丁；安装器 `[InstallDelete]` 先清空 `library-plugins` 防旧文件残留。`WINSHUN_PLUGIN_COPIES` 可指定另一个副本目录（测试用，指向不存在的目录即视为无副本）。
 
 ## 2. 插件运行时架构
 
@@ -68,7 +69,7 @@
 | `winshun.tools` | `src/tools-plugin` | `WinShunTools.exe` / runner 进程内 | 随包 · `resident`（`eager`/`strict`） | 算式、单位、颜色、Base64/哈希/UUID/时间戳；默认随 runner 线程运行 |
 | `winshun.switches` | `src/switches-plugin` | `WinShunSwitches.exe` + `*App.dll` | 随包 · `resident`（`eager`/进程内） | 7 项原生系统开关，共享宿主 Qt（详下） |
 | `winshun.web` | `src/web-plugin` | 无（`webSearch: true`） | 插件库 · 宿主内零代码 | 网页搜索、自定义站点与图标、搜索建议（存 `[Plugin.winshun.web]`） |
-| `winshun.capture` | `src/capture-plugin` + `src/capture` | `WinShunCapture.exe` + `*App.dll` | 插件库 · `resident`（`eager`/`normal`） | 截图、标注、贴图、长截图、录屏、演示白板与 OCR；详见 [capture-and-recording.md](capture-and-recording.md) |
+| `winshun.capture` | `src/capture-plugin` + `src/capture` | `WinShunCapture.exe` + `*App.dll` | 插件库（安装包附带副本）· `resident`（`eager`/`normal`） | 截图、标注、贴图、长截图、录屏、演示白板与 OCR；详见 [capture-and-recording.md](capture-and-recording.md) |
 | `winshun.ocr-search` | `src/ocr-search-plugin` | `WinShunOcrSearch.exe` + `*App.dll` | 插件库 · `resident`（`eager`/`strict`/`contentSearch`） | 图片/扫描 PDF/文档内嵌图本地 OCR 倒排索引（SQLite 默认 ≤512 MiB），隔离后台工作进程（单文件 60 s 无进展跳过） |
 | `winshun.semantic` | `src/semantic-plugin` | `WinShunSemantic.exe`（无 Qt） | 插件库 · `resident`（`eager`/`strict`） | “按意思找”：经 `winshun:content` 复用内容索引，OpenAI 兼容 `/embeddings`，int8 mmap 向量段，首次前先估算并写入 `consent.txt` |
 | `winshun.devtools` | `src/devtools-plugin` | `WinShunDevTools.exe` + `*App.dll` | 插件库 · `resident`（`lazy`/`normal`） | JSON 格式化/压缩/转义及共享宿主 Qt 的树形查看器 |

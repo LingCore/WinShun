@@ -3854,6 +3854,10 @@
         <translation>Screen capture</translation>
     </message>
     <message>
+        <source>框选截图、标注和贴图。打开即允许它读写剪贴板、保存图片。</source>
+        <translation>Select, annotate and pin screenshots. Turning it on lets it use the clipboard and save pictures.</translation>
+    </message>
+    <message>
         <source>框选截图、标注和贴图。首次开启会下载组件；打开即允许它读写剪贴板、保存图片。</source>
         <translation>Select, annotate and pin screenshots. Turning it on downloads a component and lets it use the clipboard and save pictures.</translation>
     </message>

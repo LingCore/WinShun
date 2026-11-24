@@ -1,13 +1,17 @@
 #include "Onboarding.h"
 
 #include "Host.h"
+#include "MovedPlugins.h"
 #include "PluginGallery.h"
 #include "PluginSettings.h"
 #include "platform/HotkeyText.h"
 #include "platform/ShortcutCapture.h"
 
 #include <QCoreApplication>
+#include <QDebug>
 #include <QDir>
+#include <QElapsedTimer>
+#include <QFileInfo>
 #include <QKeyEvent>
 #include <QSettings>
 #include <QTimer>
@@ -64,7 +68,7 @@ bool available(const QString& shortcut)
 } // namespace
 
 Onboarding::Onboarding(const Settings& settings, QObject* parent)
-    : QObject(parent), m_settings(settings)
+    : QObject(parent), m_settings(settings), m_captureCopy(copyOfCapture(QCoreApplication::applicationDirPath()))
 {
     // New users explicitly opt into recording and background content work.
     connect(this, &Onboarding::choicesChanged, this, [this] {
@@ -77,6 +81,16 @@ Onboarding::Onboarding(const Settings& settings, QObject* parent)
 }
 
 Onboarding::~Onboarding() = default;
+
+QString Onboarding::copyOfCapture(const QString& appDir)
+{
+    const QString copies = qEnvironmentVariableIsSet("WINSHUN_PLUGIN_COPIES") ? qEnvironmentVariable("WINSHUN_PLUGIN_COPIES")
+                                                                               : QDir(appDir).filePath(u"library-plugins"_s);
+    if (copies.isEmpty() || QDir::isRelativePath(copies))
+        return {};
+    const QString folder = QDir(copies).filePath(kCapture);
+    return QFileInfo(QDir(folder).filePath(u"plugin.json"_s)).isFile() ? QDir::toNativeSeparators(folder) : QString();
+}
 
 void Onboarding::setWindow(QWindow* window)
 {
@@ -340,9 +354,48 @@ void Onboarding::retryCapture()
     if (const auto* card = m_plugins->list()->card(kCapture);
         card && card->enabled && (card->tone == u"error" || card->tone == u"warn"))
         m_host->reload(kCapture);
-    if (const auto* card = m_plugins->list()->card(kCapture); !card || !card->usable)
-        m_plugins->gallery()->refresh();
+    // Not installed: from the copy that comes with Win顺 (nothing to download,
+    // no network needed), else from the library. The library updates it from
+    // then on, as any it installed. One installed but not usable is the
+    // library's to replace (the plugin page's question is not asked here).
+    if (const auto* card = m_plugins->list()->card(kCapture); !card || !card->usable) {
+        if (card || !installCopy())
+            m_plugins->gallery()->refresh();
+    }
     updateCaptureState();
+}
+
+// True: installed from the copy (or what stops it said); false: not tried
+// or not installed, for the library to do.
+bool Onboarding::installCopy()
+{
+    if (m_captureCopy.isEmpty() || m_copyTried)
+        return false;
+    m_copyTried = true;
+    m_message = tr("正在安装截图组件…");
+    emit stateChanged();
+    QElapsedTimer took;
+    took.start();
+    // On the way, enabling it asks (confirmationNeeded): answered yes above.
+    const PluginInstalled outcome = m_plugins->installFrom(m_captureCopy, kCapture, moved::name(kCapture), true);
+    switch (outcome.step) {
+    case PluginInstalled::Step::Done:
+        qInfo().noquote() << "Onboarding: screenshot" << outcome.version << "installed from" << m_captureCopy << "in"
+                          << took.elapsed() << "ms";
+        return true;
+    case PluginInstalled::Step::Asking: // a folder of its name in the user's plugins that is none (GitHub #253)
+        m_plugins->cancelInstall();
+        qWarning().noquote() << "Onboarding: screenshot not installed from" << m_captureCopy
+                             << "- its folder in the user's plugins holds something else";
+        captureProblem(tr("截图组件暂时无法使用，请在“设置 → 插件”中检查或重新安装。"));
+        return true;
+    case PluginInstalled::Step::Failed:
+        break;
+    }
+    qWarning().noquote() << "Onboarding: screenshot not installed from" << m_captureCopy << "-" << outcome.message
+                         << "- trying the plugin library";
+    m_plugins->clearMessage(); // the library's try says its own
+    return false;
 }
 
 void Onboarding::updateCaptureState()
