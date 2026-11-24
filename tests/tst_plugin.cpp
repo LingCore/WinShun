@@ -5396,6 +5396,35 @@ private slots:
         QCOMPARE(shipped->commands.first().triggers.first().title.pick(u"zh"_s), u"用局域网发送…"_s);
     }
 
+    // Win顺's own plugins never claim a keyword alike: two defaults alike stop
+    // each other and neither opens (局域网传输's `ls` and the browser
+    // history's did, found with GitHub #435).
+    void officialKeywordsDistinct()
+    {
+        const QDir sources(QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(u"../src"_s));
+        QHash<QString, QString> claimedBy; // lower-cased keyword -> "<id>/<command>"
+        int manifests = 0;
+        for (const QFileInfo& folder : sources.entryInfoList({u"*-plugin"_s}, QDir::Dirs)) {
+            QFile file(folder.filePath() + u"/package/plugin.json"_s);
+            if (!file.open(QIODevice::ReadOnly))
+                continue;
+            QString error;
+            const std::optional<Manifest> m = Manifest::parse(file.readAll(), &error);
+            QVERIFY2(m.has_value(), qPrintable(file.fileName() + u": "_s + error));
+            ++manifests;
+            for (const Command& command : m->commands) {
+                for (const QString& keyword : command.keywords) {
+                    const QString who = m->id + u'/' + command.id;
+                    const QString other = claimedBy.value(keyword.toLower());
+                    QVERIFY2(other.isEmpty(), qPrintable(u"`%1`: %2 and %3"_s.arg(keyword, other, who)));
+                    claimedBy.insert(keyword.toLower(), who);
+                }
+            }
+        }
+        QVERIFY2(manifests >= 10, qPrintable(sources.absolutePath()));
+        QCOMPARE(claimedBy.value(u"ls"_s), u"winshun.localsend/send"_s);
+    }
+
     // A resident plugin's `rerun`: the same query sent again (no sooner
     // than kRerunMin); a new query takes over, a cancel ends it.
     void rerunResident()
