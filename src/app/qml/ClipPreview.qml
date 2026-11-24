@@ -48,11 +48,14 @@ Item {
                                          : body.visible ? body.selectedText : fileText.selectedText
     readonly property bool masked: info.masked ?? false // kept from view: dots, nothing to select
     // Ctrl+C: what is selected, copied as a new entry; false: nothing is.
+    // Deselected before the copy: the entry it adds moves the rows, which
+    // closes a hover's preview, this one with it (GitHub #439).
     function copySelection(): bool {
-        if (selectedText.length === 0)
+        const text = selectedText
+        if (text.length === 0)
             return false
-        copyRequested(selectedText, true)
         deselect()
+        copyRequested(text, true)
         return true
     }
     function deselect() {
@@ -65,8 +68,9 @@ Item {
     // as a copy of anyone's (into the history too).
     readonly property string selectedWords: kind === 4 ? words.selectedText : ""
     function copyWords() {
-        copyRequested(selectedWords.length > 0 ? selectedWords : words.text, true)
-        words.deselect()
+        const text = selectedWords.length > 0 ? selectedWords : words.text
+        words.deselect() // first, as copySelection
+        copyRequested(text, true)
     }
 
     readonly property int kind: info.kind ?? -1

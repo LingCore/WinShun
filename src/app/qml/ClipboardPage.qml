@@ -402,6 +402,16 @@ Item {
             }
         }
     }
+    // Text selected in the preview that shows, the one beside the list or
+    // the one the pointer brought up (that window never has the keys, so
+    // Ctrl+C and Enter in the page ask it; GitHub #439).
+    readonly property string previewSelection: previewOpen ? preview.selectedText : (hoverLoader.item?.selectedText ?? "")
+    // Ctrl+C: what is selected there, copied as a new entry; false: nothing is.
+    function copyPreviewSelection(): bool {
+        if (previewOpen)
+            return (fileView.item?.copySelection() ?? false) || preview.copySelection()
+        return hoverLoader.item?.copySelection() ?? false
+    }
     Timer {
         id: hoverLeaveTimer
         interval: 120 // let the pointer cross the gap to scroll/read the preview
@@ -635,8 +645,8 @@ Item {
         case Qt.Key_Enter:
             if (!clipboard.recording)
                 clipboard.turnOn()
-            else if (previewOpen && selectedCount === 0 && preview.selectedText.length > 0)
-                clipboard.pasteText(preview.selectedText) // part of the entry, selected in the preview (GitHub #375)
+            else if (selectedCount === 0 && previewSelection.length > 0)
+                clipboard.pasteText(previewSelection) // part of the entry, selected in a preview (GitHub #375, #439)
             else if (list.count > 0)
                 clipboard.paste(targetRow(), shift)
             break
@@ -658,11 +668,12 @@ Item {
         case Qt.Key_Backtab: clipboard.cycleCategory(-1); break
         case Qt.Key_C:
             // Ctrl+C copies text selected in the field, or what is selected
-            // in the preview (a picture's words, a file's lines); otherwise
-            // the entry.
+            // in a preview (a picture's words, a file's lines; the one beside
+            // the list or the one the pointer brought up, GitHub #439);
+            // otherwise the entry.
             if (!ctrl || (input.selectedText.length > 0 && selectedCount === 0))
                 return
-            if (!previewOpen || selectedCount > 0 || !(fileView.item?.copySelection() || preview.copySelection()))
+            if (selectedCount > 0 || !copyPreviewSelection())
                 clipboard.copy(targetRow())
             break
         case Qt.Key_P:

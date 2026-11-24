@@ -12,6 +12,10 @@ Window {
     required property var info
     required property UiScale metrics
     readonly property bool hovered: pointer.hovered
+    // Text selected in it with the mouse. The window never takes the keys,
+    // so the page's Ctrl+C and Enter ask it (GitHub #439).
+    readonly property string selectedText: body.selectedText
+    function copySelection(): bool { return body.copySelection() }
     property bool wordsShown: true // a picture's words (Clipboard.pictureWords)
     signal wordsToggled()
     readonly property real rightRoom: availableArea.x + availableArea.width - anchorRect.x - anchorRect.width - 16

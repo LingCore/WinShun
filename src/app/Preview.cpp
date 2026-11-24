@@ -101,6 +101,7 @@
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQmlExpression>
+#include <QQmlProperty>
 #include <QAbstractEventDispatcher>
 #include <QAbstractNativeEventFilter>
 #include <QEventLoop>
@@ -8807,6 +8808,115 @@ bool checkClipboardTextSelection(QQmlEngine* engine, const QDir& output)
     return ok;
 }
 
+// --clipboard-hover-copy (GitHub #439): text selected with the mouse in the
+// preview that resting on a row brings up (a window that never takes the
+// keys) is what the page's Ctrl+C copies and Enter pastes, not the row the
+// keyboard is on, as in the preview beside the list (#375). Real QML and a
+// temporary history. Ctrl+C is the last step: its copy is read back from
+// the history, which it goes into at once, and the check returns before the
+// clipboard would be written (the copies marked as a test's meanwhile, so
+// that no history would record them even so).
+bool checkClipboardHoverCopy(QQmlEngine* engine, const QDir& output)
+{
+    qputenv("WINSHUN_TEST_NO_CLIP_HISTORY", "1");
+    QTemporaryDir temporary;
+    ClipStore store(temporary.filePath(u"history"_s));
+    bool ok = true;
+    const auto check = [&](bool condition, const char* reason) {
+        ok = condition && ok;
+        if (!condition) qWarning("clipboard hover copy regression: %s", reason);
+    };
+    if (!store.open(QDateTime::currentMSecsSinceEpoch())) { check(false, "temporary history could not open"); return false; }
+    const QString text = u"账号：lingcore\n密码：在密码管理器里\n备注：周五前把年度报告发给财务"_s;
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    store.add(ClipCapture {.kind = ClipKind::Text, .text = text, .source = u"记事本"_s}, now - 1000);
+    store.add(ClipCapture {.kind = ClipKind::Text, .text = u"另一段文字"_s, .source = u"记事本"_s}, now);
+    ClipboardWatcher watcher({}, {});
+    Clipboard clipboard(&store, &watcher);
+    clipboard.setRowOptions(false, u"standard"_s, SystemTheme::uiSize());
+    clipboard.setPreviewOpen(false);
+    clipboard.setActive(true);
+    clipboard.handleShown();
+    Placement placement(temporary.filePath(u"state.ini"_s), u"Clipboard"_s);
+    WindowFrame frame(false);
+    QQmlComponent component(engine, u"WinShun"_s, u"ClipboardWindow"_s);
+    std::unique_ptr<QObject> object(component.createWithInitialProperties({{u"clipboard"_s, QVariant::fromValue(&clipboard)},
+        {u"placement"_s, QVariant::fromValue(&placement)}, {u"frame"_s, QVariant::fromValue(&frame)}}));
+    auto* window = qobject_cast<QQuickWindow*>(object.get());
+    if (!window) { qWarning().noquote() << "clipboard hover copy regression:" << component.errorString(); return false; }
+    window->create();
+    frame.setWindow(window);
+    placement.setWindow(window);
+    placement.enableWindowSizing();
+    showOffScreen(window);
+    clipboard.handlePlaced();
+    clipboard.setSeen(true);
+    settle(window);
+    auto* page = visualNamed(window->contentItem(), u"clipboardPage"_s);
+    auto* entries = visualNamed(window->contentItem(), u"clipboardEntries"_s);
+    auto* field = visualNamed(window->contentItem(), u"clipboardSearchField"_s);
+    auto* row = visualNamed(window->contentItem(), u"clipboardRow-1"_s);
+    if (!page || !entries || !field || !row) { check(false, "production clipboard page missing"); return false; }
+    check(entries->property("currentIndex").toInt() == 0, "the newest entry is not the keyboard's row");
+    // The pointer rests on the second row: its preview comes up beside the
+    // list, as page.hoverTimer brings it.
+    const QPointF corner = row->mapToGlobal(QPointF(0, 0));
+    page->setProperty("hoverIndex", 1);
+    page->setProperty("hoverRect", QRectF(corner.x(), corner.y(), row->width(), row->height()));
+    page->setProperty("hoverShown", true);
+    QQuickWindow* hover = nullptr;
+    for (QWindow* w : QGuiApplication::topLevelWindows()) {
+        if (w->objectName() == u"clipboardHoverPreview" && w->isVisible())
+            hover = qobject_cast<QQuickWindow*>(w);
+    }
+    if (!hover) { check(false, "resting on a row brought up no preview"); return false; }
+    // It keeps to the screen; moved off it at once (before any event), its
+    // place no longer bound, beside its host.
+    QQmlProperty::write(hover, u"x"_s, window->x() + window->width() + 8);
+    QQmlProperty::write(hover, u"y"_s, window->y());
+    settle(hover);
+    check(hover->x() > window->x(), "the preview could not be kept off the screen");
+    auto* body = visualNamed(hover->contentItem(), u"clipboardPreviewText"_s);
+    auto* hint = visualNamed(hover->contentItem(), u"clipboardPreviewHint"_s);
+    if (!body || !hint) { check(false, "the preview's text missing"); return false; }
+    check(body->property("text").toString() == text, "the preview does not show the row under the pointer");
+    // Dragged across its second line: that part selected, the page's field keeping the keys.
+    const int lines = body->property("lineCount").toInt();
+    const double perLine = lines > 0 ? body->property("contentHeight").toDouble() / lines : 0;
+    const QFontMetricsF metrics(body->property("font").value<QFont>());
+    const auto mouse = [&](QEvent::Type type, const QPointF& at, Qt::MouseButton button, Qt::MouseButtons buttons) {
+        QMouseEvent event(type, at, hover->mapToGlobal(at), button, buttons, {});
+        QCoreApplication::sendEvent(hover, &event);
+        settle(hover);
+    };
+    const QPointF from = body->mapToScene({1, perLine * 1.5});
+    const QPointF to = body->mapToScene({metrics.horizontalAdvance(u"密码：在密码"_s), perLine * 1.5});
+    mouse(QEvent::MouseButtonPress, from, Qt::LeftButton, Qt::LeftButton);
+    mouse(QEvent::MouseMove, (from + to) / 2, Qt::NoButton, Qt::LeftButton);
+    mouse(QEvent::MouseMove, to, Qt::NoButton, Qt::LeftButton);
+    mouse(QEvent::MouseButtonRelease, to, Qt::LeftButton, {});
+    const QString part = body->property("selectedText").toString();
+    check(part.startsWith(u"密码"_s) && part.size() >= 4 && part.size() < 12 && !part.contains(u'\n'),
+        "a drag in the preview did not select part of a line");
+    check(hover->isVisible(), "selecting closed the preview");
+    check(page->property("previewSelection").toString() == part, "Enter would not paste the part selected in the preview");
+    check(hint->property("text").toString().contains(u"Ctrl+C"_s), "the preview does not say that Ctrl+C copies the part");
+    check(saveGrab(hover, output.filePath(u"clipboard-hover-selected.png"_s)), "the preview did not render");
+    // Ctrl+C in the page, whose field has the keys: the part, on top of the
+    // history as a new entry; not the row the keyboard is on.
+    field->forceActiveFocus(Qt::OtherFocusReason);
+    const std::size_t before = store.clips().size();
+    QKeyEvent press(QEvent::KeyPress, Qt::Key_C, Qt::ControlModifier);
+    QCoreApplication::sendEvent(window, &press);
+    check(store.clips().size() == before + 1 && store.clips().front().text == part,
+        "Ctrl+C did not copy the part selected in the preview the pointer brought up");
+    // The new entry moved the rows: that preview closed, nothing left selected.
+    check(!page->property("hoverShown").toBool() && page->property("previewSelection").toString().isEmpty(),
+        "the preview stayed over rows that moved once the part was copied");
+    say(u"clipboard hover preview: a part selected there is what Ctrl+C copies and Enter pastes (real QML, temporary history)"_s);
+    return ok; // no event loop from here on: the clipboard is never written
+}
+
 // --content-kinds (GitHub #447): 内容 narrowed to kinds of file with 文件's
 // chips (the panel's 筛选): it stays 内容 and reads only those kinds, nor
 // counts other kinds of text as passed over; the placeholder and its strip
@@ -10594,6 +10704,8 @@ int runResults(const QStringList& args)
         return checkClipboardPictureView(&engine, out, valueAfter(args, u"--gallery-image")) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-select"_s))
         return checkClipboardTextSelection(&engine, out) ? std::min(g_warnings, 100) : 4;
+    if (args.contains(u"--clipboard-hover-copy"_s))
+        return checkClipboardHoverCopy(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--content-kinds"_s))
         return checkContentKinds(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-crashed-reading"_s)) // its warning when it gives up is expected
