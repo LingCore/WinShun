@@ -36,6 +36,7 @@ Item {
     // What the last button, the check mark, says in its tip (the editing
     // window: 完成 on a pin) and whether there is a 贴图 button (not when the picture is a pin already).
     property string copyText: qsTr("复制")
+    property string sourceFileName: ""
     property bool pinnable: true
     // The toolbar's rows on the screen now (this one, and the style panel
     // when it shows), logical px in the window, and whether the toolbar
@@ -63,6 +64,7 @@ Item {
         pin: bar.pin
         pinEditKey: bar.pinEditKey
         pinEditFinishes: bar.pinEditFinishes
+        sourceFileName: bar.sourceFileName
     }
     readonly property var keyRows: keyList.rows
 
@@ -326,6 +328,7 @@ Item {
             visible: bar.shows("save")
             keyText: bar.annot ? bar.annot.saveKeyText : ""
             direct: bar.annot ? bar.annot.saveDirect : false
+            sourceFileName: bar.sourceFileName
             tipsEnabled: !bar.keysOpen && !bar.dragging
             onSaveRequested: bar.act(CaptureSession.Save)
             onSavePreviousRequested: bar.act(CaptureSession.SavePrevious)

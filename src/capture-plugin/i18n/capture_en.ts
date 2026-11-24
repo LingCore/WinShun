@@ -456,6 +456,10 @@
         <translation>Finish the text (Enter breaks the line; for the words by a number, Enter finishes them)</translation>
     </message>
     <message>
+        <source>保存到原文件</source>
+        <translation>Save to original file</translation>
+    </message>
+    <message>
         <source>保存到设置的保存位置</source>
         <translation>Save to the chosen save folder</translation>
     </message>
@@ -1220,6 +1224,14 @@
         <translation>Find controls in WinUI and similar programs</translation>
     </message>
     <message>
+        <source>截图并直接贴图</source>
+        <translation>Capture and pin</translation>
+    </message>
+    <message>
+        <source>按下后直接拖选区域或单击窗口，松开鼠标就贴到原位置，没有截图工具条。Esc 或右键取消；普通截图选好区域后按它也能直接贴图</source>
+        <translation>Drag an area or click a window and release to pin it in place right away, without the toolbar. Esc or right-click cancels; pressing it after selecting in a regular capture also pins directly</translation>
+    </message>
+    <message>
         <source>截图时的其他按键</source>
         <translation>Other keys while capturing</translation>
     </message>
@@ -1317,8 +1329,45 @@
         <translation>Nothing</translation>
     </message>
     <message>
+        <source>连按贴图键贴出历史记录</source>
+        <translation>Cycle pin history on repeated presses</translation>
+    </message>
+    <message>
+        <source>剪贴板没变化时，继续按贴图快捷键按顺序把之前截过或关掉的图贴回来，并保留标注；选“关闭”则只贴当前剪贴板或最近一张</source>
+        <translation>When the clipboard has not changed, pressing the pin shortcut again restores earlier captures and closed pins in order, keeping annotations; Off pins only the current clipboard or last capture</translation>
+    </message>
+    <message>
+        <source>关闭</source>
+        <comment>pin history</comment>
+        <translation>Off</translation>
+    </message>
+    <message>
+        <source>%1 张</source>
+        <translation>%1</translation>
+    </message>
+    <message>
+        <source>历史贴图恢复顺序</source>
+        <translation>Pin history restore order</translation>
+    </message>
+    <message>
+        <source>最近关闭优先：优先找回刚关掉的贴图和最新截图；按截图时间：严格按截图先后依次贴出</source>
+        <translation>Recently closed first: brings back the most recently closed pin or newest capture first; By capture time: restores strictly from newest to oldest capture</translation>
+    </message>
+    <message>
+        <source>最近关闭优先</source>
+        <translation>Recently closed first</translation>
+    </message>
+    <message>
+        <source>按截图时间</source>
+        <translation>By capture time</translation>
+    </message>
+    <message>
         <source>贴图的快捷键</source>
         <translation>Pin image shortcut</translation>
+    </message>
+    <message>
+        <source>优先贴剪贴板里的图片或文字；连续按下会按顺序贴出之前的历史截图与贴图（并保留标注）。不设时仍可从托盘菜单操作</source>
+        <translation>Pins the picture or text on the clipboard first; pressing again cycles through earlier captures and closed pins (keeping annotations). Still available from the tray menu if left unset</translation>
     </message>
     <message>
         <source>隐藏 / 显示全部贴图的快捷键</source>
@@ -1389,10 +1438,6 @@
         <translation>While another app is full screen, the screenshot hotkey and PrtScn do not start a capture. You can still start one from the menu.</translation>
     </message>
     <message>
-        <source>优先贴剪贴板里的图片；没有新图片时，把最近截图贴回原位置并保留标注。不设时仍可从托盘菜单操作</source>
-        <translation>Pin a clipboard image first; otherwise restore the last screenshot at its original position with annotations. Also available from the tray menu.</translation>
-    </message>
-    <message>
         <source>开始截图</source>
         <translation>Start a screenshot</translation>
     </message>
@@ -1451,6 +1496,14 @@
 <context>
     <name>CaptureSaveButton</name>
     <message>
+        <source>保存到原文件 %1（%2）</source>
+        <translation>Save to %1 (%2)</translation>
+    </message>
+    <message>
+        <source>保存到原文件 %1</source>
+        <translation>Save to %1</translation>
+    </message>
+    <message>
         <source>保存（%1）</source>
         <translation>Save (%1)</translation>
     </message>
@@ -1473,6 +1526,10 @@
     <message>
         <source>保存到旧路径</source>
         <translation>Save to previous folder</translation>
+    </message>
+    <message>
+        <source>保存到截图文件夹</source>
+        <translation>Save to Screenshots folder</translation>
     </message>
 </context>
 <context>
@@ -2271,6 +2328,10 @@ The unfinished recording is kept at: %1</translation>
         <translation>Translate: drag over an area, or click a window · Esc cancels</translation>
     </message>
     <message>
+        <source>截图并贴图：拖选区域，或单击窗口 · Esc 取消</source>
+        <translation>Capture &amp; pin: drag over an area, or click a window · Esc cancels</translation>
+    </message>
+    <message>
         <source>没有保存之前的画面，可在设置 › 截图里打开</source>
         <translation>Earlier pictures are not being kept; turn this on in Settings › Screenshot</translation>
     </message>
@@ -2572,6 +2633,29 @@ click here to cancel</translation>
     </message>
 </context>
 <context>
+    <name>ws::capture::PictureWrite</name>
+    <message>
+        <source>无法保存到 %1（文件只读或没有写入权限）</source>
+        <translation>Could not save to %1 (file is read-only or permission denied)</translation>
+    </message>
+    <message>
+        <source>无法保存到 %1（文件正被其他程序占用）</source>
+        <translation>Could not save to %1 (file is in use by another program)</translation>
+    </message>
+    <message>
+        <source>无法保存到 %1（磁盘空间不足）</source>
+        <translation>Could not save to %1 (not enough disk space)</translation>
+    </message>
+    <message>
+        <source>无法保存到 %1</source>
+        <translation>Could not save to %1</translation>
+    </message>
+    <message>
+        <source>无法保存到 %1（目录不存在）</source>
+        <translation>Could not save to %1 (folder does not exist)</translation>
+    </message>
+</context>
+<context>
     <name>ws::capture::PinKeyCard</name>
     <message>
         <source>Ctrl+滚轮</source>
@@ -2689,6 +2773,10 @@ click here to cancel</translation>
         <translation>Copy picture</translation>
     </message>
     <message>
+        <source>保存到原文件（%1）</source>
+        <translation>Save to original (%1)</translation>
+    </message>
+    <message>
         <source>保存到“屏幕截图”</source>
         <translation>Save to Screenshots</translation>
     </message>
@@ -2711,6 +2799,18 @@ click here to cancel</translation>
     <message>
         <source>关闭全部贴图</source>
         <translation>Close all pins</translation>
+    </message>
+    <message>
+        <source>JPEG 图片</source>
+        <translation>JPEG image</translation>
+    </message>
+    <message>
+        <source>BMP 图片</source>
+        <translation>BMP image</translation>
+    </message>
+    <message>
+        <source>TIFF 图片</source>
+        <translation>TIFF image</translation>
     </message>
     <message>
         <source>另存为</source>
@@ -2939,6 +3039,14 @@ Original video kept at: %2</translation>
         <translation>Shortcut %1</translation>
     </message>
     <message>
+        <source>截图并贴图</source>
+        <translation>Capture &amp; pin</translation>
+    </message>
+    <message>
+        <source>框选后松开鼠标直接贴到原位置</source>
+        <translation>Drag an area and release to pin it in place right away</translation>
+    </message>
+    <message>
         <source>识别屏幕文字</source>
         <translation>Read text on screen</translation>
     </message>
@@ -3023,12 +3131,28 @@ Original video kept at: %2</translation>
         <translation>Could not save the screenshot</translation>
     </message>
     <message>
+        <source>没能保存到原文件</source>
+        <translation>Could not save to original file</translation>
+    </message>
+    <message>
         <source>截图已保存</source>
         <translation>Screenshot saved</translation>
     </message>
     <message>
         <source>点击打开所在文件夹</source>
         <translation>Click to show it in its folder</translation>
+    </message>
+    <message>
+        <source>已保存到原文件</source>
+        <translation>Saved to original file</translation>
+    </message>
+    <message>
+        <source>已保存到 %1</source>
+        <translation>Saved to %1</translation>
+    </message>
+    <message>
+        <source>保存失败</source>
+        <translation>Save failed</translation>
     </message>
     <message>
         <source>没能编辑这张图片</source>
@@ -3053,6 +3177,10 @@ Original video kept at: %2</translation>
     <message>
         <source>这段文字只有空白，没有可贴的内容。</source>
         <translation>The text is only spaces: there is nothing to pin.</translation>
+    </message>
+    <message>
+        <source>历史截图已全部贴在屏幕上。</source>
+        <translation>All screenshots in history are already pinned on screen.</translation>
     </message>
     <message>
         <source>剪贴板里没有可用图片或文字，也没有最近截图。请先复制，或截一张。</source>
@@ -3160,6 +3288,10 @@ Original video kept at: %2</translation>
     <message>
         <source>截图翻译</source>
         <translation>Translate screen region</translation>
+    </message>
+    <message>
+        <source>截图并直接贴图</source>
+        <translation>Capture and pin</translation>
     </message>
     <message>
         <source>和“%1”的快捷键相同，按下时会先被它用掉</source>

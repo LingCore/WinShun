@@ -16,6 +16,8 @@ QtObject {
     property bool pin: false
     property string pinEditKey: ""
     property bool pinEditFinishes: false
+    // Original file name when editing a local image file (#427).
+    property string sourceFileName: ""
     // The keys the user set (#187), shown with the rest when given; the
     // settings list them as boxes of their own and leave this unset.
     property AnnotationModel annot: null
@@ -35,7 +37,9 @@ QtObject {
         "Ctrl+Enter、Esc", qsTranslate("AnnotateToolbar", "写完文字（Enter 换行；序号旁的字 Enter 就写完）"),
         "Ctrl+C、Enter", pin ? qsTr("完成：贴图换成改好的图") : qsTranslate("AnnotateToolbar", "复制")
     ].concat(annot && annot.saveKeyText.length > 0
-                 ? [annot.saveKeyText, annot.saveDirect ? qsTranslate("AnnotateToolbar", "保存到设置的保存位置") : qsTranslate("AnnotateToolbar", "另存为：选择保存位置")] : [],
+                 ? [annot.saveKeyText, sourceFileName.length > 0 ? qsTranslate("AnnotateToolbar", "保存到原文件")
+                                       : annot.saveDirect ? qsTranslate("AnnotateToolbar", "保存到设置的保存位置")
+                                                          : qsTranslate("AnnotateToolbar", "另存为：选择保存位置")] : [],
              annot && annot.pinKeyText.length > 0 ? [annot.pinKeyText, qsTranslate("AnnotateToolbar", "贴图")] : [])
     readonly property var overlayRows: [
         "WASD", qsTranslate("AnnotateToolbar", "微调鼠标光标，每次 1 个物理像素；按住左键拖选区、拖手柄或画标注时也有效"),

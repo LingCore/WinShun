@@ -33,10 +33,13 @@ public:
     struct Callbacks {
         std::function<void(const QImage&, bool screenshot)> copy; // screenshot: the pin came from a capture
         std::function<void(const QImage&, const QString& path)> save; // empty path: the Screenshots folder
+        // Direct save-back to the pin's original image file (#427); falls back to `save` if unset.
+        std::function<void(PinWindow*, const QImage&, const QString& path)> saveSource;
         std::function<void(const QImage&, double dpr, const QRect& picture)> ocr;
         std::function<void(const QImage&, double dpr, const QRect& picture)> ocrCopy; // Shift+C / 复制文字 (#423)
         std::function<void(PinWindow*)> translate; // 翻译: its words translated in place (#191); empty: not offered
         std::function<void(PinWindow*)> edit; // 编辑: the editing window opens on it
+        std::function<void(PinWindow*)> closing; // a pin is about to close (pixels still intact, #446)
         std::function<void()> closed; // a pin closed: its memory can go back to Windows
         std::function<bool()> dark;
         std::function<QColor()> accent; // a fill that carries white words
@@ -68,12 +71,14 @@ public:
     // the monitor at `anchor`, shown fitted when larger than 90% of it, its
     // pixel at `anchor` kept in place (PinWindow). `text`: the words the
     // picture shows (copied text pinned, GitHub #388), copied by Ctrl+C.
-    void pinFitted(const QImage& image, QPoint origin, QPoint anchor, bool screenshot, QString text = {},
+    PinWindow* pinFitted(const QImage& image, QPoint origin, QPoint anchor, bool screenshot, QString text = {},
         std::optional<QList<RedactLine>> recognizedLines = std::nullopt);
     int count() const { return static_cast<int>(m_pins.size()); }
     // `pin` is one of the pins on the screen (not closed since): for what
     // keeps a pointer to one meanwhile (the editing window).
     bool contains(const PinWindow* pin) const;
+    // Whether an open pin currently tracks PinHistory entry `historyId` (#446).
+    bool hasHistoryPin(quint64 historyId) const;
     bool anyClickThrough() const;
     void clearClickThrough(); // the tray menu, the restore hotkey: every pin takes the mouse again
     void closeAll();

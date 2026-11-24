@@ -49,6 +49,8 @@ class CaptureEditor : public QObject {
     Q_PROPERTY(bool fromPin READ fromPin NOTIFY openChanged FINAL)
     // What the first button says: 复制, or on a pin 完成.
     Q_PROPERTY(QString copyText READ copyText NOTIFY openChanged FINAL)
+    // Short display name of the original image file when opened from a writable file (#427); empty otherwise.
+    Q_PROPERTY(QString sourceFileName READ sourceFileName NOTIFY openChanged FINAL)
     Q_PROPERTY(bool ocrAvailable READ ocrAvailable CONSTANT FINAL)
     // On a pin (GitHub #343) the window is the pin grown a toolbar: no
     // title bar, the canvas exactly over the pin's picture, the toolbar's
@@ -107,9 +109,11 @@ public:
         QByteArray project;
         QRect picture;
         double zoom = 1.0;
+        QString sourcePath; // original writable file path (#427), if any
         std::function<bool()> alive;
         std::function<void(bool shown)> setShown;
         std::function<void(const QImage&, const QByteArray& project)> replace;
+        std::function<void(const QImage&, const QString& path)> saveSource;
     };
 
     struct Hooks {
@@ -125,9 +129,13 @@ public:
         // Ctrl+S, F3 and 完成 on a pin also put the picture in the history.
         std::function<void(const QImage&, const QByteArray& project)> record;
         std::function<void(const QImage&, const QString& path)> save;
+        // Direct save-back to an image file's original path (#427); falls back to `save` if unset.
+        std::function<void(const QImage&, const QString& path)> saveSource;
         std::function<QString(QQuickWindow*)> chooseSavePath; // empty path: keep editing
         // F3: a pin of its own, its picture at `origin` (physical).
         std::function<void(const QImage&, const QByteArray& project, QPoint origin)> pin;
+        // Optional richer pin callback carrying `sourcePath` (#427); falls back to `pin` if unset.
+        std::function<void(const QImage&, const QByteArray& project, QPoint origin, const QString& sourcePath)> pinWithSource;
         std::function<void(const QImage&, double dpr, const QRect& where)> ocr;
         // 智能打码: how the text is read and what is hidden (SmartRedact.h).
         SmartHooks smart;
@@ -184,13 +192,15 @@ public:
     bool openHistory(qint64 clipId);
     // A pin: its project, else its picture.
     bool openPin(PinTarget pin);
-    // A picture with nothing behind it (a long capture, the arrangement of
-    // several selections).
-    bool openImage(const QImage& picture);
+    // A picture with nothing behind it (a long capture, a local image file).
+    // `sourcePath`: original writable image file path (#427), empty when none.
+    bool openImage(const QImage& picture, const QString& sourcePath = {});
     bool isOpen() const { return m_open; }
     bool fromPin() const { return m_open && m_origin == editview::Origin::Pin; }
     editview::Origin origin() const { return m_origin; }
     qint64 clipId() const { return m_clipId; }
+    const QString& sourcePath() const { return m_sourcePath; }
+    QString sourceFileName() const;
     // Hides the window and lets go of the picture, the document and the tiles
     // (the changes are given up).
     Q_INVOKABLE void close();
@@ -362,6 +372,7 @@ private:
     bool m_ocrAvailable = false;
     Origin m_origin = Origin::Fresh;
     qint64 m_clipId = 0;
+    QString m_sourcePath; // original writable image file path (#427)
     // The window and the view
     QSize m_windowLogical {1000, 700};
     qreal m_dpr = 1.0;

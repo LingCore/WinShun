@@ -1721,6 +1721,8 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
             m_encode->cancelled = true;
             m_encode.reset();
         }
+        if (m_host.closing)
+            m_host.closing(this);
         releasePixels(); // at once: the memory goes back now
         if (m_host.closed)
             m_host.closed(this);

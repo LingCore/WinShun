@@ -89,6 +89,7 @@ Window {
         editor: true
         dpr: window.dpr
         copyText: window.editor.copyText
+        sourceFileName: window.editor.sourceFileName
         pinnable: !window.editor.fromPin
         ocrAvailable: window.editor.ocrAvailable
         blockRect: Qt.rect(x, y, width, height)

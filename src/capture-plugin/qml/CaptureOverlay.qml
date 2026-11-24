@@ -274,7 +274,7 @@ Window {
             function onGeometryChanged() { toolbar.manuallyPlaced = false }
         }
 
-        visible: overlay.homeSelected && !overlay.screenModel.adjusting && !overlay.session.toolbarHidden && !overlay.session.ocrOnly
+        visible: overlay.homeSelected && !overlay.screenModel.adjusting && !overlay.session.toolbarHidden && !overlay.session.quickPicking
         x: manuallyPlaced ? bounded(manualPosition.x, overlay.width, width) : Math.round(place.x * overlay.dpr) / overlay.dpr
         y: manuallyPlaced ? bounded(manualPosition.y, overlay.height, height) : Math.round(place.y * overlay.dpr) / overlay.dpr
         width: bar.width

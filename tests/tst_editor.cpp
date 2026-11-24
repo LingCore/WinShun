@@ -1155,6 +1155,101 @@ private slots:
         QCOMPARE(m->document().items[0].points[0], QPointF(start.x() + 25, start.y() + 40));
         QCOMPARE(m->tool(), textTool);
     }
+
+    // Save-back to source image file (#427): Save writes back directly without opening
+    // Save As, updates backing pin when editing a pin, while SaveAs and SavePrevious
+    // still offer Save As and the Screenshots folder.
+    void saveBackToSourceFile()
+    {
+        QImage pic(80, 60, QImage::Format_RGB32);
+        pic.fill(Qt::white);
+
+        // 1) openImage with sourcePath
+        {
+            CaptureEditor editor;
+            QString savedSourcePath;
+            QString savedOtherPath;
+            int saveSourceCalls = 0;
+            int saveOtherCalls = 0;
+            int pickerCalls = 0;
+            CaptureEditor::Hooks hooks;
+            hooks.save = [&](const QImage&, const QString& path) {
+                ++saveOtherCalls;
+                savedOtherPath = path;
+            };
+            hooks.saveSource = [&](const QImage&, const QString& path) {
+                ++saveSourceCalls;
+                savedSourcePath = path;
+            };
+            hooks.chooseSavePath = [&](QQuickWindow*) {
+                ++pickerCalls;
+                return u"C:\\chosen\\copy.png"_s;
+            };
+            editor.setHooks(std::move(hooks));
+            editor.setMetrics({1000, 700}, 1.0);
+            editor.setSaveDirect(false);
+
+            QVERIFY(editor.openImage(pic, u"C:\\work\\diagram.jpg"_s));
+            QCOMPARE(editor.sourcePath(), u"C:\\work\\diagram.jpg"_s);
+            QCOMPARE(editor.sourceFileName(), u"diagram.jpg"_s);
+
+            // Ctrl+S / Save goes straight back to sourcePath without picker.
+            editor.act(int(CaptureSession::Action::Save));
+            QCOMPARE(saveSourceCalls, 1);
+            QCOMPARE(savedSourcePath, u"C:\\work\\diagram.jpg"_s);
+            QCOMPARE(pickerCalls, 0);
+            QCOMPARE(saveOtherCalls, 0);
+            QVERIFY(!editor.isOpen());
+            QVERIFY(editor.sourceFileName().isEmpty());
+
+            // SaveAs still opens the picker.
+            QVERIFY(editor.openImage(pic, u"C:\\work\\diagram.jpg"_s));
+            editor.act(int(CaptureSession::Action::SaveAs));
+            QCOMPARE(pickerCalls, 1);
+            QCOMPARE(saveOtherCalls, 1);
+            QCOMPARE(savedOtherPath, u"C:\\chosen\\copy.png"_s);
+            QCOMPARE(saveSourceCalls, 1);
+
+            // SavePrevious saves into the Screenshots folder (empty path).
+            QVERIFY(editor.openImage(pic, u"C:\\work\\diagram.jpg"_s));
+            editor.act(int(CaptureSession::Action::SavePrevious));
+            QCOMPARE(saveOtherCalls, 2);
+            QVERIFY(savedOtherPath.isEmpty());
+        }
+
+        // 2) openPin with sourcePath: Save updates the backing pin AND writes to sourcePath.
+        {
+            CaptureEditor editor;
+            int replacedCalls = 0;
+            int pinSaveSourceCalls = 0;
+            QString pinSavedPath;
+            CaptureEditor::Hooks hooks;
+            editor.setHooks(std::move(hooks));
+            editor.setMetrics({1000, 700}, 1.0);
+
+            CaptureEditor::PinTarget target;
+            target.image = pic;
+            target.picture = QRect(100, 100, 80, 60);
+            target.sourcePath = u"C:\\work\\pin.png"_s;
+            target.alive = [] { return true; };
+            target.replace = [&](const QImage& out, const QByteArray&) {
+                if (!out.isNull())
+                    ++replacedCalls;
+            };
+            target.saveSource = [&](const QImage&, const QString& path) {
+                ++pinSaveSourceCalls;
+                pinSavedPath = path;
+            };
+
+            QVERIFY(editor.openPin(std::move(target)));
+            QCOMPARE(editor.sourceFileName(), u"pin.png"_s);
+            editor.act(int(CaptureSession::Action::Save));
+            QCOMPARE(replacedCalls, 1);
+            QCOMPARE(pinSaveSourceCalls, 1);
+            QCOMPARE(pinSavedPath, u"C:\\work\\pin.png"_s);
+            QVERIFY(!editor.isOpen());
+        }
+    }
 };
 
 int main(int argc, char** argv)

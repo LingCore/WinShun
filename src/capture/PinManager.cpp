@@ -1,9 +1,11 @@
 #include "PinManager.h"
 
+#include "PictureWrite.h"
 #include "platform/Shell.h"
 
 #include <QDateTime>
 #include <QDebug>
+#include <QFileInfo>
 
 #include <algorithm>
 
@@ -16,6 +18,7 @@ namespace {
 enum MenuCommand {
     CopyCommand = 1,
     SaveCommand,
+    SaveSourceCommand,
     SaveAsCommand,
     EditCommand,
     OcrCommand,
@@ -79,12 +82,14 @@ PinWindow* PinManager::pin(const QImage& image, QPoint origin, bool screenshot, 
     return add(image, origin, screenshot, std::move(project), std::nullopt, std::move(recognizedLines), true);
 }
 
-void PinManager::pinFitted(const QImage& image, QPoint origin, QPoint anchor, bool screenshot, QString text,
+PinWindow* PinManager::pinFitted(const QImage& image, QPoint origin, QPoint anchor, bool screenshot, QString text,
     std::optional<QList<RedactLine>> recognizedLines)
 {
     const bool hasWords = !text.isEmpty();
-    if (PinWindow* pin = add(image, origin, screenshot, {}, anchor, std::move(recognizedLines), !hasWords); pin && hasWords)
+    PinWindow* pin = add(image, origin, screenshot, {}, anchor, std::move(recognizedLines), !hasWords);
+    if (pin && hasWords)
         pin->setCopiedText(std::move(text));
+    return pin;
 }
 
 PinWindow* PinManager::add(const QImage& image, QPoint origin, bool screenshot, QByteArray project, std::optional<QPoint> fitAbout,
@@ -93,6 +98,10 @@ PinWindow* PinManager::add(const QImage& image, QPoint origin, bool screenshot, 
     if (image.isNull())
         return nullptr;
     PinWindow::Host host;
+    host.closing = [this](PinWindow* pin) {
+        if (m_callbacks.closing)
+            m_callbacks.closing(pin);
+    };
     host.closed = [this](PinWindow* pin) { closed(pin); };
     host.menu = [this](PinWindow* pin, POINT at) { showMenu(pin, at); };
     host.copy = [this](PinWindow* pin) {
@@ -102,6 +111,13 @@ PinWindow* PinManager::add(const QImage& image, QPoint origin, bool screenshot, 
             m_callbacks.copy(pin->image(), pin->screenshot());
     };
     host.save = [this](PinWindow* pin) {
+        if (!pin->sourcePath().isEmpty()) {
+            if (m_callbacks.saveSource)
+                m_callbacks.saveSource(pin, pin->image(), pin->sourcePath());
+            else if (m_callbacks.save)
+                m_callbacks.save(pin->image(), pin->sourcePath());
+            return;
+        }
         if (m_callbacks.save)
             m_callbacks.save(pin->image(), {});
     };
@@ -159,6 +175,13 @@ PinWindow* PinManager::add(const QImage& image, QPoint origin, bool screenshot, 
 bool PinManager::contains(const PinWindow* pin) const
 {
     return std::ranges::any_of(m_pins, [pin](const auto& p) { return p.get() == pin; });
+}
+
+bool PinManager::hasHistoryPin(quint64 historyId) const
+{
+    if (historyId == 0)
+        return false;
+    return std::ranges::any_of(m_pins, [historyId](const auto& p) { return p->historyId() == historyId; });
 }
 
 bool PinManager::anyClickThrough() const
@@ -442,7 +465,14 @@ void PinManager::showMenu(PinWindow* pin, POINT at)
         items.push_back(command(OcrCopyCommand, tr("复制全部文字") + hint(KeyAction::PinOcrCopy), 0xE8C8));
     if (picked || words)
         items.push_back(command(CopyPictureCommand, tr("复制图片"), 0xE8C8));
-    items.push_back(command(SaveCommand, tr("保存到“屏幕截图”") + hint(KeyAction::PinSave), 0xE74E));
+    const bool hasSource = !pin->sourcePath().isEmpty();
+    if (hasSource) {
+        items.push_back(command(SaveSourceCommand,
+            tr("保存到原文件（%1）").arg(shortFileName(pin->sourcePath())) + hint(KeyAction::PinSave), 0xE74E));
+        items.push_back(command(SaveCommand, tr("保存到“屏幕截图”"), 0xE74E));
+    } else {
+        items.push_back(command(SaveCommand, tr("保存到“屏幕截图”") + hint(KeyAction::PinSave), 0xE74E));
+    }
     items.push_back(command(SaveAsCommand, tr("另存为…"), 0xE74E));
     items.push_back(shell::MenuItem::separator());
     if (full && pin->hasOtherSide()) { // 截图翻译 (#191): the translation is one side, the original the other
@@ -494,13 +524,29 @@ void PinManager::showMenu(PinWindow* pin, POINT at)
         if (m_callbacks.copy)
             m_callbacks.copy(pin->image(), pin->screenshot());
         break;
+    case SaveSourceCommand:
+        if (!pin->sourcePath().isEmpty()) {
+            if (m_callbacks.saveSource)
+                m_callbacks.saveSource(pin, pin->image(), pin->sourcePath());
+            else if (m_callbacks.save)
+                m_callbacks.save(pin->image(), pin->sourcePath());
+        }
+        break;
     case SaveCommand:
         if (m_callbacks.save)
             m_callbacks.save(pin->image(), {});
         break;
     case SaveAsCommand: {
-        const QString name = screenshotFileName(QDateTime::currentDateTime(), {});
-        const QString path = shell::pickSaveFile(hwnd, tr("另存为"), name, tr("PNG 图片"), u"png"_s);
+        const QString source = pin->sourcePath();
+        const QString name = source.isEmpty() ? screenshotFileName(QDateTime::currentDateTime(), {}) : QFileInfo(source).fileName();
+        const QString suffix = source.isEmpty() ? u"png"_s : QFileInfo(source).suffix().toLower();
+        const QString defaultExt = isWritableImageExtension(u"x."_s + suffix) ? suffix : u"png"_s;
+        const QString filterName = defaultExt == u"jpg" || defaultExt == u"jpeg" || defaultExt == u"jpe" || defaultExt == u"jfif"
+            ? tr("JPEG 图片")
+            : defaultExt == u"bmp" || defaultExt == u"dib" ? tr("BMP 图片")
+            : defaultExt == u"tif" || defaultExt == u"tiff" ? tr("TIFF 图片")
+                                                            : tr("PNG 图片");
+        const QString path = shell::pickSaveFile(hwnd, tr("另存为"), name, filterName, defaultExt);
         if (!path.isEmpty() && m_callbacks.save && std::ranges::find(m_pins, pin, &std::unique_ptr<PinWindow>::get) != m_pins.end())
             m_callbacks.save(pin->image(), path);
         break;

@@ -7,6 +7,7 @@
 
 #include "Capture.h"
 #include "CaptureEditor.h"
+#include "CaptureHistory.h"
 #include "CaptureOcr.h"
 #include "DiagnosticLog.h"
 #include "Geometry.h"
@@ -17,6 +18,7 @@
 #include "ImageOrigin.h"
 #include "Keycaps.h"
 #include "PictureFile.h"
+#include "PictureWrite.h"
 #include "PinKeyLook.h"
 #include "PinManager.h"
 #include "TranslateOverlay.h"
@@ -37,6 +39,7 @@
 #include <QTimer>
 #include <QClipboard>
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDebug>
 #include <QDir>
 #include <QElapsedTimer>
@@ -66,7 +69,19 @@ namespace ws::captureplugin {
 namespace {
 
 constexpr wchar_t kWindowClass[] = L"WinShun.Capture.Messages";
-enum Hotkey : int { CaptureKey = 1, PrintScreenKey, PinsKey, PinsRestoreKey, LastPinKey, PresentKey, OcrKey, TranslateKey, ProbeKey = 0x0BFF };
+enum Hotkey : int {
+    CaptureKey = 1,
+    PrintScreenKey,
+    PinsKey,
+    PinsRestoreKey,
+    LastPinKey,
+    PresentKey,
+    OcrKey,
+    TranslateKey,
+    PinCaptureKey,
+    LastRegisteredKey = PinCaptureKey,
+    ProbeKey = 0x0BFF,
+};
 
 bool isDarkMode()
 {
@@ -266,6 +281,8 @@ CaptureApp::CaptureApp(Protocol& protocol, QString appDir, QString dataDir, QObj
 
 CaptureApp::~CaptureApp()
 {
+    if (m_historyEncoder.joinable())
+        m_historyEncoder.join();
     m_clicks.reset();
     m_capture.reset(); // its overlays, before the QML engine they were made with
     m_pins.reset();
@@ -338,6 +355,10 @@ void CaptureApp::requested(const QJsonValue& id, const QString& method, const QJ
                                                                        : QString();
         add(u"start"_s, tr("开始截图"), key.isEmpty() ? tr("框选窗口或区域") : tr("快捷键 %1").arg(key), u"E722"_s,
             u"截图 截屏 截取 screenshot capture shot snip"_s);
+        add(u"capturePin"_s, tr("截图并贴图"),
+            m_settings.options().pinCaptureHotkey.isEmpty() ? tr("框选后松开鼠标直接贴到原位置")
+                                                            : tr("快捷键 %1").arg(m_settings.options().pinCaptureHotkey),
+            u"E718"_s, u"截图贴图 截并贴 截图并贴图 截图并直接贴图 capture pin snip"_s);
         add(u"ocr"_s, tr("识别屏幕文字"),
             m_settings.options().ocrHotkey.isEmpty() ? tr("框选一块屏幕，识别出的文字直接复制") : tr("快捷键 %1").arg(m_settings.options().ocrHotkey),
             u"E8D2"_s, u"取字 识别 文字 提取文字 复制文字 ocr text recognize extract"_s);
@@ -369,6 +390,8 @@ void CaptureApp::requested(const QJsonValue& id, const QString& method, const QJ
                 startOcr();
             else if (item == u"translate")
                 startOcr(true);
+            else if (item == u"capturePin")
+                startPinCapture();
             else if (m_capture)
                 m_capture->trigger();
         });
@@ -377,14 +400,27 @@ void CaptureApp::requested(const QJsonValue& id, const QString& method, const QJ
     } else if (method == u"picture") { // "pictures" in plugin.json
         const QString action = params.value(u"action"_s).toString();
         const QString file = params.value(u"file"_s).toString();
+        const qint64 clipId = params.value(u"clipId"_s).toInteger();
+        const bool screenshot = params.value(u"screenshot"_s).toBool();
         if (action == u"pin")
-            pinPicture(file, params.value(u"screenshot"_s).toBool(), params.value(u"slot"_s).toInt());
-        else if (action == u"edit" && params.value(u"clipId"_s).toInteger() > 0) // a picture of the history
-            editPicture(params.value(u"clipId"_s).toInteger(), file, params.value(u"project"_s).toString());
+            pinPicture(file, screenshot, params.value(u"slot"_s).toInt(), clipId <= 0 && !screenshot);
+        else if (action == u"edit" && clipId > 0) // a picture of the history
+            editPicture(clipId, file, params.value(u"project"_s).toString());
         else if (action == u"edit") // a picture file: a 文件 entry of the clipboard history, a file's row
             editFile(file);
-        else if (action == u"pinText") // copied words (GitHub #388); "pinned": an older version says nothing
-            pinText(params.value(u"text"_s).toString().left(pinimage::kPinTextChars));
+        else if (action == u"pinText") { // copied words (GitHub #388); "pinned": an older version says nothing
+            const QString text = params.value(u"text"_s).toString().left(pinimage::kPinTextChars);
+            if (capture::PinWindow* pin = pinText(text)) {
+                capture::PinHistoryEntry entry;
+                entry.image = pin->image();
+                entry.origin = pin->fullOrigin();
+                entry.anchor = pin->fullOrigin();
+                entry.fitted = true;
+                entry.screenshot = false;
+                entry.copiedText = text;
+                recordPinHistory(std::move(entry), pin);
+            }
+        }
         m_protocol.respond(id, QJsonObject {{u"pinned"_s, action == u"pinText"}});
     } else if (method == u"showSettings") {
         showSettings();
@@ -406,7 +442,7 @@ void CaptureApp::notified(const QString& method, const QJsonObject& params)
         const std::pair<int, QString> shortcuts[] {{CaptureKey, o.hotkey}, {PinsKey, o.pinsHotkey},
             {PinsRestoreKey, o.pinsRestoreHotkey}, {LastPinKey, o.lastPinHotkey}, {PresentKey, o.presentHotkey},
             {PrintScreenKey, o.printScreen ? u"PrintScreen"_s : QString()}, {OcrKey, o.ocrHotkey},
-            {TranslateKey, o.translateHotkey}};
+            {TranslateKey, o.translateHotkey}, {PinCaptureKey, o.pinCaptureHotkey}};
         for (const auto& [id, shortcut] : shortcuts) {
             if (!key.isEmpty() && key == hotkeys::normalized(shortcut)) {
                 hotkey(id);
@@ -428,7 +464,7 @@ void CaptureApp::shutdown()
         m_protocol.tool(u"register_hotkeys"_s, {{u"keys"_s, QJsonArray()}});
     if (m_presenter)
         m_presenter->presenter().close();
-    for (int id = CaptureKey; id <= TranslateKey; ++id)
+    for (int id = CaptureKey; id <= LastRegisteredKey; ++id)
         ::UnregisterHotKey(m_window, id);
     m_printScreenWatch.reset(); // before the value goes back: that is not for taking again
     const QString before = m_settings.options().printScreenBefore;
@@ -452,6 +488,21 @@ void CaptureApp::apply()
         };
         // Ctrl+S and F3: in the screenshot history too, the clipboard left alone.
         callbacks.record = [this](const QImage& image, const QByteArray& project) { copyImage(image, project, false, true); };
+        callbacks.captured = [this](capture::Capture::CapturedShot shot) {
+            m_lastPinnedClipboardSeq = 0; // a new capture supersedes any cached clipboard-unchanged shortcut
+            capture::PinHistoryEntry entry;
+            entry.image = std::move(shot.image);
+            entry.project = std::move(shot.project);
+            entry.origin = shot.origin;
+            entry.anchor = shot.origin;
+            entry.fitted = false;
+            entry.screenshot = true;
+            entry.captureHistoryId = std::move(shot.captureHistoryId);
+            entry.clipboardOriginId = std::move(shot.clipboardOriginId);
+            entry.clipboardSeq = shot.clipboardSeq;
+            entry.createdMs = QDateTime::currentMSecsSinceEpoch();
+            recordPinHistory(std::move(entry), shot.pinned);
+        };
         callbacks.annotateStyles = [this] { return m_settings.options().annotateStyles; };
         callbacks.annotateStylesChanged = [this](const QString& json) {
             if (json != m_settings.options().annotateStyles)
@@ -586,6 +637,10 @@ void CaptureApp::apply()
     m_capture->setKeys(o.keys);
     // A save folder chosen: Save goes straight into it, as in 0.16 (#194).
     m_capture->setSaveDirect(!o.saveFolder.isEmpty());
+    m_pinHistory.setLimit(o.pinHistoryCount);
+    m_pinHistory.setOrder(capture::pinHistoryOrderFromName(o.pinHistoryOrder));
+    if (!m_pinHistory.enabled())
+        m_lastPinnedClipboardSeq = 0;
     if (m_pins) {
         m_pins->setDoubleClick(capture::pinDoubleClickFromName(o.pinDoubleClick));
         m_pins->setKeys(o.keys);
@@ -682,7 +737,8 @@ void CaptureApp::printScreenChanged()
         // Only the note is new: the hotkeys' problems stay as they are.
         m_settings.setProblems({m_settings.captureHotkeyError(), m_settings.capturePinsHotkeyError(),
             m_settings.capturePinsRestoreHotkeyError(), m_settings.captureLastPinHotkeyError(),
-            m_settings.capturePresentHotkeyError(), m_settings.captureOcrHotkeyError(), m_settings.captureTranslateHotkeyError(), note});
+            m_settings.capturePresentHotkeyError(), m_settings.captureOcrHotkeyError(), m_settings.captureTranslateHotkeyError(),
+            m_settings.capturePinCaptureHotkeyError(), note});
         if (!(m_settingsWindow && m_settingsWindow->isVisible()))
             notify(tr("截图"), note);
         return;
@@ -695,7 +751,7 @@ void CaptureApp::printScreenChanged()
 void CaptureApp::applyHotkeys()
 {
     const quint64 revision = ++m_hotkeyRevision;
-    for (int id = CaptureKey; id <= TranslateKey; ++id)
+    for (int id = CaptureKey; id <= LastRegisteredKey; ++id)
         ::UnregisterHotKey(m_window, id);
     if (m_settings.recordingHotkey()) {
         if (m_hostHotkeys)
@@ -735,6 +791,9 @@ void CaptureApp::applyHotkeys()
         problems.translateHotkey = m_settings.translateHotkeyClash();
         if (problems.translateHotkey.isEmpty())
             problems.translateHotkey = take(TranslateKey, o.translateHotkey);
+        problems.pinCaptureHotkey = m_settings.pinCaptureHotkeyClash();
+        if (problems.pinCaptureHotkey.isEmpty())
+            problems.pinCaptureHotkey = take(PinCaptureKey, o.pinCaptureHotkey);
         if (m_presenter)
             m_presenter->setHotkeyText(o.presentHotkey);
         m_settings.setProblems(problems); // shown next to each shortcut
@@ -786,6 +845,10 @@ void CaptureApp::applyHotkeys()
                     problems.translateHotkey = clash;
                 else
                     problems.translateHotkey = problem(o.translateHotkey);
+                if (const QString clash = m_settings.pinCaptureHotkeyClash(); !clash.isEmpty())
+                    problems.pinCaptureHotkey = clash;
+                else
+                    problems.pinCaptureHotkey = problem(o.pinCaptureHotkey);
                 if (o.printScreen && (!error.isEmpty() || errors.contains(u"PrintScreen"_s)))
                     problems.note = hotkeyProblem(u"PrintScreen"_s);
                 m_settings.setProblems(problems);
@@ -802,7 +865,7 @@ void CaptureApp::reportHotkeyProblems(const CaptureSettings::Problems& problems)
         return;
     if (!(m_settingsWindow && m_settingsWindow->isVisible())) {
         for (const QString& error : {problems.hotkey, problems.pinsHotkey, problems.pinsRestoreHotkey, problems.lastPinHotkey,
-                 problems.presentHotkey, problems.ocrHotkey, problems.translateHotkey}) {
+                 problems.presentHotkey, problems.ocrHotkey, problems.translateHotkey, problems.pinCaptureHotkey}) {
             if (!error.isEmpty()) {
                 notify(tr("快捷键不可用"), error);
                 break;
@@ -1270,6 +1333,12 @@ void CaptureApp::startOcr(bool translate)
         m_capture->triggerOcr(translate ? capture::Capture::OcrPurpose::Translate : capture::Capture::OcrPurpose::Read);
 }
 
+void CaptureApp::startPinCapture()
+{
+    if (m_capture)
+        m_capture->triggerPin();
+}
+
 // Without the reader the OCR window opens instead and says how to get it (as
 // Shift+C does), going on with this region once it is there.
 void CaptureApp::readScreenText(const QImage& image, double dpr, const QRect& where)
@@ -1342,18 +1411,37 @@ void CaptureApp::editOcrText(const QString& text)
     captureOcr().showText(text);
 }
 
-void CaptureApp::notifySaved(const QString& path, const QString& error)
+void CaptureApp::notifySaved(const QString& path, const QString& error, bool toSource)
 {
     if (!error.isEmpty()) {
-        notify(tr("截图没能保存"), error);
+        notify(toSource ? tr("没能保存到原文件") : tr("截图没能保存"), error);
         return;
     }
     // Not the file's name: a toast stays in the Action Center.
     const saved::Target target = saved::target(path);
     const QString folder = target.show == saved::Show::File ? QFileInfo(target.path).absolutePath() : target.path;
     // A click selects the file in its folder, as in 0.16 (#194).
-    notify(tr("截图已保存"), tr("点击打开所在文件夹"), QDir::toNativeSeparators(folder),
+    notify(toSource ? tr("已保存到原文件") : tr("截图已保存"), tr("点击打开所在文件夹"), QDir::toNativeSeparators(folder),
         target.show == saved::Show::File ? QDir::toNativeSeparators(target.path) : QString());
+}
+
+void CaptureApp::saveToSource(capture::PinWindow* pin, const QImage& image, const QString& path)
+{
+    if (image.isNull() || path.isEmpty())
+        return;
+    QPointer<CaptureApp> self(this);
+    capture::saveImage(
+        m_pinSaver, this, image, path,
+        [self, pin](const QString& saved, const QString& error) {
+            if (!self)
+                return;
+            self->notifySaved(saved, error, true);
+            if (pin && self->m_pins && self->m_pins->contains(pin)) {
+                pin->note(error.isEmpty() ? CaptureApp::tr("已保存到 %1").arg(capture::shortFileName(saved))
+                                          : CaptureApp::tr("保存失败"));
+            }
+        },
+        m_settings.options().saveFolder);
 }
 
 capture::PinManager& CaptureApp::pins()
@@ -1365,12 +1453,16 @@ capture::PinManager& CaptureApp::pins()
             capture::saveImage(m_pinSaver, this, image, path,
                 [this](const QString& saved, const QString& error) { notifySaved(saved, error); }, m_settings.options().saveFolder);
         };
+        callbacks.saveSource = [this](capture::PinWindow* pin, const QImage& image, const QString& path) {
+            saveToSource(pin, image, path);
+        };
         callbacks.ocr = [this](const QImage& image, double dpr, const QRect& where) { showCaptureOcr(image, dpr, where); };
         callbacks.ocrCopy = [this](const QImage& image, double dpr, const QRect& where) {
             captureOcrThen(image, dpr, where, OcrThen::Copy);
         };
         callbacks.edit = [this](capture::PinWindow* pin) { editPin(pin); };
         callbacks.translate = [this](capture::PinWindow* pin) { translatePin(pin, false); };
+        callbacks.closing = [this](capture::PinWindow* pin) { onPinClosing(pin); };
         callbacks.closed = [this] { m_idleTrim->poke(); }; // its pixels can go back to Windows
         callbacks.dark = [] { return isDarkMode(); };
         // The 界面风格's (Theme's nativeLook), as the launcher's.
@@ -1460,8 +1552,38 @@ capture::CaptureEditor* CaptureApp::editor()
         capture::saveImage(m_pinSaver, this, image, path,
             [this](const QString& saved, const QString& error) { notifySaved(saved, error); }, m_settings.options().saveFolder);
     };
+    hooks.saveSource = [this](const QImage& image, const QString& path) { saveToSource(nullptr, image, path); };
     hooks.chooseSavePath = capture::chooseScreenshotSavePath;
-    hooks.pin = [this](const QImage& image, const QByteArray& project, QPoint origin) { pins().pin(image, origin, true, project); };
+    hooks.pin = [this](const QImage& image, const QByteArray& project, QPoint origin) {
+        capture::PinWindow* pin = pins().pin(image, origin, true, project);
+        if (pin) {
+            capture::PinHistoryEntry entry;
+            entry.image = image;
+            entry.project = project;
+            entry.origin = origin;
+            entry.anchor = origin;
+            entry.fitted = false;
+            entry.screenshot = true;
+            recordPinHistory(std::move(entry), pin);
+        }
+    };
+    hooks.pinWithSource = [this](const QImage& image, const QByteArray& project, QPoint origin, const QString& sourcePath) {
+        const bool fromFile = !sourcePath.isEmpty();
+        capture::PinWindow* pin = pins().pin(image, origin, !fromFile, project);
+        if (pin) {
+            if (fromFile)
+                pin->setSourcePath(sourcePath);
+            capture::PinHistoryEntry entry;
+            entry.image = image;
+            entry.project = project;
+            entry.origin = origin;
+            entry.anchor = origin;
+            entry.fitted = false;
+            entry.screenshot = !fromFile;
+            entry.sourcePath = sourcePath;
+            recordPinHistory(std::move(entry), pin);
+        }
+    };
     hooks.ocr = [this](const QImage& image, double dpr, const QRect& where) { showCaptureOcr(image, dpr, where); };
     hooks.smart = smartHooks();
     hooks.styles = [this] { return m_settings.options().annotateStyles; };
@@ -1561,15 +1683,24 @@ void CaptureApp::editPin(capture::PinWindow* pin)
     target.project = pin->project();
     target.picture = pin->pictureRect();
     target.zoom = pin->zoom();
+    target.sourcePath = pin->sourcePath();
     const auto alive = [this, pin] { return m_pins && m_pins->contains(pin); };
     target.alive = alive;
     target.setShown = [alive, pin](bool shown) {
         if (alive())
             pin->setShown(shown);
     };
-    target.replace = [alive, pin](const QImage& image, const QByteArray& project) {
-        if (alive())
-            pin->setPicture(image, project);
+    target.replace = [this, alive, pin](const QImage& image, const QByteArray& project) {
+        if (!alive())
+            return;
+        pin->setPicture(image, project);
+        if (const quint64 hid = pin->historyId(); hid != 0) {
+            if (const quint64 gen = m_pinHistory.updateImage(hid, image, project); gen != 0)
+                encodeHistoryAsync(hid, gen, image);
+        }
+    };
+    target.saveSource = [this, alive, pin](const QImage& image, const QString& path) {
+        saveToSource(alive() ? pin : nullptr, image, path);
     };
     if (!editor->openPin(std::move(target)))
         notify(tr("没能编辑这张图片"), tr("读不出这张图。"));
@@ -1581,7 +1712,7 @@ void CaptureApp::editPin(capture::PinWindow* pin)
 // pointer within the work area of its monitor; larger than 90 % of that
 // area, shown fitted, its own pixels kept for a zoom. Several at once
 // (`slot` 0, 1, …) are set off one another (pinimage::cascaded).
-void CaptureApp::pinPicture(const QString& path, bool screenshot, int slot)
+void CaptureApp::pinPicture(const QString& path, bool screenshot, int slot, bool sourceFile)
 {
     if (path.isEmpty())
         return;
@@ -1590,60 +1721,90 @@ void CaptureApp::pinPicture(const QString& path, bool screenshot, int slot)
         return;
     const quint64 ticket = m_pinTicket++;
     QPointer<CaptureApp> self(this);
-    std::thread([self, path, placement = pinimage::cascaded(*placement, slot), screenshot, ticket] {
-        auto prepared = pinimage::prepare(pinimage::readFile(path), placement);
-        QMetaObject::invokeMethod(qApp, [self, prepared = std::move(prepared), screenshot, ticket]() mutable {
-            if (self)
-                self->pinInTurn(ticket, std::move(prepared.image), prepared.origin, prepared.anchor, screenshot);
-        }, Qt::QueuedConnection);
+    const QString dataDir = m_dataDir;
+    std::thread([self, path, dataDir, placement = pinimage::cascaded(*placement, slot), screenshot, sourceFile, ticket] {
+        pinimage::Prepared prepared;
+        QString source;
+        try {
+            bool downscaled = false;
+            prepared = pinimage::prepare(pinimage::readFile(path, &downscaled), placement);
+            if (sourceFile && !downscaled && capture::isWritableSourceFile(path, dataDir))
+                source = path;
+        } catch (...) {
+        }
+        QMetaObject::invokeMethod(qApp,
+            [self, prepared = std::move(prepared), screenshot, ticket, source = std::move(source)]() mutable {
+                if (self)
+                    self->pinInTurn(ticket, std::move(prepared.image), prepared.origin, prepared.anchor, screenshot, std::move(source));
+            },
+            Qt::QueuedConnection);
     }).detach();
 }
 
 // Read side by side, a small picture before a large one: each waits for
 // those asked for before it, so the last asked for is on top, as the slots
 // step down the screen.
-void CaptureApp::pinInTurn(quint64 ticket, QImage image, QPoint origin, QPoint anchor, bool screenshot)
+void CaptureApp::pinInTurn(quint64 ticket, QImage image, QPoint origin, QPoint anchor, bool screenshot, QString sourcePath)
 {
-    m_pinsRead.insert_or_assign(ticket, ReadPin {std::move(image), origin, anchor, screenshot});
+    m_pinsRead.insert_or_assign(ticket, ReadPin {std::move(image), origin, anchor, screenshot, std::move(sourcePath)});
     for (auto next = m_pinsRead.find(m_pinTurn); next != m_pinsRead.end(); next = m_pinsRead.find(m_pinTurn)) {
         const ReadPin read = std::move(next->second);
         m_pinsRead.erase(next);
         ++m_pinTurn;
-        if (read.image.isNull())
+        if (read.image.isNull()) {
             notify(tr("没能贴到屏幕"), tr("读不出这张图片。"));
-        else
-            pins().pinFitted(read.image, read.origin, read.anchor, read.screenshot);
+        } else if (capture::PinWindow* pin = pins().pinFitted(read.image, read.origin, read.anchor, read.screenshot)) {
+            if (!read.sourcePath.isEmpty())
+                pin->setSourcePath(read.sourcePath);
+            capture::PinHistoryEntry entry;
+            entry.image = read.image;
+            entry.origin = read.origin;
+            entry.anchor = read.anchor;
+            entry.fitted = true;
+            entry.screenshot = read.screenshot;
+            entry.sourcePath = read.sourcePath;
+            recordPinHistory(std::move(entry), pin);
+        }
     }
 }
 
 // 编辑 on a picture file (a 文件 entry of the clipboard history, a file's
-// row): read off this thread and opened as a picture of its own, as a long
-// screenshot is; Enter copies what it became, the file stays as it was.
+// row): read off this thread and opened in the editor; when the file is a
+// writable format and was not downscaled, Ctrl+S saves straight back (#427).
 void CaptureApp::editFile(const QString& path)
 {
     if (path.isEmpty())
         return;
     QPointer<CaptureApp> self(this);
-    std::thread([self, path] {
-        QImage image = pinimage::readFile(path);
-        QMetaObject::invokeMethod(qApp, [self, image = std::move(image)] {
+    const QString dataDir = m_dataDir;
+    std::thread([self, path, dataDir] {
+        QImage image;
+        QString source;
+        try {
+            bool downscaled = false;
+            image = pinimage::readFile(path, &downscaled);
+            if (!downscaled && capture::isWritableSourceFile(path, dataDir))
+                source = path;
+        } catch (...) {
+        }
+        QMetaObject::invokeMethod(qApp, [self, image = std::move(image), source = std::move(source)] {
             if (!self)
                 return;
             if (image.isNull()) {
                 self->notify(tr("没能编辑这张图片"), tr("读不出这张图片。"));
                 return;
             }
-            if (capture::CaptureEditor* editor = self->editor(); !editor || !editor->openImage(image))
+            if (capture::CaptureEditor* editor = self->editor(); !editor || !editor->openImage(image, source))
                 self->notify(tr("没能编辑这张图片"), tr("没能打开编辑窗口。"));
         }, Qt::QueuedConnection);
     }).detach();
 }
 
-void CaptureApp::pinText(const QString& text)
+capture::PinWindow* CaptureApp::pinText(const QString& text)
 {
     const auto placement = pinimage::cursorPlacement();
     if (!placement)
-        return;
+        return nullptr;
     ensureTheme(); // the 界面风格's colours
     const bool dark = isDarkMode();
     const pinimage::TextLook look {SystemTheme::nativeColor("menuBackground", QColor()), SystemTheme::nativeColor("text", QColor()),
@@ -1652,15 +1813,182 @@ void CaptureApp::pinText(const QString& text)
     auto prepared = pinimage::prepare(std::move(rendered.image), *placement);
     if (prepared.image.isNull()) {
         notify(tr("贴图"), tr("这段文字只有空白，没有可贴的内容。"));
+        return nullptr;
+    }
+    return pins().pinFitted(prepared.image, prepared.origin, prepared.anchor, false, text, std::move(rendered.lines));
+}
+
+quint64 CaptureApp::recordPinHistory(capture::PinHistoryEntry entry, capture::PinWindow* pin)
+{
+    if (!m_pinHistory.enabled())
+        return 0;
+    const QImage rawImage = entry.image;
+    const bool needsEncode = entry.png.isEmpty() && !rawImage.isNull();
+    const quint64 id = m_pinHistory.record(std::move(entry));
+    if (id == 0)
+        return 0;
+    if (pin)
+        pin->setHistoryId(id);
+    if (needsEncode)
+        encodeHistoryAsync(id, m_pinHistory.generationOf(id), rawImage);
+    return id;
+}
+
+void CaptureApp::encodeHistoryAsync(quint64 id, quint64 generation, QImage image)
+{
+    if (id == 0 || image.isNull())
+        return;
+    QPointer<CaptureApp> self(this);
+    m_historyEncoder = std::jthread([before = std::move(m_historyEncoder), self, id, generation, image = std::move(image)]() mutable {
+        if (before.joinable())
+            before.join();
+        QByteArray png;
+        try {
+            png = capture::PinHistory::encodePng(image);
+        } catch (...) {
+            return;
+        }
+        if (png.isEmpty())
+            return;
+        QMetaObject::invokeMethod(qApp, [self, id, generation, png = std::move(png)]() mutable {
+            if (!self)
+                return;
+            self->m_pinHistory.setEncodedPng(id, generation, std::move(png));
+            self->m_idleTrim->poke();
+        }, Qt::QueuedConnection);
+    });
+}
+
+void CaptureApp::onPinClosing(capture::PinWindow* pin)
+{
+    if (!pin || !m_pinHistory.enabled())
+        return;
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const QByteArray packed = pin->packed();
+    const QImage image = packed.isEmpty() ? pin->image() : QImage();
+    if (packed.isEmpty() && image.isNull())
+        return;
+    const QPoint origin = pin->fullOrigin();
+    const quint64 hid = pin->historyId();
+    if (hid != 0 && m_pinHistory.find(hid)) {
+        m_pinHistory.markClosed(hid, now, image, pin->project(), origin, pin->sourcePath());
+        const quint64 gen = m_pinHistory.generationOf(hid);
+        if (!packed.isEmpty())
+            m_pinHistory.setEncodedPng(hid, gen, packed);
+        else
+            encodeHistoryAsync(hid, gen, image);
         return;
     }
-    pins().pinFitted(prepared.image, prepared.origin, prepared.anchor, false, text, std::move(rendered.lines));
+    capture::PinHistoryEntry entry;
+    entry.image = image;
+    entry.png = packed;
+    entry.project = pin->project();
+    entry.origin = origin;
+    entry.anchor = origin;
+    entry.fitted = !pin->screenshot();
+    entry.screenshot = pin->screenshot();
+    entry.sourcePath = pin->sourcePath();
+    entry.copiedText = pin->copiedText();
+    entry.createdMs = now;
+    entry.closedMs = now;
+    recordPinHistory(std::move(entry), nullptr);
+}
+
+void CaptureApp::restorePinHistoryEntry(const capture::PinHistoryEntry& entry)
+{
+    const QImage image = capture::PinHistory::resolveImage(entry);
+    if (image.isNull())
+        return;
+    capture::PinWindow* pin = entry.fitted
+        ? pins().pinFitted(image, entry.origin, entry.anchor, entry.screenshot, entry.copiedText)
+        : pins().pin(image, entry.origin, entry.screenshot, entry.project);
+    if (!pin)
+        return;
+    pin->setHistoryId(entry.id);
+    if (!entry.sourcePath.isEmpty())
+        pin->setSourcePath(entry.sourcePath);
+}
+
+void CaptureApp::pinNextFromHistory(bool clipboardEmpty)
+{
+    const auto isOpen = [this](quint64 id) { return m_pins && m_pins->hasHistoryPin(id); };
+    if (const auto entry = m_pinHistory.nextToRestore(isOpen)) {
+        restorePinHistoryEntry(*entry);
+        return;
+    }
+    loadNextDiskHistory(clipboardEmpty);
+}
+
+void CaptureApp::loadNextDiskHistory(bool clipboardEmpty)
+{
+    if (m_historyLoading)
+        return;
+    QString folder;
+    QString nextId;
+    if (m_capture && m_pinHistory.count() < m_pinHistory.limit()) {
+        folder = m_capture->historyFolder();
+        for (const QString& id : m_capture->historyIds()) {
+            if (!m_pinHistory.containsCaptureHistoryId(id) && !m_diskHistoryTried.contains(id)) {
+                nextId = id;
+                break;
+            }
+        }
+    }
+    if (nextId.isEmpty()) {
+        if (m_pinHistory.count() > 0)
+            notify(tr("贴图"), tr("历史截图已全部贴在屏幕上。"));
+        else if (clipboardEmpty || !m_capture || !m_capture->hasLast())
+            notify(tr("贴图"), tr("剪贴板里没有可用图片或文字，也没有最近截图。请先复制，或截一张。"));
+        else
+            m_capture->pinLast();
+        return;
+    }
+    m_historyLoading = true;
+    QPointer<CaptureApp> self(this);
+    std::thread([self, folder, nextId, clipboardEmpty] {
+        std::optional<capture::RenderedHistoryShot> rendered;
+        try {
+            if (const auto shot = capture::CaptureHistory::read(folder, nextId))
+                rendered = capture::renderHistoryShot(*shot);
+        } catch (...) {
+        }
+        QMetaObject::invokeMethod(qApp, [self, nextId, clipboardEmpty, rendered = std::move(rendered)]() mutable {
+            if (!self)
+                return;
+            self->m_historyLoading = false;
+            if (!rendered || rendered->image.isNull()) {
+                self->m_diskHistoryTried.append(nextId);
+                self->loadNextDiskHistory(clipboardEmpty);
+                return;
+            }
+            capture::PinHistoryEntry entry;
+            entry.image = std::move(rendered->image);
+            entry.project = std::move(rendered->project);
+            entry.origin = rendered->origin;
+            entry.anchor = rendered->origin;
+            entry.fitted = false;
+            entry.screenshot = true;
+            entry.captureHistoryId = nextId;
+            bool ok = false;
+            const qint64 ts = nextId.toLongLong(&ok);
+            entry.createdMs = ok && ts > 0 ? ts : QDateTime::currentMSecsSinceEpoch();
+            const quint64 id = self->recordPinHistory(entry, nullptr);
+            if (const auto* stored = self->m_pinHistory.find(id))
+                self->restorePinHistoryEntry(*stored);
+        }, Qt::QueuedConnection);
+    }).detach();
 }
 
 void CaptureApp::pinCurrentImage()
 {
-    if (m_pinPending)
+    if (m_pinPending || m_historyLoading)
         return;
+    const DWORD currentSeq = ::GetClipboardSequenceNumber();
+    if (m_pinHistory.enabled() && currentSeq != 0 && currentSeq == m_lastPinnedClipboardSeq) {
+        // Clipboard has not changed since the last pin hotkey press: cycle through history (#446).
+        pinNextFromHistory(false);
+        return;
+    }
     const auto placement = pinimage::cursorPlacement();
     if (!placement)
         return;
@@ -1668,44 +1996,105 @@ void CaptureApp::pinCurrentImage()
         m_capture ? m_capture->lastClipboardSequence() : 0};
     m_pinPending = true;
     QPointer<CaptureApp> self(this);
-    std::thread([self, last, placement = *placement] {
-        auto picture = pinimage::readClipboard(last);
-        auto prepared = pinimage::prepare(std::move(picture.image), placement);
-        QMetaObject::invokeMethod(qApp, [self, last, status = picture.status, text = std::move(picture.text),
-                                             prepared = std::move(prepared)] {
-            if (!self)
-                return;
-            self->m_pinPending = false;
-            if (self->m_capture && self->m_capture->lastClipboardId() != last.id) {
-                self->pinCurrentImage(); // includes an own copy that arrived during this read
-                return;
-            }
-            using Status = pinimage::ClipboardStatus;
-            switch (status) {
-            case Status::Image:
-                if (!prepared.image.isNull())
-                    self->pins().pinFitted(prepared.image, prepared.origin, prepared.anchor, false);
-                else
+    const QString dataDir = m_dataDir;
+    std::thread([self, last, placement = *placement, dataDir] {
+        pinimage::ClipboardPicture picture;
+        pinimage::Prepared prepared;
+        QString source;
+        try {
+            picture = pinimage::readClipboard(last);
+            prepared = pinimage::prepare(std::move(picture.image), placement);
+            if (!picture.sourcePath.isEmpty() && !picture.downscaled && capture::isWritableSourceFile(picture.sourcePath, dataDir))
+                source = picture.sourcePath;
+        } catch (...) {
+            picture.status = pinimage::ClipboardStatus::Unreadable;
+        }
+        QMetaObject::invokeMethod(qApp,
+            [self, last, status = picture.status, text = std::move(picture.text), seq = picture.clipboardSequence,
+                source = std::move(source), prepared = std::move(prepared)]() mutable {
+                if (!self)
+                    return;
+                self->m_pinPending = false;
+                if (self->m_capture && self->m_capture->lastClipboardId() != last.id) {
+                    self->pinCurrentImage(); // includes an own copy that arrived during this read
+                    return;
+                }
+                using Status = pinimage::ClipboardStatus;
+                switch (status) {
+                case Status::Image:
+                    if (prepared.image.isNull()) {
+                        self->notify(tr("贴图"), tr("剪贴板里的图片读不出来，请重新复制。"));
+                        break;
+                    }
+                    if (self->m_pinHistory.enabled()) {
+                        if (const auto existing = self->m_pinHistory.findByClipboardSeq(seq);
+                            existing && self->m_pins && self->m_pins->hasHistoryPin(*existing)) {
+                            self->m_lastPinnedClipboardSeq = seq;
+                            self->pinNextFromHistory(false);
+                            break;
+                        }
+                    }
+                    if (capture::PinWindow* pin = self->pins().pinFitted(prepared.image, prepared.origin, prepared.anchor, false)) {
+                        if (!source.isEmpty())
+                            pin->setSourcePath(source);
+                        if (self->m_pinHistory.enabled()) {
+                            capture::PinHistoryEntry entry;
+                            entry.image = prepared.image;
+                            entry.origin = prepared.origin;
+                            entry.anchor = prepared.anchor;
+                            entry.fitted = true;
+                            entry.screenshot = false;
+                            entry.sourcePath = source;
+                            entry.clipboardSeq = seq;
+                            self->recordPinHistory(std::move(entry), pin);
+                            self->m_lastPinnedClipboardSeq = seq;
+                        }
+                    }
+                    break;
+                case Status::Text:
+                    if (self->m_pinHistory.enabled()) {
+                        if (const auto existing = self->m_pinHistory.findByClipboardSeq(seq);
+                            existing && self->m_pins && self->m_pins->hasHistoryPin(*existing)) {
+                            self->m_lastPinnedClipboardSeq = seq;
+                            self->pinNextFromHistory(false);
+                            break;
+                        }
+                    }
+                    if (capture::PinWindow* pin = self->pinText(text)) {
+                        if (self->m_pinHistory.enabled()) {
+                            capture::PinHistoryEntry entry;
+                            entry.image = pin->image();
+                            entry.origin = pin->fullOrigin();
+                            entry.anchor = pin->fullOrigin();
+                            entry.fitted = true;
+                            entry.screenshot = false;
+                            entry.copiedText = text;
+                            entry.clipboardSeq = seq;
+                            self->recordPinHistory(std::move(entry), pin);
+                            self->m_lastPinnedClipboardSeq = seq;
+                        }
+                    }
+                    break;
+                case Status::LastCapture:
+                case Status::Empty:
+                    if (self->m_pinHistory.enabled()) {
+                        self->m_lastPinnedClipboardSeq = seq;
+                        self->pinNextFromHistory(status == Status::Empty);
+                    } else if (!self->m_capture || !self->m_capture->hasLast()) {
+                        self->notify(tr("贴图"), tr("剪贴板里没有可用图片或文字，也没有最近截图。请先复制，或截一张。"));
+                    } else {
+                        self->m_capture->pinLast();
+                    }
+                    break;
+                case Status::Busy:
+                    self->notify(tr("贴图"), tr("剪贴板正被别的程序占用，请再试一次。"));
+                    break;
+                case Status::Unreadable:
                     self->notify(tr("贴图"), tr("剪贴板里的图片读不出来，请重新复制。"));
-                break;
-            case Status::Text:
-                self->pinText(text);
-                break;
-            case Status::LastCapture:
-            case Status::Empty:
-                if (!self->m_capture || !self->m_capture->hasLast())
-                    self->notify(tr("贴图"), tr("剪贴板里没有可用图片或文字，也没有最近截图。请先复制，或截一张。"));
-                else
-                    self->m_capture->pinLast();
-                break;
-            case Status::Busy:
-                self->notify(tr("贴图"), tr("剪贴板正被别的程序占用，请再试一次。"));
-                break;
-            case Status::Unreadable:
-                self->notify(tr("贴图"), tr("剪贴板里的图片读不出来，请重新复制。"));
-                break;
-            }
-        }, Qt::QueuedConnection);
+                    break;
+                }
+            },
+            Qt::QueuedConnection);
     }).detach();
 }
 
@@ -1756,6 +2145,7 @@ QJsonArray CaptureApp::trayMenu() const
     QJsonArray items;
     if (m_capture) {
         items.append(menuItem(u"capture"_s, withKey(tr("开始截图"), key)));
+        items.append(menuItem(u"capturePin"_s, withKey(tr("截图并贴图"), o.pinCaptureHotkey)));
         items.append(menuItem(u"ocr"_s, withKey(tr("识别屏幕文字"), o.ocrHotkey)));
         items.append(menuItem(u"translate"_s, withKey(tr("截图翻译"), o.translateHotkey)));
         QJsonObject delay {{u"title"_s, tr("延时截图")},
@@ -1786,6 +2176,8 @@ void CaptureApp::menuChosen(const QString& id)
             if (m_capture)
                 m_capture->trigger();
         });
+    } else if (id == u"capturePin") {
+        QTimer::singleShot(200ms, this, [this] { startPinCapture(); }); // once the menu is gone from the screen
     } else if (id == u"ocr") {
         QTimer::singleShot(200ms, this, [this] { startOcr(); }); // once the menu is gone from the screen
     } else if (id == u"translate") {
@@ -1922,10 +2314,14 @@ void CaptureApp::hotkey(int id)
         break;
     case OcrKey: // held back in full screen as the screenshot's
     case TranslateKey:
+    case PinCaptureKey:
         if (m_capture && !m_capture->busy() && m_settings.options().pauseInFullScreen
             && fullScreenShortcutBlocked(foreground::facts(), true))
             break;
-        startOcr(id == TranslateKey);
+        if (id == PinCaptureKey)
+            startPinCapture();
+        else
+            startOcr(id == TranslateKey);
         break;
     case LastPinKey:
         pinCurrentImage();

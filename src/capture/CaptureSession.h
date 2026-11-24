@@ -219,6 +219,9 @@ class CaptureSession : public QObject {
     // 识别屏幕文字 (#198): this capture only picks a region for its words; no
     // toolbar, no annotations, no size label.
     Q_PROPERTY(bool ocrOnly READ ocrOnly NOTIFY ocrOnlyChanged FINAL)
+    // One-shot quick picking (OCR, translate, or capture-and-pin #450): drag or
+    // click finishes at once with no toolbar.
+    Q_PROPERTY(bool quickPicking READ quickPicking NOTIFY quickModeChanged FINAL)
     // The size panel is open (F, or a click on the size by the selection):
     // no magnifier and no key hints meanwhile; a press on the picture closes it.
     Q_PROPERTY(bool sizeEditing READ sizeEditing WRITE setSizeEditing NOTIFY sizeEditingChanged FINAL)
@@ -246,6 +249,10 @@ public:
     // OcrTranslate: pinned where it is, its words translated in place (GitHub #191).
     enum class Action { Copy, Save, Cancel, Pin, Ocr, OcrCopy, OcrSearch, OcrWeb, Long, Qr, Delay, CopyPin, Record, SavePrevious, SaveAs, OcrTranslate };
     Q_ENUM(Action)
+    // One-shot picking modes: a drag or click finishes immediately without the toolbar.
+    // Ocr: 识别屏幕文字 / 截图翻译 (#198, #356); Pin: 截图并直接贴图 (#450).
+    enum class QuickMode { None, Ocr, Pin };
+    Q_ENUM(QuickMode)
     static constexpr int kLongMinimum = 48;
     static constexpr int kSelectionHistoryLimit = 10;
     // The "screen" of a selection over more than one monitor (GitHub #409):
@@ -340,12 +347,15 @@ public:
     void setCopyOnSelect(bool on) { m_copyOnSelect = on; } // a drag or a click on a window copies at once
     void setMagnifier(bool on) { m_magnifier = on; } // takes effect with the next publish()
     void setPinOnCopy(bool on) { m_pinOnCopy = on; }
-    // 识别屏幕文字 (#198), set before begin() and gone with end(): a drag let go
-    // of, or a click on a window or control, finishes as OcrCopy at once; Esc
-    // and the right button end the capture; the keys that would take,
-    // save, pin, annotate or bring back a picture do nothing.
-    void setOcrOnly(bool on);
-    bool ocrOnly() const { return m_ocrOnly; }
+    // One-shot picking (set before begin(), cleared on end()): a drag let go
+    // of, or a click on a window or control, finishes at once (Ocr -> OcrCopy,
+    // Pin -> Pin); Esc and the right button end the capture; the keys that
+    // would annotate, save or bring back a picture do nothing.
+    void setQuickMode(QuickMode mode);
+    QuickMode quickMode() const { return m_quickMode; }
+    bool quickPicking() const { return m_quickMode != QuickMode::None; }
+    void setOcrOnly(bool on) { setQuickMode(on ? QuickMode::Ocr : QuickMode::None); }
+    bool ocrOnly() const { return m_quickMode == QuickMode::Ocr; }
     // 只检测窗口 (#360): the setting, or Tab (which also says so by the pointer's
     // monitor). The hover is picked afresh at once, from the most specific of
     // the new kind; a capture beginning or ending leaves it as it is.
@@ -472,6 +482,7 @@ signals:
     void keyHintsChanged();
     void keyHintsKept(bool on); // the panel's button: [Capture] KeyHints
     void ocrOnlyChanged();
+    void quickModeChanged();
     void sizeEditingChanged();
     void ratioChanged();
     void sizePresetsChanged();
@@ -549,7 +560,7 @@ private:
     bool m_copyOnSelect = false;
     bool m_magnifier = true; // off: no magnifier, so no colour picking either
     bool m_pinOnCopy = false;
-    bool m_ocrOnly = false;
+    QuickMode m_quickMode = QuickMode::None;
     bool m_windowsOnly = false;
     bool m_switchNotice = false; // the notice up is Tab's (switchPicking): a press that picks puts it away
     bool m_sizeEditing = false;

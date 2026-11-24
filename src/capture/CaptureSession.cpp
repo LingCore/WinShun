@@ -214,7 +214,7 @@ QStringList CaptureSession::keyHintRows() const
     if (m_sizeEditing) // the keys are the panel's
         return {};
     QStringList rows;
-    if (m_ocrOnly) // 识别屏幕文字: picking a region is all there is
+    if (quickPicking()) // 识别屏幕文字 / 截图并贴图: picking a region is all there is
         return {u"wheel"_s, u"tab"_s, u"wasd"_s, u"quit"_s};
     if (m_selection.screen < 0) { // a press not yet a drag too: what it was over
         rows = {u"wheel"_s, u"tab"_s, u"wasd"_s, u"size"_s};
@@ -294,11 +294,14 @@ void CaptureSession::quietKeyHints()
     refreshKeyHints();
 }
 
-void CaptureSession::setOcrOnly(bool on)
+void CaptureSession::setQuickMode(QuickMode mode)
 {
-    if (std::exchange(m_ocrOnly, on) == on)
+    const QuickMode before = std::exchange(m_quickMode, mode);
+    if (before == mode)
         return;
-    emit ocrOnlyChanged();
+    emit quickModeChanged();
+    if ((before == QuickMode::Ocr) != (mode == QuickMode::Ocr))
+        emit ocrOnlyChanged();
     refreshKeyHints();
 }
 
@@ -579,8 +582,12 @@ void CaptureSession::end()
     if (std::exchange(m_sizeEditing, false))
         emit sizeEditingChanged();
     setRatio({});
-    if (std::exchange(m_ocrOnly, false))
-        emit ocrOnlyChanged();
+    const QuickMode previousMode = std::exchange(m_quickMode, QuickMode::None);
+    if (previousMode != QuickMode::None) {
+        emit quickModeChanged();
+        if (previousMode == QuickMode::Ocr)
+            emit ocrOnlyChanged();
+    }
     if (std::exchange(m_active, false))
         emit activeChanged();
     emit selectionChanged();
@@ -1067,15 +1074,27 @@ void CaptureSession::pointerRelease(int screen, QPoint p, Qt::MouseButton button
         m_selection = hovered(); // a click picks the window or control under it
         m_phase = Phase::Selected;
         emit selectionChanged();
-        if (m_ocrOnly || m_copyOnSelect) {
-            finish(m_ocrOnly ? Action::OcrCopy : Action::Copy);
+        if (m_quickMode == QuickMode::Ocr) {
+            finish(Action::OcrCopy);
+            return;
+        }
+        if (m_quickMode == QuickMode::Pin) {
+            finish(Action::Pin);
+            return;
+        }
+        if (m_copyOnSelect) {
+            finish(Action::Copy);
             return;
         }
         break;
     case Phase::Dragging:
         m_phase = Phase::Selected;
-        if (m_ocrOnly) {
+        if (m_quickMode == QuickMode::Ocr) {
             finish(Action::OcrCopy);
+            return;
+        }
+        if (m_quickMode == QuickMode::Pin) {
+            finish(Action::Pin);
             return;
         }
         if (m_copyOnSelect) {
@@ -1296,11 +1315,11 @@ bool CaptureSession::key(int key, Qt::KeyboardModifiers modifiers)
     if (key != Qt::Key_Shift && key != Qt::Key_Control && key != Qt::Key_Alt && key != Qt::Key_Meta)
         hintInput();
     const bool wasd = key == Qt::Key_W || key == Qt::Key_A || key == Qt::Key_S || key == Qt::Key_D;
-    if (m_ocrOnly) {
-        // 识别屏幕文字 (#198): the pointer (WASD, the arrows), Enter for what is
-        // under it, Shift+C as Enter, C for the colour the magnifier shows, Esc.
-        // Nothing else: no picture is taken, saved, pinned or brought back
-        // here, and R would leave a selection nothing finishes.
+    if (quickPicking()) {
+        // 识别屏幕文字 (#198) / 截图并贴图 (#450): the pointer (WASD, the arrows),
+        // Enter for what is under it, Shift+C as Enter (OCR only), C for the colour
+        // the magnifier shows, Esc. Nothing else: R would leave a selection nothing finishes.
+        const Action doneAction = m_quickMode == QuickMode::Pin ? Action::Pin : Action::OcrCopy;
         const int step = shift ? 10 : 1;
         switch (key) {
         case Qt::Key_Escape:
@@ -1309,7 +1328,7 @@ bool CaptureSession::key(int key, Qt::KeyboardModifiers modifiers)
         case Qt::Key_Return:
         case Qt::Key_Enter:
             if (!busy && plain)
-                finish(Action::OcrCopy);
+                finish(doneAction);
             return true;
         case Qt::Key_W:
         case Qt::Key_A:
@@ -1332,7 +1351,8 @@ bool CaptureSession::key(int key, Qt::KeyboardModifiers modifiers)
             if (busy || !plain)
                 return true;
             if (shift) {
-                finish(Action::OcrCopy);
+                if (m_quickMode == QuickMode::Ocr)
+                    finish(Action::OcrCopy);
             } else if (CaptureScreen* s = screenAt(m_cursorScreen); s && s->magnifierShown() && !s->colorText().isEmpty()) {
                 emit colorCopied(s->colorText());
                 finish(Action::Cancel);
@@ -1610,7 +1630,7 @@ void CaptureSession::recallSelection(bool previous)
 
 void CaptureSession::back()
 {
-    if (m_ocrOnly) { // 识别屏幕文字: nothing to step back to
+    if (quickPicking()) { // 识别屏幕文字 / 截图并贴图: nothing to step back to
         finish(Action::Cancel);
         return;
     }
@@ -1703,7 +1723,7 @@ void CaptureSession::finish(Action action)
 void CaptureSession::setSizeEditing(bool on)
 {
     // With no selection it opens by the pointer, so there must be one on a monitor.
-    on = on && m_active && !m_ocrOnly && (m_selection.screen >= 0 || m_cursorScreen >= 0);
+    on = on && m_active && !quickPicking() && (m_selection.screen >= 0 || m_cursorScreen >= 0);
     if (std::exchange(m_sizeEditing, on) == on)
         return;
     emit sizeEditingChanged();
@@ -1745,7 +1765,7 @@ QVariantList CaptureSession::sizePresetList() const
 
 void CaptureSession::placeSize(QSize size)
 {
-    if (!m_active || m_ocrOnly || !resting())
+    if (!m_active || quickPicking() || !resting())
         return;
     if (CaptureScreen* s = screenAt(m_selection.screen)) {
         const QRect sized = resized(m_selection.rect, size, s->bounds());

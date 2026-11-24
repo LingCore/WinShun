@@ -76,4 +76,15 @@ private:
     std::jthread m_writer; // each write joins the one before it
 };
 
+// Rendered output of a saved HistoryShot for pinning back onto the screen
+// (single monitor or spanning multiple monitors, with annotations composed
+// and packed as an editable project).
+struct RenderedHistoryShot {
+    QImage image;
+    QByteArray project;
+    QPoint origin; // physical, virtual desktop
+};
+
+std::optional<RenderedHistoryShot> renderHistoryShot(const HistoryShot& shot);
+
 } // namespace ws::capture

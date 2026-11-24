@@ -126,6 +126,7 @@ qt_add_lupdate(WinShunCaptureApp LUPDATE_TARGET capture_lupdate
             ${PROJECT_SOURCE_DIR}/src/capture/AnnotationStyles.cpp
             ${PROJECT_SOURCE_DIR}/src/capture/CaptureKeys.h
             ${PROJECT_SOURCE_DIR}/src/capture/CountdownWindow.cpp
+            ${PROJECT_SOURCE_DIR}/src/capture/PictureWrite.cpp
             ${PROJECT_SOURCE_DIR}/src/capture/PinKeyCard.cpp
             ${PROJECT_SOURCE_DIR}/src/capture/Recording.cpp
             ${PROJECT_SOURCE_DIR}/src/capture/RecordingWorker.cpp

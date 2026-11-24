@@ -4,6 +4,7 @@
 #include "AnnotationStyles.h"
 #include "CaptureSession.h"
 #include "Geometry.h"
+#include "PictureWrite.h"
 
 #include <QCursor>
 #include <QDebug>
@@ -342,6 +343,11 @@ QString CaptureEditor::copyText() const
     return fromPin() ? tr("完成") : tr("复制");
 }
 
+QString CaptureEditor::sourceFileName() const
+{
+    return m_sourcePath.isEmpty() ? QString() : shortFileName(m_sourcePath);
+}
+
 void CaptureEditor::setChromeWidth(int width)
 {
     width = std::max(0, width);
@@ -431,6 +437,7 @@ bool CaptureEditor::openHistory(qint64 clipId)
     if (m_open)
         end();
     m_clipId = clipId;
+    m_sourcePath.clear();
     return begin(std::move(project), editview::Origin::History);
 }
 
@@ -452,10 +459,11 @@ bool CaptureEditor::openPin(PinTarget pin)
         end();
     m_pin = std::move(pin);
     m_clipId = 0;
+    m_sourcePath = m_pin.sourcePath;
     return begin(std::move(project), editview::Origin::Pin);
 }
 
-bool CaptureEditor::openImage(const QImage& picture)
+bool CaptureEditor::openImage(const QImage& picture, const QString& sourcePath)
 {
     annot::Project project = projectOfPicture(picture);
     if (project.base.isNull())
@@ -464,6 +472,7 @@ bool CaptureEditor::openImage(const QImage& picture)
     if (m_open)
         end();
     m_clipId = 0;
+    m_sourcePath = sourcePath;
     return begin(std::move(project), editview::Origin::Fresh);
 }
 
@@ -1108,10 +1117,12 @@ void CaptureEditor::act(int action)
     case Action::Save:
     case Action::SavePrevious:
     case Action::SaveAs: {
+        const auto kind = static_cast<Action>(action);
+        const bool toSource = kind == Action::Save && !m_sourcePath.isEmpty();
         // A save folder chosen: Save goes straight into it, 另存为… asks (#194).
-        const bool pick = static_cast<Action>(action) == Action::SaveAs
-            || (static_cast<Action>(action) == Action::Save && !m_model.saveDirect());
-        QString path;
+        // When editing a writable image file (#427), Save writes back to sourcePath.
+        const bool pick = kind == Action::SaveAs || (kind == Action::Save && !toSource && !m_model.saveDirect());
+        QString path = toSource ? m_sourcePath : QString();
         if (pick) {
             if (!m_hooks.chooseSavePath)
                 break;
@@ -1125,8 +1136,19 @@ void CaptureEditor::act(int action)
         if (image.isNull())
             break;
         const QByteArray project = packProject();
-        if (m_hooks.save)
+        if (toSource) {
+            // Keep the backing pin in sync with what was just saved back to disk.
+            if (fromPin() && m_pin.alive && m_pin.alive() && m_pin.replace)
+                m_pin.replace(image, project);
+            if (m_pin.saveSource)
+                m_pin.saveSource(image, path);
+            else if (m_hooks.saveSource)
+                m_hooks.saveSource(image, path);
+            else if (m_hooks.save)
+                m_hooks.save(image, path);
+        } else if (m_hooks.save) {
             m_hooks.save(image, path);
+        }
         if (m_hooks.record)
             m_hooks.record(image, project);
         close();
@@ -1148,7 +1170,9 @@ void CaptureEditor::act(int action)
             const QRect native = m_window && m_hooks.window.nativeRect ? m_hooks.window.nativeRect(m_window) : QRect();
             where = QRect(native.center() - QPoint(image.width() / 2, image.height() / 2), image.size());
         }
-        if (m_hooks.pin)
+        if (m_hooks.pinWithSource)
+            m_hooks.pinWithSource(image, project, where.topLeft(), m_sourcePath);
+        else if (m_hooks.pin)
             m_hooks.pin(image, project, where.topLeft());
         if (m_hooks.record)
             m_hooks.record(image, project);
@@ -1231,6 +1255,7 @@ void CaptureEditor::end()
         if (m_origin == Origin::Pin && m_pin.alive && m_pin.alive() && m_pin.setShown)
             m_pin.setShown(true);
         m_pin = PinTarget {};
+        m_sourcePath.clear();
         m_model.end();
         m_open = false;
         m_pressed = m_panning = m_space = false;

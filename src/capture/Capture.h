@@ -66,6 +66,16 @@ class Capture : public QObject {
     Q_OBJECT
 
 public:
+    struct CapturedShot {
+        QImage image;
+        QByteArray project;
+        QPoint origin;
+        QString captureHistoryId;
+        QString clipboardOriginId;
+        quint32 clipboardSeq = 0;
+        PinWindow* pinned = nullptr; // non-null when already pinned on screen
+    };
+
     struct Callbacks {
         // Enter, a double click, the toolbar. `project`: the annotated
         // picture's editable form (empty: it has no annotations). `origin`
@@ -74,6 +84,8 @@ public:
         // Ctrl+S and F3 also put the picture in the screenshot history,
         // leaving the system clipboard alone.
         std::function<void(const QImage&, const QByteArray& project)> record;
+        // Any completed regular capture or restored draft: fed into PinHistory (#446).
+        std::function<void(CapturedShot)> captured;
         // What the annotation tools remember ([Capture] AnnotateStyles, JSON):
         // read when a capture starts, written when one ends with a change.
         std::function<QString()> annotateStyles;
@@ -168,6 +180,8 @@ public:
         m_history.setFolder(folder);
         m_history.setLimit(count);
     }
+    QString historyFolder() const { return m_history.folder(); }
+    QStringList historyIds() const { return m_history.ids(); }
     // 延时截图: after 3, 5 or 10 seconds (0: the last one used), a countdown at
     // the corner of the screen and then the capture as the hotkey starts it.
     // The hotkey (or a click on the countdown) cancels it.
@@ -190,6 +204,11 @@ public:
     // goes on with the other purpose (it is not closed).
     enum class OcrPurpose { Read, Translate };
     void triggerOcr(OcrPurpose purpose = OcrPurpose::Read);
+    // 截图并直接贴图 (#450): drag or click a window to pin immediately with no
+    // toolbar. Again while it is up: it ends. While a capture is already open
+    // with a selection, pins that selection immediately; with no selection (or in
+    // OCR/translate picking), switches to quick pin picking.
+    void triggerPin();
     bool busy() const { return m_state != State::Idle || m_countdown || (m_long && m_long->running()) || (m_recorder && m_recorder->active()); }
 
     // 贴上最近一次截图 (the tray menu).
@@ -224,11 +243,14 @@ private:
         int closingFrames = 0; // frames to draw without the picture before hiding
     };
 
+    enum class QuickPurpose { None, ReadText, Translate, Pin };
+
     void buildOverlays();
     void destroyOverlays();
     void screensChanged(); // monitors came, went or changed: everything made again
-    void start(bool ocrOnly = false, OcrPurpose purpose = OcrPurpose::Read);
-    QString ocrNotice() const; // what the picking says by the pointer
+    void triggerQuick(QuickPurpose purpose);
+    void start(QuickPurpose purpose = QuickPurpose::None);
+    QString quickNotice() const; // what the picking says by the pointer
     void show();
     void frameDrawn(QQuickWindow* window);
     void finish(CaptureSession::Action action, int screen, const QRect& rect);
@@ -292,8 +314,7 @@ private:
     bool m_delayAfter = false; // Ctrl+Shift+D in the overlay: countdown once it is gone
     std::unique_ptr<CountdownWindow> m_countdown;
     bool m_quietStart = false; // start() by the countdown: no key hints by themselves
-    bool m_ocrOnly = false; // this capture is triggerOcr()'s
-    OcrPurpose m_ocrPurpose = OcrPurpose::Read; // what it is for (only while m_ocrOnly)
+    QuickPurpose m_quickPurpose = QuickPurpose::None; // this capture is triggerOcr()'s or triggerPin()'s
     QElapsedTimer m_countClock;
     QTimer m_countTimer;
     int m_countTotal = 0;

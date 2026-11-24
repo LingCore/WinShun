@@ -423,6 +423,84 @@ private slots:
         QVERIFY(CaptureOptions::load(file).translateHotkey.isEmpty());
     }
 
+    // 截图并直接贴图's hotkey (#450), Capture/PinCaptureHotkey: empty by default,
+    // trimmed on save, clashes against earlier hotkeys, and blocks capture/pin keys.
+    void pinCaptureHotkey()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString file = dir.filePath(u"capture.ini"_s);
+        QVERIFY(CaptureOptions::load(file).pinCaptureHotkey.isEmpty());
+        QVERIFY(QSettings(file, QSettings::IniFormat).contains(u"Capture/PinCaptureHotkey"_s));
+
+        ws::captureplugin::CaptureSettings settings(file);
+        QSignalSpy changed(&settings, &ws::captureplugin::CaptureSettings::changed);
+        QVERIFY(settings.pinCaptureHotkeyClash().isEmpty());
+        settings.setCapturePinCaptureHotkey(u" Ctrl+Alt+P "_s);
+        QCOMPARE(changed.count(), 1);
+        QCOMPARE(settings.capturePinCaptureHotkey(), u"Ctrl+Alt+P"_s);
+        QCOMPARE(CaptureOptions::load(file).pinCaptureHotkey, u"Ctrl+Alt+P"_s);
+        settings.setCapturePinCaptureHotkey(u"Ctrl+Alt+P"_s);
+        QCOMPARE(changed.count(), 1);
+        QVERIFY(settings.pinCaptureHotkeyClash().isEmpty());
+
+        settings.setCaptureHotkey(u"Alt+Ctrl+P"_s);
+        QVERIFY(settings.pinCaptureHotkeyClash().contains(u"开始截图"_s));
+        settings.setCaptureHotkey(u"F1"_s);
+        QVERIFY(settings.pinCaptureHotkeyClash().isEmpty());
+        settings.setCaptureTranslateHotkey(u"Ctrl+Alt+P"_s);
+        QVERIFY(settings.pinCaptureHotkeyClash().contains(u"截图翻译"_s));
+        QVERIFY(settings.translateHotkeyClash().isEmpty());
+        settings.setCaptureTranslateHotkey({});
+        settings.setCapturePinCaptureHotkey(u"F8"_s);
+
+        QVERIFY(settings.setCaptureKey(u"Pin"_s, Qt::Key_F8, 0).contains(u"截图并直接贴图"_s));
+        QVERIFY(settings.setCaptureKey(u"Pin"_s, Qt::Key_F9, 0).isEmpty());
+        const auto conflict = [&] { return settings.captureKeys().value(u"Pin"_s).toMap().value(u"conflict"_s).toString(); };
+        QVERIFY(conflict().isEmpty());
+        settings.setCapturePinCaptureHotkey(u"F9"_s);
+        QVERIFY(conflict().contains(u"截图并直接贴图"_s));
+        settings.setCapturePinCaptureHotkey({});
+        QVERIFY(conflict().isEmpty());
+        QVERIFY(CaptureOptions::load(file).pinCaptureHotkey.isEmpty());
+    }
+
+    // 贴图历史记录保留张数与恢复顺序 (#446): defaults (20, "closed"), clamping, validation.
+    void pinHistorySettings()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString file = dir.filePath(u"capture.ini"_s);
+        const CaptureOptions fresh = CaptureOptions::load(file);
+        QCOMPARE(fresh.pinHistoryCount, 20);
+        QCOMPARE(fresh.pinHistoryOrder, u"closed"_s);
+
+        ws::captureplugin::CaptureSettings settings(file);
+        QCOMPARE(settings.capturePinHistoryCount(), 20);
+        QCOMPARE(settings.capturePinHistoryOrder(), u"closed"_s);
+        settings.setCapturePinHistoryCount(50);
+        settings.setCapturePinHistoryOrder(u"created"_s);
+        QCOMPARE(CaptureOptions::load(file).pinHistoryCount, 50);
+        QCOMPARE(CaptureOptions::load(file).pinHistoryOrder, u"created"_s);
+
+        // Out-of-range counts clamp; unknown order names fall back to "closed".
+        settings.setCapturePinHistoryCount(999);
+        QCOMPARE(settings.capturePinHistoryCount(), 100);
+        settings.setCapturePinHistoryCount(-5);
+        QCOMPARE(settings.capturePinHistoryCount(), 0);
+        settings.setCapturePinHistoryOrder(u"invalid"_s);
+        QCOMPARE(settings.capturePinHistoryOrder(), u"created"_s); // unchanged
+
+        {
+            QSettings ini(file, QSettings::IniFormat);
+            ini.setValue(u"Capture/PinHistoryCount"_s, 250);
+            ini.setValue(u"Capture/PinHistoryOrder"_s, u"bogus"_s);
+        }
+        const CaptureOptions loaded = CaptureOptions::load(file);
+        QCOMPARE(loaded.pinHistoryCount, 100);
+        QCOMPARE(loaded.pinHistoryOrder, u"closed"_s);
+    }
+
     // The mouse buttons (#46): the old behaviour by default, kept across a
     // save, and a name not known (or "back" on a button that cannot step
     // back) falls to the default.

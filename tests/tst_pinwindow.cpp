@@ -633,6 +633,49 @@ private slots:
         QCOMPARE(told, QStringList {u"key"_s});
         QCOMPARE(pin.image().size(), before.transposed());
     }
+
+    // PinWindow tracks historyId/sourcePath, preserves fullOrigin while collapsed,
+    // and fires Host::closing before releasing pixels so PinHistory can snapshot it (#446, #427).
+    void closingHookAndSourceMetadata()
+    {
+        QImage image(120, 80, QImage::Format_RGB32);
+        image.fill(QColor(0x33, 0x66, 0x99));
+        QImage imageAtClosing;
+        QPoint originAtClosing;
+        QString sourceAtClosing;
+        quint64 historyIdAtClosing = 0;
+        QStringList events;
+
+        PinWindow::Host host;
+        host.closing = [&](PinWindow* p) {
+            events.append(u"closing"_s);
+            imageAtClosing = p->image();
+            originAtClosing = p->fullOrigin();
+            sourceAtClosing = p->sourcePath();
+            historyIdAtClosing = p->historyId();
+        };
+        host.closed = [&](PinWindow*) { events.append(u"closed"_s); };
+
+        PinWindow pin(image, QPoint(140, 160), std::move(host));
+        QVERIFY(pin.hwnd());
+        pin.setHistoryId(77);
+        pin.setSourcePath(u"C:\\pics\\a.png"_s);
+        QCOMPARE(pin.historyId(), 77ULL);
+        QCOMPARE(pin.sourcePath(), u"C:\\pics\\a.png"_s);
+        QCOMPARE(pin.fullOrigin(), QPoint(140, 160));
+
+        // Collapse to tile and verify fullOrigin still reports the uncollapsed location.
+        pin.collapse(PinForm::Tile);
+        QCOMPARE(pin.form(), PinForm::Tile);
+        QCOMPARE(pin.fullOrigin(), QPoint(140, 160));
+
+        pin.close();
+        QCOMPARE(events, QStringList({u"closing"_s, u"closed"_s}));
+        QCOMPARE(imageAtClosing.size(), QSize(120, 80));
+        QCOMPARE(originAtClosing, QPoint(140, 160));
+        QCOMPARE(sourceAtClosing, u"C:\\pics\\a.png"_s);
+        QCOMPARE(historyIdAtClosing, 77ULL);
+    }
 };
 
 QTEST_MAIN(TestPinWindow)

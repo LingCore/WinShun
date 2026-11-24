@@ -1251,6 +1251,78 @@ private slots:
         }
     }
 
+    // 截图并直接贴图 (#450): QuickMode::Pin pins on release, click or Enter
+    // regardless of copyOnSelect/pinOnCopy, keeps the size chip visible (!ocrOnly),
+    // remembers the selection, ignores Shift+C/other actions, and resets on end().
+    void pinOnlyCapture()
+    {
+        using Action = CaptureSession::Action;
+        using QuickMode = CaptureSession::QuickMode;
+        const auto actionOf = [](const QList<QVariant>& call) { return call[0].value<Action>(); };
+        {
+            Rig rig;
+            rig.session.setCopyOnSelect(true);
+            rig.session.setPinOnCopy(true);
+            rig.session.setQuickMode(QuickMode::Pin);
+            rig.begin();
+            QVERIFY(rig.session.quickPicking());
+            QVERIFY(!rig.session.ocrOnly());
+            QCOMPARE(rig.session.quickMode(), QuickMode::Pin);
+            QCOMPARE(rig.session.keyHintRows(), (QStringList {u"wheel"_s, u"tab"_s, u"wasd"_s, u"quit"_s}));
+            QSignalSpy finished(&rig.session, &CaptureSession::finished);
+            rig.drag({100, 100}, {249, 179});
+            QCOMPARE(finished.count(), 1);
+            QCOMPARE(actionOf(finished[0]), Action::Pin);
+            QCOMPARE(finished[0][2].toRect(), QRect(100, 100, 150, 80));
+            QCOMPARE(rig.session.selectionHistoryCount(), 1);
+            rig.session.end();
+            QVERIFY(!rig.session.quickPicking());
+            QCOMPARE(rig.session.quickMode(), QuickMode::None);
+        }
+        {
+            Rig rig;
+            rig.tops = {QRect(50, 50, 400, 300)};
+            rig.session.setQuickMode(QuickMode::Pin);
+            rig.begin();
+            QSignalSpy finished(&rig.session, &CaptureSession::finished);
+            rig.click({60, 60});
+            QCOMPARE(finished.count(), 1);
+            QCOMPARE(actionOf(finished[0]), Action::Pin);
+            QCOMPARE(finished[0][2].toRect(), QRect(50, 50, 400, 300));
+        }
+        {
+            Rig rig;
+            rig.tops = {QRect(80, 90, 320, 200)};
+            rig.session.setQuickMode(QuickMode::Pin);
+            rig.begin();
+            QSignalSpy finished(&rig.session, &CaptureSession::finished);
+            rig.session.pointerMove(0, {120, 120});
+            rig.session.key(Qt::Key_C, Qt::ShiftModifier); // OCR shortcut ignored in Pin mode
+            QCOMPARE(finished.count(), 0);
+            rig.session.key(Qt::Key_Return, Qt::NoModifier);
+            QCOMPARE(finished.count(), 1);
+            QCOMPARE(actionOf(finished[0]), Action::Pin);
+            QCOMPARE(finished[0][2].toRect(), QRect(80, 90, 320, 200));
+        }
+        {
+            Rig rig;
+            rig.session.setQuickMode(QuickMode::Pin);
+            rig.begin();
+            QSignalSpy finished(&rig.session, &CaptureSession::finished);
+            rig.session.pointerMove(0, {200, 200});
+            rig.session.key(Qt::Key_Escape, Qt::NoModifier);
+            QCOMPARE(finished.count(), 1);
+            QCOMPARE(actionOf(finished[0]), Action::Cancel);
+            rig.session.end();
+            rig.begin();
+            QVERIFY(!rig.session.quickPicking());
+            QSignalSpy next(&rig.session, &CaptureSession::finished);
+            rig.drag({100, 100}, {199, 199});
+            QCOMPARE(next.count(), 0);
+            QVERIFY(rig.session.hasSelection());
+        }
+    }
+
     void logicalInputAtFractionalScale()
     {
         // 150 %: Qt's logical position × 1.5 is the physical pixel again.

@@ -2,6 +2,7 @@
 
 #include "CaptureOcr.h"
 #include "DiagnosticLog.h"
+#include "PictureWrite.h"
 #include "QrCode.h"
 #include "platform/Foreground.h"
 #include "platform/KeyRouter.h" // kOwnInput
@@ -387,36 +388,67 @@ void Capture::trigger()
 
 void Capture::triggerOcr(OcrPurpose purpose)
 {
+    triggerQuick(purpose == OcrPurpose::Translate ? QuickPurpose::Translate : QuickPurpose::ReadText);
+}
+
+void Capture::triggerPin()
+{
+    triggerQuick(QuickPurpose::Pin);
+}
+
+void Capture::triggerQuick(QuickPurpose purpose)
+{
+    if (purpose == QuickPurpose::None)
+        return;
     if ((m_recorder && m_recorder->active()) || m_countdown || (m_long && m_long->running()))
         return;
     if (m_state == State::Idle) {
-        start(true, purpose);
-    } else if (m_ocrOnly && (m_state == State::Waiting || m_state == State::Showing)) {
-        if (purpose == m_ocrPurpose) {
-            m_session.act(static_cast<int>(CaptureSession::Action::Cancel)); // what the key opened, it closes
-        } else {
-            m_ocrPurpose = purpose; // the other key: the same picking, for the other end
-            if (m_state == State::Showing)
-                m_session.notify(ocrNotice());
-        }
+        start(purpose);
+        return;
+    }
+    if (m_state != State::Waiting && m_state != State::Showing)
+        return;
+    if (m_quickPurpose == purpose) {
+        m_session.act(static_cast<int>(CaptureSession::Action::Cancel)); // what the key opened, it closes
+        return;
+    }
+    // Pressing the capture-and-pin hotkey while a regular capture already has a selection pins it directly.
+    if (purpose == QuickPurpose::Pin && m_quickPurpose == QuickPurpose::None && m_session.hasSelection()) {
+        m_session.act(static_cast<int>(CaptureSession::Action::Pin));
+        return;
+    }
+    if (m_quickPurpose != QuickPurpose::None || (purpose == QuickPurpose::Pin && !m_session.hasSelection())) {
+        m_quickPurpose = purpose; // switch the active picking purpose seamlessly
+        m_session.setQuickMode(purpose == QuickPurpose::Pin ? CaptureSession::QuickMode::Pin : CaptureSession::QuickMode::Ocr);
+        if (m_state == State::Showing)
+            m_session.notify(quickNotice());
     }
 }
 
-QString Capture::ocrNotice() const
+QString Capture::quickNotice() const
 {
-    return m_ocrPurpose == OcrPurpose::Translate ? tr("截图翻译：拖选区域，或单击窗口 · Esc 取消")
-                                                 : tr("识别文字：拖选区域，或单击窗口 · Esc 取消");
+    switch (m_quickPurpose) {
+    case QuickPurpose::Translate:
+        return tr("截图翻译：拖选区域，或单击窗口 · Esc 取消");
+    case QuickPurpose::ReadText:
+        return tr("识别文字：拖选区域，或单击窗口 · Esc 取消");
+    case QuickPurpose::Pin:
+        return tr("截图并贴图：拖选区域，或单击窗口 · Esc 取消");
+    case QuickPurpose::None:
+        break;
+    }
+    return {};
 }
 
-void Capture::start(bool ocrOnly, OcrPurpose purpose)
+void Capture::start(QuickPurpose purpose)
 {
     const bool quiet = std::exchange(m_quietStart, false);
     if (m_overlays.empty())
         return;
     if (m_callbacks.starting)
         m_callbacks.starting();
-    m_ocrOnly = ocrOnly;
-    m_ocrPurpose = ocrOnly ? purpose : OcrPurpose::Read;
+    m_quickPurpose = purpose;
+    const bool ocrOnly = purpose == QuickPurpose::ReadText || purpose == QuickPurpose::Translate;
     m_clock.start();
     m_faultsBefore = pageFaults();
     m_reported = false;
@@ -497,7 +529,9 @@ void Capture::start(bool ocrOnly, OcrPurpose purpose)
     }
     forgetHistory();
     m_liveWindows = windows;
-    m_session.setOcrOnly(ocrOnly);
+    m_session.setQuickMode(purpose == QuickPurpose::Pin ? CaptureSession::QuickMode::Pin
+        : ocrOnly                                       ? CaptureSession::QuickMode::Ocr
+                                                        : CaptureSession::QuickMode::None);
     m_session.begin(byIndex, std::move(windows));
     m_beginMs = m_clock.elapsed();
     if (quiet)
@@ -557,8 +591,8 @@ void Capture::show()
     m_showMs = m_clock.elapsed();
     if (underIndex >= 0)
         m_session.pointerMove(underIndex, underAt); // the hover and the magnifier before the mouse moves
-    if (m_ocrOnly) // where the pointer is, at the top: what this capture is for
-        m_session.notify(ocrNotice());
+    if (m_quickPurpose != QuickPurpose::None) // where the pointer is, at the top: what this capture is for
+        m_session.notify(quickNotice());
     startWatch();
     // Nothing more here: the first frame is drawn when this returns to the
     // event loop, and what is done before that is time with no overlay.
@@ -567,12 +601,13 @@ void Capture::show()
 void Capture::afterUp()
 {
     m_pointerFacts = diag::pointerFacts(); // the registry, the system's cursors
-    // The capture before, read meanwhile: , shows it at once (not for reading words).
-    if (m_history.enabled() && !m_ocrOnly) {
+    // The capture before, read meanwhile: , shows it at once (regular capture only).
+    const bool regular = m_quickPurpose == QuickPurpose::None;
+    if (m_history.enabled() && regular) {
         m_historyIds = m_history.ids(); // a folder listed
         prefetchHistory(0);
     }
-    m_session.setHistoryAvailable(m_history.enabled() && !m_ocrOnly && !m_historyIds.isEmpty()); // the key hints' , .
+    m_session.setHistoryAvailable(m_history.enabled() && regular && !m_historyIds.isEmpty()); // the key hints' , .
     if (m_callbacks.shown)
         m_callbacks.shown();
 }
@@ -837,8 +872,8 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
 {
     if (m_state != State::Showing && m_state != State::Waiting)
         return;
-    const bool ocrOnly = std::exchange(m_ocrOnly, false); // triggerOcr's: only OcrCopy or Cancel come here
-    const OcrPurpose ocrPurpose = std::exchange(m_ocrPurpose, OcrPurpose::Read);
+    const QuickPurpose quickPurpose = std::exchange(m_quickPurpose, QuickPurpose::None);
+    const bool ocrOnly = quickPurpose == QuickPurpose::ReadText || quickPurpose == QuickPurpose::Translate;
     QString savePath;
     if (action == CaptureSession::Action::Save) {
         // The picker over the monitor of the toolbar (one over several monitors has it on one, #409).
@@ -958,6 +993,7 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
     }
     // Taken: into the history, as the overlays show it (a capture brought
     // back and taken again replaces itself there).
+    QString captureHistoryId;
     if (!picture.isNull() && m_history.enabled() && !ocrOnly) {
         HistoryShot shot;
         shot.id = QString::number(QDateTime::currentMSecsSinceEpoch());
@@ -972,8 +1008,10 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
         shot.spans = screen == CaptureSession::kDesktop; // over several monitors (#409): on their picture together
         if (m_session.hasAnnotations() && m_session.annotationScreen() == screen)
             shot.document = QJsonDocument(annot::toJson(annotation->committedDocument())).toJson(QJsonDocument::Compact);
-        if (shot.screen >= 0 || (shot.spans && shot.screens.size() > 1))
+        if (shot.screen >= 0 || (shot.spans && shot.screens.size() > 1)) {
+            captureHistoryId = shot.id;
             m_history.add(std::move(shot), m_historyAt >= 0 ? m_historyShown : QString());
+        }
     }
     forgetHistory();
     recordCapture(action, rect);
@@ -1012,7 +1050,7 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
     if (ocrOnly) {
         // Its words only: not the last capture (贴图 pins that), no copy of the picture.
         const QRect where(origin, picture.size());
-        if (ocrPurpose == OcrPurpose::Translate) {
+        if (quickPurpose == QuickPurpose::Translate) {
             // 截图翻译 (#356): what the toolbar's 翻译 does, without the toolbar.
             if (m_callbacks.ocrThen)
                 m_callbacks.ocrThen(picture, dpr, where, CaptureSession::Action::OcrTranslate);
@@ -1026,10 +1064,11 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
     m_lastProject = project;
     m_lastClipboardSequence = ::GetClipboardSequenceNumber();
     m_lastClipboardId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    PinWindow* pinned = nullptr;
     switch (action) {
     case CaptureSession::Action::CopyPin:
         if (PinManager* pins = m_callbacks.pins ? m_callbacks.pins() : nullptr)
-            pins->pin(picture, origin, true, project, std::move(prescanned));
+            pinned = pins->pin(picture, origin, true, project, std::move(prescanned));
         [[fallthrough]]; // copying records the picture once, including its editable project
     case CaptureSession::Action::Copy:
         if (m_callbacks.copy)
@@ -1043,7 +1082,7 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
         break;
     case CaptureSession::Action::Pin:
         if (PinManager* pins = m_callbacks.pins ? m_callbacks.pins() : nullptr)
-            pins->pin(picture, origin, true, project, std::move(prescanned));
+            pinned = pins->pin(picture, origin, true, project, std::move(prescanned));
         if (m_callbacks.record)
             m_callbacks.record(picture, project);
         break;
@@ -1077,6 +1116,17 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
     case CaptureSession::Action::Long:
     case CaptureSession::Action::Record:
         break;
+    }
+    if (m_callbacks.captured) {
+        m_callbacks.captured(CapturedShot {
+            .image = picture,
+            .project = project,
+            .origin = origin,
+            .captureHistoryId = captureHistoryId,
+            .clipboardOriginId = m_lastClipboardId,
+            .clipboardSeq = m_lastClipboardSequence,
+            .pinned = pinned,
+        });
     }
 }
 
@@ -1217,13 +1267,25 @@ void Capture::restoreDraft()
     if (picture.isNull())
         return;
     const QByteArray project = annot::writeProject(draft.project.doc, draft.project.base);
+    PinWindow* pinned = nullptr;
     if (PinManager* pins = m_callbacks.pins ? m_callbacks.pins() : nullptr)
-        pins->pin(picture, draft.origin, true, project);
+        pinned = pins->pin(picture, draft.origin, true, project);
     m_last = picture;
     m_lastOrigin = draft.origin;
     m_lastProject = project;
     m_lastClipboardSequence = ::GetClipboardSequenceNumber();
     m_lastClipboardId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    if (m_callbacks.captured) {
+        m_callbacks.captured(CapturedShot {
+            .image = picture,
+            .project = project,
+            .origin = draft.origin,
+            .captureHistoryId = {},
+            .clipboardOriginId = m_lastClipboardId,
+            .clipboardSeq = m_lastClipboardSequence,
+            .pinned = pinned,
+        });
+    }
 }
 
 void Capture::findFlyout()
@@ -1492,26 +1554,28 @@ void saveImage(std::jthread& thread, QObject* context, const QImage& image, cons
         const QFileInfo info(picture);
         return QDir::toNativeSeparators(info.dir().filePath(info.completeBaseName() + u".jxr"_s));
     };
-    // PNG encoding of a whole screen takes a moment: not on the GUI thread.
+    // Encoding a whole screen takes a moment: not on the GUI thread.
     thread = std::jthread([context, done = std::move(done), image, folder, chosen = path, hdr = std::move(hdr), hdrPath] {
         QString path = chosen;
         QString error;
-        if (!path.isEmpty()) { // 另存为…
-            if (!image.save(path, "PNG"))
-                error = Capture::tr("无法保存到 %1").arg(path);
-        } else if (folder.isEmpty()) {
-            error = Capture::tr("找不到“屏幕截图”文件夹");
-        } else {
-            const QDir dir(folder);
-            // A name neither file has yet.
-            path = QDir::toNativeSeparators(dir.filePath(screenshotFileName(QDateTime::currentDateTime(), [&](const QString& name) {
-                return QFileInfo::exists(dir.filePath(name)) || (hdr && QFileInfo::exists(hdrPath(dir.filePath(name))));
-            })));
-            if (!image.save(path, "PNG"))
-                error = Capture::tr("无法保存到 %1").arg(path);
+        try {
+            if (!path.isEmpty()) { // 另存为… or direct save-back (#427)
+                error = writeImageFile(image, path);
+            } else if (folder.isEmpty()) {
+                error = Capture::tr("找不到“屏幕截图”文件夹");
+            } else {
+                const QDir dir(folder);
+                // A name neither file has yet.
+                path = QDir::toNativeSeparators(dir.filePath(screenshotFileName(QDateTime::currentDateTime(), [&](const QString& name) {
+                    return QFileInfo::exists(dir.filePath(name)) || (hdr && QFileInfo::exists(hdrPath(dir.filePath(name))));
+                })));
+                error = writeImageFile(image, path);
+            }
+            if (hdr && error.isEmpty() && !writeJxr(hdrPath(path), *hdr))
+                error = Capture::tr("截图已保存，但 HDR 图片没能保存到 %1").arg(hdrPath(path));
+        } catch (...) {
+            error = Capture::tr("无法保存到 %1").arg(path);
         }
-        if (hdr && error.isEmpty() && !writeJxr(hdrPath(path), *hdr))
-            error = Capture::tr("截图已保存，但 HDR 图片没能保存到 %1").arg(hdrPath(path));
         QMetaObject::invokeMethod(context, [done, path, error] {
             if (done)
                 done(path, error);

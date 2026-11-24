@@ -634,6 +634,30 @@ private slots:
             QVERIFY(work.contains(pin::cascaded(start, slot).cursor));
         QCOMPARE(pin::cascaded(start, 100).cursor, work.bottomRight());
     }
+
+    // CF_HDROP image file returns its sourcePath and non-zero clipboardSequence (#427, #446);
+    // plain DIB images keep sourcePath empty.
+    void clipboardFileSourcePath()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString file = QDir::toNativeSeparators(dir.filePath(u"source.png"_s));
+        QVERIFY(m_image.save(file, "PNG"));
+
+        write({.files = {file}});
+        const auto fromFile = read();
+        QCOMPARE(fromFile.status, pin::ClipboardStatus::Image);
+        QCOMPARE(fromFile.sourcePath, file);
+        QVERIFY(!fromFile.downscaled);
+        QVERIFY(fromFile.clipboardSequence != 0);
+
+        writeFormats({{CF_DIB, dib(false)}});
+        const auto fromDib = read();
+        QCOMPARE(fromDib.status, pin::ClipboardStatus::Image);
+        QVERIFY(fromDib.sourcePath.isEmpty());
+        QVERIFY(fromDib.clipboardSequence != 0);
+        QVERIFY(fromDib.clipboardSequence != fromFile.clipboardSequence);
+    }
 };
 
 int main(int argc, char** argv)

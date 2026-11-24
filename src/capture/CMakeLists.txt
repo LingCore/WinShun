@@ -65,6 +65,8 @@ add_library(wscapture STATIC
     ScrollDiagnostics.cpp ScrollDiagnostics.h
     QrCode.cpp QrCode.h
     PinTools.cpp PinTools.h
+    PinHistory.cpp PinHistory.h
+    PictureWrite.cpp PictureWrite.h
     CaptureTools.cpp CaptureTools.h
     CaptureHistory.cpp CaptureHistory.h
     UiaProbe.cpp UiaProbe.h

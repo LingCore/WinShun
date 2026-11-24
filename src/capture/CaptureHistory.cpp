@@ -1,5 +1,8 @@
 #include "CaptureHistory.h"
 
+#include "AnnotationFormat.h"
+#include "AnnotationRender.h"
+
 #include <QDir>
 #include <QFile>
 #include <QImageReader>
@@ -7,6 +10,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QPainter>
 #include <QSaveFile>
 
 #include <algorithm>
@@ -193,6 +197,57 @@ std::optional<HistoryShot> CaptureHistory::read(const QString& folder, const QSt
     if (QFile doc(dir.filePath(u"doc.json"_s)); doc.open(QIODevice::ReadOnly))
         shot.document = doc.readAll();
     return shot;
+}
+
+std::optional<RenderedHistoryShot> renderHistoryShot(const HistoryShot& shot)
+{
+    if (shot.screens.empty() || shot.selection.isEmpty())
+        return std::nullopt;
+    QImage surface;
+    QPoint surfaceOrigin;
+    if (shot.spans) {
+        QRect bounds;
+        for (const HistoryShot::Screen& s : shot.screens)
+            bounds = bounds.united(s.rect);
+        if (bounds.isEmpty())
+            return std::nullopt;
+        const QImage::Format format = shot.screens.front().image.isNull() ? QImage::Format_RGB32 : shot.screens.front().image.format();
+        surface = QImage(bounds.size(), format);
+        surface.fill(Qt::black);
+        QPainter painter(&surface);
+        painter.setCompositionMode(QPainter::CompositionMode_Source);
+        for (const HistoryShot::Screen& s : shot.screens)
+            painter.drawImage(s.rect.topLeft() - bounds.topLeft(), s.image);
+        painter.end();
+        surfaceOrigin = bounds.topLeft();
+    } else {
+        if (shot.screen < 0 || shot.screen >= std::ssize(shot.screens))
+            return std::nullopt;
+        const HistoryShot::Screen& s = shot.screens[static_cast<std::size_t>(shot.screen)];
+        surface = s.image;
+        surfaceOrigin = s.rect.topLeft();
+    }
+    const QRect area = shot.selection.intersected(QRect(QPoint(0, 0), surface.size()));
+    if (area.isEmpty())
+        return std::nullopt;
+    RenderedHistoryShot out;
+    out.origin = surfaceOrigin + area.topLeft();
+    if (!shot.document.isEmpty()) {
+        if (const auto doc = annot::fromJson(QJsonDocument::fromJson(shot.document).object(), nullptr);
+            doc && !doc->items.isEmpty()) {
+            const annot::Project packed = annot::projectFromOverlay(*doc, surface, area);
+            if (!packed.base.isNull()) {
+                annot::Compositor compositor;
+                out.image = compositor.exportImage(packed.doc, packed.base, QRect(QPoint(0, 0), packed.base.size()));
+                out.project = annot::writeProject(packed.doc, packed.base);
+            }
+        }
+    }
+    if (out.image.isNull())
+        out.image = surface.copy(area);
+    if (out.image.isNull())
+        return std::nullopt;
+    return out;
 }
 
 } // namespace ws::capture

@@ -60,6 +60,8 @@ struct CaptureOptions {
     QString ocrHotkey;
     // 截图翻译 (#356): the same picking, its words translated in place when it ends.
     QString translateHotkey;
+    // 截图并直接贴图 (#450): drag or click a window to pin immediately with no toolbar.
+    QString pinCaptureHotkey;
     QString saveFolder;
     QString recordingFolder;
     bool recordingSystemAudio = false;
@@ -74,6 +76,10 @@ struct CaptureOptions {
     QString pinDoubleClick = QStringLiteral("reset");
     // Quietly OCR pinned pictures in the background so text can be drag-selected directly.
     bool pinAutoOcr = true;
+    // 连按贴图键按顺序贴出历史截图/贴图 (#446): 0 disables history cycling (only current/last).
+    int pinHistoryCount = 20;
+    // "closed": most recently closed or captured first; "created": strictly by capture/creation time.
+    QString pinHistoryOrder = QStringLiteral("closed");
     // The pin and save keys and the pin window's keys (#187): Capture/Keys/<id>,
     // only those not at their default; an empty value is no key.
     capture::CaptureKeys keys;
@@ -123,9 +129,12 @@ class CaptureSettings : public QObject {
     Q_PROPERTY(QString capturePresentHotkey READ capturePresentHotkey WRITE setCapturePresentHotkey NOTIFY changed FINAL)
     Q_PROPERTY(QString captureOcrHotkey READ captureOcrHotkey WRITE setCaptureOcrHotkey NOTIFY changed FINAL)
     Q_PROPERTY(QString captureTranslateHotkey READ captureTranslateHotkey WRITE setCaptureTranslateHotkey NOTIFY changed FINAL)
+    Q_PROPERTY(QString capturePinCaptureHotkey READ capturePinCaptureHotkey WRITE setCapturePinCaptureHotkey NOTIFY changed FINAL)
     Q_PROPERTY(QString captureSaveFolder READ captureSaveFolder WRITE setCaptureSaveFolder NOTIFY changed FINAL)
     Q_PROPERTY(QString capturePinDoubleClick READ capturePinDoubleClick WRITE setCapturePinDoubleClick NOTIFY changed FINAL)
     Q_PROPERTY(bool capturePinAutoOcr READ capturePinAutoOcr WRITE setCapturePinAutoOcr NOTIFY changed FINAL)
+    Q_PROPERTY(int capturePinHistoryCount READ capturePinHistoryCount WRITE setCapturePinHistoryCount NOTIFY changed FINAL)
+    Q_PROPERTY(QString capturePinHistoryOrder READ capturePinHistoryOrder WRITE setCapturePinHistoryOrder NOTIFY changed FINAL)
     Q_PROPERTY(QString captureHotkeyError READ captureHotkeyError NOTIFY problemsChanged FINAL)
     Q_PROPERTY(QString capturePinsHotkeyError READ capturePinsHotkeyError NOTIFY problemsChanged FINAL)
     Q_PROPERTY(QString capturePinsRestoreHotkeyError READ capturePinsRestoreHotkeyError NOTIFY problemsChanged FINAL)
@@ -133,6 +142,7 @@ class CaptureSettings : public QObject {
     Q_PROPERTY(QString capturePresentHotkeyError READ capturePresentHotkeyError NOTIFY problemsChanged FINAL)
     Q_PROPERTY(QString captureOcrHotkeyError READ captureOcrHotkeyError NOTIFY problemsChanged FINAL)
     Q_PROPERTY(QString captureTranslateHotkeyError READ captureTranslateHotkeyError NOTIFY problemsChanged FINAL)
+    Q_PROPERTY(QString capturePinCaptureHotkeyError READ capturePinCaptureHotkeyError NOTIFY problemsChanged FINAL)
     Q_PROPERTY(QString captureNote READ captureNote NOTIFY problemsChanged FINAL)
     // The keys of the capture and the pin window (#187), by CaptureKeys' ids:
     // {text ("Ctrl+S"; empty: none), changed (not the default), defaultText,
@@ -209,12 +219,18 @@ public:
     void setCaptureOcrHotkey(const QString& v) { change(m_options.ocrHotkey, v.trimmed()); }
     QString captureTranslateHotkey() const { return m_options.translateHotkey; }
     void setCaptureTranslateHotkey(const QString& v) { change(m_options.translateHotkey, v.trimmed()); }
+    QString capturePinCaptureHotkey() const { return m_options.pinCaptureHotkey; }
+    void setCapturePinCaptureHotkey(const QString& v) { change(m_options.pinCaptureHotkey, v.trimmed()); }
     QString captureSaveFolder() const { return m_options.saveFolder; }
     void setCaptureSaveFolder(const QString& v) { change(m_options.saveFolder, v.trimmed()); }
     QString capturePinDoubleClick() const { return m_options.pinDoubleClick; }
     void setCapturePinDoubleClick(const QString& v);
     bool capturePinAutoOcr() const { return m_options.pinAutoOcr; }
     void setCapturePinAutoOcr(bool v) { change(m_options.pinAutoOcr, v); }
+    int capturePinHistoryCount() const { return m_options.pinHistoryCount; }
+    void setCapturePinHistoryCount(int count) { change(m_options.pinHistoryCount, std::clamp(count, 0, 100)); }
+    QString capturePinHistoryOrder() const { return m_options.pinHistoryOrder; }
+    void setCapturePinHistoryOrder(const QString& v);
 
     QString captureHotkeyError() const { return m_hotkeyError; }
     QString capturePinsHotkeyError() const { return m_pinsHotkeyError; }
@@ -223,9 +239,11 @@ public:
     QString capturePresentHotkeyError() const { return m_presentHotkeyError; }
     QString captureOcrHotkeyError() const { return m_ocrHotkeyError; }
     QString captureTranslateHotkeyError() const { return m_translateHotkeyError; }
+    QString capturePinCaptureHotkeyError() const { return m_pinCaptureHotkeyError; }
     QString captureNote() const { return m_note; }
     struct Problems {
-        QString hotkey, pinsHotkey, pinsRestoreHotkey, lastPinHotkey, presentHotkey, ocrHotkey, translateHotkey, note;
+        QString hotkey, pinsHotkey, pinsRestoreHotkey, lastPinHotkey, presentHotkey, ocrHotkey, translateHotkey,
+            pinCaptureHotkey, note;
     };
     // The 识别屏幕文字 hotkey is one of the plugin's other hotkeys (or PrtScn,
     // taken): why it cannot be registered too, in words; empty when not.
@@ -233,6 +251,8 @@ public:
     QString ocrHotkeyClash() const;
     // The same for 截图翻译 (#356), registered after all the others, 识别屏幕文字 too.
     QString translateHotkeyClash() const;
+    // The same for 截图并直接贴图 (#450), registered after the others.
+    QString pinCaptureHotkeyClash() const;
     void setProblems(const Problems& problems);
 
     bool recordingHotkey() const { return m_recordingHotkey; }
@@ -276,7 +296,7 @@ private:
     const QString m_file;
     CaptureOptions m_options;
     QString m_hotkeyError, m_pinsHotkeyError, m_pinsRestoreHotkeyError, m_lastPinHotkeyError, m_presentHotkeyError,
-        m_ocrHotkeyError, m_translateHotkeyError, m_note;
+        m_ocrHotkeyError, m_translateHotkeyError, m_pinCaptureHotkeyError, m_note;
     bool m_recordingHotkey = false;
     QObject* m_window = nullptr;
     std::function<bool(unsigned, unsigned)> m_probe;

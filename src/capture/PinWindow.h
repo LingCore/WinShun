@@ -62,6 +62,7 @@ enum class PinInput { Press, Release, Key };
 class PinWindow {
 public:
     struct Host {
+        std::function<void(PinWindow*)> closing; // just before pixels are released on close (for PinHistory #446)
         std::function<void(PinWindow*)> closed; // the window is gone: the owner deletes this later
         std::function<void(PinWindow*, POINT)> menu; // at that point (physical)
         std::function<void(PinWindow*)> copy; // Ctrl+C
@@ -113,6 +114,8 @@ public:
     // The whole picture (decoded from its PNG bytes while collapsed: a copy).
     QImage image() const;
     QRect pictureRect() const; // physical, virtual desktop, as shown (the tile's while collapsed)
+    // Where the full picture sits (or sat before collapsing), physical virtual desktop.
+    QPoint fullOrigin() const { return m_form == PinForm::Full ? m_origin : m_savedOrigin; }
     double dpr() const { return m_dpi / 96.0; }
     double zoom() const { return m_zoom; }
     double opacity() const { return m_opacity; }
@@ -130,6 +133,12 @@ public:
     // picture, until it is edited (setPicture); empty: a picture's pin.
     const QString& copiedText() const { return m_copiedText; }
     void setCopiedText(QString text) { m_copiedText = std::move(text); }
+    // Entry id in PinHistory (#446), 0 when untracked.
+    quint64 historyId() const { return m_historyId; }
+    void setHistoryId(quint64 id) { m_historyId = id; }
+    // Original writable image file path (#427), empty for captures/bitmaps/non-writable files.
+    const QString& sourcePath() const { return m_sourcePath; }
+    void setSourcePath(QString path) { m_sourcePath = std::move(path); }
 
     // A new picture where this one is (the editing window's 完成): the top
     // left and the zoom stay, the window follows the new size. A null picture
@@ -283,6 +292,8 @@ private:
     bool m_reachable = false; // click-through, but Ctrl is held over it
     bool m_screenshot = true;
     QString m_copiedText; // copiedText()
+    quint64 m_historyId = 0; // PinHistory entry id (#446)
+    QString m_sourcePath; // original writable image file path (#427)
     bool m_shown = true;
     bool m_allHidden = false;
     QByteArray m_project;

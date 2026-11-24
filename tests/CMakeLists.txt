@@ -1827,3 +1827,24 @@ add_test(NAME tst_settingsnav COMMAND tst_settingsnav -o -,txt)
 set_tests_properties(tst_settingsnav PROPERTIES
     ENVIRONMENT "QT_QUICK_BACKEND=software"
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>;QT_PLUGIN_PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>/../plugins")
+
+# Pin history cycling (#446): recall ordering, edit/close refresh, PNG compression
+# generation guard, eviction, and rendering on-disk CaptureHistory shots.
+qt_add_executable(tst_pinhistory tst_pinhistory.cpp)
+target_link_libraries(tst_pinhistory PRIVATE wscapture Qt6::Test)
+set_target_properties(tst_pinhistory PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_pinhistory COMMAND tst_pinhistory -o -,txt)
+set_tests_properties(tst_pinhistory PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
+# Save-back image writing (#427): format filter, atomic PNG/JPEG/BMP/TIFF encoding,
+# and read-only target protection without corrupting original files.
+qt_add_executable(tst_picturewrite tst_picturewrite.cpp ${PROJECT_SOURCE_DIR}/src/app/PictureFile.cpp)
+target_include_directories(tst_picturewrite PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_link_libraries(tst_picturewrite PRIVATE wscapture Qt6::Test ole32 windowscodecs)
+set_target_properties(tst_picturewrite PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_picturewrite COMMAND tst_picturewrite -o -,txt)
+set_tests_properties(tst_picturewrite PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")

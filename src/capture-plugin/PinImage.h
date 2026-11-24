@@ -37,6 +37,9 @@ struct ClipboardPicture {
     ClipboardStatus status = ClipboardStatus::Empty;
     QImage image;
     QString text; // Text: what was copied, at most kPinTextChars
+    QString sourcePath; // Image from CF_HDROP: original file path (#427)
+    bool downscaled = false; // true when a >60 MP source file was shrunk while decoding
+    quint32 clipboardSequence = 0; // GetClipboardSequenceNumber() observed under the lock (#446)
 };
 
 // The most of copied words a pin keeps to copy again (UTF-16 units); the
@@ -84,6 +87,6 @@ Prepared prepare(QImage image, const Placement& placement);
 // Worker-thread operations: copy clipboard bytes/paths under a short lock,
 // release it before decoding, then use the same WIC reader as file pinning.
 ClipboardPicture readClipboard(const LastCapture& last);
-QImage readFile(const QString& path);
+QImage readFile(const QString& path, bool* downscaled = nullptr);
 
 } // namespace ws::captureplugin::pinimage
