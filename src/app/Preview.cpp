@@ -4953,9 +4953,18 @@ bool checkShortcutPanels(QQmlEngine* engine, const QDir& output)
                 QMetaObject::invokeMethod(window, "closeContextMenu");
                 settle(window);
             }
-            // Footer's clear-history button uses Phosphor's broom (distinct from file delete's trash can).
-            if (QQuickItem* clearBtn = visualNamed(window->contentItem(), u"clearHistoryButton"_s))
+            // Footer's clear-history button uses Phosphor's broom at the same 16 px icon size
+            // as the neighbouring ShortcutsButton (info) and other footer icons.
+            history.record(fileA, u"alpha"_s, QDateTime::currentMSecsSinceEpoch());
+            emit launcher.historyChanged();
+            settle(window);
+            if (QQuickItem* clearBtn = visualNamed(window->contentItem(), u"clearHistoryButton"_s)) {
+                check(clearBtn->isVisible(), u"footer: clearHistory shows when history is non-empty"_s);
                 check(clearBtn->property("iconName").toString() == u"broom"_s, u"footer: clearHistory uses broom icon"_s);
+                check(qFuzzyCompare(clearBtn->property("iconSize").toReal(), 16.0),
+                    u"footer: clearHistory iconSize matches info button (16 px)"_s);
+                saveGrab(window, output.filePath(u"footer-clear-history.png"_s));
+            }
             QStringList recycledBatch;
             bool runningDuringRecycle = false;
             launcher.setFileRecycler([&](const QStringList& batch, std::function<void(bool)> done) {

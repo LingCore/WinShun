@@ -414,6 +414,7 @@ Item {
 
         visible: footer.launcher.canClearHistory
         role: "footer"
+        iconSize: 16 // match the footer's other icons (ShortcutsButton, sort, FileViewSwitch)
         anchors.right: viewSwitch.visible ? viewSwitch.left : parent.right
         anchors.rightMargin: viewSwitch.visible ? 8 : 6
         anchors.verticalCenter: parent.verticalCenter
