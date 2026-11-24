@@ -89,6 +89,7 @@ public:
 
 private:
     double targetVelocity(int zonePx) const;
+    int targetWheelTickMs() const;
     void computeTick(int zonePx, ScrollMethod method, double& amount, int& intervalMs) const;
     bool canSwitchSideways(bool extended) const;
     bool canParkCursorFor(ScrollMethod method) const;
@@ -107,9 +108,13 @@ private:
     double m_windowMovedPx = 0.0;
     double m_inFlightPx = 0.0;
     double m_backoffScale = 1.0;
+    double m_lastSentAmount = 1.0;
+    bool m_fractionalWorked = false;
+    bool m_fractionalUnsupported = false;
     int m_unackedTicks = 0;
     int m_otherMethodTicks = 0; // successful ticks by PostWheel or Uia
     int m_reverseFrames = 0;
+    int m_probeLostFrames = 0;
     qint64 m_lastMovedMs = 0;
     qint64 m_nextTickAtMs = 0;
     qint64 m_waitUntilMs = 0;

@@ -5,6 +5,7 @@
 #include <QString>
 #include <QtGlobal>
 
+#include <array>
 #include <cstdint>
 #include <deque>
 #include <memory>
@@ -101,11 +102,23 @@ public:
 
 private:
     struct Match;
+    struct RowSig {
+        std::array<uint8_t, 16> mean {};
+        std::array<uint8_t, 16> act {};
+    };
+    struct RelocHit {
+        int offset = 0;
+        double score = 0;
+        int votes = 0;
+    };
 
     uint32_t* row(int y); // the canvas row, its block made when first needed
     const uint32_t* row(int y) const;
+    const uint32_t* canvasRow(int y) const; // row() above m_farFrom, m_far below
     bool write(const QImage& frame, int offset, int from, int to); // false: at the limit
+    void writeSigs(const Analysis& frame, int offset, int from, int to);
     Match match(const Analysis& a, const Analysis& b, std::optional<int> expectDy);
+    std::optional<RelocHit> relocalize(const Analysis& b) const;
     bool bounced(const Analysis& end, const Analysis& now, int gone, bool top = false) const;
     int limitHeight() const;
     QImage straight() const; // result() as stitched
@@ -118,6 +131,10 @@ private:
     // allocates blocks at the front without moving any captured pixels.
     std::deque<uint32_t*> m_blocks;
     int m_firstBlock = 0;
+    // Compact per-row segment signatures across the stitched canvas for instant
+    // whole-canvas re-localization when fast scrolling loses lock with m_prev.
+    std::deque<RowSig> m_sigs;
+    int m_sigStart = 0;
     // Keyframe anchor: small continuous scroll steps match directly against
     // m_anchor to prevent cumulative subpixel drift and shrug off transient
     // mid-scroll frame glitches; m_prev always tracks the newest matched frame.
@@ -125,6 +142,8 @@ private:
     int m_anchorOffset = 0;
     std::shared_ptr<const Analysis> m_prev;
     int m_prevOffset = 0;
+    std::shared_ptr<const Analysis> m_nearAnalysis;
+    std::shared_ptr<const Analysis> m_farAnalysis;
     int m_nearOffset = 0; // topmost row of the result, possibly negative
     bool m_previewTop = false;
     QImage m_far; // the frame that went farthest: the result's end comes from it
@@ -135,9 +154,13 @@ private:
     int m_bottom = 0;
     int m_topCandidate = 0;
     int m_topStable = 0;
+    int m_topTravel = 0;
     int m_bottomCandidate = 0;
     int m_bottomStable = 0;
+    int m_bottomTravel = 0;
     bool m_bandsKnown = false;
+    std::array<char, 16> m_fixedCols {};
+    bool m_fixedColsKnown = false;
     int m_velocity = 0; // the last dy that moved
     int m_lost = 0; // frames lost in a row
     int m_frames = 0;

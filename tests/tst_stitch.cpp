@@ -1443,6 +1443,171 @@ private slots:
         }
         QVERIFY2(switched, "vertical dead-end with no growth must try sideways once");
     }
+
+    // Large animated GIF/sticker in a chat window (reproduces real-world QQ
+    // logs): must stay Unchanged while stationary (no Lost, no +/-1 subpixel
+    // oscillation, no false sticky footer) and keep stitching while scrolling.
+    void animatedGifInChatStaysUnchangedAndStitches()
+    {
+        constexpr int w = 600;
+        constexpr int h = 560;
+        QImage chat(w, 2600, QImage::Format_RGB32);
+        fill(chat, 0, chat.height(), qRgb(245, 245, 247));
+        for (int y = 18, i = 0; y < chat.height() - 28; y += 34, ++i) {
+            const bool rightMsg = (i % 3 == 1);
+            const int x0 = rightMsg ? 320 : 28;
+            const int x1 = rightMsg ? w - 40 : 280;
+            text(chat, y, x0, x1, uint32_t(41000 + i));
+        }
+
+        const QRect gif1(240, 140, 280, 240); // dominates texture on initial viewport
+        const QRect gif2(200, 1280, 290, 250); // dominates texture after scrolling down
+        const auto frameAt = [&](int scroll, uint32_t animTick) {
+            QImage f = chat.copy(0, scroll, w, h);
+            for (const QRect& g : {gif1, gif2}) {
+                const QRect vis = g.translated(0, -scroll).intersected(QRect(0, 0, w, h));
+                if (!vis.isEmpty())
+                    picture(f, vis, 70000 + animTick * 13);
+            }
+            return f;
+        };
+
+        ScrollStitcher stitcher(QSize(w, h), {}, {24});
+        QCOMPARE(stitcher.add(frameAt(0, 0)).state, ScrollStitcher::State::Appended);
+
+        // Phase 1: Stationary before any scroll while GIF1 animates every frame.
+        for (uint32_t t = 1; t <= 12; ++t) {
+            const auto step = stitcher.add(frameAt(0, t));
+            QVERIFY2(step.state == ScrollStitcher::State::Unchanged,
+                qPrintable(u"phase 1 tick %1 expected Unchanged, got %2 dy %3"_s
+                               .arg(t).arg(stateName(step.state)).arg(step.dy)));
+        }
+        QCOMPARE(stitcher.height(), h);
+
+        // Phase 2: Scroll smoothly down past GIF1 and into GIF2 while animating.
+        int pos = 0;
+        uint32_t tick = 20;
+        while (pos < 1200) {
+            const int dy = 60;
+            pos += dy;
+            const auto step = stitcher.add(frameAt(pos, ++tick));
+            QVERIFY2(step.state == ScrollStitcher::State::Appended && step.dy == dy,
+                qPrintable(u"phase 2 pos %1 got %2 dy %3"_s
+                               .arg(pos).arg(stateName(step.state)).arg(step.dy)));
+        }
+        QCOMPARE(stitcher.fixedTop(), 0);
+        QCOMPARE(stitcher.fixedBottom(), 0);
+
+        // Phase 3: Stationary at pos=1200 while GIF2 animates at 60fps.
+        const int heightBefore = stitcher.height();
+        for (uint32_t t = 0; t < 18; ++t) {
+            const auto step = stitcher.add(frameAt(pos, ++tick));
+            QVERIFY2(step.state == ScrollStitcher::State::Unchanged,
+                qPrintable(u"phase 3 tick %1 expected Unchanged, got %2 dy %3"_s
+                               .arg(t).arg(stateName(step.state)).arg(step.dy)));
+        }
+        QCOMPARE(stitcher.height(), heightBefore);
+        QCOMPARE(stitcher.fixedTop(), 0);
+        QCOMPARE(stitcher.fixedBottom(), 0);
+    }
+
+    // Fast manual fling back into already-captured content must relocalize
+    // directly against the stitched canvas instead of getting stuck in Lost.
+    void wholeCanvasRelocalizeAfterFastFling()
+    {
+        const Page& p = page();
+        ScrollStitcher stitcher(QSize(kWidth, kFrame), {}, {kIgnoreRight});
+        stitcher.add(p.frame(0));
+        int pos = 0;
+        for (int s : {160, 320, 480, 640, 800, 960, 1120, 1280, 1440, 1600, 1760, 1920, 2080}) {
+            pos = s;
+            QCOMPARE(stitcher.add(p.frame(pos)).state, ScrollStitcher::State::Appended);
+        }
+        const int heightBefore = stitcher.height();
+        QCOMPARE(heightBefore, 2080 + kFrame);
+
+        // Jump 1180 px back (zero overlap with m_prev at 2080!) inside canvas.
+        auto step = stitcher.add(p.frame(900));
+        QCOMPARE(step.state, ScrollStitcher::State::Behind);
+        QCOMPARE(stitcher.height(), heightBefore);
+
+        // Continue scrolling smoothly from the relocalized position.
+        step = stitcher.add(p.frame(740));
+        QCOMPARE(step.state, ScrollStitcher::State::Behind);
+        QCOMPARE(step.dy, -160);
+
+        // Jump straight to past m_far (2080 + 160 = 2240): m_farAnalysis reconnects and appends!
+        step = stitcher.add(p.frame(2240));
+        QCOMPARE(step.state, ScrollStitcher::State::Appended);
+        QCOMPARE(stitcher.height(), 2240 + kFrame);
+
+        // True jump outside captured canvas still reports Lost, then scrolling
+        // back into ANY captured part of the canvas reconnects immediately.
+        QImage outside(kWidth, kFrame, QImage::Format_RGB32);
+        fill(outside, 0, kFrame, qRgb(245, 240, 235));
+        for (int y = 60, i = 0; y < kFrame - 50; y += 22, ++i)
+            text(outside, y, 40, kWidth - 40, uint32_t(88000 + i));
+        QCOMPARE(stitcher.add(outside).state, ScrollStitcher::State::Lost);
+        step = stitcher.add(p.frame(1300));
+        QCOMPARE(step.state, ScrollStitcher::State::Behind);
+        QCOMPARE(stitcher.height(), 2240 + kFrame);
+    }
+
+    // Smooth fractional wheel avoids cold-start surge on slow-ramping smooth
+    // scrollers and automatically falls back to integer notches on legacy apps.
+    void smoothFractionalWheelAndLegacyFallback()
+    {
+        // 1. Slow-ramping smooth scroller (first frame moves only 2 px for 190 px notch).
+        ScrollAutoEngine smooth;
+        constexpr int zone = 600;
+        qint64 now = 0;
+        smooth.begin(now, 1);
+        auto cmd = smooth.next(now, zone, false);
+        QCOMPARE(cmd.kind, ScrollAutoEngine::CommandKind::SendScroll);
+        QCOMPARE(cmd.amount, 1.0);
+        smooth.onScrollSent(now, {ScrollMethod::PostWheel, ScrollOk, 0}, cmd.amount, zone);
+        now += 16;
+        ScrollStitcher::Step firstStep;
+        firstStep.state = ScrollStitcher::State::Appended;
+        firstStep.dy = 2;
+        smooth.onFrame(now, firstStep, true, zone);
+        QCOMPARE(smooth.phase(), ScrollAutoEngine::Phase::Streaming);
+        // Must wait for the smooth cadence instead of immediately spamming another tick.
+        cmd = smooth.next(now + 20, zone, true);
+        QCOMPARE(cmd.kind, ScrollAutoEngine::CommandKind::WaitFrame);
+
+        // 2. Legacy Win32 app that truncates fractional deltas (< 1.0) to 0 px.
+        ScrollAutoEngine legacy;
+        now = 0;
+        legacy.begin(now, 1);
+        cmd = legacy.next(now, zone, false);
+        legacy.onScrollSent(now, {ScrollMethod::PostWheel, ScrollOk, 0}, cmd.amount, zone);
+        now += 16;
+        ScrollStitcher::Step step;
+        step.state = ScrollStitcher::State::Appended;
+        step.dy = 190;
+        legacy.onFrame(now, step, true, zone);
+        bool fellBackToInteger = false;
+        for (int i = 0; i < 80; ++i) {
+            cmd = legacy.next(now, zone, true);
+            if (cmd.kind == ScrollAutoEngine::CommandKind::SendScroll) {
+                legacy.onScrollSent(now, {ScrollMethod::PostWheel, ScrollOk, 0}, cmd.amount, zone);
+                if (cmd.amount >= 0.99) {
+                    fellBackToInteger = true;
+                    now += 16;
+                    step.dy = 190;
+                    legacy.onFrame(now, step, true, zone);
+                    break;
+                }
+            } else if (cmd.kind == ScrollAutoEngine::CommandKind::WaitFrame) {
+                now += cmd.timeoutMs;
+            } else {
+                break;
+            }
+        }
+        QVERIFY2(fellBackToInteger, "engine must fall back to integer wheel notches when fractional deltas do not scroll");
+        QCOMPARE(legacy.phase(), ScrollAutoEngine::Phase::Streaming);
+    }
 };
 
 QTEST_APPLESS_MAIN(TestStitch)

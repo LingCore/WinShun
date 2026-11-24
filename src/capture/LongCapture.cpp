@@ -49,7 +49,7 @@ namespace {
 constexpr int kManualWaitMs = 40; // responsive manual polling / stop checks
 constexpr int kFinishDrainMs = 220; // drain any final compositor frame on Finish
 constexpr int kFinishQuietMs = 60;
-constexpr int kLostShownMs = 350; // by hand: "lost" only when it lasts (a fling's frames come apart)
+constexpr int kLostShownMs = 450; // by hand: "lost" only when it lasts (a fling's frames come apart)
 constexpr int kWatchdogMs = 5000;
 constexpr int kPreviewEveryMs = 60; // ~16 fps live preview while actively growing
 constexpr double kOverlayLogical = 16; // the overlay scroll bar's strip on the right, left out of the comparing
@@ -835,6 +835,8 @@ void LongCapture::engine(Run& r)
         }
 
         QImage base; // the last frame that fitted on
+        int behindTravel = 0;
+        int recoverStreak = 0;
         const auto stitch = [&](const QImage& frame, std::optional<int> expect, bool guess) {
             QElapsedTimer took;
             took.start();
@@ -865,21 +867,39 @@ void LongCapture::engine(Run& r)
                 base = frame;
             switch (step.state) {
             case ScrollStitcher::State::Appended:
+                behindTravel = 0;
+                recoverStreak = 0;
                 if (stitcher->frames() > 1)
                     shown = Status::Stitching;
                 break;
             case ScrollStitcher::State::Behind:
-                shown = Status::Behind;
+                behindTravel += std::abs(step.dy);
+                if (shown == Status::Lost) {
+                    if (std::abs(step.dy) >= 4 || ++recoverStreak >= 2) {
+                        shown = behindTravel >= 12
+                            ? Status::Behind
+                            : (stitcher->height() > stitcher->frameSize().height() ? Status::Stitching : Status::Waiting);
+                        recoverStreak = 0;
+                    }
+                } else if (shown != Status::Stitching || behindTravel >= 12) {
+                    shown = Status::Behind;
+                }
                 break;
             case ScrollStitcher::State::Full:
+                behindTravel = 0;
+                recoverStreak = 0;
                 shown = Status::Full;
                 break;
             case ScrollStitcher::State::Lost:
+                recoverStreak = 0;
+                break;
             case ScrollStitcher::State::Waiting:
                 break;
             case ScrollStitcher::State::Unchanged:
-                if (shown == Status::Lost)
+                if (shown == Status::Lost && ++recoverStreak >= 2) {
                     shown = stitcher->height() > stitcher->frameSize().height() ? Status::Stitching : Status::Waiting;
+                    recoverStreak = 0;
+                }
                 break;
             }
             return step;
@@ -910,6 +930,8 @@ void LongCapture::engine(Run& r)
             syncOwnRects();
             autoEngine.reconfigure(makeAutoConfig(turned), resetTriedSideways);
             manualDirection = 1;
+            behindTravel = 0;
+            recoverStreak = 0;
             base = QImage();
             shown = Status::Waiting;
             previewFrames = -1;
@@ -1006,12 +1028,14 @@ void LongCapture::engine(Run& r)
                             if (std::abs(step.dy) >= 8)
                                 manualDirection = step.dy < 0 ? -1 : 1;
                         }
-                        if (step.state != ScrollStitcher::State::Lost)
-                            lostSince = -1;
-                        else if (lostSince < 0)
+                        if (step.state != ScrollStitcher::State::Lost) {
+                            if (shown != Status::Lost)
+                                lostSince = -1;
+                        } else if (lostSince < 0) {
                             lostSince = clock.elapsed();
+                        }
                     }
-                    const bool lost = lostSince >= 0 && clock.elapsed() - lostSince >= kLostShownMs;
+                    const bool lost = (lostSince >= 0 && clock.elapsed() - lostSince >= kLostShownMs) || shown == Status::Lost;
                     if (lost)
                         shown = Status::Lost;
                     told = lost                                                   ? Hint::Reconnect

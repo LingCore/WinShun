@@ -293,17 +293,24 @@ void ScrollStitcher::release()
     m_blocks.clear();
     m_blocks.shrink_to_fit();
     m_firstBlock = 0;
+    m_sigs.clear();
+    m_sigs.shrink_to_fit();
+    m_sigStart = 0;
     m_anchor.reset();
     m_anchorOffset = 0;
     m_prev.reset();
+    m_nearAnalysis.reset();
+    m_farAnalysis.reset();
     m_far = QImage();
     m_prevOffset = m_farOffset = m_farRows = m_farFrom = 0;
     m_nearOffset = 0;
     m_previewTop = false;
     m_top = m_bottom = 0;
-    m_topCandidate = m_topStable = 0;
-    m_bottomCandidate = m_bottomStable = 0;
+    m_topCandidate = m_topStable = m_topTravel = 0;
+    m_bottomCandidate = m_bottomStable = m_bottomTravel = 0;
     m_bandsKnown = false;
+    m_fixedCols.fill(0);
+    m_fixedColsKnown = false;
     m_velocity = m_lost = m_frames = 0;
     m_partial = m_full = false;
 }
@@ -346,6 +353,18 @@ const uint32_t* ScrollStitcher::row(int y) const
     return m_blocks[block] + size_t(y - number * kBlockRows) * size_t(m_size.width());
 }
 
+const uint32_t* ScrollStitcher::canvasRow(int y) const
+{
+    if (m_far.isNull() || y < m_nearOffset || y >= m_farOffset + m_farRows)
+        return nullptr;
+    if (y < m_farOffset + m_farFrom)
+        return row(y);
+    const int fy = y - m_farOffset;
+    if (fy < 0 || fy >= m_far.height())
+        return nullptr;
+    return reinterpret_cast<const uint32_t*>(m_far.constScanLine(fy));
+}
+
 bool ScrollStitcher::write(const QImage& frame, int offset, int from, int to)
 {
     const int limit = m_nearOffset + limitHeight();
@@ -366,6 +385,37 @@ bool ScrollStitcher::write(const QImage& frame, int offset, int from, int to)
         std::memcpy(dst, frame.constScanLine(y), bytes);
     }
     return ok;
+}
+
+void ScrollStitcher::writeSigs(const Analysis& frame, int offset, int from, int to)
+{
+    const int limit = m_nearOffset + limitHeight();
+    from = std::max(0, from);
+    to = std::min(frame.h, to);
+    if (offset + from < m_nearOffset)
+        from = m_nearOffset - offset;
+    if (offset + to > limit)
+        to = limit - offset;
+    if (from >= to)
+        return;
+    const int first = offset + from;
+    const int last = offset + to; // exclusive
+    if (m_sigs.empty()) {
+        m_sigStart = first;
+        m_sigs.resize(size_t(last - first));
+    } else {
+        if (first < m_sigStart) {
+            m_sigs.insert(m_sigs.begin(), size_t(m_sigStart - first), RowSig {});
+            m_sigStart = first;
+        }
+        if (last > m_sigStart + int(m_sigs.size()))
+            m_sigs.resize(size_t(last - m_sigStart));
+    }
+    for (int y = from; y < to; ++y) {
+        RowSig& dst = m_sigs[size_t(offset + y - m_sigStart)];
+        std::memcpy(dst.mean.data(), frame.mean.data() + size_t(y) * kSegments, kSegments);
+        std::memcpy(dst.act.data(), frame.act.data() + size_t(y) * kSegments, kSegments);
+    }
 }
 
 ScrollStitcher::Match ScrollStitcher::match(const Analysis& a, const Analysis& b, std::optional<int> expectDy)
@@ -390,28 +440,6 @@ ScrollStitcher::Match ScrollStitcher::match(const Analysis& a, const Analysis& b
         m.unchanged = true;
         return m;
     }
-    // When no shift fits: nothing moved if most of what scrolls is where it
-    // was, and what changed changed in place (a picture that loaded, a
-    // fade). Bars and side bars stay when the page scrolls too: once the
-    // bands are known only the rows between them count, and before that
-    // more must have stayed.
-    const auto notFound = [&] {
-        const int from = m_bandsKnown ? m_top : 0;
-        const int to = m_bandsKnown ? h - m_bottom : h;
-        int informative = 0;
-        int stayed = 0;
-        for (int y = from; y < to; ++y) {
-            for (int k = 0; k < kSegments; ++k) {
-                if (m.fixed[size_t(k)] || (b.actAt(y, k) == 0 && a.actAt(y, k) == 0))
-                    continue;
-                ++informative;
-                stayed += same[size_t(y) * kSegments + size_t(k)];
-            }
-        }
-        const double need = m_bandsKnown ? kMinScore : kInPlaceUnknown;
-        m.unchanged = informative >= kMinVotes && stayed >= need * informative;
-        return m;
-    };
     // 2. This pair's fixed bands: the rows at either end that stayed.
     int top = 0;
     while (top < h && rowSame[size_t(top)])
@@ -419,15 +447,20 @@ ScrollStitcher::Match ScrollStitcher::match(const Analysis& a, const Analysis& b
     int bottom = 0;
     while (bottom < h - top && rowSame[size_t(h - 1 - bottom)])
         ++bottom;
+    const int rawTop = top;
+    const int rawBottom = bottom;
     if (h - top - bottom < h / 4)
         top = bottom = 0; // most of it stayed: a small change, not bars
     const int zoneFrom = top;
     const int zoneTo = h - bottom;
     const int zone = zoneTo - zoneFrom;
     // 3. Segment columns that stayed while the rest changed (side bars).
-    // More than half of them staying is a page that repeats itself (rows
-    // alike, moved by a multiple of their height), not side bars.
-    int fixedCount = 0;
+    // Only edge-contiguous columns (left edge / right edge, skipping empty
+    // columns) count as side bars so interior static content around an
+    // animating GIF/video is never discarded. More than half staying is a
+    // repeating page, not side bars.
+    std::array<char, kSegments> colFixed {};
+    std::array<char, kSegments> colEmpty {};
     for (int k = 0; k < kSegments; ++k) {
         int rows = 0;
         int kept = 0;
@@ -437,14 +470,131 @@ ScrollStitcher::Match ScrollStitcher::match(const Analysis& a, const Analysis& b
             ++rows;
             kept += same[size_t(y) * kSegments + size_t(k)];
         }
-        m.fixed[size_t(k)] = rows >= 16 && kept * 10 >= rows * 9;
-        fixedCount += m.fixed[size_t(k)];
+        colEmpty[size_t(k)] = rows < 16;
+        colFixed[size_t(k)] = rows >= 16 && kept * 10 >= rows * 9;
+    }
+    int fixedCount = 0;
+    for (int k = 0; k < kSegments && (colFixed[size_t(k)] || colEmpty[size_t(k)]); ++k) {
+        if (colFixed[size_t(k)] && !m.fixed[size_t(k)]) {
+            m.fixed[size_t(k)] = 1;
+            ++fixedCount;
+        }
+    }
+    for (int k = kSegments - 1; k >= 0 && (colFixed[size_t(k)] || colEmpty[size_t(k)]); --k) {
+        if (colFixed[size_t(k)] && !m.fixed[size_t(k)]) {
+            m.fixed[size_t(k)] = 1;
+            ++fixedCount;
+        }
     }
     if (fixedCount > kSegments / 2)
         m.fixed.fill(0);
     m.top = top;
     m.bottom = bottom;
     m.bandsMeasured = true;
+
+    // When no shift fits: nothing moved if scrolling content stayed where it
+    // was and only an in-place region (animated GIF/sticker, video, hover card,
+    // loading picture) changed. Row-level consensus prevents a single dense
+    // animating element from outvoting static text lines around it, while still
+    // reporting Lost when the page jumped past overlap behind sticky/side bars.
+    const auto notFound = [&] {
+        if (m_bandsKnown) {
+            const int from = m_top;
+            const int to = h - m_bottom;
+            const auto& fixedCols = m_fixedColsKnown ? m_fixedCols : m.fixed;
+            int informative = 0;
+            int stayed = 0;
+            int infoRows = 0;
+            int stayedRows = 0;
+            for (int y = from; y < to; ++y) {
+                int rInfo = 0;
+                int rStayed = 0;
+                for (int k = 0; k < kSegments; ++k) {
+                    if (fixedCols[size_t(k)] || (b.actAt(y, k) == 0 && a.actAt(y, k) == 0))
+                        continue;
+                    ++rInfo;
+                    rStayed += same[size_t(y) * kSegments + size_t(k)];
+                }
+                if (rInfo > 0) {
+                    informative += rInfo;
+                    stayed += rStayed;
+                    ++infoRows;
+                    if (rStayed * 4 >= rInfo * 3)
+                        ++stayedRows;
+                }
+            }
+            m.unchanged = (informative >= kMinVotes && stayed >= kMinScore * informative)
+                || (stayed >= 64 && stayedRows >= 24 && (stayed >= 0.20 * informative || stayedRows * 4 >= infoRows));
+            return m;
+        }
+
+        int informative = 0;
+        int stayed = 0;
+        for (int y = 0; y < h; ++y) {
+            for (int k = 0; k < kSegments; ++k) {
+                if (m.fixed[size_t(k)] || (b.actAt(y, k) == 0 && a.actAt(y, k) == 0))
+                    continue;
+                ++informative;
+                stayed += same[size_t(y) * kSegments + size_t(k)];
+            }
+        }
+        if (informative >= kMinVotes && stayed >= kInPlaceUnknown * informative) {
+            m.unchanged = true;
+            return m;
+        }
+        // Before fixed bands are known, rows beyond a plausible thin header/footer
+        // (h/4 at each end) that stayed identical prove the page did not scroll.
+        const int capTop = std::min(rawTop, h / 4);
+        const int capBottom = std::min(rawBottom, h / 4);
+        int intInfo = 0;
+        int intStayed = 0;
+        int intInfoRows = 0;
+        int intStayedRows = 0;
+        for (int y = capTop; y < h - capBottom; ++y) {
+            const bool fullRowBand = y < rawTop || y >= h - rawBottom;
+            int rInfo = 0;
+            int rStayed = 0;
+            for (int k = 0; k < kSegments; ++k) {
+                if ((!fullRowBand && m.fixed[size_t(k)]) || (b.actAt(y, k) == 0 && a.actAt(y, k) == 0))
+                    continue;
+                ++rInfo;
+                rStayed += same[size_t(y) * kSegments + size_t(k)];
+            }
+            if (rInfo > 0) {
+                intInfo += rInfo;
+                intStayed += rStayed;
+                ++intInfoRows;
+                if (rStayed * 4 >= rInfo * 3)
+                    ++intStayedRows;
+            }
+        }
+        if (intStayed >= 64 && intStayedRows >= 24
+            && (intStayed >= 0.25 * intInfo || intStayedRows * 3 >= intInfoRows)) {
+            m.unchanged = true;
+            return m;
+        }
+        if (rawTop + rawBottom >= h / 2) {
+            int barInfo = 0;
+            int barRows = 0;
+            for (int y = 0; y < h; ++y) {
+                if (y >= rawTop && y < h - rawBottom)
+                    continue;
+                int rInfo = 0;
+                for (int k = 0; k < kSegments; ++k)
+                    if (b.actAt(y, k) != 0 || a.actAt(y, k) != 0)
+                        ++rInfo;
+                if (rInfo > 0) {
+                    barInfo += rInfo;
+                    ++barRows;
+                }
+            }
+            if (barInfo >= 64 && barRows >= 24) {
+                m.unchanged = true;
+                return m;
+            }
+        }
+        return m;
+    };
     // 4. Candidate shifts: the rows of `a` with a segment like each of `b`'s.
     const int range = zone - kMinOverlap;
     if (range <= 0)
@@ -515,30 +665,44 @@ ScrollStitcher::Match ScrollStitcher::match(const Analysis& a, const Analysis& b
     const double minScore = m_lost >= 2 ? kLostScore : kMinScore;
     const int minVotes = m_lost >= 2 ? kLostVotes : kMinVotes;
     struct Checked {
-        int dy;
-        double score;
-        int votes;
+        int dy = 0;
+        double score = 0;
+        int votes = 0;
+        double rowScore = 0;
+        int matchedRows = 0;
     };
     std::vector<Checked> valid;
     std::vector<Checked> checked;
     for (int dy : candidates) {
         int compared = 0;
         int agreed = 0;
+        int infoRows = 0;
+        int matchedRows = 0;
         for (int y = std::max(zoneFrom, zoneFrom - dy); y < std::min(zoneTo, zoneTo - dy); ++y) {
             const int ya = y + dy;
+            int rComp = 0;
+            int rAgree = 0;
             for (int k = 0; k < kSegments; ++k) {
                 if (m.fixed[size_t(k)] || (b.actAt(y, k) == 0 && a.actAt(ya, k) == 0))
                     continue;
-                ++compared;
-                agreed += b.agrees(y, a, ya, k);
+                ++rComp;
+                rAgree += b.agrees(y, a, ya, k);
+            }
+            if (rComp > 0) {
+                compared += rComp;
+                agreed += rAgree;
+                ++infoRows;
+                if (rAgree * 4 >= rComp * 3)
+                    ++matchedRows;
             }
         }
         if (compared == 0)
             continue;
         const double score = double(agreed) / compared;
-        checked.push_back({dy, score, agreed});
+        const double rowScore = infoRows > 0 ? double(matchedRows) / infoRows : 0.0;
+        checked.push_back({dy, score, agreed, rowScore, matchedRows});
         if (score >= minScore && agreed >= minVotes)
-            valid.push_back({dy, score, agreed});
+            valid.push_back({dy, score, agreed, rowScore, matchedRows});
     }
     if (valid.empty() && !checked.empty()) {
         const auto leader = std::max_element(checked.begin(), checked.end(), [](const Checked& l, const Checked& r) { return l.score < r.score; });
@@ -546,17 +710,64 @@ ScrollStitcher::Match ScrollStitcher::match(const Analysis& a, const Analysis& b
         for (const Checked& c : checked)
             if (std::abs(c.dy - leader->dy) >= 3)
                 other = std::max(other, c.score);
-        if (leader->dy != 0 && leader->score >= kClearScore && leader->votes >= kClearVotes && leader->score >= kClearMargin * other)
+        if (leader->dy != 0 && leader->score >= kClearScore && leader->votes >= kClearVotes && leader->score >= kClearMargin * other) {
             valid.push_back(*leader);
+        } else {
+            // Large animated GIF/video in a sparse chat/feed window can dominate
+            // raw segment count while surrounding text rows still move rigidly.
+            const Checked* rowLeader = nullptr;
+            for (const Checked& c : checked) {
+                if (c.dy == 0 || c.votes < kClearVotes || c.matchedRows < 32)
+                    continue;
+                if (!rowLeader || c.rowScore > rowLeader->rowScore
+                    || (c.rowScore == rowLeader->rowScore && c.score > rowLeader->score))
+                    rowLeader = &c;
+            }
+            if (rowLeader && rowLeader->score >= 0.22 && rowLeader->rowScore >= 0.35) {
+                double otherScore = 0;
+                double otherRowScore = 0;
+                for (const Checked& c : checked) {
+                    if (std::abs(c.dy - rowLeader->dy) >= 3) {
+                        otherScore = std::max(otherScore, c.score);
+                        otherRowScore = std::max(otherRowScore, c.rowScore);
+                    }
+                }
+                if (rowLeader->score >= 2.5 * otherScore && rowLeader->rowScore >= 2.5 * otherRowScore)
+                    valid.push_back(*rowLeader);
+            }
+        }
     }
     // 5b. Subpixel fallback for smooth-scrolling / fractional-DPI frames where
     // every text row sits at a fractional vertical phase between adjacent rows.
-    if (valid.empty() && !candidates.empty()) {
+    // Include dy == 0 and allow refinement back to 0 so stationary frames with
+    // in-place animation never oscillate as fake +/-1 px shifts.
+    if (valid.empty() && !checked.empty()) {
+        std::vector<int> subCandidates;
+        subCandidates.reserve(12);
+        subCandidates.push_back(0);
+        if (m_velocity != 0 && std::abs(m_velocity) <= range)
+            subCandidates.push_back(m_velocity);
+        if (expectDy && std::abs(*expectDy) <= range)
+            subCandidates.push_back(*expectDy);
+        std::vector<size_t> order(checked.size());
+        for (size_t i = 0; i < checked.size(); ++i)
+            order[i] = i;
+        const size_t topScore = std::min<size_t>(6, order.size());
+        std::partial_sort(order.begin(), order.begin() + ptrdiff_t(topScore), order.end(),
+            [&](size_t l, size_t r) { return checked[l].score > checked[r].score; });
+        for (size_t i = 0; i < topScore; ++i)
+            subCandidates.push_back(checked[order[i]].dy);
+        const size_t topRow = std::min<size_t>(2, order.size());
+        std::partial_sort(order.begin(), order.begin() + ptrdiff_t(topRow), order.end(),
+            [&](size_t l, size_t r) { return checked[l].rowScore > checked[r].rowScore; });
+        for (size_t i = 0; i < topRow; ++i)
+            subCandidates.push_back(checked[order[i]].dy);
+        std::sort(subCandidates.begin(), subCandidates.end());
+        subCandidates.erase(std::unique(subCandidates.begin(), subCandidates.end()), subCandidates.end());
+
         std::vector<Checked> subChecked;
-        subChecked.reserve(candidates.size());
-        for (int dy : candidates) {
-            if (dy == 0)
-                continue;
+        subChecked.reserve(subCandidates.size());
+        for (int dy : subCandidates) {
             int compared = 0;
             int agreed = 0;
             for (int y = std::max(zoneFrom, zoneFrom - dy); y < std::min(zoneTo, zoneTo - dy); ++y) {
@@ -572,51 +783,65 @@ ScrollStitcher::Match ScrollStitcher::match(const Analysis& a, const Analysis& b
                 subChecked.push_back({dy, double(agreed) / compared, agreed});
         }
         if (!subChecked.empty()) {
+            const auto meanSadFor = [&](int cand) -> double {
+                int64_t sadSum = 0;
+                int64_t pxSum = 0;
+                for (int y = std::max(zoneFrom, zoneFrom - cand); y < std::min(zoneTo, zoneTo - cand); ++y) {
+                    const int ya = y + cand;
+                    for (int k = 0; k < kSegments; ++k) {
+                        if (m.fixed[size_t(k)] || (b.actAt(y, k) == 0 && a.actAt(ya, k) == 0))
+                            continue;
+                        sadSum += b.segmentSad(y, a, ya, k);
+                        pxSum += b.seg[size_t(k) + 1] - b.seg[size_t(k)];
+                    }
+                }
+                return pxSum > 0 ? double(sadSum) / double(pxSum) : 1e18;
+            };
             const auto refineIntDy = [&](int dy) {
                 int bestDy = dy;
                 double bestMeanSad = 1e18;
-                for (int d = -1; d <= 1; ++d) {
-                    const int cand = dy + d;
-                    if (cand == 0 || cand < -range || cand > range)
-                        continue;
-                    int64_t sadSum = 0;
-                    int64_t pxSum = 0;
-                    for (int y = std::max(zoneFrom, zoneFrom - cand); y < std::min(zoneTo, zoneTo - cand); ++y) {
-                        const int ya = y + cand;
-                        for (int k = 0; k < kSegments; ++k) {
-                            if (m.fixed[size_t(k)] || (b.actAt(y, k) == 0 && a.actAt(ya, k) == 0))
-                                continue;
-                            sadSum += b.segmentSad(y, a, ya, k);
-                            pxSum += b.seg[size_t(k) + 1] - b.seg[size_t(k)];
-                        }
+                const auto tryCand = [&](int cand) {
+                    if (cand < -range || cand > range)
+                        return;
+                    const double sad = meanSadFor(cand);
+                    if (sad < bestMeanSad) {
+                        bestMeanSad = sad;
+                        bestDy = cand;
                     }
-                    if (pxSum > 0) {
-                        const double meanSad = double(sadSum) / double(pxSum);
-                        if (meanSad < bestMeanSad) {
-                            bestMeanSad = meanSad;
-                            bestDy = cand;
-                        }
-                    }
-                }
+                };
+                for (int d = -1; d <= 1; ++d)
+                    tryCand(dy + d);
+                if (std::abs(dy) <= 2)
+                    tryCand(0);
                 return bestDy;
             };
             const auto leader = std::max_element(subChecked.begin(), subChecked.end(),
                 [](const Checked& l, const Checked& r) { return l.score < r.score; });
             double other = 0;
-            for (const Checked& c : subChecked)
+            double zeroScore = 0;
+            for (const Checked& c : subChecked) {
+                if (c.dy == 0)
+                    zeroScore = c.score;
                 if (std::abs(c.dy - leader->dy) >= 3)
                     other = std::max(other, c.score);
+            }
             const int needVotes = std::max(minVotes, kSubpixelVotes);
-            if (leader->score >= 0.88 && leader->votes >= std::max(needVotes, 64)) {
+            if (leader->dy == 0) {
+                if (leader->score >= kSubpixelScore && leader->votes >= needVotes) {
+                    m.unchanged = true;
+                    return m;
+                }
+            } else if (leader->score >= 0.88 && leader->votes >= std::max(needVotes, 64)) {
                 // High-consensus subpixel match (including repeating tables where
                 // multiple shifts score >= 0.88): pass all near-tied shifts to the
                 // velocity / expected-shift tie-breaker in step 6.
                 for (const Checked& c : subChecked) {
                     if (c.score >= leader->score - kTieScore && c.votes >= needVotes)
-                        valid.push_back({refineIntDy(c.dy), c.score, c.votes});
+                        valid.push_back({c.dy == 0 ? 0 : refineIntDy(c.dy), c.score, c.votes});
                 }
             } else if (leader->score >= kSubpixelScore && leader->votes >= needVotes
-                && leader->score >= kSubpixelMargin * other) {
+                && leader->score >= kSubpixelMargin * other
+                && (std::abs(leader->dy) > 2 || zeroScore < leader->score - kTieScore || meanSadFor(leader->dy) < meanSadFor(0))) {
                 valid.push_back({refineIntDy(leader->dy), leader->score, leader->votes});
             }
         }
@@ -671,6 +896,191 @@ bool ScrollStitcher::bounced(const Analysis& end, const Analysis& now, int gone,
     return true;
 }
 
+std::optional<ScrollStitcher::RelocHit> ScrollStitcher::relocalize(const Analysis& b) const
+{
+    const int h = b.h;
+    const int y0 = m_bandsKnown ? m_top : 0;
+    const int y1 = m_bandsKnown ? h - m_bottom : h;
+    if (y1 - y0 < kMinOverlap || m_sigs.empty() || m_far.isNull() || m_farOffset <= m_nearOffset)
+        return std::nullopt;
+    const int span = m_farOffset - m_nearOffset + 1;
+    if (span <= 1)
+        return std::nullopt;
+
+    std::vector<int> votes(size_t(span), 0);
+    const int ycStart = std::max(m_nearOffset + y0, m_sigStart);
+    const int ycEnd = std::min(m_farOffset + y1, m_sigStart + int(m_sigs.size()));
+    const auto voteBin = [&](int k, int meanQ, int actB, int yc) {
+        const std::span<const int> rows = b.rowsIn(k, meanQ, actB);
+        if (rows.empty() || int(rows.size()) > kMaxBucket)
+            return;
+        for (int yb : rows) {
+            if (yb < y0 || yb >= y1)
+                continue;
+            const int off = yc - yb;
+            if (off >= m_nearOffset && off <= m_farOffset)
+                ++votes[size_t(off - m_nearOffset)];
+        }
+    };
+    for (int yc = ycStart; yc < ycEnd; yc += 2) {
+        const RowSig& sig = m_sigs[size_t(yc - m_sigStart)];
+        for (int k = 0; k < kSegments; ++k) {
+            if (m_fixedColsKnown && m_fixedCols[size_t(k)])
+                continue;
+            const uint8_t act = sig.act[size_t(k)];
+            if (act == 0)
+                continue;
+            const int q = sig.mean[size_t(k)] >> 2;
+            for (int dq = -1; dq <= 1; ++dq) {
+                if (q + dq >= 0 && q + dq < kMeanBins)
+                    voteBin(k, q + dq, act, yc);
+            }
+        }
+    }
+
+    // Gather up to 6 well-separated vote peaks.
+    struct Peak {
+        int votes = 0;
+        int offset = 0;
+    };
+    std::vector<Peak> peaks;
+    peaks.reserve(6);
+    for (int i = 0; i < span; ++i) {
+        const int v = votes[size_t(i)];
+        if (v < 8)
+            continue;
+        const int off = m_nearOffset + i;
+        bool merged = false;
+        for (Peak& p : peaks) {
+            if (std::abs(p.offset - off) < 8) {
+                if (v > p.votes) {
+                    p.votes = v;
+                    p.offset = off;
+                }
+                merged = true;
+                break;
+            }
+        }
+        if (merged)
+            continue;
+        if (peaks.size() < 6) {
+            peaks.push_back({v, off});
+        } else {
+            auto weakest = std::min_element(peaks.begin(), peaks.end(),
+                [](const Peak& l, const Peak& r) { return l.votes < r.votes; });
+            if (v > weakest->votes)
+                *weakest = {v, off};
+        }
+    }
+    if (peaks.empty())
+        return std::nullopt;
+
+    struct Eval {
+        int offset = 0;
+        double score = 0;
+        int agreed = 0;
+        double rowScore = 0;
+        int matchedRows = 0;
+    };
+    const auto evalOffset = [&](int off) -> Eval {
+        Eval e;
+        e.offset = off;
+        int compared = 0;
+        int infoRows = 0;
+        for (int y = y0; y < y1; ++y) {
+            const int cy = off + y;
+            const uint32_t* cRow = canvasRow(cy);
+            if (!cRow)
+                continue;
+            const RowSig* sig = (cy >= m_sigStart && cy < m_sigStart + int(m_sigs.size()))
+                ? &m_sigs[size_t(cy - m_sigStart)]
+                : nullptr;
+            const uint8_t* bLum = b.lumRow(y);
+            int rComp = 0;
+            int rAgree = 0;
+            for (int k = 0; k < kSegments; ++k) {
+                if (m_fixedColsKnown && m_fixedCols[size_t(k)])
+                    continue;
+                if (b.actAt(y, k) == 0 && (!sig || sig->act[size_t(k)] == 0))
+                    continue;
+                const int x0 = b.seg[size_t(k)];
+                const int x1 = b.seg[size_t(k) + 1];
+                const int n = x1 - x0;
+                int sad = 0;
+                for (int x = x0; x < x1; ++x)
+                    sad += std::abs(int(bLum[x]) - luma(cRow[x]));
+                ++rComp;
+                if (sad <= kTolerance * n)
+                    ++rAgree;
+            }
+            if (rComp > 0) {
+                compared += rComp;
+                e.agreed += rAgree;
+                ++infoRows;
+                if (rAgree * 4 >= rComp * 3)
+                    ++e.matchedRows;
+            }
+        }
+        if (compared > 0)
+            e.score = double(e.agreed) / compared;
+        if (infoRows > 0)
+            e.rowScore = double(e.matchedRows) / infoRows;
+        return e;
+    };
+
+    std::vector<Eval> evals;
+    evals.reserve(peaks.size());
+    for (const Peak& p : peaks) {
+        Eval bestPeak;
+        for (int d = -1; d <= 1; ++d) {
+            const int cand = std::clamp(p.offset + d, m_nearOffset, m_farOffset);
+            const Eval e = evalOffset(cand);
+            if (e.score > bestPeak.score || (e.score == bestPeak.score && e.agreed > bestPeak.agreed))
+                bestPeak = e;
+        }
+        evals.push_back(bestPeak);
+    }
+
+    const auto bestIt = std::max_element(evals.begin(), evals.end(),
+        [](const Eval& l, const Eval& r) { return l.score < r.score; });
+    Eval best = *bestIt;
+    Eval runnerUp;
+    for (const Eval& e : evals) {
+        if (std::abs(e.offset - best.offset) >= 16) {
+            if (e.score > runnerUp.score)
+                runnerUp = e;
+        }
+    }
+
+    if (best.agreed < std::max(64, kMinVotes * 2) || best.matchedRows < 24)
+        return std::nullopt;
+
+    // Repeating canvas tie-breaker: if multiple distant matches are near-exact,
+    // pick the one closest to m_prevOffset if it is within 2 viewports.
+    if (best.score >= 0.88 && runnerUp.score >= best.score - 0.05) {
+        const Eval* nearest = nullptr;
+        for (const Eval& e : evals) {
+            if (e.score < best.score - 0.05 || e.agreed < std::max(64, kMinVotes * 2))
+                continue;
+            if (!nearest || std::abs(e.offset - m_prevOffset) < std::abs(nearest->offset - m_prevOffset))
+                nearest = &e;
+        }
+        if (nearest && std::abs(nearest->offset - m_prevOffset) <= 2 * h)
+            return RelocHit {nearest->offset, nearest->score, nearest->agreed};
+        return std::nullopt;
+    }
+
+    if (best.score >= 0.78 && (best.score >= runnerUp.score + 0.06 || runnerUp.score < 0.70))
+        return RelocHit {best.offset, best.score, best.agreed};
+
+    // Relocalize even when a large animated GIF/video plays in the viewport.
+    if (best.score >= 0.30 && best.rowScore >= 0.45 && best.agreed >= kClearVotes
+        && best.score >= 2.5 * runnerUp.score && best.rowScore >= 2.5 * runnerUp.rowScore)
+        return RelocHit {best.offset, best.score, best.agreed};
+
+    return std::nullopt;
+}
+
 ScrollStitcher::Step ScrollStitcher::add(const QImage& given, std::optional<int> expectDy, bool guess)
 {
     // Sideways, only a frame the size of the region (turned here) is taken.
@@ -693,6 +1103,7 @@ ScrollStitcher::Step ScrollStitcher::add(const QImage& given, std::optional<int>
     if (!m_prev) {
         // The first frame is the start of everything, all of it.
         const bool ok = write(b->image, 0, 0, h);
+        writeSigs(*b, 0, 0, h);
         m_far = b->image;
         m_farOffset = 0;
         m_farFrom = 0;
@@ -700,6 +1111,8 @@ ScrollStitcher::Step ScrollStitcher::add(const QImage& given, std::optional<int>
         m_full = !ok;
         m_anchor = b;
         m_anchorOffset = 0;
+        m_nearAnalysis = b;
+        m_farAnalysis = b;
         m_prev = std::move(b);
         m_prevOffset = 0;
         return finish(m_full ? State::Full : State::Appended);
@@ -708,6 +1121,7 @@ ScrollStitcher::Step ScrollStitcher::add(const QImage& given, std::optional<int>
     const int stride = std::clamp(zone / 3, 48, 320);
     Match m;
     bool promoteAnchor = false;
+    bool jumpedAnchor = false;
     const bool tryAnchor = m_anchor && m_anchor != m_prev
         && std::abs(m_prevOffset - m_anchorOffset) <= stride;
     if (tryAnchor) {
@@ -742,19 +1156,67 @@ ScrollStitcher::Step ScrollStitcher::add(const QImage& given, std::optional<int>
         m = match(*m_prev, *b, expectDy);
         promoteAnchor = tryAnchor; // only promote early when the existing anchor could no longer match
     }
+    if (!m.found && !m.unchanged) {
+        const auto tryRef = [&](const std::shared_ptr<const Analysis>& ref, int refOffset) {
+            if (!ref || ref == m_prev || ref == m_anchor)
+                return false;
+            Match rm = match(*ref, *b, std::nullopt);
+            if (!rm.unchanged && !(rm.found && rm.score >= 0.72))
+                return false;
+            const int targetOffset = refOffset + (rm.found ? rm.dy : 0);
+            if (targetOffset == m_prevOffset) {
+                m.unchanged = true;
+            } else {
+                m = rm;
+                m.unchanged = false;
+                m.found = true;
+                m.dy = targetOffset - m_prevOffset;
+                if (rm.unchanged) {
+                    m.score = 1.0;
+                    m.votes = zone;
+                }
+            }
+            promoteAnchor = true;
+            jumpedAnchor = true;
+            return true;
+        };
+        if (!tryRef(m_farAnalysis, m_farOffset))
+            tryRef(m_nearAnalysis, m_nearOffset);
+    }
+    if (!m.found && !m.unchanged && height() > h) {
+        if (const auto hit = relocalize(*b)) {
+            const int prevOff = m_prevOffset;
+            m_prev = std::move(b);
+            m_prevOffset = hit->offset;
+            m_anchor = m_prev;
+            m_anchorOffset = hit->offset;
+            m_lost = 0;
+            m_velocity = 0;
+            step.dy = hit->offset - prevOff;
+            step.score = hit->score;
+            step.votes = hit->votes;
+            return finish(State::Behind);
+        }
+    }
     const bool atEnd = m_prevOffset == m_farOffset; // the frame before is the one the result ends with
     if (m.unchanged) {
         if (atEnd) {
             // The end's newest look: a picture that loaded, a fade that ended.
             write(b->image, m_farOffset, m_farFrom, h - m_bottom);
+            writeSigs(*b, m_farOffset, m_farFrom, h);
             m_far = b->image;
+            m_farAnalysis = b;
         } else if (m_prevOffset == m_nearOffset) {
             const int to = h - m_bottom - (h - m_top - m_bottom) / 6;
             write(b->image, m_nearOffset, 0, to);
+            writeSigs(*b, m_nearOffset, 0, to);
             m_farFrom = std::max(m_farFrom, std::min(h - m_bottom, m_nearOffset + to - m_farOffset));
+            m_nearAnalysis = b;
         }
-        if (m_prevOffset == m_anchorOffset)
+        if (m_prevOffset == m_anchorOffset || promoteAnchor) {
             m_anchor = b;
+            m_anchorOffset = m_prevOffset;
+        }
         m_prev = std::move(b);
         m_lost = 0;
         return finish(State::Unchanged);
@@ -773,8 +1235,8 @@ ScrollStitcher::Step ScrollStitcher::add(const QImage& given, std::optional<int>
     step.dy = m.dy;
     step.score = m.score;
     step.votes = m.votes;
-    m_velocity = m.dy;
-    if (m.bandsMeasured && !step.predicted) {
+    m_velocity = jumpedAnchor ? 0 : m.dy;
+    if (m.bandsMeasured && !step.predicted && !jumpedAnchor) {
         if (!m_bandsKnown) {
             m_top = m.top;
             m_bottom = m.bottom;
@@ -783,37 +1245,56 @@ ScrollStitcher::Step ScrollStitcher::add(const QImage& given, std::optional<int>
             if (m.top < m_top) {
                 m_top = m.top;
                 m_topStable = 0;
-            } else if (m.top > m_top && m.top <= h / 3 && hasBarContent(*b, m_top, m.top)) {
+                m_topTravel = 0;
+            } else if (std::abs(m.dy) >= 8 && m.top > m_top && m.top <= h / 3 && hasBarContent(*b, m_top, m.top)) {
                 if (m_topStable > 0 && std::abs(m.top - m_topCandidate) <= 2) {
                     ++m_topStable;
+                    m_topTravel += std::abs(m.dy);
                 } else {
                     m_topCandidate = m.top;
                     m_topStable = 1;
+                    m_topTravel = std::abs(m.dy);
                 }
-                if (m_topStable >= 3) {
+                if (m_topStable >= 3 && m_topTravel >= 48) {
                     m_top = std::min(m_topCandidate, m.top);
                     m_topStable = 0;
+                    m_topTravel = 0;
                 }
-            } else {
+            } else if (std::abs(m.dy) >= 8) {
                 m_topStable = 0;
+                m_topTravel = 0;
             }
 
             if (m.bottom < m_bottom) {
                 m_bottom = m.bottom;
                 m_bottomStable = 0;
-            } else if (m.bottom > m_bottom && m.bottom <= h / 3 && hasBarContent(*b, h - m.bottom, h - m_bottom)) {
+                m_bottomTravel = 0;
+            } else if (std::abs(m.dy) >= 8 && m.bottom > m_bottom && m.bottom <= h / 3 && hasBarContent(*b, h - m.bottom, h - m_bottom)) {
                 if (m_bottomStable > 0 && std::abs(m.bottom - m_bottomCandidate) <= 2) {
                     ++m_bottomStable;
+                    m_bottomTravel += std::abs(m.dy);
                 } else {
                     m_bottomCandidate = m.bottom;
                     m_bottomStable = 1;
+                    m_bottomTravel = std::abs(m.dy);
                 }
-                if (m_bottomStable >= 3) {
+                if (m_bottomStable >= 3 && m_bottomTravel >= 48) {
                     m_bottom = std::min(m_bottomCandidate, m.bottom);
                     m_bottomStable = 0;
+                    m_bottomTravel = 0;
                 }
-            } else {
+            } else if (std::abs(m.dy) >= 8) {
                 m_bottomStable = 0;
+                m_bottomTravel = 0;
+            }
+        }
+        if (std::abs(m.dy) >= 12) {
+            if (!m_fixedColsKnown) {
+                m_fixedCols = m.fixed;
+                m_fixedColsKnown = true;
+            } else {
+                for (int k = 0; k < kSegments; ++k)
+                    m_fixedCols[size_t(k)] = m_fixedCols[size_t(k)] && m.fixed[size_t(k)];
             }
         }
     }
@@ -830,11 +1311,13 @@ ScrollStitcher::Step ScrollStitcher::add(const QImage& given, std::optional<int>
         const int to = std::clamp(begin - offset, safeTo, h - m_bottom);
         m_nearOffset = std::max(offset, m_farOffset + m_farRows - limitHeight());
         const bool ok = write(b->image, offset, 0, to);
+        writeSigs(*b, offset, 0, to);
         // The new content can replace the old top frame's header in the
         // overlap. Keep only the untouched suffix of the bottommost frame.
         m_farFrom = std::max(m_farFrom, std::min(h - m_bottom, offset + to - m_farOffset));
         m_prev = std::move(b);
         m_prevOffset = offset;
+        m_nearAnalysis = m_prev;
         updateAnchor(false);
         m_previewTop = true;
         if (!ok || height() >= limitHeight()) {
@@ -853,6 +1336,8 @@ ScrollStitcher::Step ScrollStitcher::add(const QImage& given, std::optional<int>
             m_farOffset = offset;
             m_farFrom = std::max(m_top, h / 6);
             m_farRows = std::min(h, m_nearOffset + limitHeight() - offset);
+            writeSigs(*b, offset, m_farFrom, h);
+            m_farAnalysis = b;
             trimmedBounce = true;
         } else if (m_prevOffset == m_nearOffset && !step.predicted && bounced(*m_prev, *b, offset - m_nearOffset, true)) {
             // The symmetric bounce at the top must remove its blank rows
@@ -860,7 +1345,9 @@ ScrollStitcher::Step ScrollStitcher::add(const QImage& given, std::optional<int>
             m_nearOffset = offset;
             const int to = h - m_bottom - (h - m_top - m_bottom) / 6;
             write(b->image, offset, 0, to);
+            writeSigs(*b, offset, 0, to);
             m_farFrom = std::max(m_farFrom, std::min(h - m_bottom, offset + to - m_farOffset));
+            m_nearAnalysis = b;
             trimmedBounce = true;
         }
         m_prev = std::move(b);
@@ -880,10 +1367,12 @@ ScrollStitcher::Step ScrollStitcher::add(const QImage& given, std::optional<int>
     const int protectTop = std::max({m_top, pairTop, h / 4});
     const int from = std::clamp(canvasEnd - offset, m_top, protectTop);
     const bool ok = write(m_prev->image, offset, from, h - m_bottom);
+    writeSigs(*m_prev, offset, from, h);
     m_far = m_prev->image;
     m_farOffset = offset;
     m_farFrom = from;
     m_farRows = std::min(h, m_nearOffset + limitHeight() - offset);
+    m_farAnalysis = m_prev;
     m_previewTop = false;
     if (!ok || height() >= limitHeight()) {
         m_full = true;

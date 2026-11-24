@@ -50,9 +50,13 @@ void ScrollAutoEngine::reconfigure(Config config, bool resetTriedSideways)
     m_windowMovedPx = 0.0;
     m_inFlightPx = 0.0;
     m_backoffScale = 1.0;
+    m_lastSentAmount = 1.0;
+    m_fractionalWorked = false;
+    m_fractionalUnsupported = false;
     m_unackedTicks = 0;
     m_otherMethodTicks = 0;
     m_reverseFrames = 0;
+    m_probeLostFrames = 0;
     m_probeSentMs = -1;
     m_verifySettled = false;
     m_recoverReversed = false;
@@ -67,6 +71,7 @@ void ScrollAutoEngine::resetFlowTiming(qint64 nowMs)
     m_inFlightPx = 0.0;
     m_unackedTicks = 0;
     m_reverseFrames = 0;
+    m_probeLostFrames = 0;
     m_probeSentMs = -1;
     m_probeAmount = 0.0;
     m_verifySettled = false;
@@ -122,19 +127,43 @@ double ScrollAutoEngine::targetVelocity(int zonePx) const
     return pxPerSec * m_backoffScale;
 }
 
+int ScrollAutoEngine::targetWheelTickMs() const
+{
+    switch (m_config.speed) {
+    case ScrollSpeed::Slow:
+        return 115;
+    case ScrollSpeed::Fast:
+        return 65;
+    case ScrollSpeed::Normal:
+        break;
+    }
+    return 85;
+}
+
 void ScrollAutoEngine::computeTick(int zonePx, ScrollMethod method, double& amount, int& intervalMs) const
 {
     const double z = std::max(120.0, double(zonePx));
     const double velocity = targetVelocity(zonePx);
     if (isWheel(method)) {
         const double unitPx = m_pxPerUnit > 0.0 ? m_pxPerUnit : (m_config.pageScrollWheel ? z * 0.8 : 110.0);
-        const double maxStepPx = std::max(32.0, z * 0.32);
-        amount = 1.0;
-        if (unitPx > maxStepPx) {
+        const double maxStepPx = std::max(32.0, z * 0.30);
+        const int targetMs = targetWheelTickMs();
+        const double desiredStepPx = std::min(maxStepPx, velocity * (targetMs / 1000.0));
+        if (!m_fractionalUnsupported && !m_config.pageScrollWheel) {
+            // Smooth fractional wheel ticks keep interval well inside smooth-scroll
+            // ease curves (~160 ms) so overlapping curves glide at constant velocity.
+            const double maxAmount = std::max(0.35, std::min(2.0, maxStepPx / unitPx));
+            amount = std::clamp(desiredStepPx / unitPx, 0.35, maxAmount);
+            if (amount > 0.85 && amount < 1.0 && 1000.0 * unitPx / velocity <= targetMs + 25)
+                amount = 1.0;
+        } else if (m_config.pageScrollWheel && unitPx > maxStepPx) {
             amount = std::clamp(maxStepPx / unitPx, 0.25, 1.0);
-        } else if (1000.0 * unitPx / velocity < kMinWheelTickMs) {
-            const double wanted = velocity * (kMinWheelTickMs / 1000.0) / unitPx;
-            amount = std::clamp(wanted, 1.0, std::min(2.0, maxStepPx / unitPx));
+        } else {
+            amount = 1.0;
+            if (1000.0 * unitPx / velocity < kMinWheelTickMs) {
+                const double wanted = velocity * (kMinWheelTickMs / 1000.0) / unitPx;
+                amount = std::clamp(wanted, 1.0, std::min(2.0, maxStepPx / unitPx));
+            }
         }
         const double stepPx = amount * unitPx;
         intervalMs = std::clamp(int(std::lround(1000.0 * stepPx / velocity)), kMinWheelTickMs, kMaxWheelTickMs);
@@ -225,6 +254,7 @@ void ScrollAutoEngine::onScrollSent(qint64 nowMs, const ScrollResult& result, do
         const double unitPx = m_pxPerUnit > 0.0
             ? m_pxPerUnit
             : (isWheel(result.method) ? (m_config.pageScrollWheel ? std::max(120.0, double(zonePx)) * 0.8 : 110.0) : std::max(120.0, double(zonePx)));
+        m_lastSentAmount = amount;
         m_windowAmount += amount;
         m_inFlightPx += amount * unitPx;
         ++m_unackedTicks;
@@ -250,7 +280,7 @@ void ScrollAutoEngine::onFrame(qint64 nowMs, const ScrollStitcher::Step& step, b
             // Reconnected cleanly! Back off target speed slightly if reverse step was needed.
             if (m_recoverReversed)
                 m_backoffScale = std::max(0.50, m_backoffScale * 0.75);
-            m_phase = Phase::Streaming;
+            m_phase = m_ladder.anyWorked() ? Phase::Streaming : Phase::Probing;
             resetFlowTiming(nowMs);
             m_nextTickAtMs = nowMs + 60;
         }
@@ -258,6 +288,8 @@ void ScrollAutoEngine::onFrame(qint64 nowMs, const ScrollStitcher::Step& step, b
     }
 
     if (step.state == ScrollStitcher::State::Lost) {
+        if (m_phase == Phase::Probing && !m_ladder.anyWorked() && ++m_probeLostFrames < 3)
+            return;
         if (m_phase == Phase::Streaming || m_phase == Phase::Probing || m_phase == Phase::VerifyingEnd) {
             m_phase = Phase::Recovering;
             m_recoverStartedMs = nowMs;
@@ -269,6 +301,7 @@ void ScrollAutoEngine::onFrame(qint64 nowMs, const ScrollStitcher::Step& step, b
         }
         return;
     }
+    m_probeLostFrames = 0;
 
     if (step.state == ScrollStitcher::State::Unchanged)
         return;
@@ -283,26 +316,40 @@ void ScrollAutoEngine::onFrame(qint64 nowMs, const ScrollStitcher::Step& step, b
             m_ladder.moved(forwardPx, amt);
             m_windowAmount = amt;
             m_windowMovedPx = double(forwardPx);
-            if (m_pxPerUnit <= 0.0)
-                m_pxPerUnit = std::clamp(double(forwardPx) / amt, 24.0, std::max(120.0, double(zonePx)));
+            const double defaultUnit = isWheel(activeMethod)
+                ? (m_config.pageScrollWheel ? std::max(120.0, double(zonePx)) * 0.8 : 110.0)
+                : std::max(120.0, double(zonePx));
+            if (m_pxPerUnit <= 0.0) {
+                // Smooth-scrolling apps start a notch with a 2..20 px first frame.
+                // Never calibrate below defaultUnit from a single ramp-up frame;
+                // let the rolling window measure the full distance per notch.
+                const double measured = double(forwardPx) / amt;
+                m_pxPerUnit = measured >= 60.0
+                    ? std::clamp(measured, 60.0, std::max(160.0, double(zonePx) * 1.2))
+                    : defaultUnit;
+            }
+            const double remainingProbePx = std::max(0.0, amt * m_pxPerUnit - double(forwardPx));
             m_phase = Phase::Streaming;
             resetFlowTiming(nowMs);
+            m_inFlightPx = remainingProbePx;
             double nextAmt = 1.0;
-            int intervalMs = 60;
+            int intervalMs = 80;
             computeTick(zonePx, activeMethod, nextAmt, intervalMs);
-            m_nextTickAtMs = nowMs + std::min(intervalMs, 80);
+            m_nextTickAtMs = nowMs + std::min(intervalMs, 90);
             return;
         }
 
         if (m_phase == Phase::Streaming) {
             m_ladder.moved(forwardPx, 0.0); // clears stall counters without distorting perUnit on partial frames
+            if (isWheel(activeMethod) && m_lastSentAmount < 0.99)
+                m_fractionalWorked = true;
             m_lastMovedMs = nowMs;
             m_reverseFrames = 0;
             m_unackedTicks = 0;
             m_inFlightPx = std::max(0.0, m_inFlightPx - double(forwardPx));
             m_windowMovedPx += double(forwardPx);
-            if (m_windowAmount >= 2.0 && m_windowMovedPx >= 40.0) {
-                const double measured = std::clamp(m_windowMovedPx / m_windowAmount, 12.0, std::max(240.0, double(zonePx) * 1.5));
+            if (m_windowAmount >= 1.5 && m_windowMovedPx >= 40.0) {
+                const double measured = std::clamp(m_windowMovedPx / m_windowAmount, 24.0, std::max(240.0, double(zonePx) * 1.5));
                 m_pxPerUnit = m_pxPerUnit > 0.0 ? (0.65 * m_pxPerUnit + 0.35 * measured) : measured;
                 m_windowAmount = 0.0;
                 m_windowMovedPx = 0.0;
@@ -410,6 +457,17 @@ ScrollAutoEngine::Command ScrollAutoEngine::next(qint64 nowMs, int zonePx, bool 
         const double maxInFlight = std::max(80.0, double(zonePx) * 0.42);
         const bool backpressureBlocked = m_inFlightPx >= maxInFlight || m_unackedTicks >= 3;
         const qint64 sinceMoved = nowMs - m_lastMovedMs;
+        // Legacy Win32 controls that truncate sub-120 wheel deltas to 0: detect
+        // quickly and drop back to integer 1.0 notches without stalling.
+        if (!m_fractionalWorked && !m_fractionalUnsupported && isWheel(m_ladder.method())
+            && m_lastSentAmount < 0.99 && m_unackedTicks >= 2 && sinceMoved >= 180) {
+            m_fractionalUnsupported = true;
+            m_unackedTicks = 0;
+            m_inFlightPx = 0.0;
+            m_windowAmount = 0.0;
+            m_windowMovedPx = 0.0;
+            m_nextTickAtMs = nowMs;
+        }
         if ((m_unackedTicks >= 1 && backpressureBlocked && sinceMoved >= kStreamHardStallMs)
             || (m_unackedTicks >= 2 && sinceMoved >= kStreamStallMs)) {
             m_phase = Phase::VerifyingEnd;
@@ -487,10 +545,11 @@ ScrollAutoEngine::Command ScrollAutoEngine::next(qint64 nowMs, int zonePx, bool 
                 cmd.timeoutMs = int(std::clamp<qint64>(kRecoverWaitMs - elapsed, 10, kMaxWaitSliceMs));
                 return cmd;
             }
-            // Try one gentle reverse notch to reconnect overlap cleanly.
+            // Try one gentle reverse notch to reconnect overlap cleanly (only once
+            // we have actually scrolled forward in this session).
             m_recoverReversed = true;
             const ScrollMethod method = m_ladder.method();
-            if (method != ScrollMethod::Manual) {
+            if (m_ladder.anyWorked() && method != ScrollMethod::Manual) {
                 cmd.kind = CommandKind::SendScroll;
                 cmd.method = method;
                 cmd.amount = isWheel(method) ? 1.0 : 0.15;
