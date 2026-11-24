@@ -97,6 +97,18 @@ private:
     const QString m_exe;
 };
 
+// Qt's D3D11 swap chain waits up to a second at the start of every frame
+// for DWM to take one of the last two (main.cpp), which it does as it
+// composes the screen: a cloaked window's frames give it nothing to compose
+// (the pin editor draws up to four cloaked before it shows, the presenter's
+// ink one, an editor or overlay two as it closes), nor do those of one off
+// every screen. The GUI thread waits with the render thread.
+void dontWaitForDwm()
+{
+    if (!qEnvironmentVariableIsSet("QT_D3D_MAX_FRAME_LATENCY"))
+        qputenv("QT_D3D_MAX_FRAME_LATENCY", "0");
+}
+
 } // namespace
 
 extern "C" __declspec(dllexport) int winshunCaptureWorker(const wchar_t* appDirName)
@@ -151,6 +163,7 @@ extern "C" __declspec(dllexport) int winshunCaptureMain(const wchar_t* appDirNam
     // The font engine as Win顺 has it (main.cpp): FreeType, GDI for the software renderer.
     qputenv("QT_QPA_PLATFORM", software ? "windows:fontengine=gdi" : "windows:fontengine=freetype");
     qputenv("QT_D3D_NO_VBLANK_THREAD", "1");
+    dontWaitForDwm();
     QCoreApplication::setOrganizationName(u"WinShun"_s);
     QCoreApplication::setApplicationName(u"WinShun"_s);
     int argc = 1;
@@ -208,6 +221,7 @@ extern "C" __declspec(dllexport) int winshunCapturePreview(const wchar_t* appDir
     if (::_wputenv_s(L"QML_IMPORT_PATH", (appDir + u"/qml"_s).toStdWString().c_str()) != 0)
         return 3;
     QCoreApplication::setLibraryPaths({appDir});
+    dontWaitForDwm(); // as the capture runs
     QCoreApplication::setOrganizationName(u"WinShun"_s);
     QCoreApplication::setApplicationName(u"WinShun"_s);
     int argc = 1;

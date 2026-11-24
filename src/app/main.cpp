@@ -279,12 +279,13 @@ int main(int argc, char* argv[])
         qputenv("QT_QPA_PLATFORM", ws::Settings::resolveRenderer(ws::Settings::storedRenderer()) == u"software"
                                        ? "windows:fontengine=gdi" : "windows:fontengine=freetype");
     // Qt's D3D11 swap chain waits, at the start of every frame, for DWM to
-    // take one of the last two, for up to a second. DWM takes none from a
-    // cloaked window (the launcher shows cloaked until its rows are drawn,
-    // prewarmed windows stay cloaked), nor from one on another virtual
-    // desktop or off every screen; the GUI thread waits with the render
-    // thread, and new rows came a second late. Without the waitable object
-    // Present itself keeps the pace, and never for long.
+    // take one of the last two, for up to a second. DWM takes them as it
+    // composes the screen, and the frames of a cloaked window (the launcher
+    // shows cloaked until its rows are drawn, prewarmed windows stay
+    // cloaked) or of one off every screen give it nothing to compose: with
+    // nothing else changing on the screen a frame waited the full second,
+    // the GUI thread with the render thread, and new rows came that late.
+    // Without the waitable object the same runs had no wait at all.
     if (!qEnvironmentVariableIsSet("QT_D3D_MAX_FRAME_LATENCY"))
         qputenv("QT_D3D_MAX_FRAME_LATENCY", "0");
     if (preview || pieHelper || clipboardDisplay) {
