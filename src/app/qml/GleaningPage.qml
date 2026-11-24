@@ -11,6 +11,12 @@ Flickable {
 
     required property SettingsEditor editor
     required property Updater updater
+    property real edgePullY: 0
+    property real shownPullY: edgePullY
+    Behavior on shownPullY {
+        enabled: SystemTheme.animations
+        NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+    }
 
     readonly property var works: Gleaning.works.slice().sort((a, b) => Number(b.openSource) - Number(a.openSource))
     readonly property int openSourceCount: Gleaning.works.filter(w => w.openSource).length
@@ -193,7 +199,7 @@ Flickable {
         y: {
             const dpr = Screen.devicePixelRatio
             const deviceY = (page.y + page.contentItem.y + item.y) * dpr
-            return (Math.round(deviceY) - deviceY + 0.02) / dpr
+            return (Math.round(deviceY) - deviceY + 0.02) / dpr + page.shownPullY
         }
     }
     // A line further down in `bottom`, which Snapped puts on a device pixel:

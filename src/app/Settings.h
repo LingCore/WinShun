@@ -347,6 +347,14 @@ struct Settings {
     // so, the next run too (SavedWindowSize, state.ini; GitHub #401). Off:
     // each run at their default size, and what was saved is forgotten.
     bool rememberWindowSize = true;
+    // Wheel overscroll at the top/bottom of a settings page to flip to the
+    // previous or next tab/page (GitHub #445): off | light | standard | steady.
+    static constexpr QStringView kSettingsEdgeScrollModes[] {u"off", u"light", u"standard", u"steady"};
+    static bool isSettingsEdgeScrollMode(QStringView mode) noexcept
+    {
+        return std::ranges::find(kSettingsEdgeScrollModes, mode) != std::end(kSettingsEdgeScrollModes);
+    }
+    QString settingsEdgeScroll = QStringLiteral("standard");
     // The settings window's 捐赠 button stands on the 拾穗计划 page instead of
     // in its title bar: moved there by the × beside it, after a word from the
     // author (DonateMoveDialog), put back by the arrow beside it there (GitHub #402).

@@ -984,6 +984,18 @@ private slots:
             }
         }
     }
+
+    void settingsEdgeScrollRoundTrip()
+    {
+        const State state = defaultState();
+        for (const QString& mode : {u"off"_s, u"light"_s, u"steady"_s}) {
+            const Plan plan = makePlan(state, one(u"Appearance/SettingsEdgeScroll"_s, mode), {});
+            QVERIFY2(plan.problems.isEmpty(), qPrintable(problemText(plan)));
+            QCOMPARE(plan.result.settings.settingsEdgeScroll, mode);
+        }
+        const Plan bad = makePlan(state, one(u"Appearance/SettingsEdgeScroll"_s, u"turbo"_s), {});
+        QVERIFY(!bad.problems.isEmpty());
+    }
 };
 
 QTEST_GUILESS_MAIN(AiSettingsTest)

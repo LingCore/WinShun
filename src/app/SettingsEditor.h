@@ -252,6 +252,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool openAnimation READ openAnimation WRITE setOpenAnimation NOTIFY changed FINAL)
     Q_PROPERTY(QString searchShadow READ searchShadow WRITE setSearchShadow NOTIFY changed FINAL) // standard | light | none
     Q_PROPERTY(bool rememberWindowSize READ rememberWindowSize WRITE setRememberWindowSize NOTIFY changed FINAL)
+    Q_PROPERTY(QString settingsEdgeScroll READ settingsEdgeScroll WRITE setSettingsEdgeScroll NOTIFY changed FINAL) // off | light | standard | steady
     Q_PROPERTY(bool donateOnGleaningPage READ donateOnGleaningPage WRITE setDonateOnGleaningPage NOTIFY changed FINAL)
     Q_PROPERTY(bool hoverTips READ hoverTips WRITE setHoverTips NOTIFY changed FINAL)
     Q_PROPERTY(QString previewWith READ previewWith WRITE setPreviewWith NOTIFY changed FINAL) // auto | builtin
@@ -917,6 +918,8 @@ public:
     void setSearchShadow(const QString& shadow);
     bool rememberWindowSize() const { return m_settings.rememberWindowSize; }
     void setRememberWindowSize(bool on);
+    QString settingsEdgeScroll() const { return m_settings.settingsEdgeScroll; }
+    void setSettingsEdgeScroll(const QString& mode);
     bool donateOnGleaningPage() const { return m_settings.donateOnGleaningPage; }
     void setDonateOnGleaningPage(bool on);
     bool hoverTips() const { return m_settings.hoverTips; }

@@ -478,7 +478,8 @@ Window {
     EdgeScrollGate {
         id: edgeGate
         objectName: "settingsEdgeScrollGate"
-        enabled: window.visible && !window.searching && !window.modalOpen
+        sensitivity: window.editor.settingsEdgeScroll
+        enabled: window.visible && window.editor.settingsEdgeScroll !== "off" && !window.searching && !window.modalOpen
                  && !window.editor.recordingHotkey && !window.pluginDetailActive
         canPrevious: window.adjacentView(-1) !== null
         canNext: window.adjacentView(1) !== null
@@ -494,6 +495,11 @@ Window {
         }
         onTriggered: (dir) => window.stepAdjacentView(dir)
     }
+    // Subtle elastic pull on the scrolled content while pushing past a boundary;
+    // strictly 0 at rest so ScrollPixelAlignment keeps resting text razor-sharp.
+    readonly property real edgePullY: edgeGate.direction !== 0
+                                      ? -edgeGate.direction * Theme.snap(7 * (1 - Math.pow(1 - edgeGate.progress, 2)), window.dpr)
+                                      : 0
 
     Connections {
         target: window.frame
@@ -1904,6 +1910,7 @@ Window {
         anchors.bottom: parent.bottom
         editor: window.editor
         updater: window.updater
+        edgePullY: window.warm ? window.edgePullY : 0
         onContentYChanged: {
             if (gleaningWheelScroll.writing || !visible)
                 return
@@ -2038,12 +2045,21 @@ Window {
             // shader's rounding would go either way with float error from one
             // scroll position to the next. A hair past the half, it always
             // goes the same way.
-            transform: ScrollPixelAlignment {
-                view: flick
-                viewY: flick.y
-                itemY: page.y
-                pixelBias: 0.02
-            }
+            transform: [
+                ScrollPixelAlignment {
+                    view: flick
+                    viewY: flick.y
+                    itemY: page.y
+                    pixelBias: 0.02
+                },
+                Translate {
+                    y: !window.warm ? window.edgePullY : 0
+                    Behavior on y {
+                        enabled: SystemTheme.animations
+                        NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+                    }
+                }
+            ]
 
             Column { // nothing fits the words typed
                 id: noResults
@@ -3361,6 +3377,33 @@ Window {
                         checked: window.editor.rememberWindowSize
                         Accessible.name: qsTr("记住窗口大小")
                         onToggled: (on) => window.editor.rememberWindowSize = on
+                    }
+                }
+
+                SettingRow { // GitHub #445
+                    id: settingsEdgeScrollRow
+                    objectName: "settingsEdgeScrollRow"
+                    readonly property var modes: ["off", "light", "standard", "steady"]
+                    title: qsTr("设置页滚轮触边翻页")
+                    keywords: qsTr("翻页;自动翻页;滚轮;触底;触顶;切页;灵敏度;误触;后退;前进;edge;scroll;page;sensitivity").split(";")
+                    description: {
+                        switch (window.editor.settingsEdgeScroll) {
+                        case "off":
+                            return qsTr("滚到顶部或底部时停在本页，不自动切到上一页或下一页")
+                        case "light":
+                            return qsTr("滚到头略停后继续滚约 2 格即可切页，反应更轻快")
+                        case "steady":
+                            return qsTr("滚到头停顿更久并继续滚约 5 格才切页，最大限度防误触")
+                        default:
+                            return qsTr("滚到头停顿后继续滚约 3 格切页，快速连滚不会误触发")
+                        }
+                    }
+
+                    ScopeTabs {
+                        objectName: "settingsEdgeScrollTabs"
+                        labels: [qsTr("关闭"), qsTr("轻快"), qsTr("标准"), qsTr("稳重")]
+                        current: Math.max(0, settingsEdgeScrollRow.modes.indexOf(window.editor.settingsEdgeScroll))
+                        onActivated: (index) => window.editor.settingsEdgeScroll = settingsEdgeScrollRow.modes[index]
                     }
                 }
 
@@ -7737,8 +7780,10 @@ Window {
         EdgeScrollHint {
             id: edgeScrollHint
             objectName: "settingsEdgeScrollHint"
+            anchors.fill: parent
             direction: edgeGate.direction
             progress: edgeGate.progress
+            ready: edgeGate.readyToSwitch
             targetLabel: window.adjacentLabel(window.adjacentView(edgeGate.direction))
             warm: window.warm
             dpr: window.dpr

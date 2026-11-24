@@ -182,12 +182,38 @@ QVariantMap SettingsHistory::jumpTo(int index)
     return currentEntry();
 }
 
+EdgeScrollGate::Preset EdgeScrollGate::presetFor(QStringView sensitivity) noexcept
+{
+    if (sensitivity == u"light")
+        return {240, 240, 140, 360, 240, 1500, 120};
+    if (sensitivity == u"steady")
+        return {600, 480, 420, 560, 360, 1800, 120};
+    return {360, 340, 280, 440, 300, 1600, 120};
+}
+
 EdgeScrollGate::EdgeScrollGate(QObject* parent)
     : QObject(parent)
 {
+    applyPreset(presetFor(m_sensitivity));
     m_clock.start();
     m_disarmTimer.setSingleShot(true);
     connect(&m_disarmTimer, &QTimer::timeout, this, &EdgeScrollGate::cancel);
+}
+
+bool EdgeScrollGate::active() const noexcept
+{
+    return m_enabled && m_sensitivity != u"off";
+}
+
+void EdgeScrollGate::applyPreset(const Preset& preset)
+{
+    m_threshold = preset.threshold;
+    m_settleMs = preset.settleMs;
+    m_minArmMs = preset.minArmMs;
+    m_switchCooldownMs = preset.switchCooldownMs;
+    m_trailingLockMs = preset.trailingLockMs;
+    m_disarmMs = preset.disarmMs;
+    m_maxTickDelta = preset.maxTickDelta;
 }
 
 void EdgeScrollGate::setEnabled(bool on)
@@ -195,8 +221,29 @@ void EdgeScrollGate::setEnabled(bool on)
     if (on == m_enabled)
         return;
     m_enabled = on;
-    if (!on)
+    if (!active()) {
+        m_trailingLockDir = 0;
+        m_trailingLockUntil = 0;
         cancel();
+    }
+    emit configChanged();
+}
+
+void EdgeScrollGate::setSensitivity(const QString& mode)
+{
+    const QString normalized = mode.trimmed().toLower();
+    if (normalized != u"off" && normalized != u"light" && normalized != u"standard" && normalized != u"steady")
+        return;
+    if (normalized == m_sensitivity)
+        return;
+    m_sensitivity = normalized;
+    if (m_sensitivity != u"off") {
+        applyPreset(presetFor(m_sensitivity));
+    } else {
+        m_trailingLockDir = 0;
+        m_trailingLockUntil = 0;
+    }
+    cancel();
     emit configChanged();
 }
 
@@ -226,6 +273,8 @@ void EdgeScrollGate::setThreshold(int delta)
     if (clamped == m_threshold)
         return;
     m_threshold = clamped;
+    if (m_direction != 0)
+        setState(m_direction, std::min<qreal>(m_accumulated, static_cast<qreal>(m_threshold)));
     emit configChanged();
 }
 
@@ -235,6 +284,24 @@ void EdgeScrollGate::setSettleMs(int ms)
     if (clamped == m_settleMs)
         return;
     m_settleMs = clamped;
+    emit configChanged();
+}
+
+void EdgeScrollGate::setMinArmMs(int ms)
+{
+    const int clamped = std::max(0, ms);
+    if (clamped == m_minArmMs)
+        return;
+    m_minArmMs = clamped;
+    emit configChanged();
+}
+
+void EdgeScrollGate::setMaxTickDelta(int delta)
+{
+    const int clamped = std::max(1, delta);
+    if (clamped == m_maxTickDelta)
+        return;
+    m_maxTickDelta = clamped;
     emit configChanged();
 }
 
@@ -270,6 +337,8 @@ void EdgeScrollGate::setClock(Clock clock)
     m_clockOverride = std::move(clock);
     m_settleUntil = 0;
     m_trailingLockUntil = 0;
+    m_armedAt = 0;
+    m_lastOverscrollAt = 0;
     m_trailingLockDir = 0;
     cancel();
 }
@@ -288,12 +357,13 @@ void EdgeScrollGate::setState(int direction, qreal accumulated)
 {
     const qreal clamped = direction == 0 ? 0.0 : std::max<qreal>(0.0, accumulated);
     const qreal nextProgress = direction == 0 ? 0.0 : std::clamp(clamped / static_cast<qreal>(m_threshold), 0.0, 1.0);
+    const bool prevReady = readyToSwitch();
     const int prevDir = m_direction;
     const bool changed = (m_direction != direction) || (std::abs(m_progress - nextProgress) > 1e-6);
     m_direction = direction;
     m_accumulated = clamped;
     m_progress = nextProgress;
-    if (changed)
+    if (changed || prevReady != readyToSwitch())
         emit stateChanged();
     if (prevDir != m_direction)
         emit armedDirectionChanged(m_direction);
@@ -310,7 +380,7 @@ void EdgeScrollGate::noteSwitched(int direction)
 {
     const qint64 now = nowMs();
     m_settleUntil = std::max(m_settleUntil, now + m_switchCooldownMs);
-    if (direction != 0) {
+    if (active() && direction != 0) {
         m_trailingLockDir = direction > 0 ? 1 : -1;
         m_trailingLockUntil = now + m_trailingLockMs;
     } else {
@@ -322,7 +392,7 @@ void EdgeScrollGate::noteSwitched(int direction)
 
 bool EdgeScrollGate::shouldConsumeWheel(int direction)
 {
-    if (direction == 0 || m_trailingLockDir == 0)
+    if (!active() || direction == 0 || m_trailingLockDir == 0)
         return false;
     const int dir = direction > 0 ? 1 : -1;
     const qint64 now = nowMs();
@@ -344,12 +414,13 @@ bool EdgeScrollGate::shouldConsumeWheel(int direction)
 void EdgeScrollGate::cancel()
 {
     m_disarmTimer.stop();
+    m_armedAt = 0;
     setState(0, 0);
 }
 
 bool EdgeScrollGate::overscroll(int direction, qreal delta)
 {
-    if (!m_enabled || direction == 0 || delta <= 0) {
+    if (!active() || direction == 0 || delta <= 0) {
         cancel();
         return false;
     }
@@ -380,15 +451,23 @@ bool EdgeScrollGate::overscroll(int direction, qreal delta)
         return false;
     }
 
+    if (m_direction == 0)
+        m_armedAt = now;
+
     m_lastOverscrollAt = now;
-    const qreal nextAccumulated = m_accumulated + delta;
-    if (nextAccumulated + 1e-6 >= static_cast<qreal>(m_threshold)) {
+    const qreal step = std::min<qreal>(delta, static_cast<qreal>(m_maxTickDelta));
+    const qreal nextAccumulated = m_accumulated + step;
+    const bool reached = nextAccumulated + 1e-6 >= static_cast<qreal>(m_threshold);
+    const bool dweltEnough = m_minArmMs <= 0 || (now - m_armedAt) >= m_minArmMs;
+    if (reached && dweltEnough) {
         noteSwitched(dir);
         emit triggered(dir);
         return true;
     }
 
-    setState(dir, nextAccumulated);
+    // Hold at full visual progress until `minArmMs` has passed so a single rapid
+    // flick shows the docked edge cue clearly instead of flipping invisibly.
+    setState(dir, std::min<qreal>(nextAccumulated, static_cast<qreal>(m_threshold)));
     if (!m_clockOverride)
         m_disarmTimer.start(m_disarmMs);
     return false;

@@ -827,6 +827,18 @@
         <translation>Remember window sizes</translation>
     </message>
     <message>
+        <source>设置页滚轮触边翻页</source>
+        <translation>Settings wheel edge paging</translation>
+    </message>
+    <message>
+        <source>轻快</source>
+        <translation>Light</translation>
+    </message>
+    <message>
+        <source>稳重</source>
+        <translation>Steady</translation>
+    </message>
+    <message>
         <source>直角</source>
         <translation>Square</translation>
     </message>
@@ -8539,6 +8551,38 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>记住;窗口大小;尺寸;大小;最大化;默认大小;设置窗口;remember;window size;size;maximize</source>
         <translation>remember;window size;size;maximize;default size;settings window;restore</translation>
+    </message>
+    <message>
+        <source>设置页滚轮触边翻页</source>
+        <translation>Settings wheel edge paging</translation>
+    </message>
+    <message>
+        <source>翻页;自动翻页;滚轮;触底;触顶;切页;灵敏度;误触;后退;前进;edge;scroll;page;sensitivity</source>
+        <translation>edge scroll;auto page;wheel;overscroll;switch page;sensitivity;accidental;back;forward</translation>
+    </message>
+    <message>
+        <source>滚到顶部或底部时停在本页，不自动切到上一页或下一页</source>
+        <translation>Stop at the top or bottom of the page without switching to the previous or next page</translation>
+    </message>
+    <message>
+        <source>滚到头略停后继续滚约 2 格即可切页，反应更轻快</source>
+        <translation>After a brief pause at the edge, about 2 more wheel notches switch to the next page</translation>
+    </message>
+    <message>
+        <source>滚到头停顿后继续滚约 3 格切页，快速连滚不会误触发</source>
+        <translation>After pausing at the edge, about 3 more wheel notches switch pages; fast flicks never trigger by mistake</translation>
+    </message>
+    <message>
+        <source>滚到头停顿更久并继续滚约 5 格才切页，最大限度防误触</source>
+        <translation>Requires a longer pause and about 5 more wheel notches to switch, minimising accidental flips</translation>
+    </message>
+    <message>
+        <source>轻快</source>
+        <translation>Light</translation>
+    </message>
+    <message>
+        <source>稳重</source>
+        <translation>Steady</translation>
     </message>
     <message>
         <source>弹出动画</source>

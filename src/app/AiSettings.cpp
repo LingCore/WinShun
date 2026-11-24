@@ -503,6 +503,13 @@ std::vector<Entry> buildCatalog()
                     "(a size dragged out lasts while it runs) and what was saved is forgotten. "
                     "Either way a double click on such a window's edge gives it its default size."},
         &Settings::rememberWindowSize));
+    add(choice({"Appearance/SettingsEdgeScroll", QT_TRANSLATE_NOOP("AiSettings", "设置页滚轮触边翻页"), "appearance", -1,
+                   "Whether scrolling past the top or bottom of a Settings page switches to the previous or next tab/page, and how firm the trigger is."},
+        &Settings::settingsEdgeScroll,
+        {{u"off"_s, u"never switch pages by overscrolling"_s, QT_TRANSLATE_NOOP("AiSettings", "关闭")},
+            {u"light"_s, u"switch after about 2 settled notches"_s, QT_TRANSLATE_NOOP("AiSettings", "轻快")},
+            {u"standard"_s, u"switch after about 3 settled notches with a short dwell guard"_s, QT_TRANSLATE_NOOP("AiSettings", "标准")},
+            {u"steady"_s, u"switch after about 5 settled notches with a longer dwell guard"_s, QT_TRANSLATE_NOOP("AiSettings", "稳重")}}));
     add(choice({"Appearance/Theme", QT_TRANSLATE_NOOP("AiSettings", "主题"), "appearance", -1, "Light or dark windows."},
         &Settings::theme,
         {{u"system"_s, u"follow Windows' light or dark mode"_s, QT_TRANSLATE_NOOP("AiSettings", "跟随系统")},

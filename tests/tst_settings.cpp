@@ -2145,6 +2145,46 @@ private slots:
         QVERIFY(s.shouldRecordClipboardImage(true, true));
         QVERIFY(!s.shouldRecordClipboardImage(false, true));
     }
+
+    void settingsEdgeScrollPreference()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+
+        // Default is standard.
+        ws::Settings fresh;
+        fresh.load();
+        QCOMPARE(fresh.settingsEdgeScroll, u"standard"_s);
+
+        // All valid modes round-trip cleanly.
+        for (const QString& mode : {u"off"_s, u"light"_s, u"standard"_s, u"steady"_s}) {
+            fresh.settingsEdgeScroll = mode;
+            QVERIFY(fresh.saveChecked());
+            ws::Settings restored;
+            restored.load();
+            QCOMPARE(restored.settingsEdgeScroll, mode);
+        }
+
+        // Case/whitespace is normalized and invalid values fall back to standard.
+        {
+            QSettings raw(ws::Settings::filePath(), QSettings::IniFormat);
+            raw.setValue(u"Appearance/SettingsEdgeScroll"_s, u"  STEADY "_s);
+            raw.sync();
+        }
+        ws::Settings normalized;
+        normalized.load();
+        QCOMPARE(normalized.settingsEdgeScroll, u"steady"_s);
+
+        {
+            QSettings raw(ws::Settings::filePath(), QSettings::IniFormat);
+            raw.setValue(u"Appearance/SettingsEdgeScroll"_s, u"bogus"_s);
+            raw.sync();
+        }
+        ws::Settings fallback;
+        fallback.load();
+        QCOMPARE(fallback.settingsEdgeScroll, u"standard"_s);
+    }
 };
 
 QTEST_GUILESS_MAIN(SettingsTest)

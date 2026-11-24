@@ -594,6 +594,15 @@ void SettingsEditor::setRememberWindowSize(bool on)
     commit();
 }
 
+void SettingsEditor::setSettingsEdgeScroll(const QString& mode)
+{
+    const QString normalized = mode.trimmed().toLower();
+    if (!Settings::isSettingsEdgeScrollMode(normalized) || m_settings.settingsEdgeScroll == normalized)
+        return;
+    m_settings.settingsEdgeScroll = normalized;
+    commit();
+}
+
 void SettingsEditor::setDonateOnGleaningPage(bool on)
 {
     if (m_settings.donateOnGleaningPage == on)

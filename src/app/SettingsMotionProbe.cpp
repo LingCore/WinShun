@@ -333,7 +333,17 @@ bool checkSettingsMotion(App& app, const QStringList& args, const QDir& output)
         pump(150);
         check(!js(w, u"searching"_s).toBool() && pageId() == u"appearance"_s, u"Back #2 returns to appearance"_s);
 
-        // Edge overscroll: general bottom burst must not flip; settled 2 notches switch to keys tab 0.
+        // Edge overscroll: general bottom burst must not flip; fast 3-notch flick holds during minArmMs;
+        // deliberate push past minArmMs switches to keys tab 0.
+        const auto deliberateOverscroll = [&](QPointF at, int angleDelta) {
+            sendWheelAt(at, angleDelta);
+            pump(160);
+            sendWheelAt(at, angleDelta);
+            pump(160);
+            sendWheelAt(at, angleDelta);
+            pump(120);
+        };
+
         js(w, u"showPage('general', 0)"_s);
         pump(150);
         js(w, u"flick.stopScrolling(); layoutNow(); flick.contentY = Math.max(0, flick.contentHeight - flick.height)"_s);
@@ -346,15 +356,21 @@ bool checkSettingsMotion(App& app, const QStringList& args, const QDir& output)
         check(pageId() == u"general"_s && !js(w, u"edgeGate.armed"_s).toBool(),
             u"fast wheel burst at bottom of general does not flip or arm"_s);
 
-        pump(320); // settle past settleMs
-        sendWheelAt(flickMid(), -120); // notch 1 -> arms hint pill
-        check(pageId() == u"general"_s && js(w, u"edgeGate.armed && edgeGate.direction === 1"_s).toBool(),
-            u"settled notch 1 at bottom of general arms edge hint"_s);
+        pump(400); // settle past standard settleMs (340 ms)
+        sendWheelAt(flickMid(), -120); // notch 1 -> arms docked edge cue
+        pump(30);
+        sendWheelAt(flickMid(), -120); // notch 2 (fast flick)
+        pump(30);
+        sendWheelAt(flickMid(), -120); // notch 3 within minArmMs -> holds ready at edge without flipping!
+        pump(30);
+        check(pageId() == u"general"_s && js(w, u"edgeGate.armed && edgeGate.readyToSwitch && edgeGate.direction === 1"_s).toBool(),
+            u"rapid 3-notch flick at bottom of general holds docked cue instead of flipping"_s);
         saveShot(u"nav-edge-hint-bottom.png"_s);
-        sendWheelAt(flickMid(), -120); // notch 2 -> switches to keys tab 0
+        pump(250); // past minArmMs (280 ms total)
+        sendWheelAt(flickMid(), -120); // deliberate push -> switches to keys tab 0
         pump(100);
         check(pageId() == u"keys"_s && tabIndex() == 0 && scrollY() < 1.0,
-            u"notch 2 switches from general bottom to keys tab 0 at top"_s);
+            u"deliberate push past minArmMs switches from general bottom to keys tab 0 at top"_s);
 
         // Trailing downward notch right after switch must be consumed so keys stays at y=0.
         sendWheelAt(flickMid(), -120);
@@ -362,10 +378,8 @@ bool checkSettingsMotion(App& app, const QStringList& args, const QDir& output)
             u"trailing downward notch right after switch stays pinned at top"_s);
 
         // Overscroll UP at top of keys tab 0 -> general at its bottom!
-        pump(420);
-        sendWheelAt(flickMid(), 120);
-        sendWheelAt(flickMid(), 120);
-        pump(120);
+        pump(500);
+        deliberateOverscroll(flickMid(), 120);
         const double maxGeneralY = js(w, u"Math.max(0, flick.contentHeight - flick.height)"_s).toDouble();
         check(pageId() == u"general"_s && maxGeneralY > 100.0 && std::abs(scrollY() - maxGeneralY) < 4.0,
             u"overscroll up from keys tab 0 lands at bottom of general (%1 / %2)"_s.arg(scrollY()).arg(maxGeneralY));
@@ -374,35 +388,45 @@ bool checkSettingsMotion(App& app, const QStringList& args, const QDir& output)
         js(w, u"showPage('keys', 0)"_s);
         pump(150);
         js(w, u"flick.stopScrolling(); layoutNow(); flick.contentY = Math.max(0, flick.contentHeight - flick.height)"_s);
-        pump(420);
-        sendWheelAt(flickMid(), -120);
-        sendWheelAt(flickMid(), -120);
-        pump(120);
+        pump(500);
+        deliberateOverscroll(flickMid(), -120);
         check(pageId() == u"keys"_s && tabIndex() == 1, u"overscroll down crosses from keys tab 0 to keys tab 1"_s);
         js(w, u"flick.stopScrolling(); layoutNow(); flick.contentY = Math.max(0, flick.contentHeight - flick.height)"_s);
-        pump(420);
-        sendWheelAt(flickMid(), -120);
-        sendWheelAt(flickMid(), -120);
-        pump(120);
+        pump(500);
+        deliberateOverscroll(flickMid(), -120);
         check(pageId() == u"appearance"_s && tabIndex() == 0, u"overscroll down crosses from keys tab 1 to appearance"_s);
+
+        // Off mode disables edge overscroll completely; restoring standard re-enables it.
+        js(w, u"editor.settingsEdgeScroll = 'off'"_s);
+        pump(100);
+        js(w, u"flick.stopScrolling(); layoutNow(); flick.contentY = 0"_s);
+        pump(500);
+        deliberateOverscroll(flickMid(), 120);
+        check(pageId() == u"appearance"_s && !js(w, u"edgeGate.armed"_s).toBool(),
+            u"settingsEdgeScroll=off prevents overscroll arming and switching"_s);
+        js(w, u"editor.settingsEdgeScroll = 'standard'"_s);
+        pump(100);
 
         // Warm scene (拾穗计划): health -> gleaning -> overscroll up back to health.
         js(w, u"showPage('health', 0)"_s);
-        pump(150);
+        // Wait for HealthPage's first 1 s reading so its contentHeight has settled before pinning to bottom.
+        pump(1150);
         js(w, u"flick.stopScrolling(); layoutNow(); flick.contentY = Math.max(0, flick.contentHeight - flick.height)"_s);
         pump(420);
-        sendWheelAt(flickMid(), -120);
-        sendWheelAt(flickMid(), -120);
-        pump(150);
+        deliberateOverscroll(flickMid(), -120);
         check(pageId() == u"gleaning"_s && js(w, u"warm"_s).toBool(), u"overscroll down from health enters gleaning"_s);
-        pump(420);
+        pump(500);
         sendWheelAt(gleanMid(), 120);
+        pump(160);
+        sendWheelAt(gleanMid(), 120);
+        pump(40);
         check(pageId() == u"gleaning"_s && js(w, u"edgeGate.armed && edgeGate.direction === -1"_s).toBool(),
-            u"overscroll up notch 1 on gleaning arms warm edge hint"_s);
+            u"overscroll up on gleaning arms warm docked edge cue"_s);
         saveShot(u"nav-edge-hint-warm.png"_s);
+        pump(140);
         sendWheelAt(gleanMid(), 120);
         pump(120);
-        check(pageId() == u"health"_s && !js(w, u"warm"_s).toBool(), u"overscroll up notch 2 on gleaning returns to health"_s);
+        check(pageId() == u"health"_s && !js(w, u"warm"_s).toBool(), u"deliberate overscroll up on gleaning returns to health"_s);
 
         // Close and reopen: history resets cleanly.
         w->close();

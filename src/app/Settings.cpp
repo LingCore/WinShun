@@ -1052,6 +1052,9 @@ void Settings::load()
     if (searchShadow != u"standard" && searchShadow != u"light" && searchShadow != u"none")
         searchShadow = d.searchShadow;
     rememberWindowSize = readOrDefault(s, u"Appearance/RememberWindowSize"_s, d.rememberWindowSize);
+    settingsEdgeScroll = readOrDefault(s, u"Appearance/SettingsEdgeScroll"_s, d.settingsEdgeScroll).trimmed().toLower();
+    if (!isSettingsEdgeScrollMode(settingsEdgeScroll))
+        settingsEdgeScroll = d.settingsEdgeScroll;
     donateOnGleaningPage = readOrDefault(s, u"Appearance/DonateOnGleaningPage"_s, d.donateOnGleaningPage);
     hoverTips = readOrDefault(s, u"Appearance/HoverTips"_s, d.hoverTips);
     previewWith = readOrDefault(s, u"Results/PreviewWith"_s, d.previewWith).trimmed().toLower();
@@ -1500,6 +1503,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Appearance/OpenAnimation"_s, openAnimation);
     s.setValue(u"Appearance/SearchShadow"_s, searchShadow);
     s.setValue(u"Appearance/RememberWindowSize"_s, rememberWindowSize);
+    s.setValue(u"Appearance/SettingsEdgeScroll"_s, settingsEdgeScroll);
     s.setValue(u"Appearance/DonateOnGleaningPage"_s, donateOnGleaningPage);
     s.setValue(u"Appearance/HoverTips"_s, hoverTips);
     s.setValue(u"Results/PreviewWith"_s, previewWith);

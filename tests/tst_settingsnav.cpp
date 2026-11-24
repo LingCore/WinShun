@@ -144,7 +144,7 @@ private slots:
         QCOMPARE(history.forwardEntries().size(), SettingsHistory::kDropdownLimit);
     }
 
-    void edgeGateBurstSettleAndTwoNotchTrigger()
+    void edgeGateBurstSettleAndStandardTrigger()
     {
         qint64 now = 1000;
         EdgeScrollGate gate;
@@ -152,15 +152,20 @@ private slots:
         gate.setCanPrevious(true);
         gate.setCanNext(true);
 
+        QCOMPARE(gate.sensitivity(), u"standard"_s);
+        QCOMPARE(gate.threshold(), 360);
+        QCOMPARE(gate.settleMs(), 340);
+        QCOMPARE(gate.minArmMs(), 280);
+
         QSignalSpy armedSpy(&gate, &EdgeScrollGate::armedDirectionChanged);
         QSignalSpy triggeredSpy(&gate, &EdgeScrollGate::triggered);
 
         // Scroll arrives at the bottom boundary.
         gate.noteBoundaryReached();
 
-        // Fast wheel burst hitting the bottom (every 60 ms) is silently absorbed.
+        // Fast wheel burst hitting the bottom (every 80 ms) is silently absorbed.
         for (int i = 0; i < 6; ++i) {
-            now += 60;
+            now += 80;
             QVERIFY(!gate.overscroll(1, 120));
             QVERIFY(!gate.armed());
             QCOMPARE(gate.direction(), 0);
@@ -168,19 +173,28 @@ private slots:
         QCOMPARE(armedSpy.count(), 0);
         QCOMPARE(triggeredSpy.count(), 0);
 
-        // After settling past settleMs (240 ms), notch 1 arms at 50 % progress.
-        now += 260;
+        // After settling past settleMs (340 ms), notch 1 arms at 1/3 progress.
+        now += 360;
         QVERIFY(!gate.overscroll(1, 120));
         QVERIFY(gate.armed());
+        QVERIFY(!gate.readyToSwitch());
         QCOMPARE(gate.direction(), 1);
-        QCOMPARE(gate.progress(), 0.5);
+        QVERIFY(qAbs(gate.progress() - 1.0 / 3.0) < 0.001);
         QCOMPARE(armedSpy.count(), 1);
         QCOMPARE(armedSpy.last().at(0).toInt(), 1);
 
-        // Notch 2 within disarmMs triggers the switch and clears armed state.
-        now += 80;
+        // Notch 2 advances progress to 2/3.
+        now += 150;
+        QVERIFY(!gate.overscroll(1, 120));
+        QVERIFY(gate.armed());
+        QVERIFY(!gate.readyToSwitch());
+        QVERIFY(qAbs(gate.progress() - 2.0 / 3.0) < 0.001);
+
+        // Notch 3 past minArmMs (300 ms >= 280 ms) triggers the switch and clears armed state.
+        now += 150;
         QVERIFY(gate.overscroll(1, 120));
         QVERIFY(!gate.armed());
+        QVERIFY(!gate.readyToSwitch());
         QCOMPARE(gate.direction(), 0);
         QCOMPARE(triggeredSpy.count(), 1);
         QCOMPARE(triggeredSpy.last().at(0).toInt(), 1);
@@ -196,11 +210,101 @@ private slots:
         QVERIFY(!gate.shouldConsumeWheel(-1));
     }
 
+    void edgeGateFastFlickHeldUntilMinArmAndClamped()
+    {
+        qint64 now = 2000;
+        EdgeScrollGate gate;
+        gate.setClock([&] { return now; });
+        gate.setCanPrevious(true);
+        gate.setCanNext(true);
+
+        QSignalSpy triggeredSpy(&gate, &EdgeScrollGate::triggered);
+
+        // A single coalesced giant delta (480) is clamped to maxTickDelta (120) so it never skips the cue.
+        QVERIFY(!gate.overscroll(1, 480));
+        QVERIFY(gate.armed());
+        QVERIFY(!gate.readyToSwitch());
+        QVERIFY(qAbs(gate.progress() - 120.0 / 360.0) < 0.001);
+
+        // Rapid follow-up ticks within minArmMs (280 ms) charge the cue to full (readyToSwitch),
+        // giving clear visual feedback without flipping accidentally.
+        now += 40;
+        QVERIFY(!gate.overscroll(1, 120));
+        now += 40;
+        QVERIFY(!gate.overscroll(1, 120));
+        QVERIFY(gate.armed());
+        QVERIFY(gate.readyToSwitch());
+        QCOMPARE(gate.progress(), 1.0);
+        QCOMPARE(triggeredSpy.count(), 0);
+
+        now += 40; // still only 120 ms since armed (< 280 ms)
+        QVERIFY(!gate.overscroll(1, 120));
+        QVERIFY(gate.readyToSwitch());
+        QCOMPARE(triggeredSpy.count(), 0);
+
+        // Once minArmMs has elapsed, one deliberate push completes the switch.
+        now += 180; // 300 ms since armed >= 280 ms
+        QVERIFY(gate.overscroll(1, 120));
+        QCOMPARE(triggeredSpy.count(), 1);
+        QVERIFY(!gate.armed());
+        QVERIFY(!gate.readyToSwitch());
+    }
+
+    void edgeGateSensitivityPresetsAndOff()
+    {
+        qint64 now = 3000;
+        EdgeScrollGate gate;
+        gate.setClock([&] { return now; });
+        gate.setCanPrevious(true);
+        gate.setCanNext(true);
+
+        // Light preset: 2 notches (240) with shorter settle & minArmMs (140 ms).
+        gate.setSensitivity(u"light"_s);
+        QCOMPARE(gate.sensitivity(), u"light"_s);
+        QCOMPARE(gate.threshold(), 240);
+        QCOMPARE(gate.minArmMs(), 140);
+        QVERIFY(!gate.overscroll(1, 120));
+        QCOMPARE(gate.progress(), 0.5);
+        now += 150;
+        QVERIFY(gate.overscroll(1, 120));
+
+        // Steady preset: 5 notches (600) with longer settle & minArmMs (420 ms).
+        now += 1000;
+        gate.setSensitivity(u"steady"_s);
+        QCOMPARE(gate.sensitivity(), u"steady"_s);
+        QCOMPARE(gate.threshold(), 600);
+        QCOMPARE(gate.minArmMs(), 420);
+        for (int i = 0; i < 4; ++i) {
+            now += 120;
+            QVERIFY(!gate.overscroll(1, 120));
+            QVERIFY(gate.armed());
+        }
+        now += 120; // 480 ms since first arm >= 420 ms, accumulated = 600
+        QVERIFY(gate.overscroll(1, 120));
+
+        // Off mode: clears state, ignores overscroll and does not lock trailing wheels.
+        now += 1000;
+        QVERIFY(!gate.overscroll(1, 120));
+        QVERIFY(gate.armed());
+        gate.setSensitivity(u"off"_s);
+        QCOMPARE(gate.sensitivity(), u"off"_s);
+        QVERIFY(!gate.armed());
+        QVERIFY(!gate.overscroll(1, 120));
+        QVERIFY(!gate.armed());
+        gate.noteSwitched(1);
+        QVERIFY(!gate.shouldConsumeWheel(1));
+
+        // Invalid sensitivity value is ignored.
+        gate.setSensitivity(u"turbo"_s);
+        QCOMPARE(gate.sensitivity(), u"off"_s);
+    }
+
     void edgeGateHighResReversalDisarmAndBounds()
     {
         qint64 now = 5000;
         EdgeScrollGate gate;
         gate.setClock([&] { return now; });
+        gate.setSensitivity(u"light"_s);
         gate.setCanPrevious(false);
         gate.setCanNext(true);
 
@@ -210,14 +314,14 @@ private slots:
         QVERIFY(!gate.overscroll(-1, 120));
         QVERIFY(!gate.armed());
 
-        // High-resolution small deltas accumulate smoothly (30 * 8 = 240).
+        // High-resolution small deltas accumulate smoothly (30 * 8 = 240 over 140+ ms).
         for (int i = 0; i < 7; ++i) {
-            now += 16;
+            now += 25;
             QVERIFY(!gate.overscroll(1, 30));
             QVERIFY(gate.armed());
         }
         QVERIFY(qAbs(gate.progress() - 210.0 / 240.0) < 0.001);
-        now += 16;
+        now += 25;
         QVERIFY(gate.overscroll(1, 30));
         QCOMPARE(triggeredSpy.count(), 1);
 
@@ -385,11 +489,15 @@ private slots:
         sendWheel(-120, Qt::ControlModifier);
         QVERIFY(!gate.armed());
 
-        // Plain notch 1 after settling arms at 50 %; notch 2 triggers +1.
+        // Plain notch 1 after settling arms; 3 deliberate notches over minArmMs trigger +1.
         sendWheel(-120);
         QVERIFY(gate.armed());
         QCOMPARE(gate.direction(), 1);
-        now += 60;
+        now += 150;
+        sendWheel(-120);
+        QVERIFY(gate.armed());
+        QCOMPARE(triggeredSpy.count(), 0);
+        now += 150;
         sendWheel(-120);
         QCOMPARE(triggeredSpy.count(), 1);
         QCOMPARE(triggeredSpy.last().at(0).toInt(), 1);
@@ -400,13 +508,15 @@ private slots:
         sendWheel(-120);
         QCOMPARE(flick->property("contentY").toDouble(), 0.0);
 
-        // Short (non-scrollable) page: after cooldown, 2 upward notches trigger -1.
+        // Short (non-scrollable) page: after cooldown, 3 deliberate upward notches trigger -1.
         flick->setProperty("contentHeight", 200);
-        now += 500;
+        now += 600;
         sendWheel(120);
         QVERIFY(gate.armed());
         QCOMPARE(gate.direction(), -1);
-        now += 60;
+        now += 150;
+        sendWheel(120);
+        now += 150;
         sendWheel(120);
         QCOMPARE(triggeredSpy.count(), 2);
         QCOMPARE(triggeredSpy.last().at(0).toInt(), -1);
