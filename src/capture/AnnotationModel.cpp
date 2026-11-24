@@ -2308,7 +2308,7 @@ void AnnotationModel::nudge(QPoint delta)
     sync();
 }
 
-bool AnnotationModel::escape()
+bool AnnotationModel::escape(bool exitTool)
 {
     if (!active())
         return false;
@@ -2331,7 +2331,7 @@ bool AnnotationModel::escape()
     }
     // Step back cleanly to neutral selection mode before handing Esc to the
     // host (which parks/discards edits or closes the editor, GitHub #415).
-    if (m_tool >= 0) {
+    if (exitTool && m_tool >= 0) {
         m_picked.clear();
         setTool(-1);
         return true;

@@ -324,7 +324,7 @@ public:
     // Esc, steps 2 and 3 of 3.6: commit the text under way, or cancel the
     // gesture under way; before either, close a number's edit box. True
     // when it did one of them.
-    bool escape();
+    bool escape(bool exitTool = true);
     bool editingText() const { return m_editing.has_value(); }
     bool editingNumber() const { return m_numberEdit.has_value(); }
     Q_INVOKABLE void cancelGesture();

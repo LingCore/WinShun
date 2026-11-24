@@ -518,7 +518,7 @@ void Presenter::back()
     if (!s || m_mode != Mode::Draw)
         return;
     AnnotationModel* m = s->model();
-    const bool took = m->finishPath() || m->escape();
+    const bool took = m->finishPath() || m->escape(false);
     switch (presenter::backStep(took, m->selectedCount() > 0, s->board())) {
     case presenter::BackStep::Done:
         break;
