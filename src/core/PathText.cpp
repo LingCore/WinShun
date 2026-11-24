@@ -376,6 +376,25 @@ bool opusAnswered(const QByteArray& xml)
     return reader.readNextStartElement() && reader.name() == u"results" && reader.attributes().value(u"result") == u"1";
 }
 
+namespace {
+
+QString cleanXYplorerPath(QString path)
+{
+    path = path.trimmed();
+    if (path.startsWith(u"\\\\?\\UNC\\"_s, Qt::CaseInsensitive))
+        path = u"\\\\"_s + path.mid(8);
+    else if (path.startsWith(u"\\\\?\\"_s))
+        path = path.mid(4);
+    if (const qsizetype search = path.indexOf(u'?'); search >= 0)
+        path.truncate(search); // a quick search in that folder
+    path = normalized(path.trimmed());
+    if (path.size() >= 2 && path[1] == u':')
+        path[0] = path[0].toUpper();
+    return path;
+}
+
+} // namespace
+
 QList<XYplorerTab> xyplorerTabs(const QString& reply)
 {
     QList<XYplorerTab> tabs;
@@ -388,19 +407,39 @@ QList<XYplorerTab> xyplorerTabs(const QString& reply)
             break; // the other pane is not shown
         bool first = true;
         for (const QStringView token : QStringView(lines[pane]).tokenize(u'|')) {
-            QString path = token.trimmed().toString();
-            if (const qsizetype search = path.indexOf(u'?'); search >= 0)
-                path.truncate(search); // a quick search in that folder
-            path = normalized(path);
+            QString path = cleanXYplorerPath(token.toString());
             if (path.isEmpty())
                 continue;
-            if (path[1] == u':')
-                path[0] = path[0].toUpper();
             tabs.append({std::move(path), first ? pane : 0});
             first = false;
         }
     }
     return tabs;
+}
+
+QString xyplorerFolderFromAddress(const QString& text)
+{
+    return cleanXYplorerPath(text);
+}
+
+QString folderFromXYplorerTitle(const QString& title)
+{
+    const QString trimmed = title.trimmed();
+    if (trimmed.isEmpty())
+        return {};
+    // Default title: "<path> - XYplorer 28.50 - (Academic)" (lastIndexOf keeps folders containing " - XYplorer").
+    if (const qsizetype sep = trimmed.lastIndexOf(u" - xyplorer"_s, -1, Qt::CaseInsensitive); sep > 0) {
+        if (QString path = cleanXYplorerPath(trimmed.left(sep)); !path.isEmpty())
+            return path;
+    }
+    // Reversed title ("App Name First"): "XYplorer 28.50 - <path>" or "XYplorer 28.50 - (Academic) - <path>".
+    if (trimmed.startsWith(u"xyplorer"_s, Qt::CaseInsensitive)) {
+        for (qsizetype at = 0; (at = trimmed.indexOf(u" - "_s, at)) >= 0; at += 3) {
+            if (QString path = cleanXYplorerPath(trimmed.mid(at + 3)); !path.isEmpty())
+                return path;
+        }
+    }
+    return cleanXYplorerPath(trimmed);
 }
 
 QString xyplorerQuoted(const QString& text)

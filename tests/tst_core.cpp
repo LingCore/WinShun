@@ -1797,9 +1797,40 @@ private slots:
         QCOMPARE(tabs.size(), 1);
         QCOMPARE(tabs[0].path, u"C:\\Windows"_s);
         QCOMPARE(tabs[0].state, 1);
+        // Extended-length prefixes keep their path instead of splitting at '?'.
+        tabs = xyplorerTabs(u"0\r\n|\\\\?\\D:\\Deep\\Folder|\\\\?\\UNC\\nas\\share\\sub?*.txt\r\n|"_s);
+        QCOMPARE(tabs.size(), 2);
+        QCOMPARE(tabs[0].path, u"D:\\Deep\\Folder"_s);
+        QCOMPARE(tabs[0].state, 1);
+        QCOMPARE(tabs[1].path, u"\\\\nas\\share\\sub"_s);
+        QCOMPARE(tabs[1].state, 0);
         QVERIFY(xyplorerTabs(u"1\n|此电脑\n|"_s).isEmpty());
         QVERIFY(xyplorerTabs({}).isEmpty());
         QVERIFY(xyplorerTabs(u"garbage"_s).isEmpty());
+
+        // Address bar and window title fallbacks (XYplorerFree, elevated, modal).
+        QCOMPARE(pathtext::xyplorerFolderFromAddress(u"f:\\电脑便捷工具\\"_s), u"F:\\电脑便捷工具"_s);
+        QCOMPARE(pathtext::xyplorerFolderFromAddress(u"c:"_s), u"C:\\"_s);
+        QCOMPARE(pathtext::xyplorerFolderFromAddress(u"C:\\Windows?*.exe"_s), u"C:\\Windows"_s);
+        QCOMPARE(pathtext::xyplorerFolderFromAddress(u"\\\\?\\D:\\Long\\Path"_s), u"D:\\Long\\Path"_s);
+        QCOMPARE(pathtext::xyplorerFolderFromAddress(u"\\\\?\\UNC\\nas\\team\\docs"_s), u"\\\\nas\\team\\docs"_s);
+        QVERIFY(pathtext::xyplorerFolderFromAddress(u"此电脑"_s).isEmpty());
+        QVERIFY(pathtext::xyplorerFolderFromAddress(u"*.pdf"_s).isEmpty());
+
+        QCOMPARE(pathtext::folderFromXYplorerTitle(u"F:\\电脑便捷工具 - XYplorer 28.50 - (Academic)"_s), u"F:\\电脑便捷工具"_s);
+        QCOMPARE(pathtext::folderFromXYplorerTitle(u"C:\\ - XYplorer 27.20.1600"_s), u"C:\\"_s);
+        QCOMPARE(pathtext::folderFromXYplorerTitle(u"D:\\Work - 2026 - XYplorer 28.50"_s), u"D:\\Work - 2026"_s);
+        QCOMPARE(pathtext::folderFromXYplorerTitle(u"D:\\A - XYplorer Backup - XYplorer 28.50"_s), u"D:\\A - XYplorer Backup"_s);
+        QCOMPARE(pathtext::folderFromXYplorerTitle(u"\\\\nas\\share\\docs - XYplorerFree 17.40"_s), u"\\\\nas\\share\\docs"_s);
+        QCOMPARE(pathtext::folderFromXYplorerTitle(u"C:\\Windows?*.exe - XYplorer 28.50"_s), u"C:\\Windows"_s);
+        QCOMPARE(pathtext::folderFromXYplorerTitle(u"XYplorer 28.50 - F:\\电脑便捷工具"_s), u"F:\\电脑便捷工具"_s);
+        QCOMPARE(pathtext::folderFromXYplorerTitle(u"XYplorer 28.50 - (Academic) - D:\\Work - 2026"_s), u"D:\\Work - 2026"_s);
+        QCOMPARE(pathtext::folderFromXYplorerTitle(u"XYplorer 28.50 - \\\\nas\\share\\docs"_s), u"\\\\nas\\share\\docs"_s);
+        QCOMPARE(pathtext::folderFromXYplorerTitle(u"F:\\电脑便捷工具"_s), u"F:\\电脑便捷工具"_s);
+        QVERIFY(pathtext::folderFromXYplorerTitle(u"此电脑 - XYplorer 28.50 - (Academic)"_s).isEmpty());
+        QVERIFY(pathtext::folderFromXYplorerTitle(u"文档 - XYplorer 28.50"_s).isEmpty());
+        QVERIFY(pathtext::folderFromXYplorerTitle(u"XYplorer Trial Version"_s).isEmpty());
+        QVERIFY(pathtext::folderFromXYplorerTitle({}).isEmpty());
 
         QCOMPARE(pathtext::xyplorerQuoted(u"C:\\Users\\me"_s), u"'C:\\Users\\me'"_s);
         QCOMPARE(pathtext::xyplorerQuoted(u"D:\\John's 100%"_s), u"'D:\\John''s 100%'"_s);

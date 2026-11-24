@@ -173,44 +173,40 @@ std::wstring_view baseName(std::wstring_view path)
     return slash == std::wstring_view::npos ? path : path.substr(slash + 1);
 }
 
-// Whether `window` is the main window of an XYplorer (a VB6 program: the
-// form's class is any VB6 form's, so the program is checked too; the form
-// is owned by the runtime's hidden ThunderRT6Main window, while XYplorer's
-// own dialogs are owned by the form).
+// XYplorer's own executable: standard/portable ("XYplorer.exe"), Free
+// ("XYplorerFree.exe"), 64-bit/repacked names ("XYplorer64.exe",
+// "XYplorerPortable.exe"); excludes helper binaries (XYcopy.exe, XY64*.exe).
+bool isXYplorerExecutable(std::wstring_view name)
+{
+    constexpr std::wstring_view kPrefix = L"XYplorer";
+    constexpr std::wstring_view kSuffix = L".exe";
+    if (name.size() < kPrefix.size() + kSuffix.size())
+        return false;
+    return win32::equalsIgnoreCase(name.substr(0, kPrefix.size()), kPrefix)
+        && win32::equalsIgnoreCase(name.substr(name.size() - kSuffix.size()), kSuffix);
+}
+
+// Whether `window` is the main window of an XYplorer (both 32-bit VB6 and
+// 64-bit twinBASIC use ThunderRT6FormDC, owned by the runtime's ThunderRT6Main
+// window or unowned, while XYplorer's own dialogs are owned by the form).
 bool isXYplorerMain(HWND window)
 {
     const HWND owner = ::GetWindow(window, GW_OWNER);
     wchar_t name[32] {};
     if (owner && (::GetClassNameW(owner, name, static_cast<int>(std::size(name))) == 0 || ::wcscmp(name, L"ThunderRT6Main") != 0))
         return false;
-    return win32::equalsIgnoreCase(baseName(programOf(window)), L"XYplorer.exe");
+    return isXYplorerExecutable(baseName(programOf(window)));
 }
 
-// An XYplorer that runs, by the VB6 runtime's window of its process (there
+// An XYplorer that runs, by the runtime's hidden window of its process (there
 // whether its main window is shown or in the tray); null if none.
 HWND xyplorerRuntimeWindow()
 {
-    for (HWND hwnd = nullptr; (hwnd = ::FindWindowExW(nullptr, hwnd, L"ThunderRT6Main", L"XYplorer"));) {
-        if (win32::equalsIgnoreCase(baseName(programOf(hwnd)), L"XYplorer.exe"))
+    for (HWND hwnd = nullptr; (hwnd = ::FindWindowExW(nullptr, hwnd, L"ThunderRT6Main", nullptr));) {
+        if (isXYplorerExecutable(baseName(programOf(hwnd))))
             return hwnd;
     }
     return nullptr;
-}
-
-std::wstring xyplorerProgram()
-{
-    if (std::wstring program = programOf(xyplorerRuntimeWindow()); !program.empty())
-        return program;
-    constexpr const wchar_t* kKey = L"Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\XYplorer.exe";
-    for (std::wstring exe : {registryText(HKEY_CURRENT_USER, kKey, nullptr),
-             registryText(HKEY_LOCAL_MACHINE, kKey, nullptr, RRF_SUBKEY_WOW6464KEY),
-             registryText(HKEY_LOCAL_MACHINE, kKey, nullptr, RRF_SUBKEY_WOW6432KEY)}) {
-        if (exe.size() >= 2 && exe.front() == L'"' && exe.back() == L'"')
-            exe = exe.substr(1, exe.size() - 2);
-        if (!exe.empty() && isFile(exe))
-            return exe;
-    }
-    return {};
 }
 
 // The main window of an XYplorer in front of the others; null when none is open.
@@ -226,6 +222,26 @@ HWND xyplorerWindow()
         },
         reinterpret_cast<LPARAM>(&found));
     return found;
+}
+
+std::wstring xyplorerProgram()
+{
+    if (std::wstring program = programOf(xyplorerRuntimeWindow()); !program.empty())
+        return program;
+    if (std::wstring program = programOf(xyplorerWindow()); !program.empty())
+        return program;
+    for (const wchar_t* key : {L"Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\XYplorer.exe",
+             L"Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\XYplorerFree.exe"}) {
+        for (std::wstring exe : {registryText(HKEY_CURRENT_USER, key, nullptr),
+                 registryText(HKEY_LOCAL_MACHINE, key, nullptr, RRF_SUBKEY_WOW6464KEY),
+                 registryText(HKEY_LOCAL_MACHINE, key, nullptr, RRF_SUBKEY_WOW6432KEY)}) {
+            if (exe.size() >= 2 && exe.front() == L'"' && exe.back() == L'"')
+                exe = exe.substr(1, exe.size() - 2);
+            if (!exe.empty() && isFile(exe))
+                return exe;
+        }
+    }
+    return {};
 }
 
 // The window XYplorer answers to (askXYplorer): what it sends is kept in
@@ -248,16 +264,22 @@ LRESULT CALLBACK xyplorerAnswerProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
 
 struct XYplorerAsked {
     bool delivered = false; // the script reached it (it may still be at it: a slow folder)
+    DWORD error = ERROR_SUCCESS;
     std::wstring answer; // what it sent to our window (copydata <ours>, …, 0), in order
 };
 
 // Runs a script in the XYplorer window `window`: `script` makes it from
 // our window's handle (decimal), for its answers. XYplorer runs it while
-// the message is being sent, and its answers arrive meanwhile. Not
-// delivered: it is gone, hung, or runs elevated while Win顺 does not (UIPI
-// refuses the message: told once).
-XYplorerAsked askXYplorer(HWND window, const std::function<std::wstring(const std::wstring& ours)>& script)
+// the message is being sent, and its answers arrive meanwhile. Serialized
+// across worker threads (DialogBar + DialogJump auto-jump both query on dialog
+// open) so XYplorer's single-threaded script engine is never re-entered mid-
+// SendMessage. Not delivered: it is gone, hung, or runs elevated while Win顺
+// does not (UIPI refuses the message).
+XYplorerAsked askXYplorer(HWND window, const std::function<std::wstring(const std::wstring& ours)>& script,
+    bool warnOnError = true)
 {
+    static std::mutex g_xyplorerMutex;
+    const std::lock_guard lock(g_xyplorerMutex);
     constexpr const wchar_t* kClass = L"WinShun.XYplorerAnswer";
     static std::once_flag registered;
     std::call_once(registered, [] {
@@ -274,7 +296,9 @@ XYplorerAsked askXYplorer(HWND window, const std::function<std::wstring(const st
     ::SetWindowLongPtrW(ours, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&asked.answer));
     // XYplorer runs with the user's rights; Win顺 may be elevated (管理员直读).
     ::ChangeWindowMessageFilterEx(ours, WM_COPYDATA, MSGFLT_ALLOW, nullptr);
-    std::wstring text = script(std::to_wstring(reinterpret_cast<std::uintptr_t>(ours)));
+    // USER handles are 32-bit sign-extended on x64; truncate to uint32 so bit-31
+    // handles never become 64-bit decimal strings that overflow XYplorer's copydata.
+    std::wstring text = script(std::to_wstring(HandleToULong(ours)));
     COPYDATASTRUCT data {};
     data.dwData = kXYplorerScript;
     data.cbData = static_cast<DWORD>(text.size() * sizeof(wchar_t)); // no terminator: it would be read as a line
@@ -283,43 +307,179 @@ XYplorerAsked askXYplorer(HWND window, const std::function<std::wstring(const st
     const bool sent = ::SendMessageTimeoutW(window, WM_COPYDATA, reinterpret_cast<WPARAM>(ours),
                           reinterpret_cast<LPARAM>(&data), SMTO_ABORTIFHUNG, kXYplorerWait, &result)
         != 0;
-    const DWORD error = sent ? ERROR_SUCCESS : ::GetLastError();
+    asked.error = sent ? ERROR_SUCCESS : ::GetLastError();
     ::DestroyWindow(ours);
-    asked.delivered = sent || error == ERROR_TIMEOUT;
-    if (!asked.delivered) {
+    asked.delivered = sent || asked.error == ERROR_TIMEOUT;
+    if (warnOnError && !asked.delivered) {
         static std::atomic<bool> warned {false};
         if (!warned.exchange(true))
-            qWarning() << "XYplorer did not take a script (error" << error
-                       << (error == ERROR_ACCESS_DENIED ? "): it runs as administrator while Win顺 does not" : ")");
-    } else if (!sent) {
+            qWarning() << "XYplorer did not take a script (error" << asked.error
+                       << (asked.error == ERROR_ACCESS_DENIED ? "): it runs as administrator while Win顺 does not" : ")");
+    } else if (!sent && asked.delivered) {
         qWarning() << "XYplorer took more than" << kXYplorerWait << "ms over a script";
     }
     return asked;
 }
 
+// Bounded cross-process WM_GETTEXT for a child control (empty on hang/UIPI).
+std::wstring controlText(HWND hwnd, UINT timeout = 300)
+{
+    DWORD_PTR length = 0;
+    if (!::SendMessageTimeoutW(hwnd, WM_GETTEXTLENGTH, 0, 0, SMTO_ABORTIFHUNG, timeout, &length) || length == 0
+        || length > 32767)
+        return {};
+    std::wstring text(static_cast<std::size_t>(length) + 1, L'\0');
+    DWORD_PTR copied = 0;
+    if (!::SendMessageTimeoutW(hwnd, WM_GETTEXT, text.size(), reinterpret_cast<LPARAM>(text.data()), SMTO_ABORTIFHUNG,
+            timeout, &copied))
+        return {};
+    text.resize(std::min<std::size_t>(static_cast<std::size_t>(copied), static_cast<std::size_t>(length)));
+    return text;
+}
+
+// Resolves XYplorer's bare special-folder address-bar labels ("Desktop",
+// "Documents", "桌面", "文档", ...) to their real disk folder. Used only on
+// the primary address bar (never the live-filter box or window title).
+QString xyplorerKnownFolder(QString text)
+{
+    if (const qsizetype search = text.indexOf(u'?'); search >= 0)
+        text.truncate(search);
+    text = text.trimmed();
+    if (text.isEmpty())
+        return {};
+    const auto known = [](const KNOWNFOLDERID& id) -> QString {
+        PWSTR path = nullptr;
+        const HRESULT hr = ::SHGetKnownFolderPath(id, KF_FLAG_DEFAULT, nullptr, &path);
+        const std::wstring folder = SUCCEEDED(hr) && path ? path : L"";
+        ::CoTaskMemFree(path);
+        return !folder.empty() && isFolder(folder) ? QString::fromStdWString(folder) : QString();
+    };
+    const auto isAny = [&](std::initializer_list<QStringView> names) {
+        return std::ranges::any_of(names, [&](QStringView name) { return text.compare(name, Qt::CaseInsensitive) == 0; });
+    };
+    if (isAny({u"Desktop", u"桌面"}))
+        return known(FOLDERID_Desktop);
+    if (isAny({u"Documents", u"Personal", u"My Documents", u"文档", u"我的文档"}))
+        return known(FOLDERID_Documents);
+    if (isAny({u"Downloads", u"下载"}))
+        return known(FOLDERID_Downloads);
+    if (isAny({u"Pictures", u"My Pictures", u"图片"}))
+        return known(FOLDERID_Pictures);
+    if (isAny({u"Music", u"My Music", u"音乐"}))
+        return known(FOLDERID_Music);
+    if (isAny({u"Videos", u"My Videos", u"视频"}))
+        return known(FOLDERID_Videos);
+    return {};
+}
+
+// Fallback 1 for XYplorer: read its visible address bar (ThunderRT6FormDC >
+// ThunderRT6PictureBoxDC > Edit), which tracks the active pane in both single-
+// and dual-pane modes across 32-bit VB6 (27.x) and 64-bit twinBASIC (28.x).
+// Used when WM_COPYDATA scripting does not answer (XYplorerFree, modal popup).
+QString xyplorerAddressFolder(HWND window)
+{
+    QString bestPath;
+    LONG bestPathWidth = -1;
+    LONG bestPathLeft = 0;
+    QString widestRaw;
+    LONG widestWidth = -1;
+    LONG widestLeft = 0;
+    for (HWND box = ::FindWindowExW(window, nullptr, L"ThunderRT6PictureBoxDC", nullptr); box;
+        box = ::FindWindowExW(window, box, L"ThunderRT6PictureBoxDC", nullptr)) {
+        if (!::IsWindowVisible(box))
+            continue;
+        for (HWND edit = ::FindWindowExW(box, nullptr, L"Edit", nullptr); edit;
+            edit = ::FindWindowExW(box, edit, L"Edit", nullptr)) {
+            if (!::IsWindowVisible(edit))
+                continue;
+            RECT rect {};
+            const LONG width = ::GetWindowRect(edit, &rect) ? std::max<LONG>(0, rect.right - rect.left) : 0;
+            const QString raw = QString::fromStdWString(controlText(edit));
+            // The address bar sits left of and wider than the live-filter Edit.
+            if (widestWidth < 0 || width > widestWidth || (width == widestWidth && rect.left < widestLeft)) {
+                widestRaw = raw;
+                widestWidth = width;
+                widestLeft = rect.left;
+            }
+            const QString folder = pathtext::xyplorerFolderFromAddress(raw);
+            if (folder.isEmpty() || !isFolder(folder.toStdWString()))
+                continue;
+            if (bestPath.isEmpty() || width > bestPathWidth || (width == bestPathWidth && rect.left < bestPathLeft)) {
+                bestPath = folder;
+                bestPathWidth = width;
+                bestPathLeft = rect.left;
+            }
+        }
+    }
+    if (!bestPath.isEmpty())
+        return bestPath;
+    return widestWidth > 0 ? xyplorerKnownFolder(widestRaw) : QString();
+}
+
+// Fallback 2 for XYplorer: top-level window caption via GetWindowTextW.
+// Reads the kernel caption without cross-process messages, so it works even
+// when XYplorer runs elevated (UIPI blocks WM_COPYDATA and WM_GETTEXT) or the
+// address bar is hidden.
+QString xyplorerTitleFolder(HWND window)
+{
+    const QString folder = pathtext::folderFromXYplorerTitle(QString::fromStdWString(caption(window)));
+    return !folder.isEmpty() && isFolder(folder.toStdWString()) ? folder : QString();
+}
+
 // The folders an XYplorer window shows, as pathtext::xyplorerTabs reads
 // its answer: each pane's tabs (the active pane first, the tab on top
-// first), the other pane's only while it is shown.
+// first), the other pane's only while it is shown. Falls back to the visible
+// address bar and window title when scripting is unavailable or blocked.
 QList<pathtext::XYplorerTab> xyplorerTabs(HWND window)
 {
-    const XYplorerAsked asked = askXYplorer(window, [](const std::wstring& ours) {
-        // pathreal(): a tab's path may be a special one ("Documents", the
-        // user's name for the profile). Flag e: no empty token, whose
-        // pathreal() would be the item focused.
-        return L"::$a = ''; foreach($t, get('tabs_sf', '|', 'a'), '|', 'e') { $a = $a . '|' . pathreal($t); }"
-               L" $b = ''; foreach($t, get('tabs_sf', '|', 'i'), '|', 'e') { $b = $b . '|' . pathreal($t); }"
-               L" copydata "
-            + ours + L", dualpane() . \"<crlf>\" . $a . \"<crlf>\" . $b, 0;";
-    });
-    if (!asked.delivered)
-        return {};
-    if (asked.answer.empty()) {
-        qWarning() << "XYplorer did not say which folders it shows";
+    const bool elevated = integrity::higherThanOurs(window);
+    if (!elevated) {
+        const XYplorerAsked asked = askXYplorer(
+            window,
+            [](const std::wstring& ours) {
+                // pathreal(): a tab's path may be a special one ("Documents", the
+                // user's name for the profile). Flag e: no empty token, whose
+                // pathreal() would be the item focused.
+                return L"::$a = ''; foreach($t, get('tabs_sf', '|', 'a'), '|', 'e') { $a = $a . '|' . pathreal($t); }"
+                       L" $b = ''; foreach($t, get('tabs_sf', '|', 'i'), '|', 'e') { $b = $b . '|' . pathreal($t); }"
+                       L" copydata "
+                    + ours + L", dualpane() . \"<crlf>\" . $a . \"<crlf>\" . $b, 0;";
+            },
+            false);
+        if (asked.delivered && !asked.answer.empty()) {
+            QList<pathtext::XYplorerTab> tabs = pathtext::xyplorerTabs(QString::fromStdWString(asked.answer));
+            tabs.removeIf([](const pathtext::XYplorerTab& tab) { return !isFolder(tab.path.toStdWString()); }); // archives, gone
+            if (!tabs.isEmpty())
+                return tabs;
+        }
+        if (asked.error != ERROR_ACCESS_DENIED) {
+            if (QString folder = xyplorerAddressFolder(window); !folder.isEmpty()) {
+                qInfo() << "XYplorer: read active folder from address bar fallback";
+                return {{std::move(folder), 1}};
+            }
+        }
+        if (QString folder = xyplorerTitleFolder(window); !folder.isEmpty()) {
+            qInfo() << "XYplorer: read active folder from window title fallback";
+            return {{std::move(folder), 1}};
+        }
+        if (!asked.delivered) {
+            static std::atomic<bool> warned {false};
+            if (!warned.exchange(true))
+                qWarning() << "XYplorer did not take a script (error" << asked.error
+                           << (asked.error == ERROR_ACCESS_DENIED ? "): it runs as administrator while Win顺 does not" : ")");
+        } else if (asked.answer.empty()) {
+            qWarning() << "XYplorer did not say which folders it shows";
+        }
         return {};
     }
-    QList<pathtext::XYplorerTab> tabs = pathtext::xyplorerTabs(QString::fromStdWString(asked.answer));
-    tabs.removeIf([](const pathtext::XYplorerTab& tab) { return !isFolder(tab.path.toStdWString()); }); // archives, gone
-    return tabs;
+    if (QString folder = xyplorerTitleFolder(window); !folder.isEmpty()) {
+        qInfo() << "XYplorer (elevated): read active folder from window title";
+        return {{std::move(folder), 1}};
+    }
+    static std::atomic<bool> warnedElevated {false};
+    if (!warnedElevated.exchange(true))
+        qWarning() << "XYplorer runs as administrator while Win顺 does not, and its title bar shows no folder path";
+    return {};
 }
 
 // A script that brings the tab showing `folder` in the active pane to the

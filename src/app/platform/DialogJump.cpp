@@ -142,20 +142,40 @@ void CALLBACK DialogJump::onLocation(HWINEVENTHOOK, DWORD event, HWND hwnd, LONG
     // The hook hears the whole thread: the caret, the cursor, every control.
     if (event != EVENT_OBJECT_SHOW && event != EVENT_OBJECT_HIDE && event != EVENT_OBJECT_LOCATIONCHANGE)
         return;
+    if (object == OBJID_WINDOW && event == EVENT_OBJECT_HIDE && !::IsWindowVisible(hwnd)) {
+        // Reusable dialogs (e.g. Qt/WPS) hide rather than destroy on close:
+        // forget them so the next open triggers auto-jump as a fresh dialog.
+        std::erase(g_instance->m_seen, hwnd);
+        std::erase(g_instance->m_wentToManager, hwnd);
+        if (g_instance->m_lastDialog == hwnd)
+            g_instance->m_lastDialog = nullptr;
+    }
     if (object == OBJID_WINDOW && g_instance->m_callbacks.dialogMoved)
         g_instance->m_callbacks.dialogMoved();
 }
 
 void DialogJump::follow(HWND foreground)
 {
-    m_probing = nullptr;
-    std::erase_if(m_wentToManager, [](HWND dialog) { return !::IsWindow(dialog); });
     if (foreground && std::ranges::find(m_companions, foreground) != m_companions.end()) {
         // The bar, the clipboard: the dialog is still the one. Not back from
         // a file manager then, whatever is picked there: no going by itself after that.
         std::erase(m_wentToManager, m_lastDialog); // m_dialog: null since the file manager came up
         return;
     }
+    const auto stale = [foreground](HWND dialog) {
+        return dialog != foreground && (!::IsWindow(dialog) || !::IsWindowVisible(dialog));
+    };
+    if (m_probing && m_probing != foreground) {
+        if (m_probingFromManager && !stale(m_probing)
+            && std::ranges::find(m_wentToManager, m_probing) == m_wentToManager.end())
+            m_wentToManager.push_back(m_probing);
+        m_probing = nullptr;
+        m_probingFromManager = false;
+    }
+    std::erase_if(m_wentToManager, stale);
+    std::erase_if(m_seen, stale);
+    if (m_lastDialog && stale(m_lastDialog))
+        m_lastDialog = nullptr;
     // Left for a file manager, straight or by way of the taskbar, the task
     // switcher or the Start menu (each in front for a moment): on the way
     // back the dialog may go to the folder shown there.
@@ -189,17 +209,49 @@ void DialogJump::follow(HWND foreground)
     } else if (filedialog::mayBeKingsoft(foreground) && !filedialog::probed(foreground)) {
         // WPS Office's own, asked through UI Automation: on the worker, as
         // that waits on the program.
-        m_probing = foreground;
-        m_probingFromManager = fromManager;
-        m_worker.post([this, hwnd = foreground] {
-            if (filedialog::probe(hwnd) == filedialog::Kind::None)
-                return;
-            QMetaObject::invokeMethod(&m_recheck, [this, hwnd] {
-                if (hwnd == m_probing && ::GetForegroundWindow() == hwnd)
-                    setDialog(hwnd, m_probingFromManager);
-            }, Qt::QueuedConnection);
-        });
+        probeKingsoft(foreground, fromManager, true);
     }
+}
+
+void DialogJump::probeKingsoft(HWND hwnd, bool fromManager, bool allowRetry)
+{
+    if (m_probing == hwnd) {
+        m_probingFromManager = m_probingFromManager || fromManager;
+        return;
+    }
+    m_probing = hwnd;
+    m_probingFromManager = fromManager;
+    m_worker.post([this, hwnd, allowRetry] {
+        if (filedialog::probe(hwnd) == filedialog::Kind::None) {
+            const bool undecided = allowRetry && filedialog::mayBeKingsoft(hwnd) && !filedialog::probed(hwnd);
+            QMetaObject::invokeMethod(&m_recheck, [this, hwnd, undecided] {
+                const bool back = (m_probing == hwnd && m_probingFromManager)
+                    || std::erase(m_wentToManager, hwnd) > 0;
+                if (m_probing == hwnd) {
+                    m_probing = nullptr;
+                    m_probingFromManager = false;
+                }
+                if (undecided && ::GetForegroundWindow() == hwnd && m_dialog != hwnd) {
+                    QTimer::singleShot(500ms, &m_recheck, [this, hwnd, back] {
+                        if (::GetForegroundWindow() == hwnd && m_dialog != hwnd
+                            && filedialog::mayBeKingsoft(hwnd) && !filedialog::probed(hwnd))
+                            probeKingsoft(hwnd, back, false);
+                    });
+                }
+            }, Qt::QueuedConnection);
+            return;
+        }
+        QMetaObject::invokeMethod(&m_recheck, [this, hwnd] {
+            const bool back = (m_probing == hwnd && m_probingFromManager)
+                || std::erase(m_wentToManager, hwnd) > 0;
+            if (m_probing == hwnd) {
+                m_probing = nullptr;
+                m_probingFromManager = false;
+            }
+            if (::GetForegroundWindow() == hwnd && m_dialog != hwnd)
+                setDialog(hwnd, back);
+        }, Qt::QueuedConnection);
+    });
 }
 
 void DialogJump::await(HWND candidate, bool fromManager)
@@ -311,7 +363,7 @@ void DialogJump::setDialog(HWND dialog, bool fromManager)
         m_callbacks.dialogChanged(dialog);
 
     if (dialog && m_autoJump && canFollow(dialog)) {
-        std::erase_if(m_seen, [](HWND seen) { return !::IsWindow(seen); });
+        std::erase_if(m_seen, [dialog](HWND seen) { return seen != dialog && (!::IsWindow(seen) || !::IsWindowVisible(seen)); });
         const bool first = std::ranges::find(m_seen, dialog) == m_seen.end();
         if (first)
             m_seen.push_back(dialog);
@@ -369,7 +421,11 @@ void DialogJump::autoJump(HWND dialog, bool first)
     if (folders.empty())
         return;
     const std::wstring& folder = folders.front().path;
-    std::erase_if(m_sentTo, [](const auto& sent) { return !::IsWindow(sent.first); });
+    std::erase_if(m_sentTo, [dialog](const auto& sent) {
+        return sent.first != dialog && (!::IsWindow(sent.first) || !::IsWindowVisible(sent.first));
+    });
+    if (first)
+        std::erase_if(m_sentTo, [dialog](const auto& sent) { return sent.first == dialog; });
     // Back from a file manager: to the folder in front there, each time,
     // whether the user went to it there or picked a window already showing
     // it (GitHub #334: the second folder picked was not gone to). Not to the

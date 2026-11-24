@@ -112,6 +112,7 @@ private:
     void recheck();
     void stopAwaiting();
     void setDialog(HWND dialog, bool fromManager);
+    void probeKingsoft(HWND hwnd, bool fromManager, bool allowRetry);
     void setRegistered(bool on);
     // A dialog we can take over: a normal one, or an elevated one the service
     // can drive for us. `elevatedNav`: elevated AND the service can.

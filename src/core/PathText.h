@@ -132,6 +132,13 @@ struct XYplorerTab {
 };
 QList<XYplorerTab> xyplorerTabs(const QString& reply);
 
+// A folder read from XYplorer's address bar or window title when its scripting
+// interface cannot answer (XYplorerFree, elevated XYplorer, or a modal dialog).
+// Strips \\?\ prefixes and "?pattern" quick searches; empty for virtual places
+// or plain folder names without an absolute path.
+QString xyplorerFolderFromAddress(const QString& text);
+QString folderFromXYplorerTitle(const QString& title);
+
 // `text` as a string in an XYplorer script: in single quotes, in which
 // nothing is resolved (%VARIABLES%, <variables>), one inside doubled.
 QString xyplorerQuoted(const QString& text);

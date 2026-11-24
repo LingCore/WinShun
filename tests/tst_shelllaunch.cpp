@@ -24,6 +24,7 @@
 #include <QUuid>
 
 #include <objbase.h>
+#include <shlobj.h>
 #include <tlhelp32.h>
 
 #include <algorithm>
@@ -36,6 +37,125 @@
 using namespace Qt::StringLiterals;
 
 namespace {
+constexpr UINT kXYplorerReloadMsg = WM_APP + 1;
+
+struct XYplorerFixtureState {
+    QString stateFile;
+    HWND main = nullptr;
+    HWND addrBox = nullptr;
+    HWND addrEdit = nullptr;
+    HWND filterEdit = nullptr;
+    HWND hiddenEdit = nullptr;
+
+    QJsonObject read() const
+    {
+        QFile file(stateFile);
+        return file.open(QIODevice::ReadOnly) ? QJsonDocument::fromJson(file.readAll()).object() : QJsonObject();
+    }
+
+    void apply() const
+    {
+        const QJsonObject state = read();
+        ::SetWindowTextW(main, state.value(u"title"_s).toString().toStdWString().c_str());
+        const bool showAddr = state.value(u"showAddr"_s).toBool(true);
+        ::ShowWindow(addrBox, showAddr ? SW_SHOWNA : SW_HIDE);
+        ::ShowWindow(addrEdit, showAddr ? SW_SHOWNA : SW_HIDE);
+        ::SetWindowTextW(addrEdit, state.value(u"addr"_s).toString().toStdWString().c_str());
+        ::SetWindowTextW(filterEdit, state.value(u"filter"_s).toString().toStdWString().c_str());
+        ::SetWindowTextW(hiddenEdit, state.value(u"hidden"_s).toString().toStdWString().c_str());
+    }
+};
+
+LRESULT CALLBACK xyplorerFixtureProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    auto* fixture = reinterpret_cast<XYplorerFixtureState*>(::GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+    if (msg == kXYplorerReloadMsg && fixture) {
+        fixture->apply();
+        return 1;
+    }
+    if (msg == WM_COPYDATA && fixture) {
+        const auto* cds = reinterpret_cast<const COPYDATASTRUCT*>(lParam);
+        if (cds && cds->dwData == 0x00400001) {
+            const QString reply = fixture->read().value(u"reply"_s).toString();
+            const HWND sender = reinterpret_cast<HWND>(wParam);
+            if (!reply.isEmpty() && sender && ::IsWindow(sender)) {
+                const std::wstring wide = reply.toStdWString();
+                COPYDATASTRUCT answer {};
+                answer.dwData = 0x00400000;
+                answer.cbData = static_cast<DWORD>(wide.size() * sizeof(wchar_t));
+                answer.lpData = const_cast<wchar_t*>(wide.data());
+                ::SendMessageW(sender, WM_COPYDATA, reinterpret_cast<WPARAM>(hwnd), reinterpret_cast<LPARAM>(&answer));
+            }
+            return TRUE;
+        }
+    }
+    if (msg == WM_DESTROY)
+        ::PostQuitMessage(0);
+    return ::DefWindowProcW(hwnd, msg, wParam, lParam);
+}
+
+int xyplorerFixture(const QString& ready, const QString& stateFile)
+{
+    const HINSTANCE instance = ::GetModuleHandleW(nullptr);
+    auto reg = [instance](const wchar_t* name, WNDPROC proc) {
+        WNDCLASSEXW wc {sizeof(WNDCLASSEXW)};
+        wc.lpfnWndProc = proc;
+        wc.hInstance = instance;
+        wc.lpszClassName = name;
+        return ::RegisterClassExW(&wc) != 0 || ::GetLastError() == ERROR_CLASS_ALREADY_EXISTS;
+    };
+    if (!reg(L"ThunderRT6Main", ::DefWindowProcW) || !reg(L"ThunderRT6FormDC", xyplorerFixtureProc)
+        || !reg(L"ThunderRT6PictureBoxDC", ::DefWindowProcW))
+        return 1;
+
+    XYplorerFixtureState state;
+    state.stateFile = stateFile;
+    const QJsonObject initial = state.read();
+    const std::wstring runtimeTitle = initial.value(u"runtimeTitle"_s).toString(u"XYplorer"_s).toStdWString();
+    const HWND runtime = ::CreateWindowExW(WS_EX_TOOLWINDOW, L"ThunderRT6Main", runtimeTitle.c_str(),
+        WS_POPUP | WS_VISIBLE, -20000, -20000, 10, 10, nullptr, nullptr, instance, nullptr);
+    state.main = ::CreateWindowExW(WS_EX_NOACTIVATE, L"ThunderRT6FormDC", L"",
+        WS_OVERLAPPEDWINDOW | WS_VISIBLE, -20000, -20000, 900, 600, runtime, nullptr, instance, nullptr);
+    const HWND ownedDialog = ::CreateWindowExW(WS_EX_NOACTIVATE, L"ThunderRT6FormDC", L"XYplorer Trial Version",
+        WS_POPUP | WS_VISIBLE, -20000, -20000, 300, 200, state.main, nullptr, instance, nullptr);
+    state.addrBox = ::CreateWindowExW(0, L"ThunderRT6PictureBoxDC", L"",
+        WS_CHILD | WS_VISIBLE, 10, 10, 500, 24, state.main, nullptr, instance, nullptr);
+    state.addrEdit = ::CreateWindowExW(0, L"Edit", L"",
+        WS_CHILD | WS_VISIBLE, 0, 0, 500, 24, state.addrBox, nullptr, instance, nullptr);
+    const HWND filterBox = ::CreateWindowExW(0, L"ThunderRT6PictureBoxDC", L"",
+        WS_CHILD | WS_VISIBLE, 530, 10, 180, 24, state.main, nullptr, instance, nullptr);
+    state.filterEdit = ::CreateWindowExW(0, L"Edit", L"",
+        WS_CHILD | WS_VISIBLE, 0, 0, 180, 24, filterBox, nullptr, instance, nullptr);
+    const HWND hiddenBox = ::CreateWindowExW(0, L"ThunderRT6PictureBoxDC", L"",
+        WS_CHILD, 10, 40, 700, 24, state.main, nullptr, instance, nullptr);
+    state.hiddenEdit = ::CreateWindowExW(0, L"Edit", L"",
+        WS_CHILD, 0, 0, 700, 24, hiddenBox, nullptr, instance, nullptr);
+    if (!runtime || !state.main || !ownedDialog || !state.addrBox || !state.addrEdit || !filterBox || !state.filterEdit
+        || !hiddenBox || !state.hiddenEdit)
+        return 2;
+    ::SetWindowLongPtrW(state.main, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&state));
+    state.apply();
+
+    const QJsonObject handles {
+        {u"main"_s, static_cast<qint64>(reinterpret_cast<quintptr>(state.main))},
+        {u"dialog"_s, static_cast<qint64>(reinterpret_cast<quintptr>(ownedDialog))},
+        {u"runtime"_s, static_cast<qint64>(reinterpret_cast<quintptr>(runtime))},
+    };
+    QFile signal(ready);
+    if (!signal.open(QIODevice::WriteOnly))
+        return 3;
+    signal.write(QJsonDocument(handles).toJson(QJsonDocument::Compact));
+    signal.close();
+
+    MSG msg {};
+    while (::GetMessageW(&msg, nullptr, 0, 0) > 0) {
+        ::TranslateMessage(&msg);
+        ::DispatchMessageW(&msg);
+    }
+    ::DestroyWindow(runtime);
+    return 0;
+}
+
 int tessoaFixture(const QString& ready, const QString& folderFile)
 {
     const HWND window = ::CreateWindowExW(WS_EX_NOACTIVATE, L"STATIC", L"Tessoa fixture", WS_OVERLAPPED,
@@ -165,6 +285,172 @@ class TestShellLaunch : public QObject {
     }
 
 private slots:
+    void xyplorerDiscoveryAndFallbacks()
+    {
+        QTemporaryDir fixture;
+        QVERIFY(fixture.isValid());
+        const QString folderA = QDir::toNativeSeparators(fixture.filePath(u"项目 甲"_s));
+        const QString folderB = QDir::toNativeSeparators(fixture.filePath(u"Work - 2026"_s));
+        const QString folderC = QDir::toNativeSeparators(fixture.filePath(u"子目录 C"_s));
+        QVERIFY(QDir().mkpath(folderA));
+        QVERIFY(QDir().mkpath(folderB));
+        QVERIFY(QDir().mkpath(folderC));
+
+        const auto writeState = [](const QString& file, const QJsonObject& obj) {
+            QFile out(file);
+            return out.open(QIODevice::WriteOnly | QIODevice::Truncate)
+                && out.write(QJsonDocument(obj).toJson(QJsonDocument::Compact)) > 0;
+        };
+
+        // 1. XYplorerFree.exe with non-default ThunderRT6Main title, covering all 3 tiers.
+        const QString xyFreeExe = fixture.filePath(u"XYplorerFree.exe"_s);
+        stage(fixture, xyFreeExe, false);
+        const QString ready = fixture.filePath(u"xy-ready.json"_s);
+        const QString stateFile = fixture.filePath(u"xy-state.json"_s);
+        QVERIFY(writeState(stateFile, {
+            {u"runtimeTitle"_s, u"XYplorerFree"_s},
+            {u"title"_s, folderA + u" - XYplorerFree 17.40"_s},
+            {u"showAddr"_s, true},
+            {u"addr"_s, folderB},
+            {u"filter"_s, folderC},
+            {u"hidden"_s, folderC},
+            {u"reply"_s, u"1\r\n|"_s + folderA + u"|"_s + folderB + u"\r\n|"_s + folderC},
+        }));
+        QProcess child;
+        const auto stop = qScopeGuard([&] {
+            if (child.state() != QProcess::NotRunning) {
+                child.kill();
+                child.waitForFinished();
+            }
+        });
+        child.start(xyFreeExe, {u"--xyplorer-fixture"_s, ready, stateFile});
+        QVERIFY(child.waitForStarted());
+        QTRY_VERIFY_WITH_TIMEOUT(QFileInfo(ready).size() > 0, 5000);
+        QFile handshake(ready);
+        QVERIFY(handshake.open(QIODevice::ReadOnly));
+        const QJsonObject handles = QJsonDocument::fromJson(handshake.readAll()).object();
+        const HWND mainWnd = reinterpret_cast<HWND>(static_cast<quintptr>(handles.value(u"main"_s).toInteger()));
+        const HWND ownedDlg = reinterpret_cast<HWND>(static_cast<quintptr>(handles.value(u"dialog"_s).toInteger()));
+        QVERIFY(mainWnd && ownedDlg);
+
+        QCOMPARE(ws::filemanager::kindOf(mainWnd), std::optional(ws::filemanager::Kind::XYplorer));
+        QVERIFY(!ws::filemanager::kindOf(ownedDlg)); // owned XYplorer dialog is never the main window
+
+        // Tier 1: WM_COPYDATA script returns active + inactive + background tabs.
+        QCOMPARE(QString::fromStdWString(ws::filemanager::frontFolder(mainWnd)), folderA);
+        {
+            // Concurrent queries (as DialogBar::lookAround + DialogJump::autoJump do on open)
+            // are serialized by askXYplorer without corrupting replies.
+            auto other = std::async(std::launch::async, [mainWnd] { return ws::filemanager::frontFolder(mainWnd); });
+            const auto folders = ws::filemanager::openFolders();
+            QCOMPARE(QString::fromStdWString(other.get()), folderA);
+            const auto hasXY = [&](const QString& target) {
+                return std::ranges::any_of(folders, [&](const ws::filemanager::Folder& f) {
+                    return f.shownIn == ws::filemanager::Kind::XYplorer
+                        && QString::fromStdWString(f.path).compare(target, Qt::CaseInsensitive) == 0;
+                });
+            };
+            QVERIFY(hasXY(folderA));
+            QVERIFY(hasXY(folderB));
+            QVERIFY(hasXY(folderC));
+        }
+
+        // Tier 2: scripting unanswered (XYplorerFree / modal) -> visible wide address bar beats narrower filter and hidden box.
+        QVERIFY(writeState(stateFile, {
+            {u"title"_s, u"此电脑 - XYplorerFree 17.40"_s},
+            {u"showAddr"_s, true},
+            {u"addr"_s, folderB + u"?*.xlsx"_s},
+            {u"filter"_s, folderC},
+            {u"hidden"_s, folderA},
+            {u"reply"_s, u""_s},
+        }));
+        QCOMPARE(::SendMessageW(mainWnd, kXYplorerReloadMsg, 0, 0), LRESULT(1));
+        QCOMPARE(QString::fromStdWString(ws::filemanager::frontFolder(mainWnd)), folderB);
+
+        // Tier 2b: special folder alias ("Documents") in primary address bar resolves to real known folder.
+        {
+            PWSTR docs = nullptr;
+            const bool haveDocs = SUCCEEDED(::SHGetKnownFolderPath(FOLDERID_Documents, KF_FLAG_DEFAULT, nullptr, &docs)) && docs;
+            const QString docsPath = haveDocs ? QString::fromWCharArray(docs) : QString();
+            ::CoTaskMemFree(docs);
+            if (!docsPath.isEmpty() && QDir(docsPath).exists()) {
+                QVERIFY(writeState(stateFile, {
+                    {u"title"_s, u"Documents - XYplorerFree 17.40"_s},
+                    {u"showAddr"_s, true},
+                    {u"addr"_s, u"Documents"_s},
+                    {u"filter"_s, u""_s},
+                    {u"hidden"_s, folderA},
+                    {u"reply"_s, u""_s},
+                }));
+                QCOMPARE(::SendMessageW(mainWnd, kXYplorerReloadMsg, 0, 0), LRESULT(1));
+                QCOMPARE(QString::fromStdWString(ws::filemanager::frontFolder(mainWnd)).toLower(), docsPath.toLower());
+            }
+        }
+
+        // Tier 3: scripting unanswered & address bar hidden -> window title fallback (works across UIPI too).
+        QVERIFY(writeState(stateFile, {
+            {u"title"_s, folderC + u" - XYplorer 28.50 - (Academic)"_s},
+            {u"showAddr"_s, false},
+            {u"addr"_s, folderA},
+            {u"filter"_s, u""_s},
+            {u"hidden"_s, folderA},
+            {u"reply"_s, u""_s},
+        }));
+        QCOMPARE(::SendMessageW(mainWnd, kXYplorerReloadMsg, 0, 0), LRESULT(1));
+        QCOMPARE(QString::fromStdWString(ws::filemanager::frontFolder(mainWnd)), folderC);
+
+        // Tier 3b: reversed "App Name First" title format.
+        QVERIFY(writeState(stateFile, {
+            {u"title"_s, u"XYplorer 28.50 - (Academic) - "_s + folderB},
+            {u"showAddr"_s, false},
+            {u"addr"_s, u""_s},
+            {u"filter"_s, u""_s},
+            {u"hidden"_s, folderA},
+            {u"reply"_s, u""_s},
+        }));
+        QCOMPARE(::SendMessageW(mainWnd, kXYplorerReloadMsg, 0, 0), LRESULT(1));
+        QCOMPARE(QString::fromStdWString(ws::filemanager::frontFolder(mainWnd)), folderB);
+
+        // Virtual location (This PC): none of the tiers fabricates a stale/hidden folder,
+        // and a known-folder word ("文档") typed in the narrower live-filter box is ignored.
+        QVERIFY(writeState(stateFile, {
+            {u"title"_s, u"此电脑 - XYplorer 28.50 - (Academic)"_s},
+            {u"showAddr"_s, true},
+            {u"addr"_s, u"此电脑"_s},
+            {u"filter"_s, u"文档"_s},
+            {u"hidden"_s, folderA},
+            {u"reply"_s, u"0\r\n|此电脑\r\n|"_s},
+        }));
+        QCOMPARE(::SendMessageW(mainWnd, kXYplorerReloadMsg, 0, 0), LRESULT(1));
+        QVERIFY(ws::filemanager::frontFolder(mainWnd).empty());
+
+        ::PostMessageW(mainWnd, WM_CLOSE, 0, 0);
+        QVERIFY(child.waitForFinished(5000));
+
+        // 2. Helper binary XYcopy.exe must never be misidentified as XYplorer.
+        const QString xyCopyExe = fixture.filePath(u"XYcopy.exe"_s);
+        stage(fixture, xyCopyExe, false);
+        const QString copyReady = fixture.filePath(u"xycopy-ready.json"_s);
+        QProcess helper;
+        const auto stopHelper = qScopeGuard([&] {
+            if (helper.state() != QProcess::NotRunning) {
+                helper.kill();
+                helper.waitForFinished();
+            }
+        });
+        helper.start(xyCopyExe, {u"--xyplorer-fixture"_s, copyReady, stateFile});
+        QVERIFY(helper.waitForStarted());
+        QTRY_VERIFY_WITH_TIMEOUT(QFileInfo(copyReady).size() > 0, 5000);
+        QFile copyHandshake(copyReady);
+        QVERIFY(copyHandshake.open(QIODevice::ReadOnly));
+        const HWND copyMain = reinterpret_cast<HWND>(
+            static_cast<quintptr>(QJsonDocument::fromJson(copyHandshake.readAll()).object().value(u"main"_s).toInteger()));
+        QVERIFY(copyMain);
+        QVERIFY(!ws::filemanager::kindOf(copyMain));
+        ::PostMessageW(copyMain, WM_CLOSE, 0, 0);
+        QVERIFY(helper.waitForFinished(5000));
+    }
+
     void tessoaProductionDiscovery()
     {
         QTemporaryDir fixture;
@@ -845,6 +1131,8 @@ int main(int argc, char** argv)
         return hidden;
     QCoreApplication app(argc, argv);
     const QStringList args = app.arguments();
+    if (args.size() == 4 && args[1] == u"--xyplorer-fixture")
+        return xyplorerFixture(args[2], args[3]);
     if (args.size() == 4 && args[1] == u"--tessoa-fixture")
         return tessoaFixture(args[2], args[3]);
     if (args.contains(u"--picker-probe"_s))
