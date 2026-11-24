@@ -6890,6 +6890,40 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
         launcher.setCurrentRow(-1);
         launcher.setCurrentRow(0);
     };
+    // A picture file's row: 贴到屏幕 and 编辑 by the screenshot plugin, only
+    // while one does them; 编辑 hands the file over, the launcher going first.
+    {
+        const QString picturePath = QDir::toNativeSeparators(temporary.filePath(u"图表.png"_s));
+        QImage picture(32, 24, QImage::Format_RGB32);
+        picture.fill(Qt::darkCyan);
+        check(picture.save(picturePath), "the picture file could not be written");
+        const auto offers = [&](int action) {
+            return std::ranges::any_of(launcher.menuItems(0), [action](const QVariant& entry) {
+                const QVariantMap item = entry.toMap();
+                return item.contains(u"action"_s) && item.value(u"action"_s).toInt() == action;
+            });
+        };
+        const SearchResult pictureRow {.name = u"图表.png"_s, .path = picturePath};
+        showRow(pictureRow);
+        check(!offers(Launcher::PinPicture) && !offers(Launcher::EditPicture),
+            "a picture file's row offered the screenshot plugin's verbs without the plugin");
+        launcher.setPictureVerbs(true, true);
+        showRow(pictureRow);
+        check(offers(Launcher::PinPicture) && offers(Launcher::EditPicture), "a picture file's row lacks 贴到屏幕 or 编辑");
+        QString edited;
+        int dismissedFirst = 0;
+        const auto editing = QObject::connect(&launcher, &Launcher::editPictureRequested, &launcher,
+            [&](const QString& path) { edited = path; });
+        const auto dismissing = QObject::connect(&launcher, &Launcher::dismissRequested, &launcher,
+            [&] { dismissedFirst += edited.isEmpty(); });
+        launcher.trigger(0, Launcher::EditPicture);
+        QObject::disconnect(editing);
+        QObject::disconnect(dismissing);
+        check(edited == picturePath && dismissedFirst == 1, "编辑 did not hand the picture file over after the launcher went");
+        showRow(SearchResult {.name = u"说明.txt"_s, .path = QDir::toNativeSeparators(temporary.filePath(u"说明.txt"_s))});
+        check(!offers(Launcher::PinPicture) && !offers(Launcher::EditPicture), "a text file's row offered the picture verbs");
+        launcher.setPictureVerbs(false, false);
+    }
     const auto tabHint = [&] { return launcher.keyHints().value(u"tab"_s).toString(); };
     const QString folderHint = QCoreApplication::translate("ws::Launcher", "进入文件夹");
     const auto hasBrowseAction = [&] {
@@ -8477,6 +8511,209 @@ bool checkClipboardFilePreview(QQmlEngine* engine, const QDir& output)
     check(!watcher.running(), "fixture must never start the native clipboard writer");
     window->hide();
     say(u"clipboard file preview: a copied text file shows its lines beside the list, follows rows, closes with the window"_s);
+    return ok;
+}
+
+// --clipboard-pin-files: pictures copied as files (微信, QQ, Explorer) go on
+// the screen and into the editing window as the history's own pictures do:
+// 贴到屏幕 (F3) and 编辑 (Ctrl+E) in a 文件 entry's menu when every file is
+// a picture Windows reads; several at once, each in a slot of its own, at
+// most Clipboard::kPinAtOnce; picked entries together; files gone said so.
+// A temporary history; the native clipboard untouched; nothing is pinned
+// (the requests are caught where App would hand them to the plugin).
+bool checkClipboardPinFiles(QQmlEngine* engine, const QDir& output)
+{
+    QTemporaryDir temporary;
+    ClipStore store(temporary.filePath(u"history"_s));
+    bool ok = true;
+    const auto check = [&](bool condition, const char* reason) {
+        ok = condition && ok;
+        if (!condition) qWarning("clipboard pin files regression: %s", reason);
+    };
+    if (!store.open(QDateTime::currentMSecsSinceEpoch())) { check(false, "temporary history could not open"); return false; }
+    const auto pictureFile = [&](const QString& name, const QColor& color) {
+        const QString path = QDir::toNativeSeparators(temporary.filePath(name));
+        QImage picture(160, 120, QImage::Format_RGB32);
+        picture.fill(color);
+        check(picture.save(path), "a picture file could not be written");
+        return path;
+    };
+    const QString chat = pictureFile(u"微信图片_20261124.png"_s, QColor(0x2f, 0x7d, 0xd8));
+    const QString second = pictureFile(u"截图 2.bmp"_s, QColor(0x3c, 0xa0, 0x5a));
+    const QString notes = QDir::toNativeSeparators(temporary.filePath(u"说明.txt"_s));
+    {
+        QFile file(notes);
+        check(file.open(QIODevice::WriteOnly) && file.write("notes") > 0, "the text file could not be written");
+    }
+    const QString cleared = QDir::toNativeSeparators(temporary.filePath(u"已清理的缓存.jpg"_s)); // never written
+    QStringList dozen;
+    for (int i = 1; i <= Clipboard::kPinAtOnce + 2; ++i)
+        dozen.append(pictureFile(u"照片 %1.png"_s.arg(i), QColor::fromHsv(i * 25, 160, 220)));
+    QByteArray png;
+    {
+        QBuffer buffer(&png);
+        QImage picture(200, 140, QImage::Format_RGB32);
+        picture.fill(QColor(0xd8, 0x6a, 0x2f));
+        check(buffer.open(QIODevice::WriteOnly) && picture.save(&buffer, "PNG"), "the picture could not be made");
+    }
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    // Newest first: rows 0 (one picture from 微信) to 6 (a dozen photos).
+    store.add(ClipCapture {.kind = ClipKind::Files, .text = dozen.join(u'\n'), .source = u"资源管理器"_s}, now - 6000);
+    store.add(ClipCapture {.kind = ClipKind::Files, .text = cleared, .source = u"微信"_s}, now - 5000);
+    store.add(ClipCapture {.kind = ClipKind::Files, .text = chat + u'\n' + notes, .source = u"资源管理器"_s}, now - 4000);
+    ClipCapture copied;
+    copied.kind = ClipKind::Image;
+    copied.imageData = png;
+    copied.hash = "pin-files";
+    copied.width = 200;
+    copied.height = 140;
+    copied.source = u"QQ"_s;
+    const qint64 pictureId = store.add(copied, now - 3000);
+    store.add(ClipCapture {.kind = ClipKind::Text, .text = u"一段文字"_s, .source = u"记事本"_s}, now - 2000);
+    store.add(ClipCapture {.kind = ClipKind::Files, .text = chat + u'\n' + second, .source = u"资源管理器"_s}, now - 1000);
+    store.add(ClipCapture {.kind = ClipKind::Files, .text = chat, .source = u"微信"_s}, now);
+    ClipboardWatcher watcher({}, {});
+    Clipboard clipboard(&store, &watcher);
+    engine->addImageProvider(u"clippreview"_s, clipboard.filePreview()->imageProvider());
+    clipboard.setRowOptions(false, u"standard"_s, SystemTheme::uiSize());
+    clipboard.setActive(true);
+    clipboard.handleShown();
+    Placement placement(temporary.filePath(u"state.ini"_s), u"Clipboard"_s);
+    WindowFrame frame(false);
+    QQmlComponent component(engine, u"WinShun"_s, u"ClipboardWindow"_s);
+    std::unique_ptr<QObject> object(component.createWithInitialProperties({{u"clipboard"_s, QVariant::fromValue(&clipboard)},
+        {u"placement"_s, QVariant::fromValue(&placement)}, {u"frame"_s, QVariant::fromValue(&frame)}}));
+    auto* window = qobject_cast<QQuickWindow*>(object.get());
+    if (!window) { qWarning().noquote() << "clipboard pin files regression:" << component.errorString(); return false; }
+    window->create();
+    frame.setWindow(window);
+    placement.setWindow(window);
+    placement.enableWindowSizing();
+    showOffScreen(window);
+    clipboard.handlePlaced();
+    clipboard.setSeen(true);
+    settle(window);
+    auto* page = visualNamed(window->contentItem(), u"clipboardPage"_s);
+    auto* entries = visualNamed(window->contentItem(), u"clipboardEntries"_s);
+    if (!page || !entries) { check(false, "production clipboard page missing"); return false; }
+
+    struct Asked {
+        qint64 id = 0;
+        QString file;
+        int slot = -1;
+        bool operator==(const Asked&) const = default;
+    };
+    std::vector<Asked> pinned;
+    std::vector<Asked> edited;
+    int dismissed = 0;
+    QObject::connect(&clipboard, &Clipboard::pinRequested, &clipboard,
+        [&](qint64 id, const QString& file, int slot) { pinned.push_back({id, file, slot}); });
+    QObject::connect(&clipboard, &Clipboard::editRequested, &clipboard,
+        [&](qint64 id, const QString& file) { edited.push_back({id, file}); });
+    QObject::connect(&clipboard, &Clipboard::dismissRequested, &clipboard, [&] { dismissed += edited.empty(); });
+    const auto item = [&](int row, int action) {
+        for (const QVariant& entry : clipboard.menuItems(row)) {
+            const QVariantMap map = entry.toMap();
+            if (map.contains(u"action"_s) && map.value(u"action"_s).toInt() == action)
+                return map;
+        }
+        return QVariantMap();
+    };
+    const auto title = [&](int row, int action) { return item(row, action).value(u"text"_s).toString(); };
+    const auto shortcut = [&](int row, int action) { return item(row, action).value(u"shortcut"_s).toString(); };
+    const QString pinOne = Clipboard::tr("贴到屏幕");
+
+    // No plugin that pins: nothing new in the menu.
+    check(item(0, Clipboard::PinImage).isEmpty() && item(0, Clipboard::EditImage).isEmpty(),
+        "a picture file offered 贴到屏幕 or 编辑 without the screenshot plugin");
+    clipboard.setPictureVerbs(true, true);
+    // One picture copied in 微信: as a picture of the history.
+    check(title(0, Clipboard::PinImage) == pinOne && shortcut(0, Clipboard::PinImage) == u"F3"_s,
+        "one copied picture file has no 贴到屏幕 (F3)");
+    check(title(0, Clipboard::EditImage) == Clipboard::tr("编辑") && shortcut(0, Clipboard::EditImage) == u"Ctrl+E"_s,
+        "one copied picture file has no 编辑 (Ctrl+E)");
+    check(!item(0, Clipboard::Reveal).isEmpty() && item(0, Clipboard::OpenImage).isEmpty(),
+        "a copied file's own entries changed");
+    // Two: both go, the editing window takes one only.
+    check(title(1, Clipboard::PinImage) == Clipboard::tr("贴 %Ln 张到屏幕", nullptr, 2) && item(1, Clipboard::EditImage).isEmpty(),
+        "two copied picture files are not offered together");
+    // Words and the history's own picture: as before.
+    check(title(2, Clipboard::PinImage) == pinOne && item(2, Clipboard::EditImage).isEmpty(), "words lost their 贴到屏幕");
+    check(title(3, Clipboard::PinImage) == pinOne && !item(3, Clipboard::EditImage).isEmpty()
+            && !item(3, Clipboard::OpenImage).isEmpty(),
+        "a copied picture lost its own entries");
+    // A picture with a text file: not pictures.
+    check(item(4, Clipboard::PinImage).isEmpty() && item(4, Clipboard::EditImage).isEmpty(),
+        "a picture copied with a text file was offered as pictures");
+    // A dozen: the first ten.
+    check(title(6, Clipboard::PinImage) == Clipboard::tr("贴前 %Ln 张到屏幕", nullptr, Clipboard::kPinAtOnce),
+        "a dozen copied pictures do not say only the first go");
+
+    clipboard.trigger(1, Clipboard::PinImage);
+    check(pinned == std::vector<Asked> {{0, chat, 0}, {0, second, 1}}, "two picture files were not pinned in order, a slot each");
+    pinned.clear();
+    clipboard.trigger(6, Clipboard::PinImage);
+    check(std::ssize(pinned) == Clipboard::kPinAtOnce && pinned.front() == Asked {0, dozen.front(), 0}
+            && pinned.back() == Asked {0, dozen[Clipboard::kPinAtOnce - 1], Clipboard::kPinAtOnce - 1},
+        "a dozen pictures did not pin the first ten in their slots");
+    pinned.clear();
+    // 微信 cleared its cache since: said, nothing asked of the plugin.
+    clipboard.trigger(5, Clipboard::PinImage);
+    check(pinned.empty() && clipboard.statusText() == Clipboard::tr("这些文件已经不存在了"), "a file gone was not said");
+    clipboard.trigger(5, Clipboard::EditImage);
+    check(edited.empty() && dismissed == 0, "a file gone was handed to the editing window");
+    // Picked together: the history's picture and the file's, in the list's order.
+    clipboard.toggleSelected(0);
+    clipboard.toggleSelected(3);
+    check(title(0, Clipboard::PinImage) == Clipboard::tr("贴 %Ln 张到屏幕", nullptr, 2) && item(0, Clipboard::EditImage).isEmpty(),
+        "a picture file and a picture picked together are not offered together");
+    clipboard.trigger(0, Clipboard::PinImage);
+    const auto pinnedOnce = [&](qint64 id, const QString& file) {
+        return std::ranges::count_if(pinned, [&](const Asked& a) { return a.id == id && a.file == file; }) == 1;
+    };
+    check(pinned.size() == 2 && pinned[0].slot == 0 && pinned[1].slot == 1 && pinnedOnce(0, chat) && pinnedOnce(pictureId, {}),
+        "picked pictures were not pinned together");
+    pinned.clear();
+    clipboard.toggleSelected(2); // words among them: no 贴到屏幕 for all
+    check(item(0, Clipboard::PinImage).isEmpty(), "words picked with pictures were offered as pictures");
+    clipboard.clearSelection();
+    settle(window);
+
+    // The menu as shown (the screenshot plugin's entries under 打开所在位置).
+    entries->setProperty("currentIndex", 0);
+    settle(window);
+    check(QMetaObject::invokeMethod(page, "openContextMenu", Q_ARG(QVariant, QVariant(0)), Q_ARG(QVariant, QVariant())),
+        "clipboard context menu did not open");
+    if (auto* menu = qobject_cast<QQuickWindow*>(page->property("contextMenu").value<QObject*>())) {
+        settle(menu);
+        check(saveGrab(menu, output.filePath(u"clipboard-pin-files-menu.png"_s)), "the menu did not render");
+        QMetaObject::invokeMethod(menu, "dismiss");
+        settle(window);
+    } else {
+        check(false, "production clipboard menu is missing");
+    }
+    check(saveGrab(window, output.filePath(u"clipboard-pin-files.png"_s)), "the clipboard window did not render");
+
+    // Its keys with the menu closed (GitHub #379): F3 pins, Ctrl+E edits, the window going first.
+    const auto key = [&](int code, Qt::KeyboardModifiers modifiers) {
+        QKeyEvent press(QEvent::KeyPress, code, modifiers), release(QEvent::KeyRelease, code, modifiers);
+        QCoreApplication::sendEvent(window, &press);
+        QCoreApplication::sendEvent(window, &release);
+        settle(window);
+    };
+    if (QQuickItem* field = visualNamed(window->contentItem(), u"clipboardSearchField"_s))
+        field->forceActiveFocus(Qt::OtherFocusReason);
+    key(Qt::Key_F3, Qt::NoModifier);
+    check(pinned == std::vector<Asked> {{0, chat, 0}}, "F3 did not pin the copied picture file");
+    key(Qt::Key_E, Qt::ControlModifier);
+    check(edited == std::vector<Asked> {{0, chat}} && dismissed == 1, "Ctrl+E did not hand the picture file to the editing window");
+    // The plugin turned off: gone again.
+    clipboard.setPictureVerbs(false, false);
+    check(item(0, Clipboard::PinImage).isEmpty() && item(0, Clipboard::EditImage).isEmpty(),
+        "the picture verbs stayed with the plugin off");
+    check(!watcher.running(), "fixture must never start the native clipboard writer");
+    window->hide();
+    say(u"clipboard pin files: picture files copied in 微信/QQ/Explorer pin (F3, a slot each, ten at most) and edit (Ctrl+E); native clipboard untouched"_s);
     return ok;
 }
 
@@ -10883,6 +11120,8 @@ int runResults(const QStringList& args)
         return checkClipboardInteractions(&engine, out, {}, true) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-file"_s))
         return checkClipboardFilePreview(&engine, out) ? std::min(g_warnings, 100) : 4;
+    if (args.contains(u"--clipboard-pin-files"_s))
+        return checkClipboardPinFiles(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-picture-view"_s))
         return checkClipboardPictureView(&engine, out, valueAfter(args, u"--gallery-image")) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-select"_s))

@@ -7,6 +7,7 @@
 #include "FileIconProvider.h"
 #include "FileText.h"
 #include "HotkeySteps.h"
+#include "PictureFile.h"
 #include "TextField.h"
 #include "platform/ComWorker.h"
 #include "DragPicture.h"
@@ -964,6 +965,65 @@ std::vector<const Clip*> Clipboard::targets(int row) const
     if (const Clip* c = m_model.at(row))
         return {c};
     return {};
+}
+
+std::vector<Clipboard::Picture> Clipboard::pictures(const std::vector<const Clip*>& clips)
+{
+    std::vector<Picture> found;
+    for (const Clip* c : clips) {
+        if (c->kind == ClipKind::Image) {
+            found.push_back({.id = c->id, .animated = c->animated});
+            continue;
+        }
+        const QStringList files = c->kind == ClipKind::Files ? c->files() : QStringList();
+        if (files.isEmpty() || !std::ranges::all_of(files, [](const QString& file) { return pinnablePicture(file); }))
+            return {};
+        for (const QString& file : files)
+            found.push_back({.file = file});
+    }
+    return found;
+}
+
+void Clipboard::pinPictures(std::vector<Picture> pictures)
+{
+    if (std::ssize(pictures) > kPinAtOnce)
+        pictures.resize(kPinAtOnce);
+    int saving = 0;
+    int gone = 0;
+    std::erase_if(pictures, [&](const Picture& picture) {
+        if (picture.id > 0) { // just copied, its file not written yet
+            const bool pending = m_store->imagePending(picture.id);
+            saving += pending;
+            return pending;
+        }
+        // Copied in 微信 or QQ: a file of its own cache, which it may have cleared since.
+        // A network path is not asked (it can hang): the plugin says if it cannot read it.
+        const bool missing = isLocal(picture.file) && !QFileInfo::exists(picture.file);
+        gone += missing;
+        return missing;
+    });
+    int slot = 0;
+    for (const Picture& picture : pictures)
+        emit pinRequested(picture.id, picture.file, slot++);
+    if (saving > 0)
+        flash(tr("图片还在保存，请稍后再试"));
+    else if (gone > 0)
+        flash(pictures.empty() ? tr("这些文件已经不存在了") : tr("有 %Ln 个文件已经不存在了", nullptr, gone));
+}
+
+void Clipboard::editPicture(const Picture& picture)
+{
+    if (picture.id > 0 && m_store->imagePending(picture.id)) {
+        flash(tr("图片还在保存，请稍后再试"));
+        return;
+    }
+    if (picture.id == 0 && isLocal(picture.file) && !QFileInfo::exists(picture.file)) {
+        flash(tr("这些文件已经不存在了"));
+        return;
+    }
+    // The window goes first (its keys are given back), then the editing window takes the front.
+    emit dismissRequested();
+    emit editRequested(picture.id, picture.file);
 }
 
 QString Clipboard::separator() const
@@ -2031,22 +2091,32 @@ QVariantList Clipboard::menuItems(int row) const
     if (!onlyImages && field.isEmpty())
         items.append(entry(PastePlain, tr("粘贴为纯文本"), u"Shift+Enter"_s, u""_s));
     items.append(entry(Copy, many ? tr("复制 %Ln 条", nullptr, n) : tr("复制"), u"Ctrl+C"_s, u""_s));
+    // Pictures, its own or picture files a 文件 entry names (copied in 微信, QQ or
+    // Explorer: listed under 图片 too, GitHub #369), on the screen (several at once, each a
+    // little off the one before) or in the editing window, by the screenshot plugin.
+    const std::vector<Picture> shown = pictures(clips);
     if (!many) {
         const Clip& c = *clips.front();
         if (c.kind == ClipKind::Link)
             items.append(entry(OpenLink, tr("在浏览器中打开"), QString(), u""_s));
         else if (c.kind == ClipKind::Files || c.kind == ClipKind::Path)
             items.append(entry(Reveal, tr("打开所在位置"), QString(), u""_s));
-        else if (c.kind == ClipKind::Image && m_pictureVerbs.pin) // the screenshot plugin's
-            items.append(entry(PinImage, c.animated ? tr("贴首帧到屏幕") : tr("贴到屏幕"), u"F3"_s, u"\uE718"_s));
-        // Words as a card on the screen (GitHub #388), by the same plugin; not what is kept from view.
-        if (c.kind != ClipKind::Image && c.kind != ClipKind::Files && m_pictureVerbs.pin && !c.masked)
-            items.append(entry(PinImage, tr("贴到屏幕"), u"F3"_s, u"\uE718"_s));
-        if (c.kind == ClipKind::Image && m_pictureVerbs.edit)
-            items.append(entry(EditImage, c.animated ? tr("编辑首帧") : tr("编辑"), u"Ctrl+E"_s, u"\uE70F"_s));
-        if (c.kind == ClipKind::Image)
-            items.append(entry(OpenImage, tr("打开图片"), QString(), u""_s));
     }
+    if (!shown.empty() && m_pictureVerbs.pin) {
+        const auto count = static_cast<int>(shown.size());
+        const QString title = count == 1 ? (shown.front().animated ? tr("贴首帧到屏幕") : tr("贴到屏幕"))
+            : count <= kPinAtOnce ? tr("贴 %Ln 张到屏幕", nullptr, count)
+                                  : tr("贴前 %Ln 张到屏幕", nullptr, kPinAtOnce);
+        items.append(entry(PinImage, title, u"F3"_s, u"\uE718"_s));
+    } else if (!many && m_pictureVerbs.pin && clips.front()->kind != ClipKind::Image
+               && clips.front()->kind != ClipKind::Files && !clips.front()->masked) {
+        // Words as a card on the screen (GitHub #388), by the same plugin; not what is kept from view.
+        items.append(entry(PinImage, tr("贴到屏幕"), u"F3"_s, u"\uE718"_s));
+    }
+    if (shown.size() == 1 && m_pictureVerbs.edit)
+        items.append(entry(EditImage, shown.front().animated ? tr("编辑首帧") : tr("编辑"), u"Ctrl+E"_s, u"\uE70F"_s));
+    if (!many && clips.front()->kind == ClipKind::Image)
+        items.append(entry(OpenImage, tr("打开图片"), QString(), u""_s));
     {
         // Kept from view: a password copied, a screen being shared or recorded (GitHub #260).
         const bool masked = std::all_of(clips.begin(), clips.end(), [](const Clip* c) { return c->masked; });
@@ -2190,35 +2260,22 @@ void Clipboard::trigger(int row, int action)
         sendLan(row);
         break;
     case PinImage: {
-        const Clip* c = one();
+        const std::vector<const Clip*> clips = targets(row);
+        if (std::vector<Picture> shown = pictures(clips); !shown.empty()) {
+            pinPictures(std::move(shown));
+            break;
+        }
+        const Clip* c = clips.size() == 1 ? clips.front() : nullptr;
         if (c && c->kind != ClipKind::Image && c->kind != ClipKind::Files && !c->masked) { // words (GitHub #388)
             // All of it (a long text is kept whole on disk only); the plugin takes up to kPinTextChars.
             emit pinTextRequested(c->textLength > c->text.size() ? m_store->payload(c->id).text : c->text);
-            break;
         }
-        if (!c || c->kind != ClipKind::Image)
-            break;
-        if (m_store->imagePending(c->id)) { // just copied, its file not written yet
-            flash(tr("图片还在保存，请稍后再试"));
-            break;
-        }
-        emit pinRequested(c->id);
         break;
     }
-    case EditImage: {
-        const Clip* c = one();
-        if (!c || c->kind != ClipKind::Image)
-            break;
-        if (m_store->imagePending(c->id)) { // just copied, its file not written yet
-            flash(tr("图片还在保存，请稍后再试"));
-            break;
-        }
-        // The window goes first (its keys are given back), then the editing window takes the front.
-        const qint64 id = c->id;
-        emit dismissRequested();
-        emit editRequested(id);
+    case EditImage:
+        if (const std::vector<Picture> shown = pictures(targets(row)); shown.size() == 1)
+            editPicture(shown.front());
         break;
-    }
     case OpenLink:
     case Reveal:
     case OpenImage: {

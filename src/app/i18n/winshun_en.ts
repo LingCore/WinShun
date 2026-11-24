@@ -12092,6 +12092,27 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Take out of the group</translation>
     </message>
     <message numerus="yes">
+        <source>贴 %Ln 张到屏幕</source>
+        <translation>
+            <numerusform>Pin %Ln picture to screen</numerusform>
+            <numerusform>Pin %Ln pictures to screen</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>贴前 %Ln 张到屏幕</source>
+        <translation>
+            <numerusform>Pin the first %Ln to screen</numerusform>
+            <numerusform>Pin the first %Ln to screen</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>有 %Ln 个文件已经不存在了</source>
+        <translation>
+            <numerusform>%Ln file is gone</numerusform>
+            <numerusform>%Ln files are gone</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
         <source>删除 %Ln 条</source>
         <translation>
             <numerusform>Delete %Ln entry</numerusform>

@@ -378,9 +378,11 @@ void CaptureApp::requested(const QJsonValue& id, const QString& method, const QJ
         const QString action = params.value(u"action"_s).toString();
         const QString file = params.value(u"file"_s).toString();
         if (action == u"pin")
-            pinPicture(file, params.value(u"screenshot"_s).toBool());
-        else if (action == u"edit")
-            editPicture(params.value(u"clipId"_s).toInteger(-1), file, params.value(u"project"_s).toString());
+            pinPicture(file, params.value(u"screenshot"_s).toBool(), params.value(u"slot"_s).toInt());
+        else if (action == u"edit" && params.value(u"clipId"_s).toInteger() > 0) // a picture of the history
+            editPicture(params.value(u"clipId"_s).toInteger(), file, params.value(u"project"_s).toString());
+        else if (action == u"edit") // a picture file: a 文件 entry of the clipboard history, a file's row
+            editFile(file);
         else if (action == u"pinText") // copied words (GitHub #388); "pinned": an older version says nothing
             pinText(params.value(u"text"_s).toString().left(pinimage::kPinTextChars));
         m_protocol.respond(id, QJsonObject {{u"pinned"_s, action == u"pinText"}});
@@ -1574,27 +1576,65 @@ void CaptureApp::editPin(capture::PinWindow* pin)
 }
 
 // 贴到屏幕 on a picture file's row (the launcher) or a picture in the
-// clipboard history: read by Windows Imaging Component on a thread of its
-// own, pinned round the pointer within the work area of its monitor; larger
-// than 90 % of that area, shown fitted, its own pixels kept for a zoom.
-void CaptureApp::pinPicture(const QString& path, bool screenshot)
+// clipboard history (its own, or a file a 文件 entry names): read by
+// Windows Imaging Component on a thread of its own, pinned round the
+// pointer within the work area of its monitor; larger than 90 % of that
+// area, shown fitted, its own pixels kept for a zoom. Several at once
+// (`slot` 0, 1, …) are set off one another (pinimage::cascaded).
+void CaptureApp::pinPicture(const QString& path, bool screenshot, int slot)
 {
     if (path.isEmpty())
         return;
     const auto placement = pinimage::cursorPlacement();
     if (!placement)
         return;
+    const quint64 ticket = m_pinTicket++;
     QPointer<CaptureApp> self(this);
-    std::thread([self, path, placement = *placement, screenshot] {
+    std::thread([self, path, placement = pinimage::cascaded(*placement, slot), screenshot, ticket] {
         auto prepared = pinimage::prepare(pinimage::readFile(path), placement);
-        QMetaObject::invokeMethod(qApp, [self, prepared = std::move(prepared), screenshot] {
+        QMetaObject::invokeMethod(qApp, [self, prepared = std::move(prepared), screenshot, ticket]() mutable {
+            if (self)
+                self->pinInTurn(ticket, std::move(prepared.image), prepared.origin, prepared.anchor, screenshot);
+        }, Qt::QueuedConnection);
+    }).detach();
+}
+
+// Read side by side, a small picture before a large one: each waits for
+// those asked for before it, so the last asked for is on top, as the slots
+// step down the screen.
+void CaptureApp::pinInTurn(quint64 ticket, QImage image, QPoint origin, QPoint anchor, bool screenshot)
+{
+    m_pinsRead.insert_or_assign(ticket, ReadPin {std::move(image), origin, anchor, screenshot});
+    for (auto next = m_pinsRead.find(m_pinTurn); next != m_pinsRead.end(); next = m_pinsRead.find(m_pinTurn)) {
+        const ReadPin read = std::move(next->second);
+        m_pinsRead.erase(next);
+        ++m_pinTurn;
+        if (read.image.isNull())
+            notify(tr("没能贴到屏幕"), tr("读不出这张图片。"));
+        else
+            pins().pinFitted(read.image, read.origin, read.anchor, read.screenshot);
+    }
+}
+
+// 编辑 on a picture file (a 文件 entry of the clipboard history, a file's
+// row): read off this thread and opened as a picture of its own, as a long
+// screenshot is; Enter copies what it became, the file stays as it was.
+void CaptureApp::editFile(const QString& path)
+{
+    if (path.isEmpty())
+        return;
+    QPointer<CaptureApp> self(this);
+    std::thread([self, path] {
+        QImage image = pinimage::readFile(path);
+        QMetaObject::invokeMethod(qApp, [self, image = std::move(image)] {
             if (!self)
                 return;
-            if (prepared.image.isNull()) {
-                self->notify(tr("没能贴到屏幕"), tr("读不出这张图片。"));
+            if (image.isNull()) {
+                self->notify(tr("没能编辑这张图片"), tr("读不出这张图片。"));
                 return;
             }
-            self->pins().pinFitted(prepared.image, prepared.origin, prepared.anchor, screenshot);
+            if (capture::CaptureEditor* editor = self->editor(); !editor || !editor->openImage(image))
+                self->notify(tr("没能编辑这张图片"), tr("没能打开编辑窗口。"));
         }, Qt::QueuedConnection);
     }).detach();
 }

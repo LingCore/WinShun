@@ -7,6 +7,12 @@
 
 namespace ws {
 
+// Whether 贴到屏幕 and 编辑 are offered for a file, by its extension: the
+// kinds Windows reads out of the box (Windows Imaging Component's own
+// codecs; WebP's comes with Windows; a GIF's first frame). Not the search's
+// wider 图片 (PSD, SVG, camera RAW, HEIC), which they could not open.
+bool pinnablePicture(QStringView path);
+
 // A picture file's first frame (PNG, JPEG, BMP, GIF, WebP, … whatever
 // Windows Imaging Component reads), upright as the camera says, at most
 // `largest` pixels on its longer side (0: as stored); null if it cannot be

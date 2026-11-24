@@ -157,8 +157,8 @@ public:
         OpenLink,
         Reveal,
         OpenImage,
-        PinImage, // a picture on the screen (贴到屏幕): pinRequested; words: pinTextRequested
-        EditImage, // the editing window (编辑): editRequested
+        PinImage, // pictures (or picture files) on the screen (贴到屏幕): pinRequested; words: pinTextRequested
+        EditImage, // the editing window (编辑), one picture or picture file: editRequested
         Remove,
         MoveUp, // in its group's own order (ClipModel::movable)
         MoveDown,
@@ -307,6 +307,9 @@ public:
     // Whether a plugin pins and edits pictures (App::picturePlugin): 贴到屏幕
     // and 编辑 on a picture's menu only then.
     void setPictureVerbs(bool pin, bool edit) { m_pictureVerbs = {pin, edit}; }
+    // The most pictures one 贴到屏幕 puts on the screen: the first ones of
+    // several copied files or picked entries.
+    static constexpr int kPinAtOnce = 10;
     void setLanSendAvailable(bool available, bool update = false) { m_lanSendAvailable = available; m_lanSendUpdate = update; }
     // A picture (a screen capture, a pin) onto the clipboard, the way copyText
     // puts text there: with `remember`, as a new history entry on top, whose
@@ -433,11 +436,13 @@ signals:
     void fieldChanged();
     // The field the window goes back to: its own window in front again (App).
     void fieldRequested(QQuickItem* field);
-    // 贴到屏幕 and 编辑 on a picture: the entry's id, for the plugin that
-    // does them (App::pictureAction; the screenshot plugin).
-    void pinRequested(qint64 id);
+    // 贴到屏幕 and 编辑 on a picture, for the plugin that does them
+    // (App::pictureAction; the screenshot plugin): an entry's own (`id`), or
+    // a picture file a 文件 entry names (`file`, id 0). `slot`: its place
+    // among several pinned at once, each set a little off the one before.
+    void pinRequested(qint64 id, const QString& file, int slot);
     void pinTextRequested(const QString& text); // 贴到屏幕 on words (GitHub #388)
-    void editRequested(qint64 id);
+    void editRequested(qint64 id, const QString& file);
 
 private:
     struct { bool pin = false; bool edit = false; } m_pictureVerbs;
@@ -470,6 +475,20 @@ private:
     void pasteThroughService(HWND target); // the index service presses the keys there (GitHub #277)
     void aimAtFrontProgram(); // pinned, clicked: the paste goes to the program in front now
     std::vector<const Clip*> targets(int row) const; // the row, or the picked ones it is one of
+    // A picture 贴到屏幕 and 编辑 take: an entry's own, or a file it names.
+    struct Picture {
+        qint64 id = 0; // the entry's, for its own picture
+        QString file; // else the picture file
+        bool animated = false; // its own picture is: its first frame goes
+    };
+    // The pictures of the entries, in their order (a 文件 entry's in its
+    // own); none unless each is a picture, or files that are all pictures
+    // the plugin reads (pinnablePicture).
+    static std::vector<Picture> pictures(const std::vector<const Clip*>& clips);
+    // On the screen (pinRequested), at most kPinAtOnce: those whose file is
+    // still being written or is gone left out, and said so.
+    void pinPictures(std::vector<Picture> pictures);
+    void editPicture(const Picture& picture);
     ClipWrite writeFor(
         const std::vector<const Clip*>& clips, bool plainText, QString* problem, HWND target = nullptr) const;
     void startPaste(ClipWrite write, Into into, std::vector<qint64> touched, QString done);

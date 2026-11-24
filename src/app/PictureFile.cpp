@@ -8,6 +8,7 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <array>
 #include <climits>
 #include <string>
 
@@ -15,6 +16,19 @@ using namespace Qt::StringLiterals;
 using Microsoft::WRL::ComPtr;
 
 namespace ws {
+
+bool pinnablePicture(QStringView path)
+{
+    static constexpr std::array kKinds {u"png", u"jpg", u"jpeg", u"jpe", u"jfif", u"bmp", u"dib", u"gif", u"webp",
+        u"tif", u"tiff", u"ico"};
+    const qsizetype dot = path.lastIndexOf(u'.');
+    if (dot <= std::max(path.lastIndexOf(u'\\'), path.lastIndexOf(u'/')) + 1)
+        return false; // no extension, or a name that only starts with a dot
+    const QStringView suffix = path.sliced(dot + 1);
+    return std::ranges::any_of(kKinds, [suffix](const char16_t* kind) {
+        return suffix.compare(QStringView(kind), Qt::CaseInsensitive) == 0;
+    });
+}
 
 namespace {
 

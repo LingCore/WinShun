@@ -19,6 +19,7 @@
 #include "ZeroCode.h"
 #include "OpenPolicy.h"
 #include "PathText.h"
+#include "PictureFile.h"
 #include "Query.h"
 #include "SearchEngine.h"
 #include "ShareLister.h"
@@ -458,14 +459,6 @@ constexpr int kShotRows = 500;
 bool isShotHistory(const QString& pluginId, const QString& commandId)
 {
     return pluginId == kShotPlugin && commandId == kShotCommand;
-}
-
-// 贴到屏幕 on a file's row: the pictures Windows Imaging Component reads
-// (WebP with Windows' codec; a GIF's first frame).
-static bool pinnablePicture(const QString& path)
-{
-    static const QStringList kinds {u"png"_s, u"jpg"_s, u"jpeg"_s, u"bmp"_s, u"gif"_s, u"webp"_s};
-    return kinds.contains(QFileInfo(path).suffix().toLower());
 }
 
 // The result model as plugin::Merge writes it: a plugin's whole list goes
@@ -5816,6 +5809,13 @@ void Launcher::perform(const SearchResult& result, Action action, bool fileCheck
         }
         return;
     }
+    if (action == EditPicture) {
+        if (!r.isApp() && !r.isDir && m_pictureVerbs.edit && pinnablePicture(r.path)) {
+            emit dismissRequested(); // first: the editing window takes the front
+            emit editPictureRequested(r.path);
+        }
+        return;
+    }
     if (r.isPlugin()) {
         performPlugin(r, action);
         return;
@@ -7065,8 +7065,12 @@ QVariantList Launcher::menuItems(int row) const
         items.append(entry(BrowseFolder, tr("进入此文件夹搜索"), QString(), u"\uE721"_s));
     if (!r->missing && !r->offline)
         items.append(entry(Preview, tr("预览"), m_previewHotkey, u"\uE890"_s)); // View
-    if (!r->isDir && !r->missing && !r->offline && m_pictureVerbs.pin && pinnablePicture(r->path))
+    // A picture file: on the screen, or in the editing window (as the clipboard history's).
+    const bool picture = !r->isDir && !r->missing && !r->offline && pinnablePicture(r->path);
+    if (picture && m_pictureVerbs.pin)
         items.append(entry(PinPicture, tr("贴到屏幕"), QString(), u"\uE718"_s)); // Pin
+    if (picture && m_pictureVerbs.edit)
+        items.append(entry(EditPicture, tr("编辑"), QString(), u"\uE70F"_s)); // Edit
     items.append(entry(OpenTerminal, tr("在终端中打开"), QString(), u"\uE756"_s)); // CommandPrompt
     if (!r->missing && !r->offline)
         items.append(entry(OpenTerminalAdmin, tr("以管理员身份在终端中打开"), QString(), u"\uE7EF"_s)); // Admin shield

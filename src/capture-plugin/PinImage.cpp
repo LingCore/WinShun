@@ -139,6 +139,20 @@ std::optional<Placement> cursorPlacement()
         static_cast<int>(dpiX)};
 }
 
+Placement cascaded(Placement placement, int slot)
+{
+    const QRect& work = placement.work;
+    if (slot <= 0 || work.isEmpty())
+        return placement;
+    const int step = ::MulDiv(kCascadeStep, std::max(placement.dpi, 96), 96);
+    QPoint& at = placement.cursor;
+    const int dx = work.right() - at.x() >= at.x() - work.left() ? step : -step;
+    const int dy = work.bottom() - at.y() >= at.y() - work.top() ? step : -step;
+    at += QPoint(dx, dy) * slot;
+    at = {std::clamp(at.x(), work.left(), work.right()), std::clamp(at.y(), work.top(), work.bottom())};
+    return placement;
+}
+
 QImage renderText(const QString& text, int dpi, const TextLook& look)
 {
     return renderTextWithLines(text, dpi, look).image;
