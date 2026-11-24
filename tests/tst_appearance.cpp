@@ -119,52 +119,105 @@ private slots:
         }
     }
 
-    // GitHub #368: with 悬停提示 off, the tips on icons and buttons do not come
-    // up; an essential one (InfoDot's "i") still does; one that is up goes
-    // as the switch is turned off.
+    // GitHub #368, #440: with 悬停提示 off, all non-essential tips stay down;
+    // while on, each category (interface, action, path) is gated independently
+    // across HoverTip and MenuPathTip, and essential tips (InfoDot's "i",
+    // cut-off menu names) always show.
     void hoverTipsSwitch()
     {
-        const auto restore = qScopeGuard([] { SystemTheme::setHoverTips(true); });
+        const auto restore = qScopeGuard([] {
+            SystemTheme::setHoverTips(true);
+            SystemTheme::setHoverTipKinds(true, true, true);
+        });
         SystemTheme::setHoverTips(true);
+        SystemTheme::setHoverTipKinds(true, true, true);
         QQmlEngine engine;
         QQmlComponent component(&engine);
-        component.setData(R"(
-import QtQuick
-import WinShun
-Window {
-    width: 320; height: 220; visible: true
-    property QtObject plain: plainTip
-    property QtObject essential: essentialTip
-    property Item first: a
-    property Item second: b
-    Rectangle { id: a; x: 20; y: 150; width: 40; height: 30 }
-    Rectangle { id: b; x: 200; y: 150; width: 40; height: 30 }
-    HoverTip { id: plainTip; delay: 20; linger: 20; text: "plain" }
-    HoverTip { id: essentialTip; delay: 20; linger: 20; essential: true; text: "essential" }
-}
-)", qmlFolder().resolved(QUrl(u"HoverTipsTest.qml"_s)));
+        component.setData(
+            "import QtQuick\n"
+            "import WinShun\n"
+            "Window {\n"
+            "    id: root\n"
+            "    width: 320; height: 220; visible: true\n"
+            "    property QtObject plain: plainTip\n"
+            "    property QtObject action: actionTip\n"
+            "    property QtObject dynamicTip: sharedTip\n"
+            "    property QtObject essential: essentialTip\n"
+            "    property QtObject pathTip: folderPathTip\n"
+            "    property Item first: a\n"
+            "    property Item second: b\n"
+            "    property Item third: c\n"
+            "    Rectangle { id: a; x: 20; y: 150; width: 40; height: 30 }\n"
+            "    Rectangle { id: b; x: 120; y: 150; width: 40; height: 30 }\n"
+            "    Rectangle { id: c; x: 220; y: 150; width: 40; height: 30 }\n"
+            "    HoverTip { id: plainTip; delay: 20; linger: 20; text: \"plain\" }\n"
+            "    HoverTip { id: actionTip; delay: 20; linger: 20; kind: \"action\"; text: \"action\" }\n"
+            "    HoverTip { id: sharedTip; delay: 20; linger: 20; kind: \"interface\"; text: \"shared\" }\n"
+            "    HoverTip { id: essentialTip; delay: 20; linger: 20; essential: true; text: \"essential\" }\n"
+            "    MenuPathTip { id: folderPathTip; host: root; availableArea: Qt.rect(0, 0, 320, 220); text: \"D:\\\\Work\" }\n"
+            "}\n",
+            qmlFolder().resolved(QUrl(u"HoverTipsTest.qml"_s)));
         std::unique_ptr<QObject> window(component.create());
         QVERIFY2(window, qPrintable(component.errorString()));
         QObject* plain = window->property("plain").value<QObject*>();
+        QObject* action = window->property("action").value<QObject*>();
+        QObject* shared = window->property("dynamicTip").value<QObject*>();
         QObject* essential = window->property("essential").value<QObject*>();
+        QObject* pathTip = window->property("pathTip").value<QObject*>();
         const QVariant first = window->property("first");
         const QVariant second = window->property("second");
-        QVERIFY(plain && essential);
+        const QVariant third = window->property("third");
+        QVERIFY(plain && action && shared && essential && pathTip);
         const auto shown = [](QObject* tip) { return tip->property("shown").toBool(); };
+        const QVariant none = QVariant::fromValue<QQuickItem*>(nullptr);
 
-        plain->setProperty("target", first); // on: as ever
+        plain->setProperty("target", first); // all on: as ever
         QTRY_VERIFY_WITH_TIMEOUT(shown(plain), 1000);
-        plain->setProperty("target", QVariant::fromValue<QQuickItem*>(nullptr));
+        plain->setProperty("target", none);
         QTRY_VERIFY_WITH_TIMEOUT(!shown(plain), 1000);
 
-        SystemTheme::setHoverTips(false); // off: the plain one stays down, the essential one comes
+        // #440 workflow: UI chrome off, row actions & folder menu paths on.
+        SystemTheme::setHoverTipKinds(false, true, true);
         plain->setProperty("target", first);
-        essential->setProperty("target", second);
-        QTRY_VERIFY_WITH_TIMEOUT(shown(essential), 1000);
-        QTest::qWait(200);
+        action->setProperty("target", second);
+        pathTip->setProperty("target", third);
+        QTRY_VERIFY_WITH_TIMEOUT(shown(action), 1000);
+        QTRY_VERIFY_WITH_TIMEOUT(shown(pathTip), 1500);
         QVERIFY(!shown(plain));
 
-        plain->setProperty("target", QVariant::fromValue<QQuickItem*>(nullptr));
+        // Shared row tip dynamically switching kind (onKeys "interface" -> hovered "action").
+        shared->setProperty("target", first);
+        QTest::qWait(80);
+        QVERIFY(!shown(shared));
+        shared->setProperty("kind", u"action"_s);
+        QTRY_VERIFY_WITH_TIMEOUT(shown(shared), 1000);
+        shared->setProperty("kind", u"interface"_s);
+        QVERIFY(!shown(shared)); // dismissed immediately on disallow
+
+        // Turning off folder menu paths hides MenuPathTip unless essential (cut-off name).
+        SystemTheme::setHoverTipKinds(false, true, false);
+        QTRY_VERIFY_WITH_TIMEOUT(!shown(pathTip), 1000);
+        pathTip->setProperty("essential", true);
+        QTRY_VERIFY_WITH_TIMEOUT(shown(pathTip), 1500);
+        pathTip->setProperty("essential", false);
+        QTRY_VERIFY_WITH_TIMEOUT(!shown(pathTip), 1000);
+        pathTip->setProperty("target", none);
+        action->setProperty("target", none);
+        shared->setProperty("target", none);
+
+        // Master switch off: every non-essential category stays down, essential stays up.
+        SystemTheme::setHoverTipKinds(true, true, true);
+        SystemTheme::setHoverTips(false);
+        plain->setProperty("target", first);
+        action->setProperty("target", second);
+        essential->setProperty("target", third);
+        QTRY_VERIFY_WITH_TIMEOUT(shown(essential), 1000);
+        QTest::qWait(120);
+        QVERIFY(!shown(plain));
+        QVERIFY(!shown(action));
+
+        plain->setProperty("target", none);
+        action->setProperty("target", none);
         SystemTheme::setHoverTips(true);
         plain->setProperty("target", first);
         QTRY_VERIFY_WITH_TIMEOUT(shown(plain), 1000);

@@ -1012,6 +1012,22 @@ private slots:
             && !dialogPlan.result.settings.dialogBarSuggestFavorites && !dialogPlan.result.settings.dialogBarSuggestRecent);
     }
 
+    void hoverTipKinds()
+    {
+        const State state = defaultState();
+        // #440: disabling UI tips while keeping actions & paths succeeds; disabling all three is refused.
+        const Plan uiOff = makePlan(state, one(u"Appearance/HoverTipsInterface"_s, false), {});
+        QVERIFY2(uiOff.problems.isEmpty(), qPrintable(problemText(uiOff)));
+        QVERIFY(!uiOff.result.settings.hoverTipsInterface);
+        QVERIFY(uiOff.result.settings.hoverTipsActions && uiOff.result.settings.hoverTipsPaths);
+
+        QJsonArray allTipsOff;
+        for (const QString& key : {u"Appearance/HoverTipsInterface"_s, u"Appearance/HoverTipsActions"_s,
+                 u"Appearance/HoverTipsPaths"_s}) {
+            allTipsOff.append(QJsonObject {{u"key"_s, key}, {u"value"_s, false}});
+        }
+        QVERIFY(!makePlan(state, allTipsOff, {}).problems.isEmpty());
+    }
 };
 
 QTEST_GUILESS_MAIN(AiSettingsTest)

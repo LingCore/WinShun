@@ -521,9 +521,27 @@ std::vector<Entry> buildCatalog()
             {u"light"_s, u"light shadow"_s, QT_TRANSLATE_NOOP("AiSettings", "浅")},
             {u"none"_s, u"no shadow"_s, QT_TRANSLATE_NOOP("AiSettings", "无")}}));
     add(boolean({"Appearance/HoverTips", QT_TRANSLATE_NOOP("AiSettings", "悬停提示"), "appearance", -1,
-                    "true: resting the mouse on an icon or button (the kinds of file under the search box, the +, a row's buttons) shows a line "
-                    "saying what it is. false: no such tips; an \"i\" in the settings still shows its words, and a cut-off name still shows in full."},
+                    "true: resting the mouse on an icon or button (subject to the chosen tip categories) shows a line saying what it is. "
+                    "false: no non-essential tips; an \"i\" in the settings still shows its words, and a cut-off name still shows in full."},
         &Settings::hoverTips));
+    {
+        Entry& e = add(boolean({"Appearance/HoverTipsInterface", QT_TRANSLATE_NOOP("AiSettings", "悬停提示：界面与按钮"), "appearance", -1,
+                                   "Show hover tips on UI chrome, toolbar buttons, type strip extensions, and shortcut key hints while Appearance/HoverTips is on. At least one of the three tip categories stays on."},
+            &Settings::hoverTipsInterface));
+        e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "显示哪些悬停提示");
+    }
+    {
+        Entry& e = add(boolean({"Appearance/HoverTipsActions", QT_TRANSLATE_NOOP("AiSettings", "悬停提示：结果行操作"), "appearance", -1,
+                                   "Show hover tips on search result and clipboard row action buttons and full timestamps while Appearance/HoverTips is on. At least one of the three tip categories stays on."},
+            &Settings::hoverTipsActions));
+        e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "显示哪些悬停提示");
+    }
+    {
+        Entry& e = add(boolean({"Appearance/HoverTipsPaths", QT_TRANSLATE_NOOP("AiSettings", "悬停提示：文件夹菜单路径"), "appearance", -1,
+                                   "Show full-path hover tips on folder menu items while Appearance/HoverTips is on (cut-off names always show). At least one of the three tip categories stays on."},
+            &Settings::hoverTipsPaths));
+        e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "显示哪些悬停提示");
+    }
     add(boolean({"Appearance/RememberWindowSize", QT_TRANSLATE_NOOP("AiSettings", "记住窗口大小"), "appearance", -1,
                     "true: the settings window, the screenshot plugin's settings and picture text search open at the size their user last "
                     "dragged them to, maximized if they were left so, the next run too. false: each run they open at their default size "
@@ -2078,6 +2096,13 @@ void checkFolderMenuOneLeft(Plan& plan)
         plan.problems.push_back(
             u"Launcher/FolderMenuFavoriteFolders, Launcher/FolderMenuFavoriteFiles, Launcher/FolderMenuFavoriteApps, "
             u"Launcher/FolderMenuFavoritePlaces, Launcher/FolderMenuFavoriteCommands: at least one of them stays on."_s);
+    }
+    if (!s.hoverTipsInterface && !s.hoverTipsActions && !s.hoverTipsPaths
+        && (changed(u"Appearance/HoverTipsInterface"_s) || changed(u"Appearance/HoverTipsActions"_s)
+            || changed(u"Appearance/HoverTipsPaths"_s))) {
+        plan.problems.push_back(
+            u"Appearance/HoverTipsInterface, Appearance/HoverTipsActions, Appearance/HoverTipsPaths: "
+            u"at least one of them stays on (turn off Appearance/HoverTips to disable all non-essential hover tips)."_s);
     }
 }
 

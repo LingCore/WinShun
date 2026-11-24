@@ -479,6 +479,7 @@ Item {
         id: rowTip
         objectName: "clipboardRowTip"
         dpr: row.dpr
+        kind: onKeys ? "interface" : "action"
         readonly property RowAction hovered: row.actions !== null ? row.actions.hovered : null
         readonly property bool onKeys: !hovered && numberSlot.visible && numberSlot.opacity > 0
                                        && (row.hint > 0 || row.hintLetter.length > 0) && area.containsMouse && !area.pressed // (a hover handler under the area gets no hover)

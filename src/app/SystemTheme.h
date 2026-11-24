@@ -53,8 +53,12 @@ class SystemTheme : public QObject, public QAbstractNativeEventFilter {
     // How long the mouse rests before a tip shows (SPI_GETMOUSEHOVERTIME, ms).
     Q_PROPERTY(int hoverTime READ hoverTime NOTIFY changed FINAL)
     // Tips come up on the icons and buttons the mouse rests on (HoverTip;
-    // 外观 › 悬停提示, Settings::hoverTips, GitHub #368).
+    // 外观 › 悬停提示, Settings::hoverTips, GitHub #368), and which categories
+    // show while on (GitHub #440): UI chrome, row actions/dates, folder menu paths.
     Q_PROPERTY(bool hoverTips READ hoverTips NOTIFY changed FINAL)
+    Q_PROPERTY(bool hoverTipsInterface READ hoverTipsInterface NOTIFY changed FINAL)
+    Q_PROPERTY(bool hoverTipsActions READ hoverTipsActions NOTIFY changed FINAL)
+    Q_PROPERTY(bool hoverTipsPaths READ hoverTipsPaths NOTIFY changed FINAL)
     // DWM draws the search box's border with its shadow as set (外观 ›
     // 搜索框阴影, Settings::searchShadow, GitHub #412): WindowEdge.qml where not.
     Q_PROPERTY(bool searchNativeBorder READ searchNativeBorder NOTIFY changed FINAL)
@@ -112,6 +116,10 @@ public:
     static void setUiStyle(const QString& style); // unknown names are fluent
     static bool hoverTips() { return s_hoverTips; }
     static void setHoverTips(bool on);
+    static bool hoverTipsInterface() { return s_hoverTipsInterface; }
+    static bool hoverTipsActions() { return s_hoverTipsActions; }
+    static bool hoverTipsPaths() { return s_hoverTipsPaths; }
+    static void setHoverTipKinds(bool interfaceTips, bool actionTips, bool pathTips);
     // standard | light | none, as Settings::searchShadow; for win::setWindowShadow.
     static void setSearchShadow(const QString& shadow);
     static int searchShadow() { return s_searchShadow; } // a win::WindowShadow
@@ -150,6 +158,9 @@ private:
     static inline QString s_uiSize = QStringLiteral("standard");
     static inline QString s_uiStyle = QStringLiteral("fluent");
     static inline bool s_hoverTips = true;
+    static inline bool s_hoverTipsInterface = true;
+    static inline bool s_hoverTipsActions = true;
+    static inline bool s_hoverTipsPaths = true;
     static inline int s_searchShadow = 0; // win::WindowShadow::Standard
     static inline QVariantMap s_nativeLook;
     static inline QPointer<SystemTheme> s_instance; // the QML singleton

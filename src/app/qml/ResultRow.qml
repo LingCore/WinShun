@@ -706,6 +706,7 @@ Item {
         id: rowTip
         objectName: "resultRowTip"
         dpr: row.dpr
+        kind: onKeys ? "interface" : "action"
         readonly property RowAction hovered: row.actions !== null ? row.actions.hovered : null
         // Hover handlers on items under the row's mouse area get no hover: asked of the area instead.
         function under(item: Item): bool {

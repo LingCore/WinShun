@@ -260,6 +260,9 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QString settingsEdgeScroll READ settingsEdgeScroll WRITE setSettingsEdgeScroll NOTIFY changed FINAL) // off | light | standard | steady
     Q_PROPERTY(bool donateOnGleaningPage READ donateOnGleaningPage WRITE setDonateOnGleaningPage NOTIFY changed FINAL)
     Q_PROPERTY(bool hoverTips READ hoverTips WRITE setHoverTips NOTIFY changed FINAL)
+    Q_PROPERTY(bool hoverTipsInterface READ hoverTipsInterface WRITE setHoverTipsInterface NOTIFY changed FINAL)
+    Q_PROPERTY(bool hoverTipsActions READ hoverTipsActions WRITE setHoverTipsActions NOTIFY changed FINAL)
+    Q_PROPERTY(bool hoverTipsPaths READ hoverTipsPaths WRITE setHoverTipsPaths NOTIFY changed FINAL)
     Q_PROPERTY(QString previewWith READ previewWith WRITE setPreviewWith NOTIFY changed FINAL) // auto | builtin
     Q_PROPERTY(QString previewHotkey READ previewHotkey WRITE setPreviewHotkey NOTIFY changed FINAL)
     Q_PROPERTY(QString previewHotkeyError READ previewHotkeyError NOTIFY changed FINAL)
@@ -942,6 +945,12 @@ public:
     void setDonateOnGleaningPage(bool on);
     bool hoverTips() const { return m_settings.hoverTips; }
     void setHoverTips(bool on);
+    bool hoverTipsInterface() const { return m_settings.hoverTipsInterface; }
+    void setHoverTipsInterface(bool on);
+    bool hoverTipsActions() const { return m_settings.hoverTipsActions; }
+    void setHoverTipsActions(bool on);
+    bool hoverTipsPaths() const { return m_settings.hoverTipsPaths; }
+    void setHoverTipsPaths(bool on);
     void setPureSearch(bool on);
     bool panelListsAll() const { return m_settings.panelListsAll; }
     void setPanelListsAll(bool on);

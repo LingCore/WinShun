@@ -174,7 +174,7 @@ Item {
                 }
                 WindowEdge { body: false } // the menu's colour is the window's
             }
-            MenuPathTip { id: tip; host: menu; availableArea: menu.area }
+            MenuPathTip { id: tip; host: menu; availableArea: menu.area; kind: "interface" }
         }
     }
 }

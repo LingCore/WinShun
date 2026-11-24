@@ -375,7 +375,8 @@ void ClipboardDisplay::synchronize()
         {u"uiSize"_s, SystemTheme::uiSize()}, {u"language"_s, QLocale().name()},
         {u"rounded"_s, win::roundedCorners()}, {u"uiStyle"_s, SystemTheme::uiStyle()}, {u"backdrop"_s, SystemTheme::backdrop()},
         {u"glassTransparency"_s, SystemTheme::glassTransparency()}, {u"glassClarity"_s, SystemTheme::glassClarity()},
-        {u"hoverTips"_s, SystemTheme::hoverTips()}});
+        {u"hoverTips"_s, SystemTheme::hoverTips()}, {u"hoverTipsInterface"_s, SystemTheme::hoverTipsInterface()},
+        {u"hoverTipsActions"_s, SystemTheme::hoverTipsActions()}, {u"hoverTipsPaths"_s, SystemTheme::hoverTipsPaths()}});
     ClipModel* model = m_clipboard->items();
     const auto roles = model->roleNames();
     std::vector<QJsonObject> rows;

@@ -306,6 +306,7 @@ Item {
                 }
                 HoverTip {
                     dpr: preview.dpr
+                    kind: "action"
                     target: pictureArea.enabled && pictureArea.containsMouse ? pictureArea : null
                     text: preview.pictureViewed ? qsTr("关闭大图") : qsTr("看大图，滚轮可以放大")
                 }

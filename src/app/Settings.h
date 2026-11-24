@@ -371,6 +371,12 @@ struct Settings {
     // full path on a folder menu's row (MenuPathTip, GitHub #413); off, only
     // an "i" and a cut-off name still say their words (GitHub #368).
     bool hoverTips = true;
+    // Which categories of hover tips show while `hoverTips` is on (GitHub #440):
+    // interface controls / type strip, result & clipboard row actions + full
+    // dates, and folder menu full path tips. At least one stays on.
+    bool hoverTipsInterface = true;
+    bool hoverTipsActions = true;
+    bool hoverTipsPaths = true;
     // auto | builtin: what Alt+P on a row shows the file with. auto: QuickLook
     // or Seer when one is running in the background (FilePreview), else
     // Win顺's own preview window; builtin: always that.

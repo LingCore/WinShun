@@ -2357,6 +2357,42 @@ private slots:
             && upgraded.dialogBarSuggestFavorites && upgraded.dialogBarSuggestRecent);
     }
 
+    // GitHub #440: hover tip categories default all on, persist selectively,
+    // upgrade cleanly, and recover if a hand-edited INI turns all three off.
+    void hoverTipKindsPreference()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+
+        ws::Settings fresh;
+        fresh.load();
+        QVERIFY(fresh.hoverTips);
+        QVERIFY(fresh.hoverTipsInterface);
+        QVERIFY(fresh.hoverTipsActions);
+        QVERIFY(fresh.hoverTipsPaths);
+
+        fresh.hoverTipsInterface = false;
+        QVERIFY(fresh.saveChecked());
+        ws::Settings restored;
+        restored.load();
+        QVERIFY(restored.hoverTips);
+        QVERIFY(!restored.hoverTipsInterface);
+        QVERIFY(restored.hoverTipsActions);
+        QVERIFY(restored.hoverTipsPaths);
+
+        // Hand-edited all-false recovers to all-true (use Appearance/HoverTips=false for off).
+        {
+            QSettings raw(ws::Settings::filePath(), QSettings::IniFormat);
+            raw.setValue(u"Appearance/HoverTipsInterface"_s, false);
+            raw.setValue(u"Appearance/HoverTipsActions"_s, false);
+            raw.setValue(u"Appearance/HoverTipsPaths"_s, false);
+            raw.sync();
+        }
+        ws::Settings recovered;
+        recovered.load();
+        QVERIFY(recovered.hoverTipsInterface && recovered.hoverTipsActions && recovered.hoverTipsPaths);
+    }
 };
 
 QTEST_GUILESS_MAIN(SettingsTest)

@@ -15,7 +15,12 @@ Window {
     // Shown with 外观 › 悬停提示 off too (SystemTheme.hoverTips, GitHub #368,
     // #413) when the row's own name is cut off: then it is the name's words.
     property bool essential: false
-    readonly property bool allowed: essential || SystemTheme.hoverTips
+    // Tip category (GitHub #440): defaults to "path" (folder menu full paths).
+    property string kind: "path"
+    readonly property bool allowed: essential || (SystemTheme.hoverTips
+        && (kind === "action"    ? SystemTheme.hoverTipsActions
+          : kind === "interface" ? SystemTheme.hoverTipsInterface
+                                 : SystemTheme.hoverTipsPaths))
 
     objectName: "menuPathTip"
     transientParent: host

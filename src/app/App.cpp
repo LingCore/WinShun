@@ -1790,6 +1790,7 @@ void App::applyAppearance()
     SystemTheme::setUiStyle(m_settings.uiStyle);
     SystemTheme::setGlassAppearance(m_settings.glassTransparency, m_settings.glassClarity);
     SystemTheme::setHoverTips(m_settings.hoverTips); // 悬停提示 (GitHub #368)
+    SystemTheme::setHoverTipKinds(m_settings.hoverTipsInterface, m_settings.hoverTipsActions, m_settings.hoverTipsPaths); // GitHub #440
     SavedWindowSize::setRemembering(m_settings.rememberWindowSize); // 记住窗口大小 (GitHub #401)
     updateSearchBoxLook(); // the native child redraws on its own thread
     // 界面大小: QML follows SystemTheme; the bar by file dialogs is placed by its heights.
@@ -2524,7 +2525,7 @@ QJsonObject App::pluginLook() const
         {u"uiFont"_s, m_settings.uiFont}, {u"resolvedUiFont"_s, QGuiApplication::font().family()},
         {u"transparency"_s, m_settings.transparency}, {u"renderer"_s, m_settings.renderer},
         {u"glassTransparency"_s, m_settings.glassTransparency}, {u"glassClarity"_s, m_settings.glassClarity},
-        {u"hoverTips"_s, m_settings.hoverTips}, {u"rememberWindowSize"_s, m_settings.rememberWindowSize}};
+        {u"hoverTips"_s, m_settings.hoverTips && m_settings.hoverTipsInterface}, {u"rememberWindowSize"_s, m_settings.rememberWindowSize}};
     // The style's colours and radii, for plugins that draw without QML (see
     // docs/plugins.md, "外观"); none until the launcher's Theme is made.
     if (const QJsonObject native = SystemTheme::nativeLookJson(); !native.isEmpty())

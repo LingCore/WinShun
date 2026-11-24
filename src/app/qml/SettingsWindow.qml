@@ -3422,17 +3422,48 @@ Window {
                     }
                 }
 
-                SettingRow { // GitHub #368
+                SettingRow { // GitHub #368, #440
+                    id: hoverTipsRow
                     title: qsTr("悬停提示")
-                    description: qsTr("鼠标停在图标或按钮上时，弹出一行说明，比如类型条上各类型的扩展名。熟悉以后可以关掉，图标和功能不变")
+                    description: qsTr("鼠标停在按钮、图标或文件夹菜单上时弹出说明；开启后可在下方按类别细分")
                     tip: qsTr("关掉后，设置里带“i”的说明照常显示；名字太长被截断时，停在行上仍会显示完整名字")
                     keywords: qsTr("悬停;提示;气泡;工具提示;说明;遮挡;tooltip;hover;tip").split(";")
+                    unlocks: [hoverTipKindsRow]
                     ToggleSwitch {
                         objectName: "hoverTipsToggle"
                         dpr: window.dpr
                         checked: window.editor.hoverTips
                         Accessible.name: qsTr("悬停提示")
                         onToggled: (on) => window.editor.hoverTips = on
+                    }
+                }
+
+                SettingRow { // GitHub #440
+                    id: hoverTipKindsRow
+                    sub: true
+                    shown: window.editor.hoverTips
+                    stackControl: true
+                    title: qsTr("显示哪些悬停提示")
+                    description: qsTr("至少保留一项；未勾选的不再弹出。截断的完整名称和设置里的“i”说明不受影响")
+                    keywords: qsTr("悬停;提示;分类;界面;按钮;类型条;结果行;操作;剪贴板;文件夹菜单;路径;tooltip;hover;actions;paths").split(";")
+
+                    ScopeTabs {
+                        objectName: "hoverTipKindsTabs"
+                        multiSelect: true
+                        dpr: window.dpr
+                        labels: [qsTr("界面与按钮"), qsTr("结果行操作"), qsTr("文件夹菜单路径")]
+                        checkedIndices: {
+                            const list = []
+                            if (window.editor.hoverTipsInterface) list.push(0)
+                            if (window.editor.hoverTipsActions) list.push(1)
+                            if (window.editor.hoverTipsPaths) list.push(2)
+                            return list
+                        }
+                        onToggled: (index, on) => {
+                            if (index === 0) window.editor.hoverTipsInterface = on
+                            else if (index === 1) window.editor.hoverTipsActions = on
+                            else if (index === 2) window.editor.hoverTipsPaths = on
+                        }
                     }
                 }
 

@@ -1062,6 +1062,11 @@ void Settings::load()
         settingsEdgeScroll = d.settingsEdgeScroll;
     donateOnGleaningPage = readOrDefault(s, u"Appearance/DonateOnGleaningPage"_s, d.donateOnGleaningPage);
     hoverTips = readOrDefault(s, u"Appearance/HoverTips"_s, d.hoverTips);
+    hoverTipsInterface = readOrDefault(s, u"Appearance/HoverTipsInterface"_s, d.hoverTipsInterface);
+    hoverTipsActions = readOrDefault(s, u"Appearance/HoverTipsActions"_s, d.hoverTipsActions);
+    hoverTipsPaths = readOrDefault(s, u"Appearance/HoverTipsPaths"_s, d.hoverTipsPaths);
+    if (!hoverTipsInterface && !hoverTipsActions && !hoverTipsPaths)
+        hoverTipsInterface = hoverTipsActions = hoverTipsPaths = true;
     previewWith = readOrDefault(s, u"Results/PreviewWith"_s, d.previewWith).trimmed().toLower();
     if (previewWith != u"builtin")
         previewWith = d.previewWith;
@@ -1517,6 +1522,9 @@ bool Settings::saveChecked() const
     s.setValue(u"Appearance/SettingsEdgeScroll"_s, settingsEdgeScroll);
     s.setValue(u"Appearance/DonateOnGleaningPage"_s, donateOnGleaningPage);
     s.setValue(u"Appearance/HoverTips"_s, hoverTips);
+    s.setValue(u"Appearance/HoverTipsInterface"_s, hoverTipsInterface);
+    s.setValue(u"Appearance/HoverTipsActions"_s, hoverTipsActions);
+    s.setValue(u"Appearance/HoverTipsPaths"_s, hoverTipsPaths);
     s.setValue(u"Results/PreviewWith"_s, previewWith);
     s.setValue(u"Results/PreviewHotkey"_s, previewHotkey);
     s.setValue(u"Results/OpenHotkey"_s, openHotkey);

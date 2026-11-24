@@ -153,6 +153,7 @@ Item {
         }
         HoverTip {
             dpr: Screen.devicePixelRatio
+            kind: "action"
             target: zoomArea.containsMouse ? zoomArea : null
             text: view.pictureViewed ? qsTr("关闭大图") : qsTr("看大图")
         }

@@ -27,7 +27,14 @@ Item {
     // Shown even with 外观 › 悬停提示 off (SystemTheme.hoverTips, GitHub #368):
     // the tip is all the thing is there for (InfoDot's "i", a setting's note).
     property bool essential: false
-    readonly property bool allowed: essential || SystemTheme.hoverTips
+    // Tip category (GitHub #440): "interface" (UI chrome, type strip, toolbar
+    // buttons, shortcut keys), "action" (result/clipboard row actions and full
+    // timestamps), or "path" (folder menu full paths).
+    property string kind: "interface"
+    readonly property bool allowed: essential || (SystemTheme.hoverTips
+        && (kind === "action" ? SystemTheme.hoverTipsActions
+          : kind === "path"   ? SystemTheme.hoverTipsPaths
+                              : SystemTheme.hoverTipsInterface))
 
     property bool shown: false
 
@@ -51,7 +58,14 @@ Item {
     onTextChanged: Qt.callLater(sync)
     onShortcutChanged: Qt.callLater(sync)
     onFullWidthChanged: if (shown) place()
-    onAllowedChanged: if (!allowed) { timer.stop(); shown = false }
+    onAllowedChanged: {
+        if (!allowed) {
+            timer.stop()
+            shown = false
+        } else if (target) {
+            Qt.callLater(sync)
+        }
+    }
     Connections {
         target: tip.parent
         function onHeightChanged() { if (tip.shown) tip.place() }
@@ -64,7 +78,7 @@ Item {
     }
 
     function sync() {
-        if (target) {
+        if (target && allowed) {
             if (timer.hiding)
                 timer.stop()
             if (shown) {

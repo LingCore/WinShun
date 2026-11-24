@@ -827,6 +827,22 @@
         <translation>Hover tips</translation>
     </message>
     <message>
+        <source>悬停提示：界面与按钮</source>
+        <translation>Hover tips: interface and buttons</translation>
+    </message>
+    <message>
+        <source>悬停提示：结果行操作</source>
+        <translation>Hover tips: row actions</translation>
+    </message>
+    <message>
+        <source>悬停提示：文件夹菜单路径</source>
+        <translation>Hover tips: folder menu paths</translation>
+    </message>
+    <message>
+        <source>显示哪些悬停提示</source>
+        <translation>Which hover tips to show</translation>
+    </message>
+    <message>
         <source>记住窗口大小</source>
         <translation>Remember window sizes</translation>
     </message>
@@ -8701,8 +8717,8 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Hover tips</translation>
     </message>
     <message>
-        <source>鼠标停在图标或按钮上时，弹出一行说明，比如类型条上各类型的扩展名。熟悉以后可以关掉，图标和功能不变</source>
-        <translation>A line saying what an icon or button is comes up when the mouse rests on it, such as the extensions of each kind of file on the type strip. Once you know them, turn this off; the icons and what they do stay the same</translation>
+        <source>鼠标停在按钮、图标或文件夹菜单上时弹出说明；开启后可在下方按类别细分</source>
+        <translation>Shows a tip when the mouse rests on a button, icon, or folder menu item; when on, choose which categories appear below</translation>
     </message>
     <message>
         <source>关掉后，设置里带“i”的说明照常显示；名字太长被截断时，停在行上仍会显示完整名字</source>
@@ -8711,6 +8727,30 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>悬停;提示;气泡;工具提示;说明;遮挡;tooltip;hover;tip</source>
         <translation>tooltip;hover;tip;bubble;hint;covers</translation>
+    </message>
+    <message>
+        <source>显示哪些悬停提示</source>
+        <translation>Which hover tips to show</translation>
+    </message>
+    <message>
+        <source>至少保留一项；未勾选的不再弹出。截断的完整名称和设置里的“i”说明不受影响</source>
+        <translation>Keep at least one checked; unchecked categories stop popping up. Truncated names and settings &quot;i&quot; notes always show</translation>
+    </message>
+    <message>
+        <source>悬停;提示;分类;界面;按钮;类型条;结果行;操作;剪贴板;文件夹菜单;路径;tooltip;hover;actions;paths</source>
+        <translation>tooltip;hover;tip;category;interface;button;type strip;row;actions;clipboard;folder menu;path</translation>
+    </message>
+    <message>
+        <source>界面与按钮</source>
+        <translation>Interface</translation>
+    </message>
+    <message>
+        <source>结果行操作</source>
+        <translation>Row actions</translation>
+    </message>
+    <message>
+        <source>文件夹菜单路径</source>
+        <translation>Menu paths</translation>
     </message>
     <message>
         <source>索引范围;范围;整个磁盘;选中的文件夹;工作文件夹;普通用户;没有管理员权限;scope</source>

@@ -619,6 +619,37 @@ void SettingsEditor::setHoverTips(bool on)
     commit();
 }
 
+namespace {
+bool updateHoverTipKind(Settings& settings, bool Settings::* field, bool on)
+{
+    if (settings.*field == on)
+        return false;
+    const int enabledCount = int(settings.hoverTipsInterface) + int(settings.hoverTipsActions) + int(settings.hoverTipsPaths);
+    if (!on && enabledCount <= 1)
+        return false; // at least one category stays on while hoverTips is enabled
+    settings.*field = on;
+    return true;
+}
+} // namespace
+
+void SettingsEditor::setHoverTipsInterface(bool on)
+{
+    if (updateHoverTipKind(m_settings, &Settings::hoverTipsInterface, on))
+        commit();
+}
+
+void SettingsEditor::setHoverTipsActions(bool on)
+{
+    if (updateHoverTipKind(m_settings, &Settings::hoverTipsActions, on))
+        commit();
+}
+
+void SettingsEditor::setHoverTipsPaths(bool on)
+{
+    if (updateHoverTipKind(m_settings, &Settings::hoverTipsPaths, on))
+        commit();
+}
+
 void SettingsEditor::setPureSearch(bool on)
 {
     if (m_settings.pureSearch == on)

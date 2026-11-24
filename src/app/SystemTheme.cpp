@@ -145,6 +145,17 @@ void SystemTheme::setHoverTips(bool on)
         emit s_instance->changed();
 }
 
+void SystemTheme::setHoverTipKinds(bool interfaceTips, bool actionTips, bool pathTips)
+{
+    if (s_hoverTipsInterface == interfaceTips && s_hoverTipsActions == actionTips && s_hoverTipsPaths == pathTips)
+        return;
+    s_hoverTipsInterface = interfaceTips;
+    s_hoverTipsActions = actionTips;
+    s_hoverTipsPaths = pathTips;
+    if (s_instance)
+        emit s_instance->changed();
+}
+
 void SystemTheme::setBackdropOn(bool on)
 {
     if (s_backdropOn == on)
