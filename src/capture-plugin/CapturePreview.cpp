@@ -2827,6 +2827,20 @@ int runRecording(const QStringList& args)
     saved = recorder->cursorTrail() != originalTrail && saved;
     click("recordingTrail");
     saved = recorder->cursorTrail() == originalTrail && saved;
+    // With the pointer off the trail shows off, and turning it on records the pointer too.
+    const auto* trailToggle = panel->findChild<QQuickItem*>(u"recordingTrail"_s);
+    if (recorder->cursor())
+        click("recordingCursor");
+    const bool trailOffWithoutPointer = trailToggle && !trailToggle->property("checked").toBool();
+    click("recordingTrail");
+    const bool trailBringsPointer = trailToggle && recorder->cursor() && recorder->cursorTrail() && trailToggle->property("checked").toBool();
+    say(u"trail off without the pointer: %1, turning it on records the pointer: %2"_s.arg(trailOffWithoutPointer).arg(trailBringsPointer));
+    saved = trailOffWithoutPointer && trailBringsPointer && saved;
+    if (!originalTrail)
+        click("recordingTrail");
+    if (!originalCursor)
+        click("recordingCursor");
+    saved = recorder->cursorTrail() == originalTrail && recorder->cursor() == originalCursor && saved;
     const bool originalMouse = recorder->mouseButtons();
     click("recordingMouseButtons");
     saved = recorder->mouseButtons() != originalMouse && saved;

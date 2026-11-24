@@ -109,11 +109,28 @@ void dontWaitForDwm()
         qputenv("QT_D3D_MAX_FRAME_LATENCY", "0");
 }
 
+// Qt's messages to stderr, in UTF-8: without a console Qt gives them to
+// OutputDebugString, and none reached the log. Win顺 logs the plugin's
+// stderr (plugins.log), the plugin its recording worker's (RecordingWorker).
+// Debug messages stay out.
+void logToStderrAsUtf8(QtMsgType type, const QMessageLogContext& context, const QString& text)
+{
+    if (type == QtDebugMsg)
+        return;
+    const HANDLE err = ::GetStdHandle(STD_ERROR_HANDLE);
+    if (!err || err == INVALID_HANDLE_VALUE)
+        return;
+    const QByteArray line = qFormatLogMessage(type, context, text).toUtf8() + '\n';
+    DWORD put = 0;
+    ::WriteFile(err, line.constData(), static_cast<DWORD>(line.size()), &put, nullptr);
+}
+
 } // namespace
 
 extern "C" __declspec(dllexport) int winshunCaptureWorker(const wchar_t* appDirName)
 {
     const QString appDir = QString::fromWCharArray(appDirName);
+    qInstallMessageHandler(logToStderrAsUtf8);
     ::SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
     QCoreApplication::setLibraryPaths({appDir});
     int argc = 1;
@@ -132,6 +149,7 @@ extern "C" __declspec(dllexport) int winshunCaptureWorker(const wchar_t* appDirN
 extern "C" __declspec(dllexport) int winshunCaptureMain(const wchar_t* appDirName)
 {
     const QString appDir = QString::fromWCharArray(appDirName);
+    qInstallMessageHandler(logToStderrAsUtf8);
     _setmaxstdio(8192); // FreeType's font faces, one C runtime stream each (main.cpp, raiseStreamLimit)
     ::SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
     // High QoS, as TypeToSearch's hook thread: what the plugin does is asked

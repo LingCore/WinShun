@@ -925,8 +925,12 @@ Result run(const Options& options, Control& control, const std::function<void(co
         if ((options.clickHighlights || showKeys || showTrail) && image && !control.stop)
             pointer = std::make_unique<PointerOverlay>(graphics.device.get(), graphics.context.get(), options.region.size(), options.pointerScale);
         std::unique_ptr<PointerTrail> trail;
-        if (pointer && showTrail)
+        if (pointer && showTrail) {
             trail = std::make_unique<PointerTrail>(options.region, options.pointerScale, source && !source->pointerInFrames, syntheticMs >= 0);
+            if (source && source->pointerInFrames) // 1903 and 1909: still a trail, but over the pointer
+                qWarning("Recording: cursor trail over the captured pointer: Windows.Graphics.Capture leaves it out "
+                         "only from Windows 10 2004 on (IGraphicsCaptureSession2)");
+        }
         const qint64 start = nowTicks();
         Timeline clock(start);
         ClickPulses pulses;

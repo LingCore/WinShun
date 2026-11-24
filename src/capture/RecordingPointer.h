@@ -123,6 +123,7 @@ private:
     float m_width = 6;
     void* m_cursor = nullptr; // HCURSOR while the pointer shows
     QPoint m_at;
+    std::vector<void*> m_unreadable; // pointers whose picture could not be read, logged once each
 };
 
 // Direct2D draws into a D3D11 texture on the media worker, from the bottom:

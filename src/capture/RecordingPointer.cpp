@@ -351,7 +351,12 @@ CursorDraw PointerTrail::pointer(qint64 time)
 {
     if (!m_drawPointer || !m_cursor)
         return {};
-    return {m_shapes->picture(m_cursor, time), m_at};
+    const CursorPicture* picture = m_shapes->picture(m_cursor, time);
+    if (!picture && m_unreadable.size() < 8 && std::ranges::find(m_unreadable, m_cursor) == m_unreadable.end()) {
+        m_unreadable.push_back(m_cursor);
+        qWarning("Recording: pointer %p could not be read (GetIconInfo); it is left out of the frames while it shows", m_cursor);
+    }
+    return {picture, m_at};
 }
 
 } // namespace ws::capture::recording
