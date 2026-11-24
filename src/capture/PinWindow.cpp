@@ -2,10 +2,7 @@
 
 #include <QBuffer>
 #include <QCoreApplication>
-#include <QDateTime>
 #include <QDebug>
-#include <QFont>
-#include <QGuiApplication>
 #include <QPainter>
 
 #include <imm.h>
@@ -24,14 +21,21 @@ namespace {
 const wchar_t* const kClassName = L"WinShun.Pin";
 constexpr UINT kEncoded = WM_APP + 1; // the PNG bytes of a collapsed pin are made (lParam: the job)
 constexpr UINT_PTR kHintTimer = 1;
-constexpr qint64 kHintHoldMs = 900; // the zoom stays this long after the last notch ...
+constexpr qint64 kHintHoldMs = 900; // the zoom or opacity stays this long after the last notch ...
+constexpr qint64 kNoteHoldMs = 1800; // status notes (Tab 看原文, 没有找到文字) float outside and stay readable
 constexpr qint64 kHintFadeMs = 240; // ... then fades out in this
-constexpr qint64 kPillHoldMs = 2200; // the text pick's pill: long enough to read, then off the words (GitHub #258)
+constexpr UINT kFadeTickMs = 16; // 60 fps fade on the lightweight pill window
+constexpr qint64 kPillHoldMs = 2200; // the text pick's pill: long enough to read, then fades out (GitHub #258)
 constexpr qint64 kAutoReadyHoldMs = 1600;
 constexpr qint64 kSelectionHintHoldMs = 1800;
 constexpr qint64 kCopiedHoldMs = 1500;
 // Skip automatic background OCR on tiny swatches or giant stitched pictures (> 4K*4K); manual T / Shift+C still reads them.
 constexpr qint64 kAutoOcrMaxPixels = 16'000'000;
+
+qint64 steadyNowMs()
+{
+    return static_cast<qint64>(::GetTickCount64());
+}
 
 // 255 through `hold` ms of `age`, then down to 0 over kHintFadeMs.
 int fadedAlpha(qint64 age, qint64 hold)
@@ -133,6 +137,8 @@ PinWindow::PinWindow(const QImage& image, QPoint origin, Host host, std::optiona
 PinWindow::~PinWindow()
 {
     *m_alive = false;
+    m_hintPill.destroy();
+    m_textPill.destroy();
     cancelPendingScan();
     if (m_encode)
         m_encode->cancelled = true;
@@ -192,6 +198,22 @@ QRect PinWindow::workAreaAt(QPoint point) const
     MONITORINFO info {sizeof info};
     if (::GetMonitorInfoW(::MonitorFromPoint(at, MONITOR_DEFAULTTONEAREST), &info))
         return QRect(info.rcWork.left, info.rcWork.top, info.rcWork.right - info.rcWork.left, info.rcWork.bottom - info.rcWork.top);
+    return QRect(0, 0, 1920, 1080);
+}
+
+QRect PinWindow::pillBounds() const
+{
+    const QRect p = pictureRect();
+    const RECT r {p.left(), p.top(), p.right() + 1, p.bottom() + 1};
+    MONITORINFO info {sizeof info};
+    if (::GetMonitorInfoW(::MonitorFromRect(&r, MONITOR_DEFAULTTONEAREST), &info)) {
+        const QRect work(info.rcWork.left, info.rcWork.top, info.rcWork.right - info.rcWork.left,
+            info.rcWork.bottom - info.rcWork.top);
+        if (work.intersects(p))
+            return work;
+        return QRect(info.rcMonitor.left, info.rcMonitor.top, info.rcMonitor.right - info.rcMonitor.left,
+            info.rcMonitor.bottom - info.rcMonitor.top);
+    }
     return QRect(0, 0, 1920, 1080);
 }
 
@@ -304,14 +326,12 @@ void PinWindow::render()
         copyOpaque(m_scaled, canvas, picture.topLeft());
     }
     if (m_form == PinForm::Full
-        && (!m_picked.isEmpty() || (m_picking && !m_pickDirect && !m_pickBand.isEmpty())
-            || (m_pillAlpha > 0 && m_pillKind != PillKind::None)))
+        && (!m_picked.isEmpty() || (m_picking && !m_pickDirect && !m_pickBand.isEmpty())))
         drawTextLayer(canvas, picture);
-    if (m_hintAlpha > 0 && m_form == PinForm::Full)
-        drawHint(canvas, picture);
     if (const QRect button = closeButton(); !button.isEmpty())
         drawCloseButton(canvas, button.translated(-window.topLeft()));
     paintBorder();
+    syncPills();
 }
 
 QRect PinWindow::closeButton() const
@@ -361,43 +381,26 @@ void PinWindow::updateCloseHover(QPoint cursor)
     }
 }
 
-void PinWindow::drawHint(QImage& canvas, const QRect& picture)
-{
-    QFont font = QGuiApplication::font();
-    font.setPixelSize(static_cast<int>(std::lround(13 * dpr())));
-    const QFontMetrics metrics(font);
-    const int padX = static_cast<int>(std::lround(10 * dpr()));
-    const int padY = static_cast<int>(std::lround(4 * dpr()));
-    const int gap = static_cast<int>(std::lround(8 * dpr()));
-    const QSize size(metrics.horizontalAdvance(m_hint) + 2 * padX, metrics.height() + 2 * padY);
-    if (picture.width() < size.width() + 2 * gap || picture.height() < size.height() + 2 * gap)
-        return; // a pin smaller than its own label: none
-    // Upper left: the lower left is the text pick's. Beside the close button when that is there.
-    const QRect button = closeButton();
-    const int left = m_closeCorner == Corner::TopLeft && !button.isEmpty() ? button.width() + gap : 0;
-    if (picture.width() < size.width() + 2 * gap + left)
-        return;
-    const QRect pill(picture.left() + gap + left, picture.top() + gap, size.width(), size.height());
-    QPainter painter(&canvas);
-    painter.setOpacity(m_hintAlpha / 255.0);
-    painter.setRenderHint(QPainter::Antialiasing, true);
-    painter.setPen(Qt::NoPen);
-    painter.setBrush(m_host.accent ? m_host.accent() : QColor(0x0F, 0x6C, 0xBD));
-    painter.drawRoundedRect(pill, 4 * dpr(), 4 * dpr());
-    painter.setFont(font);
-    painter.setPen(Qt::white);
-    painter.drawText(pill, Qt::AlignCenter, m_hint);
-}
-
-void PinWindow::showHint(const QString& text)
+void PinWindow::showHint(const QString& text, qint64 holdMs, bool stay)
 {
     if (!m_hwnd)
         return;
     m_hint = text;
+    m_hintStays = stay && !text.isEmpty();
+    m_hintHoldMs = holdMs;
+    m_hintSince = text.isEmpty() ? 0 : steadyNowMs();
+    m_hintAlpha = text.isEmpty() ? 0 : 255;
+    scheduleHintTimer();
+}
+
+void PinWindow::clearHint()
+{
+    m_hint.clear();
     m_hintStays = false;
-    m_hintSince = QDateTime::currentMSecsSinceEpoch();
-    m_hintAlpha = 255;
-    ::SetTimer(m_hwnd, kHintTimer, 40, nullptr); // restarts the count while it runs
+    m_hintSince = 0;
+    m_hintAlpha = 0;
+    m_hintPill.hide();
+    scheduleHintTimer();
 }
 
 void PinWindow::showPill(PillKind kind)
@@ -408,21 +411,29 @@ void PinWindow::showPill(PillKind kind)
     if (kind == PillKind::None) {
         m_pillSince = 0;
         m_pillAlpha = 0;
+        m_textPill.hide();
+        scheduleHintTimer();
         return;
     }
-    m_pillSince = QDateTime::currentMSecsSinceEpoch();
+    m_pillSince = steadyNowMs();
     m_pillAlpha = 255;
-    ::SetTimer(m_hwnd, kHintTimer, 40, nullptr);
+    scheduleHintTimer();
+}
+
+void PinWindow::clearPill()
+{
+    m_pillKind = PillKind::None;
+    m_pillSince = 0;
+    m_pillAlpha = 0;
+    m_textPill.hide();
+    scheduleHintTimer();
 }
 
 void PinWindow::dismissAutoReadyPill()
 {
     if (m_pillKind != PillKind::AutoReady || m_pillAlpha <= 0)
         return;
-    m_pillKind = PillKind::None;
-    m_pillSince = 0;
-    m_pillAlpha = 0;
-    render();
+    clearPill();
 }
 
 QString PinWindow::textPillText() const
@@ -451,42 +462,113 @@ QString PinWindow::textPillText() const
     return {};
 }
 
-void PinWindow::hintTick()
+qint64 PinWindow::pillHoldMs() const
 {
-    const qint64 now = QDateTime::currentMSecsSinceEpoch();
-    const int hint = m_hintStays ? 255 : m_hintSince ? fadedAlpha(now - m_hintSince, kHintHoldMs) : 0;
-    qint64 hold = kPillHoldMs;
     switch (m_pillKind) {
     case PillKind::AutoReady:
     case PillKind::NoText:
-        hold = kAutoReadyHoldMs;
-        break;
+        return kAutoReadyHoldMs;
     case PillKind::SelectionHint:
-        hold = kSelectionHintHoldMs;
-        break;
+        return kSelectionHintHoldMs;
     case PillKind::Copied:
-        hold = m_textMode ? kPillHoldMs : kCopiedHoldMs;
-        break;
+        return m_textMode ? kPillHoldMs : kCopiedHoldMs;
     case PillKind::CopiedAll:
-        hold = kCopiedHoldMs;
-        break;
+        return kCopiedHoldMs;
     case PillKind::PickHint:
     case PillKind::Reading:
     case PillKind::None:
-        break;
+        return kPillHoldMs;
     }
+    return kPillHoldMs;
+}
+
+void PinWindow::scheduleHintTimer()
+{
+    if (!m_hwnd)
+        return;
+    const qint64 now = steadyNowMs();
+    std::optional<qint64> nextMs;
+    const auto consider = [&](bool active, bool stays, qint64 since, qint64 hold) {
+        if (!active || stays || since <= 0)
+            return;
+        const qint64 age = std::max<qint64>(0, now - since);
+        const qint64 wait = age < hold ? std::max<qint64>(kFadeTickMs, hold - age) : static_cast<qint64>(kFadeTickMs);
+        nextMs = nextMs ? std::min(*nextMs, wait) : wait;
+    };
+    consider(m_hintAlpha > 0 && !m_hint.isEmpty(), m_hintStays, m_hintSince, m_hintHoldMs);
+    consider(m_pillAlpha > 0 && m_pillKind != PillKind::None, m_pillKind == PillKind::Reading, m_pillSince, pillHoldMs());
+    if (nextMs)
+        ::SetTimer(m_hwnd, kHintTimer, static_cast<UINT>(std::clamp<qint64>(*nextMs, kFadeTickMs, 60'000)), nullptr);
+    else
+        ::KillTimer(m_hwnd, kHintTimer);
+}
+
+void PinWindow::hintTick()
+{
+    const qint64 now = steadyNowMs();
+    const int hint = m_hintStays ? 255 : (m_hintSince && !m_hint.isEmpty()) ? fadedAlpha(now - m_hintSince, m_hintHoldMs) : 0;
     // The pill stays while the words are still being read: it says so.
     const int pill = m_pillKind == PillKind::Reading
         ? 255
-        : (m_pillSince && m_pillKind != PillKind::None) ? fadedAlpha(now - m_pillSince, hold) : 0;
-    if (hint <= 0 && pill <= 0)
-        ::KillTimer(m_hwnd, kHintTimer);
-    if (hint != m_hintAlpha || pill != m_pillAlpha) {
+        : (m_pillSince && m_pillKind != PillKind::None) ? fadedAlpha(now - m_pillSince, pillHoldMs()) : 0;
+    if (hint != m_hintAlpha) {
         m_hintAlpha = hint;
+        if (m_hintAlpha <= 0) {
+            m_hintSince = 0;
+            m_hintPill.hide();
+        } else if (m_hintPill.visible()) {
+            m_hintPill.setAlpha(m_hintAlpha);
+        }
+    }
+    if (pill != m_pillAlpha) {
         m_pillAlpha = pill;
-        if (m_pillAlpha == 0 && m_pillKind != PillKind::Reading)
-            m_pillKind = PillKind::None;
-        render(); // at 0 the picture is as it was: at 100% its own pixels
+        if (m_pillAlpha <= 0) {
+            m_pillSince = 0;
+            if (m_pillKind != PillKind::Reading)
+                m_pillKind = PillKind::None;
+            m_textPill.hide();
+        } else if (m_textPill.visible()) {
+            m_textPill.setAlpha(m_pillAlpha);
+        }
+    }
+    scheduleHintTimer();
+}
+
+void PinWindow::syncPills()
+{
+    if (!m_hwnd || !visibleNow() || m_form != PinForm::Full) {
+        m_hintPill.hide();
+        m_textPill.hide();
+        return;
+    }
+    const QRect picture = pictureRect();
+    const QRect bounds = pillBounds();
+    const double scale = dpr();
+    const int gap = std::max(2, static_cast<int>(std::lround(6 * scale)));
+    const int inset = std::max(4, static_cast<int>(std::lround(8 * scale)));
+    const QRect close = closeButton();
+    const PinPill::Look look {
+        m_host.accent ? m_host.accent() : QColor(0x0F, 0x6C, 0xBD),
+        std::max(0.0, m_host.pillRadius ? m_host.pillRadius() : 4.0),
+    };
+
+    QRect hintRect;
+    if (m_hintAlpha > 0 && !m_hint.isEmpty()) {
+        const QSize size = PinPill::pillSize(m_hint, scale);
+        const PinPillPlace place = placePinPill(picture, m_frame.border, size, bounds, PinPillEdge::Top, gap, inset, {}, close);
+        hintRect = place.rect;
+        m_hintPill.show(m_hwnd, m_topmost, m_hint, place.rect, scale, look, m_hintAlpha);
+    } else {
+        m_hintPill.hide();
+    }
+
+    const QString textLabel = m_pillAlpha > 0 && m_pillKind != PillKind::None && !m_picking ? textPillText() : QString();
+    if (!textLabel.isEmpty()) {
+        const QSize size = PinPill::pillSize(textLabel, scale);
+        const PinPillPlace place = placePinPill(picture, m_frame.border, size, bounds, PinPillEdge::Bottom, gap, inset, hintRect, close);
+        m_textPill.show(m_hwnd, m_topmost, textLabel, place.rect, scale, look, m_pillAlpha);
+    } else {
+        m_textPill.hide();
     }
 }
 
@@ -516,35 +598,6 @@ void PinWindow::drawTextLayer(QImage& canvas, const QRect& picture)
         painter.setBrush(Qt::NoBrush);
         painter.drawRect(band.adjusted(0, 0, -1, -1));
     }
-    // What the pin is doing, in a pill at the lower left (white on the accent
-    // fill), for a moment (showPill): it sat over the bottom line of the
-    // words, in the way of picking them (GitHub #258). Not during a drag.
-    if (m_pillAlpha <= 0 || m_pillKind == PillKind::None || m_picking)
-        return;
-    const QString text = textPillText();
-    if (text.isEmpty())
-        return;
-    QFont font = QGuiApplication::font();
-    font.setPixelSize(static_cast<int>(std::lround(13 * dpr())));
-    painter.setFont(font);
-    const QFontMetrics metrics(font);
-    const int padX = static_cast<int>(std::lround(10 * dpr()));
-    const int padY = static_cast<int>(std::lround(4 * dpr()));
-    const int gap = static_cast<int>(std::lround(8 * dpr()));
-    const QSize size(metrics.horizontalAdvance(text) + 2 * padX, metrics.height() + 2 * padY);
-    const QRect button = closeButton();
-    const int left = m_closeCorner == Corner::BottomLeft && !button.isEmpty() ? button.width() + gap : 0;
-    if (picture.width() < size.width() + 2 * gap + left || picture.height() < size.height() + 2 * gap)
-        return;
-    painter.setOpacity(m_pillAlpha / 255.0);
-    painter.setRenderHint(QPainter::Antialiasing, true);
-    const QRect pill(picture.left() + gap + left, picture.bottom() + 1 - gap - size.height(), size.width(), size.height());
-    painter.setPen(Qt::NoPen);
-    painter.setBrush(accent);
-    const qreal radius = std::max(0.0, m_host.pillRadius ? m_host.pillRadius() : 4.0) * dpr();
-    painter.drawRoundedRect(pill, radius, radius);
-    painter.setPen(Qt::white);
-    painter.drawText(pill, Qt::AlignCenter, text);
 }
 
 void PinWindow::paintBorder()
@@ -587,17 +640,14 @@ void PinWindow::setZoom(double zoom, QPoint cursor)
     if (m_form != PinForm::Full)
         return;
     zoom = std::clamp(zoom, minZoom(), maxZoom(fullSize(), kZoomBudget));
-    if (m_pillKind == PillKind::AutoReady) {
-        m_pillKind = PillKind::None;
-        m_pillSince = 0;
-        m_pillAlpha = 0;
-    }
-    // The percent shows at the ends too, where the notch changes nothing.
-    showHint(QString::number(static_cast<int>(std::lround(zoom * 100))) + u'%');
+    if (m_pillKind == PillKind::AutoReady)
+        clearPill();
     if (std::abs(zoom - m_zoom) >= 1e-9) {
         m_origin = zoomAbout(m_origin, cursor, m_zoom, zoom);
         m_zoom = zoom;
     }
+    // The percent shows at the ends too, where the notch changes nothing.
+    showHint(QString::number(static_cast<int>(std::lround(zoom * 100))) + u'%', kHintHoldMs);
     render();
 }
 
@@ -608,6 +658,7 @@ void PinWindow::moveTo(QPoint origin)
     m_origin = origin; // first: a WM_DPICHANGED inside the move draws it there
     const QRect window = windowRect();
     ::SetWindowPos(m_hwnd, nullptr, window.x(), window.y(), 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+    syncPills();
 }
 
 void PinWindow::setPicture(const QImage& image, QByteArray project)
@@ -662,6 +713,8 @@ void PinWindow::showOtherSide()
     m_copyAllWhenReady = false;
     m_autoScan = false;
     resetTextInteraction();
+    if (!m_hintStays && m_hintAlpha > 0)
+        clearHint(); // dismiss a stale "Tab 看原文" pill once the user has already flipped
     std::swap(m_image, m_other);
     std::swap(m_lines, m_otherLines);
     std::swap(m_readState, m_otherReadState);
@@ -680,18 +733,20 @@ void PinWindow::forgetOtherSide()
     m_otherReadState = ReadState::Unread;
     m_translatedWords.clear();
     m_translationShown = false;
+    if (m_hintStays)
+        clearHint(); // any in-flight translation for the old revision is now invalidated
 }
 
 void PinWindow::note(const QString& text, bool stay)
 {
-    showHint(text);
-    m_hintStays = stay && !text.isEmpty();
+    if (!m_hwnd)
+        return;
     if (text.isEmpty()) { // none: the one that stayed goes
-        m_hintSince = 0;
-        m_hintAlpha = 0;
+        clearHint();
+        return;
     }
-    if (m_form == PinForm::Full)
-        render(); // showHint leaves the drawing to what changed the zoom or the opacity
+    showHint(text, kNoteHoldMs, stay);
+    syncPills();
 }
 
 void PinWindow::setShown(bool shown)
@@ -702,10 +757,12 @@ void PinWindow::setShown(bool shown)
 
 void PinWindow::restyle()
 {
-    if (m_textMode || !m_picked.isEmpty() || (m_pillAlpha > 0 && m_pillKind != PillKind::None))
-        render(); // the text highlight and pill too
-    else
+    if (m_textMode || !m_picked.isEmpty()) {
+        render(); // the text highlight and pills
+    } else {
         paintBorder();
+        syncPills(); // accent fill and corner radius
+    }
 }
 
 void PinWindow::setAllHidden(bool hidden)
@@ -726,13 +783,17 @@ void PinWindow::applyVisibility()
 {
     if (m_hwnd)
         ::ShowWindow(m_hwnd, visibleNow() ? SW_SHOWNA : SW_HIDE);
+    syncPills();
 }
 
 void PinWindow::setTopmost(bool on)
 {
     m_topmost = on;
-    if (m_hwnd)
+    if (m_hwnd) {
         ::SetWindowPos(m_hwnd, on ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        m_hintPill.setTopmost(m_hwnd, on);
+        m_textPill.setTopmost(m_hwnd, on);
+    }
 }
 
 void PinWindow::setClickThrough(bool on)
@@ -962,9 +1023,7 @@ void PinWindow::resetTextInteraction()
     m_pickDragged = false;
     m_picked.clear();
     m_pickBand = {};
-    m_pillKind = PillKind::None;
-    m_pillSince = 0;
-    m_pillAlpha = 0;
+    clearPill();
     if (m_hwnd && ::GetCapture() == m_hwnd)
         ::ReleaseCapture();
 }
@@ -997,11 +1056,8 @@ void PinWindow::setAutoOcr(bool on)
             m_pickDirect = false;
             m_pickDragged = false;
             m_picked.clear();
-            if (m_pillKind == PillKind::AutoReady || m_pillKind == PillKind::SelectionHint) {
-                m_pillKind = PillKind::None;
-                m_pillSince = 0;
-                m_pillAlpha = 0;
-            }
+            if (m_pillKind == PillKind::AutoReady || m_pillKind == PillKind::SelectionHint)
+                clearPill();
             if (m_hwnd && ::GetCapture() == m_hwnd)
                 ::ReleaseCapture();
             render();
@@ -1137,11 +1193,8 @@ void PinWindow::endTextPick()
     } else if (m_readState == ReadState::Reading && m_autoOcr && !m_copyAllWhenReady) {
         m_autoScan = true; // let the in-flight scan finish quietly for direct selection
     }
-    if (!m_copyAllWhenReady) {
-        m_pillKind = PillKind::None;
-        m_pillSince = 0;
-        m_pillAlpha = 0;
-    }
+    if (!m_copyAllWhenReady)
+        clearPill();
     if (m_hwnd && ::GetCapture() == m_hwnd)
         ::ReleaseCapture();
     render();
@@ -1157,11 +1210,8 @@ void PinWindow::clearSelection()
     m_pickDragged = false;
     m_picked.clear();
     m_pickBand = {};
-    if (m_pillKind == PillKind::SelectionHint || m_pillKind == PillKind::AutoReady) {
-        m_pillKind = PillKind::None;
-        m_pillSince = 0;
-        m_pillAlpha = 0;
-    }
+    if (m_pillKind == PillKind::SelectionHint || m_pillKind == PillKind::AutoReady)
+        clearPill();
     if (m_hwnd && ::GetCapture() == m_hwnd)
         ::ReleaseCapture();
     render();
@@ -1228,7 +1278,7 @@ void PinWindow::showCopiedAllPill()
     if (!m_hwnd || m_form != PinForm::Full)
         return;
     showPill(PillKind::CopiedAll);
-    render();
+    syncPills();
 }
 
 void PinWindow::updatePicked(QPoint cursor)
@@ -1350,12 +1400,11 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
                 m_pickStart = at;
                 if (!m_picked.isEmpty() || m_pillKind == PillKind::SelectionHint) {
                     m_picked.clear();
-                    if (m_pillKind == PillKind::SelectionHint) {
-                        m_pillKind = PillKind::None;
-                        m_pillSince = 0;
-                        m_pillAlpha = 0;
-                    }
+                    if (m_pillKind == PillKind::SelectionHint)
+                        clearPill();
                     render();
+                } else {
+                    syncPills();
                 }
                 ::SetCapture(hwnd);
                 return 0;
@@ -1438,9 +1487,7 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
                 if (dragged && !m_picked.isEmpty()) {
                     showPill(PillKind::SelectionHint);
                 } else if (m_pillKind == PillKind::SelectionHint) {
-                    m_pillKind = PillKind::None;
-                    m_pillSince = 0;
-                    m_pillAlpha = 0;
+                    clearPill();
                 }
                 render();
             } else {
@@ -1549,12 +1596,12 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
             return 0;
         if (GET_KEYSTATE_WPARAM(wParam) & MK_CONTROL) {
             m_opacity = nextOpacity(m_opacity, steps);
+            present();
             if (m_form == PinForm::Full) {
                 showHint(QCoreApplication::translate("ws::capture::PinWindow", "透明度 %1%")
-                             .arg(static_cast<int>(std::lround(m_opacity * 100))));
-                render();
-            } else {
-                present();
+                             .arg(static_cast<int>(std::lround(m_opacity * 100))),
+                    kHintHoldMs);
+                syncPills();
             }
         } else if (m_form == PinForm::Full) {
             const QPoint cursor(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)); // screen, physical
@@ -1721,6 +1768,8 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
         render();
         return 0;
     case WM_NCDESTROY: {
+        m_hintPill.destroy();
+        m_textPill.destroy();
         ::SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
         m_hwnd = nullptr;
         *m_alive = false;

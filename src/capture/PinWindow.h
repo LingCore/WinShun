@@ -2,6 +2,7 @@
 
 #include "CaptureKeys.h"
 #include "Geometry.h"
+#include "PinPill.h"
 #include "PinTools.h"
 #include "SmartRedact.h"
 
@@ -160,7 +161,7 @@ public:
     bool translationShown() const { return m_translationShown; }
     const QString& translatedWords() const { return m_translatedWords; }
     void showOtherSide();
-    // A word in the pill on the picture; `stay`: until the next one (正在翻译…), else for a moment.
+    // A word in the floating status pill beside the picture; `stay`: until the next one (正在翻译…), else for a moment.
     void note(const QString& text, bool stay = false);
     // Out of sight while it is edited, and back (it keeps its place).
     void setShown(bool shown);
@@ -224,9 +225,16 @@ public:
     bool copyAllRecognizedText();
     void showCopiedAllPill();
     // The pill saying what the pick is doing: 255 while shown, 0 once it has
-    // faded off the words (GitHub #258). For tests.
+    // faded out (GitHub #258). For tests.
     int textHintAlpha() const { return m_pillAlpha; }
     QString textPillText() const;
+    // The status/hint pill's alpha (255 while shown, 0 when hidden) and the
+    // floating pills' body rects (physical, virtual desktop; empty when hidden). For tests.
+    int hintAlpha() const { return m_hintAlpha; }
+    QRect hintPillRect() const { return m_hintPill.rect(); }
+    QRect textPillRect() const { return m_textPill.rect(); }
+    HWND hintPillHwnd() const { return m_hintPill.hwnd(); }
+    HWND textPillHwnd() const { return m_textPill.hwnd(); }
     // The close button shown while the cursor is on it (physical, virtual desktop); empty: none now.
     QRect closeButton() const;
 
@@ -254,18 +262,23 @@ private:
     double shownZoom() const { return m_form == PinForm::Full ? m_zoom : 1.0; }
     QRect workArea() const; // of the monitor nearest to the picture
     QRect workAreaAt(QPoint point) const; // of the monitor nearest to a point
+    QRect pillBounds() const; // work area for floating pills (monitor bounds if the picture sits outside rcWork)
     // Into the work area of the monitor at `anchor`, shown fitted
     // (m_fitZoom) when larger than 90% of it; before the window is made, so
     // it is made on that monitor.
     void fitToWorkArea(QPoint anchor);
     double minZoom() const; // the smallest step, or the fitted zoom below it
     void drawTextLayer(QImage& canvas, const QRect& picture);
-    void drawHint(QImage& canvas, const QRect& picture); // the zoom or opacity, a moment after it changes
-    void showHint(const QString& text); // (re)starts the moment
+    void showHint(const QString& text, qint64 holdMs, bool stay = false); // (re)starts the moment (caller syncs pills)
+    void clearHint();
     void forgetOtherSide(); // the picture is another now: one side, the next revision
-    void showPill(PillKind kind); // the text pill (drawTextLayer): (re)starts its moment
+    void showPill(PillKind kind); // the text pill: (re)starts its moment (caller syncs pills)
+    void clearPill();
     void dismissAutoReadyPill();
+    qint64 pillHoldMs() const;
+    void scheduleHintTimer(); // wakes only when a hold expires or a fade ticks
     void hintTick(); // the moments' timer: fades the hint and the pill out
+    void syncPills(); // positions, paints or hides the floating pills outside the picture
     void startReadLines(bool background);
     void maybeStartAutoOcr();
     void cancelPendingScan();
@@ -313,15 +326,18 @@ private:
     bool m_dragging = false;
     QPoint m_grab; // the cursor less m_origin at the press
     int m_wheel = 0; // wheel delta not yet a whole notch (touchpads)
-    // "150%" in a pill on the picture for a moment after a zoom (#164).
+    // "150%", "透明度 80%", "正在翻译…", "Tab 看原文" in a floating pill beside the picture (#164, #191).
     QString m_hint;
     qint64 m_hintSince = 0; // steady clock, ms
-    int m_hintAlpha = 0; // 0: not drawn
-    // The text pill (lower left): auto-ready, reading, pick/selection hint, or copy feedback.
-    // Fades off the words after a moment (GitHub #258); never drawn while a drag is under way.
+    qint64 m_hintHoldMs = 900;
+    int m_hintAlpha = 0; // 0: hidden
+    // The text pill (floats beside the bottom edge): auto-ready, reading, pick/selection hint, or copy feedback.
+    // Fades out after a moment (GitHub #258); hidden while a drag is under way.
     PillKind m_pillKind = PillKind::None;
     qint64 m_pillSince = 0;
     int m_pillAlpha = 0;
+    PinPill m_hintPill;
+    PinPill m_textPill;
     // The close button while the cursor is on the picture: in the corner on
     // the side it came in from (None: not shown), lit while the cursor is on
     // it, pressed while the left button went down on it.
