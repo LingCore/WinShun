@@ -695,6 +695,10 @@ public:
     // place of shell::copyFiles (the clipboard left be).
     quint64 serverChecksStarted() const { return m_serverChecksStarted; }
     void setFileCopier(std::function<void(const QStringList& files)> copier) { m_fileCopier = std::move(copier); }
+    void setFileRecycler(std::function<void(const QStringList& files, std::function<void(bool)> done)> recycler)
+    {
+        m_fileRecycler = std::move(recycler);
+    }
     // A plugin's effects from outside a row: a click on its system
     // notification (Host::toastRequested), held to its permissions as an
     // action's are.
@@ -771,7 +775,7 @@ public:
     // for a moment and gives it back; the launcher is not to go for that.
     // Over once the launcher is active again, or another program's window
     // took the focus (App's activeChanged), or the launcher was hidden.
-    bool systemCommandRunning() const { return m_systemCommand; }
+    bool systemCommandRunning() const { return m_systemCommand || m_shellOpsInFlight > 0; }
     void systemCommandDone() { m_systemCommand = false; }
     Q_INVOKABLE void cycleScope(int delta);
     int fileType() const { return m_fileType; }
@@ -1139,6 +1143,7 @@ private:
     // down), the same files join it, the answer going to the newest.
     void checkServersThen(const QStringList& paths, std::function<void(const ServerFound&)> then);
     void copyFiles(const QStringList& files); // m_fileCopier, else shell::copyFiles
+    void recycleFiles(const QStringList& files, std::function<void(bool)> done); // m_fileRecycler, else shell::recycle
     navigation::TabAction tabAction(int row) const;
     void browseFolder(const SearchResult& folder);
     // GitHub #361: Tab steps into `r` (navigation::tabAction's `stepsIn`).
@@ -1329,6 +1334,7 @@ private:
     QHash<QString, ServerCheck> m_serverChecks;
     quint64 m_serverChecksStarted = 0;
     std::function<void(const QStringList& files)> m_fileCopier; // setFileCopier
+    std::function<void(const QStringList& files, std::function<void(bool)> done)> m_fileRecycler; // setFileRecycler
     qint64 m_totalMatches = 0;
     qint64 m_elapsedUs = 0;
     bool m_contentRunning = false;
@@ -1546,6 +1552,7 @@ private:
     bool m_systemMenuOpen = false; // the shell's menu is up (its loop runs inside runSystemMenu)
     std::optional<SearchResult> m_renaming; // the row whose name is being typed (beginRename)
     bool m_systemCommand = false; // see systemCommandRunning
+    int m_shellOpsInFlight = 0; // active IFileOperation (recycle / rename) calls keeping the launcher up for shell dialogs
     QElapsedTimer m_systemMenuAsked; // since showSystemMenu was last called
     std::optional<std::pair<int, int>> m_held; // holdUntilShown(): action, number
     std::vector<FrequentApp> m_frequent;

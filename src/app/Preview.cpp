@@ -4878,22 +4878,94 @@ bool checkShortcutPanels(QQmlEngine* engine, const QDir& output)
                 QQuickItem* action = row ? visualNamed(row, name) : nullptr;
                 return action && action->isVisible();
             };
-            const auto menuHasMore = [&] {
-                bool found = false;
-                for (const QVariant& item : launcher.menuItems(0))
-                    found = found || item.toMap().value(u"action"_s).toInt() == Launcher::SystemMenu; // Windows' menu, which deletes
-                return found;
+            const auto menuHasAction = [&](int row, Launcher::Action action, bool* danger = nullptr) {
+                for (const QVariant& item : launcher.menuItems(row)) {
+                    const QVariantMap map = item.toMap();
+                    if (map.value(u"action"_s, -1).toInt() == action) {
+                        if (danger)
+                            *danger = map.value(u"danger"_s).toBool();
+                        return true;
+                    }
+                }
+                return false;
             };
             check(shown(u"deleteAction"_s) && shown(u"copyPathAction"_s), u"launcher: a file's row has its delete button"_s);
             launcher.setRowDeleteButton(false);
             settle(window);
             check(!shown(u"deleteAction"_s) && shown(u"copyPathAction"_s),
                 u"launcher: the delete button goes with its setting, the other buttons stay"_s);
-            check(menuHasMore(), u"launcher: the row's menu still leads to Windows' own, which deletes"_s);
+            bool singleRecycleDanger = false;
+            check(menuHasAction(0, Launcher::Recycle, &singleRecycleDanger) && singleRecycleDanger,
+                u"launcher: quick context menu directly offers Move to Recycle Bin with danger styling"_s);
+            check(menuHasAction(0, Launcher::SystemMenu), u"launcher: the row's menu still leads to Windows' own"_s);
             saveGrab(window, output.filePath(u"row-without-delete.png"_s));
             launcher.setRowDeleteButton(true);
             settle(window);
             check(shown(u"deleteAction"_s), u"launcher: the delete button is back with its setting"_s);
+
+            // Cross-folder multi-select delete in quick context menu (#434):
+            // supports files across distinct folders, prunes nested children, skips apps/drive roots,
+            // keeps systemCommandRunning true while in flight, and removes deleted rows.
+            QDir().mkpath(temporary.filePath(u"dirA/nested"_s));
+            QDir().mkpath(temporary.filePath(u"dirB"_s));
+            const QString fileA = QDir::toNativeSeparators(temporary.filePath(u"dirA/alpha.txt"_s));
+            const QString dirNested = QDir::toNativeSeparators(temporary.filePath(u"dirA/nested"_s));
+            const QString fileNested = QDir::toNativeSeparators(temporary.filePath(u"dirA/nested/inner.txt"_s));
+            const QString fileB = QDir::toNativeSeparators(temporary.filePath(u"dirB/beta.txt"_s));
+            for (const QString& p : {fileA, fileNested, fileB}) {
+                QFile f(p);
+                check(f.open(QIODevice::WriteOnly), u"launcher: create temp file for recycle check"_s);
+                f.write("data");
+            }
+            SearchResult rA; rA.name = u"alpha.txt"_s; rA.path = fileA;
+            SearchResult rNestedDir; rNestedDir.name = u"nested"_s; rNestedDir.path = dirNested; rNestedDir.isDir = true;
+            SearchResult rNestedFile; rNestedFile.name = u"inner.txt"_s; rNestedFile.path = fileNested;
+            SearchResult rB; rB.name = u"beta.txt"_s; rB.path = fileB;
+            SearchResult rApp; rApp.name = u"FakeApp"_s; rApp.path = u"shell:AppsFolder\\Fake"_s; rApp.app = AppKind::Desktop;
+            SearchResult rRoot; rRoot.name = u"C:\\"_s; rRoot.path = u"C:\\"_s; rRoot.isDir = true;
+            launcher.results()->assign({rA, rNestedDir, rNestedFile, rB, rApp, rRoot}, {});
+            check(!menuHasAction(4, Launcher::Recycle), u"launcher: app row does not offer Move to Recycle Bin"_s);
+            check(!menuHasAction(5, Launcher::Recycle), u"launcher: drive root does not offer Move to Recycle Bin"_s);
+            launcher.results()->setSelection({fileA, dirNested, fileNested, fileB, rApp.path, rRoot.path});
+            bool multiRecycleDanger = false;
+            check(menuHasAction(0, Launcher::Recycle, &multiRecycleDanger) && multiRecycleDanger,
+                u"launcher: cross-folder multi-select menu offers Move to Recycle Bin with danger styling"_s);
+            // Open the actual QML ContextMenu window for the multi-selection and grab it for visual inspection.
+            QMetaObject::invokeMethod(window, "openContextMenu", Q_ARG(QVariant, 0), Q_ARG(QVariant, QVariant()));
+            settle(window);
+            if (auto* ctxMenu = qobject_cast<QQuickWindow*>(window->property("contextMenu").value<QObject*>())) {
+                check(ctxMenu->isVisible(), u"launcher: multi-select context menu opens"_s);
+                settle(ctxMenu);
+                saveGrab(ctxMenu, output.filePath(u"context-menu-multi-recycle.png"_s));
+                QMetaObject::invokeMethod(window, "closeContextMenu");
+                settle(window);
+            }
+            // Footer's clear-history button uses Phosphor's broom (distinct from file delete's trash can).
+            if (QQuickItem* clearBtn = visualNamed(window->contentItem(), u"clearHistoryButton"_s))
+                check(clearBtn->property("iconName").toString() == u"broom"_s, u"footer: clearHistory uses broom icon"_s);
+            QStringList recycledBatch;
+            bool runningDuringRecycle = false;
+            launcher.setFileRecycler([&](const QStringList& batch, std::function<void(bool)> done) {
+                recycledBatch = batch;
+                runningDuringRecycle = launcher.systemCommandRunning();
+                for (const QString& p : batch) {
+                    QFileInfo info(p);
+                    if (info.isDir())
+                        QDir(p).removeRecursively();
+                    else
+                        QFile::remove(p);
+                }
+                done(true);
+            });
+            launcher.trigger(0, Launcher::Recycle);
+            settle(window);
+            launcher.setFileRecycler({});
+            check(runningDuringRecycle, u"launcher: systemCommandRunning stays true while recycle runs"_s);
+            check(!launcher.systemCommandRunning(), u"launcher: systemCommandRunning clears after recycle completes"_s);
+            check(recycledBatch == QStringList({fileA, dirNested, fileB}),
+                u"launcher: cross-folder multi-select recycle deduplicates and prunes nested descendants"_s);
+            check(launcher.results()->count() == 2,
+                u"launcher: deleted files and nested child rows are removed while non-deletable rows remain"_s);
         }
         window->hide();
     }

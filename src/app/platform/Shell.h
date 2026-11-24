@@ -132,6 +132,10 @@ void runCustom(const QString& command, const QString& directory, const QString& 
 int hiddenHelper();
 // An installed app by its launch path, "shell:AppsFolder\<id>" (see AppCatalog).
 void launchApp(const QString& launchPath, bool asAdministrator = false, std::function<void(bool)> done = {});
+// Normalizes, deduplicates, and prunes paths whose ancestor folder is already
+// in the batch so IFileOperation does not fail trying to delete an item twice
+// or a child whose parent folder was already queued.
+QStringList prepareRecyclePaths(const QStringList& paths);
 // Moves the items to the Recycle Bin, in one operation (asks before deleting
 // permanently what cannot be recycled). `done` runs on the worker thread with
 // whether the shell reported success; `owner` parents any shell dialog.

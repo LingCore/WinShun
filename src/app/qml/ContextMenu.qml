@@ -195,6 +195,7 @@ Window {
                 required property int index
                 readonly property bool separator: modelData.separator === true
                 readonly property bool disabled: modelData.enabled === false // shown, cannot be picked
+                readonly property bool danger: modelData.danger === true
 
                 width: menu.width - 2 * menu.padding
                 height: separator ? 9 : menu.itemHeight
@@ -217,7 +218,7 @@ Window {
                     // `checked: true` marks the entry as on (a column that is shown) in the icon's place
                     glyph: entry.modelData.checked === true ? String.fromCharCode(0xE73E) : (entry.modelData.glyph ?? "") // CheckMark
                     size: 16
-                    color: entry.disabled ? Theme.faint : Theme.text
+                    color: entry.disabled ? Theme.faint : entry.danger ? Theme.danger : Theme.text
                 }
 
                 Text {
@@ -226,7 +227,7 @@ Window {
                     x: 44
                     anchors.verticalCenter: parent.verticalCenter
                     text: entry.modelData.text ?? ""
-                    color: entry.disabled ? Theme.faint : Theme.text
+                    color: entry.disabled ? Theme.faint : entry.danger ? Theme.danger : Theme.text
                     font.pixelSize: Theme.menuTextSize
                 }
 

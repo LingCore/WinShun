@@ -4574,12 +4574,61 @@ void Launcher::checkServersThen(const QStringList& paths, std::function<void(con
     }).detach();
 }
 
+// A real disk/share file or folder path (not an app, place, web, plugin,
+// window, custom command, screenshot row, drive root, or bare UNC share root).
+static bool isDeletablePath(const SearchResult& r)
+{
+    if (r.isApp() || r.isCommand() || r.clipId != 0 || r.name.isEmpty())
+        return false;
+    QString path = QDir::toNativeSeparators(r.path);
+    while (path.size() > 3 && path.endsWith(u'\\'))
+        path.chop(1);
+    if (path.size() <= 3 || path.lastIndexOf(u'\\') <= 1)
+        return false;
+    const std::wstring wide = path.toStdWString();
+    if (unc::isUnc(wide)) {
+        const std::wstring_view root = unc::shareRoot(wide);
+        if (root.empty() || wide.size() <= root.size() + 1)
+            return false;
+    }
+    return true;
+}
+
+static bool recyclable(const SearchResult& r)
+{
+    return isDeletablePath(r) && !r.missing && !r.offline;
+}
+
 void Launcher::copyFiles(const QStringList& files)
 {
     if (m_fileCopier)
         m_fileCopier(files);
     else
         shell::copyFiles(files);
+}
+
+void Launcher::recycleFiles(const QStringList& files, std::function<void(bool)> done)
+{
+    const QStringList prepared = shell::prepareRecyclePaths(files);
+    if (prepared.isEmpty()) {
+        done(false);
+        return;
+    }
+    ++m_shellOpsInFlight;
+    auto finish = [self = QPointer(this), done = std::move(done)](bool ok) mutable {
+        QMetaObject::invokeMethod(qApp, [self, done = std::move(done), ok] {
+            if (!self)
+                return;
+            self->m_shellOpsInFlight = std::max(0, self->m_shellOpsInFlight - 1);
+            done(ok);
+        }, Qt::QueuedConnection);
+    };
+    if (m_fileRecycler) {
+        m_fileRecycler(prepared, std::move(finish));
+        return;
+    }
+    const auto owner = m_window ? reinterpret_cast<HWND>(m_window->winId()) : nullptr;
+    shell::recycle(prepared, owner, std::move(finish));
 }
 
 void Launcher::cycleScope(int delta)
@@ -5922,14 +5971,9 @@ void Launcher::perform(const SearchResult& result, Action action, bool fileCheck
         forgetRecent({r.path});
         break;
     case Recycle: {
-        const auto owner = m_window ? reinterpret_cast<HWND>(m_window->winId()) : nullptr;
-        // Back on the GUI thread, where `self` can be checked safely.
-        shell::recycle({r.path}, owner, [self = QPointer(this), r](bool ok) {
-            QMetaObject::invokeMethod(qApp, [self, r, ok] {
-                if (self)
-                    self->onRecycled(r, ok);
-            }, Qt::QueuedConnection);
-        });
+        if (!isDeletablePath(r))
+            break;
+        recycleFiles({r.path}, [this, r](bool ok) { onRecycled(r, ok); });
         break;
     }
     case EditWebShortcuts:
@@ -6474,9 +6518,14 @@ void Launcher::performMany(const SearchResults& items, Action action, const Serv
     case Recycle: {
         SearchResults files;
         QStringList paths;
+        QSet<QString> seen;
         for (const SearchResult& r : items) {
-            if (r.isApp()) // apps are uninstalled in Windows Settings
+            if (!isDeletablePath(r))
                 continue;
+            const QString key = pathtext::pathKey(r.path);
+            if (seen.contains(key))
+                continue;
+            seen.insert(key);
             if (!exists(r.path)) {
                 // Gone: out of the list. One on a server is not asked again
                 // here (it may hold the window up): out when its server said
@@ -6495,13 +6544,7 @@ void Launcher::performMany(const SearchResults& items, Action action, const Serv
             flash(tr("选中的项目不能删除"));
             return;
         }
-        const auto owner = m_window ? reinterpret_cast<HWND>(m_window->winId()) : nullptr;
-        shell::recycle(paths, owner, [self = QPointer(this), files](bool ok) {
-            QMetaObject::invokeMethod(qApp, [self, files, ok] {
-                if (self)
-                    self->onRecycledMany(files, ok);
-            }, Qt::QueuedConnection);
-        });
+        recycleFiles(paths, [this, files](bool ok) { onRecycledMany(files, ok); });
         break;
     }
     case EditWebShortcuts:
@@ -6648,8 +6691,7 @@ void Launcher::onRecycledMany(const SearchResults& items, bool ok)
 // web page, a plugin's or the clipboard's row, nor a drive or a share itself.
 static bool renamable(const SearchResult& r)
 {
-    return !r.isApp() && !r.isPlugin() && r.clipId == 0 && !r.missing && !r.offline && r.path.size() > 3
-        && r.path.lastIndexOf(u'\\') > 1 && !r.name.isEmpty();
+    return recyclable(r);
 }
 
 bool Launcher::beginRename(int row)
@@ -6703,10 +6745,13 @@ bool Launcher::finishRename(const QString& typed)
     }
     m_renaming.reset();
     const auto owner = m_window ? reinterpret_cast<HWND>(m_window->winId()) : nullptr;
+    ++m_shellOpsInFlight;
     shell::rename(was.path, name, owner, [self = QPointer(this), was, name](bool ok) {
         QMetaObject::invokeMethod(qApp, [self, was, name, ok] {
-            if (self)
+            if (self) {
+                self->m_shellOpsInFlight = std::max(0, self->m_shellOpsInFlight - 1);
                 self->onRenamed(was, name, ok);
+            }
         }, Qt::QueuedConnection);
     });
     return true;
@@ -6746,13 +6791,16 @@ void Launcher::forgetRow(const SearchResult& result)
 {
     m_history->remove(result.path);
     emit historyChanged();
-    const SearchResult* row = m_results.at(m_results.indexOf(result.path));
-    const bool contentRow = row && row->line > 0;
-    if (m_results.remove(result.path) && m_scope != Content) {
-        if (contentRow)
-            --m_contentHits;
-        else if (m_totalMatches > 0)
-            --m_totalMatches;
+    // Content search can list multiple line matches for the same file path.
+    for (int rowIndex = m_results.indexOf(result.path); rowIndex >= 0; rowIndex = m_results.indexOf(result.path)) {
+        const SearchResult* row = m_results.at(rowIndex);
+        const bool contentRow = row && row->line > 0;
+        if (m_results.remove(result.path) && m_scope != Content) {
+            if (contentRow)
+                --m_contentHits;
+            else if (m_totalMatches > 0)
+                --m_totalMatches;
+        }
     }
 }
 
@@ -6762,13 +6810,17 @@ QVariantList Launcher::menuItems(int row) const
     const SearchResult* r = m_results.at(row);
     if (!r)
         return {};
-    const auto entry = [](Action action, const QString& text, const QString& shortcut, const QString& glyph) {
-        return QVariantMap {
+    const auto entry = [](Action action, const QString& text, const QString& shortcut, const QString& glyph,
+                           bool danger = false) {
+        QVariantMap map {
             {u"action"_s, static_cast<int>(action)},
             {u"text"_s, text},
             {u"shortcut"_s, shortcut},
             {u"glyph"_s, glyph},
         };
+        if (danger)
+            map.insert(u"danger"_s, true);
+        return map;
     };
     const QVariantMap separator {{u"separator"_s, true}};
     // The plugins' `files` commands (用局域网发送… and the like) for the row's
@@ -6838,6 +6890,16 @@ QVariantList Launcher::menuItems(int row) const
             else if (kept > 0)
                 items.append(entry(RemoveFavorite, tr("从收藏夹移除（%Ln 项）", nullptr, kept), QString(), u"\uE8D9"_s));
         }
+        QSet<QString> deletablePaths;
+        for (const SearchResult& s : selection) {
+            if (recyclable(s))
+                deletablePaths.insert(pathtext::pathKey(s.path));
+        }
+        if (!deletablePaths.isEmpty()) {
+            items.append(separator);
+            items.append(entry(Recycle, tr("移到回收站（%Ln 项）", nullptr, static_cast<int>(deletablePaths.size())),
+                QString(), u"\uE74D"_s, true)); // Delete
+        }
         if (any([](const SearchResult& r) { return !r.isApp() && !r.missing && !r.offline; })) {
             items.append(separator);
             items.append(entry(SystemMenu, tr("更多选项"), m_defaultSystemMenu ? tr("右键") : tr("Shift+右键"), u"\uE712"_s)); // More
@@ -6882,7 +6944,7 @@ QVariantList Launcher::menuItems(int row) const
         if (r->plugin && !r->plugin->copy.isEmpty())
             items.append(entry(CopyName, tr("复制识别出的文字"), QString(), u"\uE8AC"_s));
         items.append(separator);
-        items.append(entry(RemoveScreenshot, tr("从历史删除"), tr("Delete"), u"\uE74D"_s)); // Delete
+        items.append(entry(RemoveScreenshot, tr("从历史删除"), tr("Delete"), u"\uE74D"_s, true)); // Delete
         return items;
     }
     if (r->isPlugin()) {
@@ -7026,6 +7088,10 @@ QVariantList Launcher::menuItems(int row) const
         items.append(separator);
         items.append(entry(ForgetRecent, tr("从最近使用中移除"), QString(), u"\uE711"_s));
     }
+    if (recyclable(*r)) {
+        items.append(separator);
+        items.append(entry(Recycle, tr("移到回收站"), QString(), u"\uE74D"_s, true)); // Delete
+    }
     if (!r->missing && !r->offline) { // the shell's menu for it, for whom Shift+right-click is news
         items.append(separator);
         items.append(entry(SystemMenu, tr("更多选项"), m_defaultSystemMenu ? tr("右键") : tr("Shift+右键"), u"\uE712"_s)); // More
@@ -7140,8 +7206,12 @@ void Launcher::runSystemMenu(const QStringList& paths, std::optional<QPointF> gl
             return;
         }
         if (c.verb == L"open" || c.verb == L"edit" || c.verb == L"runas") {
-            for (const QString& path : paths)
-                remember(path, m_shownText);
+            if (c.singleFallback && !paths.isEmpty()) {
+                remember(paths.first(), m_shownText);
+            } else {
+                for (const QString& path : paths)
+                    remember(path, m_shownText);
+            }
         }
         emit dismissRequested();
     });
@@ -7173,15 +7243,26 @@ void Launcher::runSystemMenu(const QStringList& paths, std::optional<QPointF> gl
             }
         });
     }
-    // What Win顺's own menu says for the like of it.
-    if (choice.verb == L"copy")
+    // What Win顺's own menu says for the like of it; when the shell fell back to
+    // the clicked item alone (multi-select across folders), tell the user honestly.
+    if (choice.singleFallback && paths.size() > 1) {
+        if (choice.verb == L"copy")
+            flash(tr("系统菜单仅支持同目录多选，已复制当前项；跨目录批量操作请用 Win顺 右键菜单"), std::chrono::seconds(4));
+        else if (choice.verb == L"cut")
+            flash(tr("系统菜单仅支持同目录多选，已剪切当前项"), std::chrono::seconds(4));
+        else if (choice.verb == L"copyaspath")
+            flash(tr("系统菜单仅支持同目录多选，已复制当前项路径；跨目录请用 Win顺 右键菜单"), std::chrono::seconds(4));
+        else if (choice.verb == L"delete")
+            flash(tr("系统菜单仅支持同目录多选，已仅操作当前项；跨目录批量删除请用 Win顺 右键菜单"), std::chrono::seconds(4));
+    } else if (choice.verb == L"copy") {
         flash(paths.size() == 1 ? tr("已复制，可在资源管理器中粘贴")
                                 : tr("已复制 %Ln 项，可在资源管理器中粘贴", nullptr, static_cast<int>(paths.size())));
-    else if (choice.verb == L"cut")
+    } else if (choice.verb == L"cut") {
         flash(tr("已剪切，可在资源管理器中粘贴"));
-    else if (choice.verb == L"copyaspath")
+    } else if (choice.verb == L"copyaspath") {
         flash(paths.size() == 1 ? tr("已复制路径") : tr("已复制 %Ln 个路径", nullptr, static_cast<int>(paths.size())));
-    forgetGone(paths, 0);
+    }
+    forgetGone(choice.singleFallback && !paths.isEmpty() ? QStringList {paths.first()} : paths, 0);
 }
 
 void Launcher::forgetGone(const QStringList& paths, int attempt)

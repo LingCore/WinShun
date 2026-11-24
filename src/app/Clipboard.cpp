@@ -1979,13 +1979,17 @@ QVariantList Clipboard::menuItems(int row) const
     const std::vector<const Clip*> clips = targets(row);
     if (clips.empty())
         return {};
-    const auto entry = [](int action, const QString& text, const QString& shortcut, const QString& glyph) {
-        return QVariantMap {
+    const auto entry = [](int action, const QString& text, const QString& shortcut, const QString& glyph,
+                           bool danger = false) {
+        QVariantMap map {
             {u"action"_s, action},
             {u"text"_s, text},
             {u"shortcut"_s, shortcut},
             {u"glyph"_s, glyph},
         };
+        if (danger)
+            map.insert(u"danger"_s, true);
+        return map;
     };
     // A key shown here also does what its entry does with the menu closed
     // (ClipboardPage.menuShortcut, GitHub #379): F3 as the screenshot plugin
@@ -2056,7 +2060,7 @@ QVariantList Clipboard::menuItems(int row) const
     if (std::any_of(clips.begin(), clips.end(), [](const Clip* c) { return c->group > ClipStore::kPinned; }))
         items.append(entry(LeaveGroup, tr("移出分组"), QString(), u""_s));
     items.append(separator);
-    items.append(entry(Remove, many ? tr("删除 %Ln 条", nullptr, n) : tr("删除"), u"Delete"_s, u""_s));
+    items.append(entry(Remove, many ? tr("删除 %Ln 条", nullptr, n) : tr("删除"), u"Delete"_s, u""_s, true));
     // The whole list: in a group's tab that group, else what is in no group.
     const bool inGroup = m_categoryGroup != 0;
     const auto all = static_cast<int>(m_model.listedIds(inGroup).size());
@@ -2066,7 +2070,7 @@ QVariantList Clipboard::menuItems(int row) const
                                            : tr("删除全部 %Ln 条", nullptr, all);
         if (all < m_model.count())
             text += tr("（固定和分组的保留）");
-        items.append(entry(RemoveAll, text, QString(), u""_s));
+        items.append(entry(RemoveAll, text, QString(), u""_s, true));
     }
     return items;
 }

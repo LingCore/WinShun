@@ -22,6 +22,9 @@ struct Choice {
     std::wstring verb;
     bool shift = false; // held as it was picked (Shift+删除 deletes for good)
     bool ctrl = false;
+    // True when `paths` had several items (typically across folders) and the
+    // shell only built a menu for the first item alone.
+    bool singleFallback = false;
 };
 
 // Shows the menu for `paths` (in one folder or several; the first the one

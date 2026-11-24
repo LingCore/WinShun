@@ -10,6 +10,7 @@ Rectangle {
     id: button
 
     property string glyph
+    property string iconName // Phosphor icon name (preferred over legacy Segoe code point)
     property string glyphOverlay // drawn over `glyph` (see Glyph.overlay)
     property string text
     property bool danger: false
@@ -74,6 +75,7 @@ Rectangle {
             inkScale: surface.out("contentScale", 1)
             anchors.verticalCenter: parent.verticalCenter
             glyph: button.glyph
+            iconName: button.iconName
             overlay: button.glyphOverlay
             keep: button.shared
             size: button.iconSize

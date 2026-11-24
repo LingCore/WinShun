@@ -693,7 +693,7 @@ std::vector<Entry> buildCatalog()
         &Settings::thumbnails));
     add(boolean({"Results/DeleteButton", QT_TRANSLATE_NOOP("AiSettings", "显示删除按钮"), "results", 1,
                     "A file's or folder's row has a delete button (clicked twice, to the Recycle Bin) among its "
-                    "buttons. Off: none; Windows' own menu (更多选项 in its right-click menu) still deletes."},
+                    "buttons. Off: none; the right-click menu still has Move to Recycle Bin."},
         &Settings::rowDeleteButton));
     add(choice({"Results/PreviewWith", QT_TRANSLATE_NOOP("AiSettings", "预览文件"), "results", 1,
                    "Which viewer the result preview uses."},

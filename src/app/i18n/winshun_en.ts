@@ -6940,8 +6940,8 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>delete;trash;recycle bin;remove;button;accident</translation>
     </message>
     <message>
-        <source>文件和文件夹的结果行末尾显示删除按钮（点两次，移到回收站）；关闭后可在右键菜单的“更多选项”里删除</source>
-        <translation>Rows of files and folders end with a delete button (click twice; to the Recycle Bin). Off: delete from More options in the right-click menu</translation>
+        <source>文件和文件夹的结果行末尾显示删除按钮（点两次，移到回收站）；关闭后仍可在右键菜单中移到回收站</source>
+        <translation>Rows of files and folders end with a delete button (click twice; to the Recycle Bin). Off: Move to Recycle Bin stays in the right-click menu</translation>
     </message>
     <message>
         <source>缩略图;预览;图片;照片;视频;PDF;thumbnail;preview</source>
@@ -14031,6 +14031,33 @@ Content index: %5</translation>
     <message>
         <source>打开安装文件夹</source>
         <translation>Open install folder</translation>
+    </message>
+    <message numerus="yes">
+        <source>移到回收站（%Ln 项）</source>
+        <translation>
+            <numerusform>Move to Recycle Bin (%Ln item)</numerusform>
+            <numerusform>Move to Recycle Bin (%Ln items)</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>移到回收站</source>
+        <translation>Move to Recycle Bin</translation>
+    </message>
+    <message>
+        <source>系统菜单仅支持同目录多选，已复制当前项；跨目录批量操作请用 Win顺 右键菜单</source>
+        <translation>The system menu only supports multi-select within one folder, so only the current item was copied; use WinShun&apos;s right-click menu across folders</translation>
+    </message>
+    <message>
+        <source>系统菜单仅支持同目录多选，已剪切当前项</source>
+        <translation>The system menu only supports multi-select within one folder, so only the current item was cut</translation>
+    </message>
+    <message>
+        <source>系统菜单仅支持同目录多选，已复制当前项路径；跨目录请用 Win顺 右键菜单</source>
+        <translation>The system menu only supports multi-select within one folder, so only the current item&apos;s path was copied; use WinShun&apos;s right-click menu across folders</translation>
+    </message>
+    <message>
+        <source>系统菜单仅支持同目录多选，已仅操作当前项；跨目录批量删除请用 Win顺 右键菜单</source>
+        <translation>The system menu only supports multi-select within one folder, so only the current item was affected; use WinShun&apos;s right-click menu to delete across folders</translation>
     </message>
     <message numerus="yes">
         <source>加入收藏夹（%Ln 项）</source>

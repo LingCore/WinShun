@@ -803,6 +803,39 @@ private slots:
         QVERIFY(run.timedOut);
         QVERIFY2(timer.elapsed() < 5000, qPrintable(QString::number(timer.elapsed())));
     }
+
+    void prepareRecyclePathsDedupsAndPrunesNested()
+    {
+        const QStringList input {
+            u"C:/Work/Sub/child.txt"_s,
+            u"C:\\Work\\Sub\\"_s,
+            u"c:\\work\\sub\\child.txt"_s,
+            u"C:\\Work\\Sub2\\sibling.txt"_s,
+            u"D:\\Other\\note.md"_s,
+            u"D:/Other/note.md"_s,
+            u""_s,
+            u"\\\\nas\\share\\dir\\deep\\file.pdf"_s,
+            u"\\\\NAS\\Share\\dir\\"_s,
+            u"\\\\nas\\share\\dir2\\keep.pdf"_s,
+        };
+        const QStringList out = ws::shell::prepareRecyclePaths(input);
+        const QStringList expected {
+            u"C:\\Work\\Sub"_s,
+            u"C:\\Work\\Sub2\\sibling.txt"_s,
+            u"D:\\Other\\note.md"_s,
+            u"\\\\NAS\\Share\\dir"_s,
+            u"\\\\nas\\share\\dir2\\keep.pdf"_s,
+        };
+        QCOMPARE(out, expected);
+
+        // Sibling prefix must never be treated as a parent folder.
+        const QStringList siblings {u"C:\\Dir"_s, u"C:\\DirExtra\\a.txt"_s};
+        QCOMPARE(ws::shell::prepareRecyclePaths(siblings), siblings);
+
+        // Drive root retains its trailing backslash while child inside it is pruned if both passed.
+        const QStringList withRoot {u"C:\\"_s, u"C:\\a.txt"_s};
+        QCOMPARE(ws::shell::prepareRecyclePaths(withRoot), QStringList {u"C:\\"_s});
+    }
 };
 
 int main(int argc, char** argv)

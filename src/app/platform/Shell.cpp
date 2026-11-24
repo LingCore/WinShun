@@ -1266,11 +1266,72 @@ Captured runUnelevatedCaptured(const std::wstring& program, const std::wstring& 
     return result;
 }
 
+QStringList prepareRecyclePaths(const QStringList& paths)
+{
+    struct Item {
+        QString native;
+        std::wstring wide;
+        bool uncPath = false;
+    };
+    const auto normalizePath = [](const QString& raw) -> QString {
+        QString native = QDir::toNativeSeparators(raw);
+        while (native.size() > 3 && native.endsWith(u'\\'))
+            native.chop(1);
+        return native;
+    };
+    const auto samePath = [](const Item& a, const Item& b) -> bool {
+        if (a.uncPath || b.uncPath)
+            return a.uncPath && b.uncPath && unc::equal(a.wide, b.wide);
+        return a.native.compare(b.native, Qt::CaseInsensitive) == 0;
+    };
+    const auto strictAncestor = [&](const Item& parent, const Item& child) -> bool {
+        if (samePath(parent, child))
+            return false;
+        if (parent.uncPath || child.uncPath)
+            return parent.uncPath && child.uncPath && unc::contains(parent.wide, child.wide);
+        if (child.native.size() <= parent.native.size())
+            return false;
+        if (!child.native.startsWith(parent.native, Qt::CaseInsensitive))
+            return false;
+        return parent.native.endsWith(u'\\') || child.native.at(parent.native.size()) == u'\\';
+    };
+
+    std::vector<Item> unique;
+    unique.reserve(static_cast<std::size_t>(paths.size()));
+    for (const QString& raw : paths) {
+        const QString native = normalizePath(raw);
+        if (native.isEmpty())
+            continue;
+        const std::wstring wide = native.toStdWString();
+        Item candidate {native, wide, unc::isUnc(wide)};
+        if (std::ranges::any_of(unique, [&](const Item& existing) { return samePath(existing, candidate); }))
+            continue;
+        unique.push_back(std::move(candidate));
+    }
+
+    QStringList prepared;
+    prepared.reserve(static_cast<qsizetype>(unique.size()));
+    for (std::size_t i = 0; i < unique.size(); ++i) {
+        bool covered = false;
+        for (std::size_t j = 0; j < unique.size(); ++j) {
+            if (i != j && strictAncestor(unique[j], unique[i])) {
+                covered = true;
+                break;
+            }
+        }
+        if (!covered)
+            prepared.append(unique[i].native);
+    }
+    return prepared;
+}
+
 void recycle(const QStringList& paths, HWND owner, std::function<void(bool)> done)
 {
+    const QStringList prepared = prepareRecyclePaths(paths);
     std::vector<std::wstring> files;
-    for (const QString& path : paths)
-        files.push_back(QDir::toNativeSeparators(path).toStdWString());
+    files.reserve(static_cast<std::size_t>(prepared.size()));
+    for (const QString& path : prepared)
+        files.push_back(path.toStdWString());
     runOnShellThread([files = std::move(files), owner, done = std::move(done)] {
         bool ok = false;
         {

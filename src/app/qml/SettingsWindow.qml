@@ -5107,7 +5107,7 @@ Window {
                 SettingRow {
                     title: qsTr("显示删除按钮")
                     keywords: qsTr("删除;垃圾桶;回收站;误删;按钮;delete;trash;recycle").split(";")
-                    description: qsTr("文件和文件夹的结果行末尾显示删除按钮（点两次，移到回收站）；关闭后可在右键菜单的“更多选项”里删除")
+                    description: qsTr("文件和文件夹的结果行末尾显示删除按钮（点两次，移到回收站）；关闭后仍可在右键菜单中移到回收站")
 
                     ToggleSwitch {
                         objectName: "rowDeleteButtonToggle"

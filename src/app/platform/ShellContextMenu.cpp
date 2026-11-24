@@ -79,13 +79,18 @@ ComPtr<IContextMenu> handlerFor(const std::vector<PIDLIST_ABSOLUTE>& items, UINT
     return menu;
 }
 
+struct MenuHandler {
+    ComPtr<IContextMenu> menu;
+    bool singleFallback = false;
+};
+
 // The handler for the menu of `paths`, the first of them the one the menu
 // was asked on: all of them when they are one folder's; items of several
 // folders get the menu of that first one alone. (The item array binds a
 // menu for its first item when their folders differ; the desktop folder's
 // GetUIObjectOf with whole ID lists, as for the drag-out data object, gives
 // the desktop's own short menu, whose 删除 does nothing to the files.)
-ComPtr<IContextMenu> handlerFor(const QStringList& paths)
+MenuHandler handlerFor(const QStringList& paths)
 {
     IdLists lists;
     bool oneFolder = true;
@@ -99,13 +104,13 @@ ComPtr<IContextMenu> handlerFor(const QStringList& paths)
             oneFolder = false;
     }
     if (lists.items.empty())
-        return nullptr;
+        return {};
     const auto count = static_cast<UINT>(lists.items.size());
-    if (oneFolder) {
+    if (oneFolder && count > 1) {
         if (ComPtr<IContextMenu> menu = handlerFor(lists.items, count))
-            return menu;
+            return {std::move(menu), false};
     }
-    return count > 1 ? handlerFor(lists.items, 1) : nullptr;
+    return {handlerFor(lists.items, 1), paths.size() > 1};
 }
 
 // While the menu is up, its owner hands these on to the handler: 发送到
@@ -176,9 +181,11 @@ Choice showMenu(const QStringList& paths, HWND owner, POINT pos, bool extended,
     const std::function<void(const Choice&)>& picked)
 {
     Choice choice;
-    const ComPtr<IContextMenu> menu = handlerFor(paths);
+    const MenuHandler resolved = handlerFor(paths);
+    const ComPtr<IContextMenu> menu = resolved.menu;
     if (!menu)
         return choice;
+    choice.singleFallback = resolved.singleFallback;
     const HMENU popup = ::CreatePopupMenu();
     if (!popup)
         return choice;
