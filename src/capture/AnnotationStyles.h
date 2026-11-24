@@ -26,11 +26,15 @@ struct ToolInfo {
     QString glyph;
     QString name;
 };
-// The toolbar's order: R E A L P M T N B, 1 to 9.
+// The toolbar's order: R E A L P M T N B (1 to 9), G (Spotlight).
 const QList<ToolInfo>& tools();
 QString toolName(Kind kind);
 // The panel's eight colours.
 const QList<QRgb>& palette();
+// Spotlight veil colours: pure black, dark slate, white (eyedropper handles any other).
+const QList<QRgb>& spotlightColors();
+// Spotlight veil opacity presets (%): 100 % gives an opaque discontinuous mask.
+QList<int> spotlightOpacities();
 // The widths of a text's outline, logical px (the panel adds "none").
 QList<int> strokePresets();
 // The panel's sizes for a tool, logical px: widths, font sizes or cells.
@@ -66,6 +70,8 @@ public:
         NumberFormat format = NumberFormat::Arabic; // Number: the last format chosen
         LineMode lineMode = LineMode::Straight;
         MarkerMode markerMode = MarkerMode::Freehand;
+        SpotlightShape spotlightShape = SpotlightShape::Rect;
+        int spotlightOpacity = 60;
         bool operator==(const Tool&) const = default;
     };
 

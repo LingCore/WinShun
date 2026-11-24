@@ -197,6 +197,26 @@
         <translation>Redact where the mouse goes</translation>
     </message>
     <message>
+        <source>矩形聚光灯，可多次框选实现不连续高亮</source>
+        <translation>Rectangle spotlight; draw several cutouts to highlight multiple areas</translation>
+    </message>
+    <message>
+        <source>圆形</source>
+        <translation>Circle</translation>
+    </message>
+    <message>
+        <source>圆形/椭圆聚光灯，按住 Shift 画正圆</source>
+        <translation>Circle/ellipse spotlight; hold Shift for a circle</translation>
+    </message>
+    <message>
+        <source>遮罩不透明度 100%（全遮盖，只显示框选区域，支持多选区不连续截图）</source>
+        <translation>Mask opacity 100% (solid mask showing only selected cutouts; supports discontinuous areas)</translation>
+    </message>
+    <message>
+        <source>遮罩不透明度 %1%</source>
+        <translation>Mask opacity %1%</translation>
+    </message>
+    <message>
         <source>笔宽 %1</source>
         <translation>Brush width %1</translation>
     </message>
@@ -260,8 +280,8 @@
         <translation>Save as: choose where to save</translation>
     </message>
     <message>
-        <source>1 E 3 L P M T N B 或 1–9</source>
-        <translation>1 E 3 L P M T N B or 1–9</translation>
+        <source>1 E 3 L P M T N B G 或 1–9</source>
+        <translation>1 E 3 L P M T N B G or 1–9</translation>
     </message>
     <message>
         <source>微调鼠标光标，每次 1 个物理像素；按住左键拖选区、拖手柄或画标注时也有效</source>
@@ -376,12 +396,12 @@
         <translation>Keys</translation>
     </message>
     <message>
-        <source>R E A L P M T N B 或 1–9</source>
-        <translation>R E A L P M T N B or 1–9</translation>
+        <source>R E A L P M T N B G 或 1–9</source>
+        <translation>R E A L P M T N B G or 1–9</translation>
     </message>
     <message>
-        <source>选工具：矩形、椭圆、箭头、直线、画笔、荧光笔、文字、序号、打码</source>
-        <translation>Pick a tool: rectangle, ellipse, arrow, line, pen, highlighter, text, number, redact</translation>
+        <source>选工具：矩形、椭圆、箭头、直线、画笔、荧光笔、文字、序号、打码、聚光灯</source>
+        <translation>Pick a tool: rectangle, ellipse, arrow, line, pen, highlighter, text, number, redact, spotlight</translation>
     </message>
     <message>
         <source>工具键再按一次</source>
@@ -651,6 +671,10 @@
         <translation>Redact</translation>
     </message>
     <message>
+        <source>聚光灯</source>
+        <translation>Spotlight</translation>
+    </message>
+    <message>
         <source>放弃修改</source>
         <translation>Give up changes</translation>
     </message>
@@ -760,6 +784,10 @@
     <message>
         <source>格子小一档 / 大一档</source>
         <translation>Smaller / larger cells</translation>
+    </message>
+    <message>
+        <source>遮罩浅一档 / 深一档</source>
+        <translation>Lighter / darker mask</translation>
     </message>
     <message>
         <source>撤销 / 重做</source>

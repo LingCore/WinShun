@@ -85,9 +85,9 @@ constexpr Command command(int key, Qt::KeyboardModifiers modifiers, bool selecte
     const bool shift = mods & Qt::ShiftModifier;
     if (ctrl || other)
         return Command::None;
-    // Redaction (B, 9, Shift+B smart redaction) samples the picture beneath,
-    // and the eyedropper (I) reads it: there is none.
-    if (key == Qt::Key_B || key == Qt::Key_9 || key == Qt::Key_I)
+    // Redaction (B, 9, Shift+B smart redaction), Spotlight (G) and eyedropper (I)
+    // are capture/editor tools not offered on the live presenter toolbar.
+    if (key == Qt::Key_B || key == Qt::Key_9 || key == Qt::Key_G || key == Qt::Key_I)
         return Command::Blocked;
     if (shift)
         return Command::None;

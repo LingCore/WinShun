@@ -576,6 +576,19 @@ std::shared_ptr<const Recipe> buildRecipe(const Item& item, qreal dpr, int numbe
         recipe->extent |= box;
         break;
     }
+    case Kind::Spotlight: {
+        const QRect box = itemBox(item);
+        if (box.isEmpty())
+            break;
+        if (item.style.spotlightShape == SpotlightShape::Ellipse) {
+            QPainterPath path;
+            path.addEllipse(QRectF(QPointF(0, 0), QSizeF(box.size())));
+            addFill(*recipe, path, box.topLeft(), Qt::black);
+        } else {
+            addRects(*recipe, {box}, Qt::black);
+        }
+        break;
+    }
     }
     recipe->bytes += qint64(sizeof(Recipe)) + item.points.size() * qint64(sizeof(QPointF)) + item.text.size() * 2;
     return recipe;
@@ -1150,9 +1163,119 @@ void Compositor::render(const Document& doc, const QImage& base, const QRect& sa
     const QTransform toTarget = QTransform::fromTranslate(-area.x(), -area.y());
     std::optional<QHash<quint32, int>> shown;
     std::optional<QList<Item>> redactions;
+    // Draw the unified Spotlight veil once after all Redact items and before
+    // regular annotations so redacted pixels stay hidden inside cutouts while
+    // arrows, text and numbers stay crisp above the dim veil.
+    const auto paintSpotlight = [&] {
+        const QRect canvasRect(QPoint(0, 0), doc.canvas);
+        const QRect domain = sampleBounds.isEmpty() ? canvasRect : (sampleBounds & canvasRect);
+        const QRect veilRect = area & domain;
+        if (veilRect.isEmpty())
+            return;
+        QRgb veilColor = qRgb(0x00, 0x00, 0x00);
+        int veilOpacity = 60;
+        bool hasSpotlight = false;
+        QList<const Item*> overlapping;
+        QRect holeBounds;
+        for (const Item& s : doc.items) {
+            if (s.kind != Kind::Spotlight || (skip && s.id == *skip))
+                continue;
+            const QRect box = itemBox(s);
+            if (box.isEmpty() || !box.intersects(domain))
+                continue;
+            hasSpotlight = true;
+            veilColor = s.style.color;
+            veilOpacity = std::clamp(s.style.spotlightOpacity, 10, 100);
+            const QRect hit = box & veilRect;
+            if (hit.isEmpty())
+                continue;
+            if (s.style.spotlightShape == SpotlightShape::Rect && box.contains(veilRect))
+                return;
+            overlapping.append(&s);
+            holeBounds |= hit;
+        }
+        if (!hasSpotlight)
+            return;
+        QColor fill = QColor::fromRgb(veilColor);
+        fill.setAlpha(static_cast<int>(std::lround(veilOpacity * 255.0 / 100.0)));
+        painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+        painter.setOpacity(1.0);
+        painter.setRenderHint(QPainter::Antialiasing, false);
+        painter.setTransform(toTarget);
+        if (holeBounds.isEmpty()) {
+            painter.fillRect(veilRect, fill);
+            return;
+        }
+        // Paint the solid veil strips outside the cutout bounds without allocating a mask.
+        if (holeBounds.top() > veilRect.top())
+            painter.fillRect(QRect(QPoint(veilRect.left(), veilRect.top()), QPoint(veilRect.right(), holeBounds.top() - 1)), fill);
+        if (holeBounds.bottom() < veilRect.bottom())
+            painter.fillRect(QRect(QPoint(veilRect.left(), holeBounds.bottom() + 1), QPoint(veilRect.right(), veilRect.bottom())), fill);
+        if (holeBounds.left() > veilRect.left())
+            painter.fillRect(QRect(QPoint(veilRect.left(), holeBounds.top()), QPoint(holeBounds.left() - 1, holeBounds.bottom())), fill);
+        if (holeBounds.right() < veilRect.right())
+            painter.fillRect(QRect(QPoint(holeBounds.right() + 1, holeBounds.top()), QPoint(veilRect.right(), holeBounds.bottom())), fill);
+
+        // Punch cutouts out of a bounded scratch veil layer using the same
+        // grid-snapped Shape recipes as regular fills, keeping tiled renders
+        // and whole-image exports bit-identical while capping memory on huge canvases.
+        constexpr int kChunk = 512;
+        for (int cy = holeBounds.top(); cy <= holeBounds.bottom(); cy += kChunk) {
+            const int ch = std::min(kChunk, holeBounds.bottom() - cy + 1);
+            for (int cx = holeBounds.left(); cx <= holeBounds.right(); cx += kChunk) {
+                const int cw = std::min(kChunk, holeBounds.right() - cx + 1);
+                const QRect chunk(cx, cy, cw, ch);
+                QImage layer(chunk.size(), QImage::Format_ARGB32_Premultiplied);
+                if (layer.isNull())
+                    continue;
+                {
+                    QPainter vp(&layer);
+                    vp.setCompositionMode(QPainter::CompositionMode_Source);
+                    vp.fillRect(layer.rect(), fill);
+                    vp.setCompositionMode(QPainter::CompositionMode_DestinationOut);
+                    for (const Item* s : std::as_const(overlapping)) {
+                        const std::shared_ptr<const Recipe> recipe = d->recipe(*s, doc.dpr, 0, NumberFormat::Arabic);
+                        if (!recipe->extent.intersects(chunk))
+                            continue;
+                        for (const Op& op : recipe->ops) {
+                            vp.setRenderHint(QPainter::Antialiasing, op.type != Op::Rects);
+                            if (op.type == Op::Rects) {
+                                vp.setTransform(QTransform::fromTranslate(-chunk.x(), -chunk.y()));
+                                for (const QRect& r : op.rects) {
+                                    if (r.intersects(chunk))
+                                        vp.fillRect(r, Qt::black);
+                                }
+                            } else if (op.type == Op::Fill) {
+                                const Shape& shape = *op.shape;
+                                const QRect local = chunk.translated(-shape.anchor);
+                                if (!shape.bounds.intersects(QRectF(local)))
+                                    continue;
+                                const QPoint shift = shape.anchor - chunk.topLeft();
+                                vp.setTransform(QTransform::fromTranslate(shift.x(), shift.y()));
+                                const QRectF window = gridWindow(local);
+                                if (window.contains(shape.bounds))
+                                    vp.fillPath(shape.path, Qt::black);
+                                else
+                                    vp.fillPath(clampedPath(shape, window), Qt::black);
+                            }
+                        }
+                    }
+                }
+                painter.setTransform(QTransform());
+                painter.drawImage(chunk.topLeft() - area.topLeft(), layer);
+            }
+        }
+    };
+    bool spotlightDrawn = false;
     for (const Item& listed : doc.items) {
         if (skip && listed.id == *skip)
             continue;
+        if (listed.kind == Kind::Spotlight)
+            continue;
+        if (!spotlightDrawn && listed.kind != Kind::Redact) {
+            paintSpotlight();
+            spotlightDrawn = true;
+        }
         int number = 0;
         if (listed.kind == Kind::Number) {
             if (!shown)
@@ -1227,6 +1350,8 @@ void Compositor::render(const Document& doc, const QImage& base, const QRect& sa
             }
         }
     }
+    if (!spotlightDrawn)
+        paintSpotlight();
 }
 
 QImage Compositor::exportImage(const Document& doc, const QImage& base, const QRect& sampleBounds)

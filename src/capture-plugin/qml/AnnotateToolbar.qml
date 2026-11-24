@@ -182,8 +182,8 @@ Item {
     implicitHeight: twoRows ? first.height + rowGap + second.height : first.height
     onVisibleChanged: if (!visible) keysOpen = false
 
-    // The line and the highlighter (Kind::Line, Kind::Marker) are in the second row.
-    function inSecondRow(kind) { return twoRows && (kind === 3 || kind === 5) }
+    // The line, highlighter and spotlight (Kind::Line, Kind::Marker, Kind::Spotlight) are in the second row.
+    function inSecondRow(kind) { return twoRows && (kind === 3 || kind === 5 || kind === 9) }
 
     Card {
         id: first
@@ -443,7 +443,7 @@ Item {
                 const t = a.tools[tip.tool]
                 if (!bar.editor && (t.digit === 1 || t.digit === 3))
                     return String(t.digit)
-                return t.letter + " / " + t.digit
+                return t.digit > 0 ? t.letter + " / " + t.digit : t.letter
             }
             return tip ? tip.item.tipKeys : ""
         }
@@ -746,20 +746,23 @@ Item {
 
         property int kind: 0
         property color color: Theme.text
-        // Kind -> glyph (AnnotationStyles: Rect, Ellipse, Arrow, Line, Pen, Marker, Text, Number, Redact).
+        // Kind -> glyph or Phosphor iconName (AnnotationStyles: Rect, Ellipse, Arrow, Line, Pen, Marker, Text, Number, Redact, Spotlight).
         readonly property string glyph: kind === 0 ? String.fromCharCode(0xE739) // Checkbox (a square)
                                       : kind === 1 ? String.fromCharCode(0xEA3A) // CircleRing
                                       : kind === 4 ? String.fromCharCode(0xE76D) // InkingTool
                                       : kind === 5 ? String.fromCharCode(0xE7E6) // Highlight
                                       : ""
+        readonly property string iconName: kind === 9 ? "vignette" : ""
+        readonly property bool usesGlyph: glyph.length > 0 || iconName.length > 0
 
         width: bar.iconSize
         height: bar.iconSize
 
         Glyph {
             anchors.centerIn: parent
-            visible: icon.glyph.length > 0
+            visible: icon.usesGlyph
             glyph: icon.glyph
+            iconName: icon.iconName
             size: bar.iconSize
             color: icon.color
         }
@@ -772,7 +775,7 @@ Item {
             y: 1 / 64
             width: bar.iconSize
             height: bar.iconSize
-            visible: icon.glyph.length === 0
+            visible: !icon.usesGlyph
             antialiasing: true
             smooth: false
             onVisibleChanged: requestPaint()

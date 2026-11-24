@@ -32,6 +32,26 @@ bool touchesNumber(const Document& doc, const QList<quint32>& ids)
     });
 }
 
+struct SpotlightVeil {
+    bool any = false;
+    QRgb color = 0;
+    int opacity = 0;
+    bool operator==(const SpotlightVeil&) const = default;
+};
+
+SpotlightVeil spotlightVeil(const Document& doc)
+{
+    SpotlightVeil v;
+    for (const Item& item : doc.items) {
+        if (item.kind != Kind::Spotlight || itemBox(item).isEmpty())
+            continue;
+        v.any = true;
+        v.color = item.style.color;
+        v.opacity = std::clamp(item.style.spotlightOpacity, 10, 100);
+    }
+    return v;
+}
+
 // What a command touches, measured before it changes the document and
 // finished after: the touched items' old and new bounds; with `numbers`
 // (what Numbers show may change) every Number's old and new bounds; and,
@@ -60,6 +80,7 @@ public:
         : m_ids(std::move(ids))
         , m_numbers(numbers)
         , m_boxes(redactionBoxes(doc))
+        , m_spotlight(spotlightVeil(doc))
     {
         QHash<quint32, int> shown;
         if (m_numbers || touchesNumber(doc, m_ids))
@@ -108,6 +129,11 @@ public:
                 parts.append(QRectF(box));
             }
         }
+        if (spotlightVeil(doc) != m_spotlight) {
+            const QRectF full(QPointF(0, 0), QSizeF(doc.canvas));
+            change.dirty |= full;
+            parts.append(full);
+        }
         // Pieces only when they say less than the whole.
         qreal sum = 0;
         for (const QRectF& r : parts)
@@ -121,6 +147,7 @@ private:
     QList<quint32> m_ids;
     bool m_numbers = false;
     QList<QRect> m_boxes;
+    SpotlightVeil m_spotlight;
     QRectF m_dirty;
     QList<QRectF> m_parts;
     QRectF m_numberArea;

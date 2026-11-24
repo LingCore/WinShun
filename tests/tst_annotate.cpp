@@ -322,12 +322,17 @@ Item randomItem(Rng& rng, const QRect& region, const QList<Series>& series)
     switch (item.kind) {
     case Kind::Rect:
     case Kind::Ellipse:
-    case Kind::Redact: {
+    case Kind::Redact:
+    case Kind::Spotlight: {
         if (item.kind == Kind::Redact && rng.chance(15)) {
             item.style.shape = RedactShape::Brush;
             for (int i = rng.range(1, 5); i > 0; --i)
                 item.points.append(centreIn(rng, region));
             break;
+        }
+        if (item.kind == Kind::Spotlight) {
+            item.style.spotlightShape = rng.chance(50) ? SpotlightShape::Ellipse : SpotlightShape::Rect;
+            item.style.spotlightOpacity = rng.range(2, 10) * 10;
         }
         const QPoint p = pointIn(rng, region);
         item.points = {QPointF(p), QPointF(p + QPoint(rng.range(-260, 260), rng.range(-200, 200)))};
@@ -792,7 +797,10 @@ private slots:
             if (item.kind == Kind::Number)
                 one.items[0].pinned = shown.value(item.id, 1);
             const QImage painted = renderArea(compositor, one, base, sample, area);
-            const QRect reach = bounds(one, one.items[0]).toAlignedRect().translated(-area.topLeft());
+            const QRectF paintBounds = item.kind == Kind::Spotlight
+                ? QRectF(QPointF(0, 0), QSizeF(one.canvas))
+                : bounds(one, one.items[0]);
+            const QRect reach = paintBounds.toAlignedRect().translated(-area.topLeft());
             if (const std::optional<QPoint> p = changedOutside(plain, painted, reach)) {
                 QFAIL(qPrintable(u"%1 %2 paints (%3, %4), outside its bounds"_s.arg(kindName(item.kind))
                         .arg(item.id)
@@ -3241,9 +3249,9 @@ private slots:
             QVERIFY(!toolName(tool.kind).isEmpty());
             QVERIFY(tool.letter.isUpper());
         }
-        QCOMPARE(letters, u"REALPMTNB"_s);
-        // Plain digits 1 to 9, each once: Ctrl+digit belongs to PixPin.
-        QCOMPARE(digits, (QList<int>{1, 2, 3, 4, 5, 6, 7, 8, 9}));
+        QCOMPARE(letters, u"REALPMTNBG"_s);
+        // Plain digits 1 to 9 for the first nine tools (0 stays free for editor zoom).
+        QCOMPARE(digits, (QList<int>{1, 2, 3, 4, 5, 6, 7, 8, 9, 0}));
         QCOMPARE(kinds.size(), qsizetype(kKindCount));
         for (QChar letter : letters)
             QCOMPARE(letters.count(letter), qsizetype(1));
@@ -3259,6 +3267,98 @@ private slots:
             QVERIFY(std::is_sorted(sizes.cbegin(), sizes.cend()));
         }
         QCOMPARE(sizePresets(Kind::Rect), (QList<int>{2, 4, 7}));
+    }
+
+    void spotlightAndDiscontinuousMask()
+    {
+        // Base picture: uniform light grey #C8C8C8 (200, 200, 200).
+        QImage base(200, 160, QImage::Format_RGB32);
+        base.fill(qRgb(200, 200, 200));
+
+        Document doc;
+        doc.canvas = base.size();
+        doc.crop = base.rect();
+        doc.dpr = 1.0;
+
+        // 1) Single rectangular spotlight at 60 % black veil: inside bright, outside dimmed.
+        Item spot1 = boxItem(Kind::Spotlight, QRect(20, 20, 50, 40), qRgb(0, 0, 0));
+        spot1.id = doc.nextId++;
+        spot1.seq = doc.nextSeq++;
+        spot1.style.spotlightShape = SpotlightShape::Rect;
+        spot1.style.spotlightOpacity = 60;
+        doc.items.append(spot1);
+
+        Compositor comp;
+        QImage out = comp.exportImage(doc, base, base.rect());
+        QCOMPARE(out.pixel(40, 35), qRgb(200, 200, 200)); // inside cutout: untouched
+        const QColor outside60 = out.pixelColor(150, 120);
+        QVERIFY(outside60.red() >= 76 && outside60.red() <= 84); // 200 * 0.4 = 80
+
+        // 2) Add a second elliptical spotlight + set opacity to 100 % -> discontinuous solid black mask!
+        Item spot2 = boxItem(Kind::Spotlight, QRect(110, 80, 60, 60), qRgb(0, 0, 0));
+        spot2.id = doc.nextId++;
+        spot2.seq = doc.nextSeq++;
+        spot2.style.spotlightShape = SpotlightShape::Ellipse;
+        spot2.style.spotlightOpacity = 100;
+        doc.items[0].style.spotlightOpacity = 100;
+        doc.items.insert(insertionIndex(doc, Kind::Spotlight, -1), spot2);
+
+        // 3) Layering: a solid green redaction inside spot1 stays redacted, and a red rect outside stays bright!
+        Item redact = boxItem(Kind::Redact, QRect(25, 25, 16, 16), qRgb(0x43, 0xA0, 0x47));
+        redact.id = doc.nextId++;
+        redact.seq = doc.nextSeq++;
+        redact.style.redact = RedactMode::Solid;
+        redact.seed = 42;
+        doc.items.insert(insertionIndex(doc, Kind::Redact, -1), redact);
+
+        Item topRect = boxItem(Kind::Rect, QRect(10, 110, 30, 30), kRed);
+        topRect.id = doc.nextId++;
+        topRect.seq = doc.nextSeq++;
+        topRect.style.fill = Fill::Solid;
+        doc.items.insert(insertionIndex(doc, Kind::Rect, -1), topRect);
+
+        // Verify segment order: [Redact, Spotlight, Spotlight, Rect].
+        QCOMPARE(redactionEnd(doc), 1);
+        QCOMPARE(spotlightEnd(doc), 3);
+        QCOMPARE(doc.items[0].kind, Kind::Redact);
+        QCOMPARE(doc.items[1].kind, Kind::Spotlight);
+        QCOMPARE(doc.items[2].kind, Kind::Spotlight);
+        QCOMPARE(doc.items[3].kind, Kind::Rect);
+
+        comp.clear();
+        QImage outMulti = comp.exportImage(doc, base, base.rect());
+        QCOMPARE(outMulti.pixel(60, 45), qRgb(200, 200, 200)); // inside rect cutout
+        QCOMPARE(outMulti.pixel(140, 110), qRgb(200, 200, 200)); // inside ellipse cutout center
+        QCOMPARE(outMulti.pixel(111, 81), qRgb(0, 0, 0)); // corner outside ellipse -> 100 % black
+        QCOMPARE(outMulti.pixel(180, 10), qRgb(0, 0, 0)); // background outside both -> 100 % black
+        QCOMPARE(outMulti.pixel(30, 30), qRgb(0x43, 0xA0, 0x47)); // redaction visible inside cutout
+        QCOMPARE(outMulti.pixel(20, 125), kRed); // regular annotation sits cleanly above the veil
+
+        // 4) Format round-trip & StyleMemory round-trip.
+        const QByteArray bytes = writeProject(doc, base);
+        QVERIFY(!bytes.isEmpty());
+        QString err;
+        const auto loaded = readProject(bytes, &err);
+        QVERIFY2(loaded.has_value(), qPrintable(err));
+        QCOMPARE(loaded->doc.items.size(), doc.items.size());
+        QCOMPARE(loaded->doc.items[1].kind, Kind::Spotlight);
+        QCOMPARE(loaded->doc.items[1].style.spotlightShape, SpotlightShape::Rect);
+        QCOMPARE(loaded->doc.items[1].style.spotlightOpacity, 100);
+        QCOMPARE(loaded->doc.items[2].style.spotlightShape, SpotlightShape::Ellipse);
+
+        StyleMemory mem;
+        Style st = mem.forTool(Kind::Spotlight, 1.5);
+        QCOMPARE(st.color, qRgb(0, 0, 0));
+        QCOMPARE(st.spotlightShape, SpotlightShape::Rect);
+        QCOMPARE(st.spotlightOpacity, 60);
+        st.spotlightShape = SpotlightShape::Ellipse;
+        st.spotlightOpacity = 80;
+        st.color = kWhite;
+        mem.remember(Kind::Spotlight, st, 1.5);
+        const StyleMemory restored = StyleMemory::fromJson(mem.toJson());
+        QCOMPARE(restored.tool(Kind::Spotlight).spotlightShape, SpotlightShape::Ellipse);
+        QCOMPARE(restored.tool(Kind::Spotlight).spotlightOpacity, 80);
+        QCOMPARE(restored.tool(Kind::Spotlight).color, kWhite);
     }
 };
 

@@ -21,8 +21,8 @@ QtObject {
     property AnnotationModel annot: null
 
     readonly property var commonRows: [
-        editor ? qsTranslate("AnnotateToolbar", "R E A L P M T N B 或 1–9") : qsTranslate("AnnotateToolbar", "1 E 3 L P M T N B 或 1–9"),
-        qsTranslate("AnnotateToolbar", "选工具：矩形、椭圆、箭头、直线、画笔、荧光笔、文字、序号、打码"),
+        editor ? qsTranslate("AnnotateToolbar", "R E A L P M T N B G 或 1–9") : qsTranslate("AnnotateToolbar", "1 E 3 L P M T N B G 或 1–9"),
+        qsTranslate("AnnotateToolbar", "选工具：矩形、椭圆、箭头、直线、画笔、荧光笔、文字、序号、打码、聚光灯"),
         qsTranslate("AnnotateToolbar", "工具键再按一次"), qsTranslate("AnnotateToolbar", "关掉工具"),
         "Ctrl+Z", qsTranslate("AnnotateToolbar", "撤销"),
         "Ctrl+Y、Ctrl+Shift+Z", qsTranslate("AnnotateToolbar", "重做"),

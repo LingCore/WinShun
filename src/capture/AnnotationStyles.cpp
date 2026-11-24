@@ -27,6 +27,7 @@ const char* const kToolNames[kKindCount] = {
     QT_TRANSLATE_NOOP("Annotation", "文字"),
     QT_TRANSLATE_NOOP("Annotation", "序号"),
     QT_TRANSLATE_NOOP("Annotation", "打码"),
+    QT_TRANSLATE_NOOP("Annotation", "聚光灯"),
 };
 
 constexpr int kMaxLogical = 500;
@@ -44,6 +45,7 @@ struct Fields {
     bool shape = false; // Redact: box or brush
     bool cell = false;
     bool format = false; // Number: how a series writes its numbers
+    bool spotlight = false; // Spotlight: cutout shape and veil opacity
 };
 
 Fields fieldsOf(Kind kind)
@@ -77,6 +79,9 @@ Fields fieldsOf(Kind kind)
         f.width = true; // the brush's
         f.cell = true;
         break;
+    case Kind::Spotlight:
+        f.spotlight = true;
+        break;
     }
     return f;
 }
@@ -95,10 +100,11 @@ void readSize(const QJsonValue& value, int& out)
 const QList<ToolInfo>& tools()
 {
     static const QList<ToolInfo> list = [] {
-        const QChar letters[kKindCount] = {u'R', u'E', u'A', u'L', u'P', u'M', u'T', u'N', u'B'};
+        const QChar letters[kKindCount] = {u'R', u'E', u'A', u'L', u'P', u'M', u'T', u'N', u'B', u'G'};
+        const int digits[kKindCount] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 0};
         QList<ToolInfo> out;
         for (int i = 0; i < kKindCount; ++i)
-            out.append(ToolInfo{Kind(i), letters[i], i + 1, QString(), QString::fromUtf8(kToolNames[i])});
+            out.append(ToolInfo{Kind(i), letters[i], digits[i], QString(), QString::fromUtf8(kToolNames[i])});
         return out;
     }();
     return list;
@@ -115,6 +121,17 @@ const QList<QRgb>& palette()
         qRgb(0x43, 0xA0, 0x47), qRgb(0x1E, 0x88, 0xE5), qRgb(0x8E, 0x24, 0xAA), qRgb(0x21, 0x21, 0x21),
         qRgb(0xFF, 0xFF, 0xFF)};
     return colors;
+}
+
+const QList<QRgb>& spotlightColors()
+{
+    static const QList<QRgb> colors{qRgb(0x00, 0x00, 0x00), qRgb(0x21, 0x21, 0x21), qRgb(0xFF, 0xFF, 0xFF)};
+    return colors;
+}
+
+QList<int> spotlightOpacities()
+{
+    return {40, 60, 80, 100};
 }
 
 QList<int> sizePresets(Kind kind)
@@ -168,6 +185,10 @@ StyleMemory::Tool StyleMemory::defaults(Kind kind)
     } else if (kind == Kind::Redact) {
         t.color = qRgb(0x21, 0x21, 0x21); // the solid fill's colour
         t.width = 24; // the brush's
+    } else if (kind == Kind::Spotlight) {
+        t.color = qRgb(0x00, 0x00, 0x00);
+        t.spotlightShape = SpotlightShape::Rect;
+        t.spotlightOpacity = 60;
     }
     return t;
 }
@@ -256,6 +277,16 @@ StyleMemory StyleMemory::fromJson(const QString& json)
             if (const auto format = numberFormatFromName(o.value(u"format"_s).toString()))
                 t.format = *format;
         }
+        if (f.spotlight) {
+            if (const auto shape = spotlightShapeFromName(o.value(u"spotlightShape"_s).toString()))
+                t.spotlightShape = *shape;
+            const QJsonValue op = o.value(u"spotlightOpacity"_s);
+            if (op.isDouble()) {
+                const double d = op.toDouble();
+                if (std::isfinite(d) && d == std::floor(d) && d >= 10 && d <= 100)
+                    t.spotlightOpacity = int(d);
+            }
+        }
     }
     return memory;
 }
@@ -299,6 +330,10 @@ QString StyleMemory::toJson() const
             o[u"cell"_s] = t.cell;
         if (f.format)
             o[u"format"_s] = numberFormatName(t.format);
+        if (f.spotlight) {
+            o[u"spotlightShape"_s] = spotlightShapeName(t.spotlightShape);
+            o[u"spotlightOpacity"_s] = t.spotlightOpacity;
+        }
         root[kindName(kind)] = o;
     }
     return QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Compact));
@@ -335,6 +370,10 @@ Style StyleMemory::forTool(Kind kind, qreal dpr) const
         s.shape = t.shape;
     if (f.cell)
         s.cell = toImagePx(t.cell, dpr);
+    if (f.spotlight) {
+        s.spotlightShape = t.spotlightShape;
+        s.spotlightOpacity = std::clamp(t.spotlightOpacity, 10, 100);
+    }
     return s;
 }
 
@@ -368,6 +407,10 @@ void StyleMemory::remember(Kind kind, const Style& style, qreal dpr)
         t.shape = style.shape;
     if (f.cell)
         t.cell = std::min(kMaxLogical, toLogicalPx(style.cell, dpr));
+    if (f.spotlight) {
+        t.spotlightShape = style.spotlightShape;
+        t.spotlightOpacity = std::clamp(style.spotlightOpacity, 10, 100);
+    }
 }
 
 }

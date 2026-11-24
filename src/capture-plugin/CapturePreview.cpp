@@ -2514,6 +2514,12 @@ int runCaptureTools(const QStringList& args)
     model.setPanel({{u"markerMode"_s, u"line"_s}});
     drag({410, 330}, {760, 330});
     grab(u"marker-line");
+    tool(Kind::Spotlight);
+    model.setPanel({{u"spotlightShape"_s, u"rect"_s}, {u"spotlightOpacity"_s, 60}});
+    drag({40, 120}, {320, 340});
+    drag({400, 150}, {770, 355});
+    model.setPanel({{u"spotlightShape"_s, u"ellipse"_s}});
+    grab(u"spotlight");
     return finish(window, saved);
 }
 

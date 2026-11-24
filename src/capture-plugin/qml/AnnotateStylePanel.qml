@@ -46,8 +46,9 @@ Item {
 
     // ---- what it shows ----
     readonly property var p: annot ? annot.panel : ({})
-    readonly property int kind: p.kind !== undefined ? p.kind : -1 // AnnotationStyles: Rect 0 … Redact 8
+    readonly property int kind: p.kind !== undefined ? p.kind : -1 // AnnotationStyles: Rect 0 … Redact 8, Spotlight 9
     readonly property bool redact: kind === 8
+    readonly property bool spotlight: kind === 9
     readonly property bool showColors: p.color !== undefined && (!redact || p.mode === "solid")
     readonly property bool showWidths: p.widths !== undefined
     readonly property bool showFill: p.fill !== undefined
@@ -62,6 +63,7 @@ Item {
     readonly property bool showCells: p.cells !== undefined && p.mode !== "solid" && p.mode !== "smooth"
     // The redaction's shape (box, or along a stroke) is the tool's, so it is not offered for a selected object.
     readonly property bool showShape: redact && p.shape !== undefined && !showObject
+    readonly property bool showSpotlight: spotlight && p.spotlightShape !== undefined
     readonly property bool showNumber: p.start !== undefined
     readonly property bool showObject: p.selected === true
     readonly property bool inPalette: {
@@ -192,7 +194,44 @@ Item {
             }
         }
 
-        Separator { visible: panel.redact && panel.showColors }
+        Row { // Spotlight: rectangle or ellipse cutout, plus veil opacity (100 % = opaque discontinuous mask)
+            visible: panel.showSpotlight
+            Repeater {
+                model: [["rect", qsTr("矩形"), qsTr("矩形聚光灯，可多次框选实现不连续高亮")],
+                    ["ellipse", qsTr("圆形"), qsTr("圆形/椭圆聚光灯，按住 Shift 画正圆")]]
+                delegate: WordButton {
+                    required property var modelData
+                    words: modelData[1]
+                    tip: modelData[2]
+                    checked: panel.p.spotlightShape === modelData[0]
+                    onClicked: panel.change({spotlightShape: modelData[0]})
+                }
+            }
+        }
+        Separator { visible: panel.showSpotlight }
+        Row {
+            visible: panel.showSpotlight
+            Repeater {
+                model: panel.p.spotlightOpacities !== undefined ? panel.p.spotlightOpacities : []
+                delegate: WordButton {
+                    required property int modelData
+                    words: modelData + "%"
+                    checked: panel.p.spotlightOpacity === modelData
+                    tip: modelData === 100
+                        ? qsTr("遮罩不透明度 100%（全遮盖，只显示框选区域，支持多选区不连续截图）")
+                        : qsTr("遮罩不透明度 %1%").arg(modelData)
+                    tipKeys: "[  ]"
+                    onClicked: panel.change({spotlightOpacity: modelData})
+                }
+            }
+            ValueLabel {
+                value: panel.p.spotlightOpacity !== undefined ? panel.p.spotlightOpacity : 0
+                presets: panel.p.spotlightOpacities !== undefined ? panel.p.spotlightOpacities : []
+                suffix: "%"
+            }
+        }
+
+        Separator { visible: (panel.redact || panel.showSpotlight) && panel.showColors }
         WordButton { // the outline's colour is the automatic one: opposite the text's
             visible: panel.showColors && panel.strokeColors
             words: qsTr("自动")
@@ -530,6 +569,7 @@ Item {
             visible: panel.showObject
             PanelButton {
                 id: raiseButton
+                visible: !panel.spotlight
                 enabled: panel.p.canRaise === true
                 tip: qsTr("上移一层")
                 tipKeys: "Ctrl+]"
@@ -545,6 +585,7 @@ Item {
             }
             PanelButton {
                 id: lowerButton
+                visible: !panel.spotlight
                 enabled: panel.p.canLower === true
                 tip: qsTr("下移一层")
                 tipKeys: "Ctrl+["
@@ -690,9 +731,10 @@ Item {
     component ValueLabel: WordLabel {
         property int value
         property var presets: []
+        property string suffix: ""
 
         visible: value > 0 && presets.indexOf(value) < 0
-        words: String(value)
+        words: String(value) + suffix
         strong: true
     }
 

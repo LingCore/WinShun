@@ -61,8 +61,9 @@ QJsonObject styleJson(Kind kind, const Style& s)
 {
     const Style defaults;
     const bool redact = kind == Kind::Redact;
+    const bool spotlight = kind == Kind::Spotlight;
     const bool words = kind == Kind::Text || kind == Kind::Number;
-    const bool strokes = !redact && !words;
+    const bool strokes = !redact && !spotlight && !words;
     const bool box = kind == Kind::Rect || kind == Kind::Ellipse;
     QJsonObject o;
     if (isLine(kind) && s.lineMode != LineMode::Straight)
@@ -91,6 +92,10 @@ QJsonObject styleJson(Kind kind, const Style& s)
         o[u"shape"_s] = redactShapeName(s.shape);
     if (redact || s.cell != defaults.cell)
         o[u"cell"_s] = s.cell;
+    if (spotlight || s.spotlightShape != defaults.spotlightShape)
+        o[u"spotlightShape"_s] = spotlightShapeName(s.spotlightShape);
+    if (spotlight || s.spotlightOpacity != defaults.spotlightOpacity)
+        o[u"spotlightOpacity"_s] = s.spotlightOpacity;
     return o;
 }
 
@@ -123,6 +128,10 @@ Style styleFrom(const QJsonObject& o)
         s.shape = *shape;
     if (const auto cell = wholeFrom(o.value(u"cell"_s), 1, kMaxStyleValue))
         s.cell = int(*cell);
+    if (const auto shape = spotlightShapeFromName(o.value(u"spotlightShape"_s).toString()))
+        s.spotlightShape = *shape;
+    if (const auto opacity = wholeFrom(o.value(u"spotlightOpacity"_s), 10, 100))
+        s.spotlightOpacity = int(*opacity);
     return s;
 }
 
@@ -270,7 +279,9 @@ std::optional<Document> parse(const QJsonObject& json, QString* error)
         maxSeq = std::max(maxSeq, item->seq);
         doc.items.append(std::move(*item));
     }
-    std::stable_partition(doc.items.begin(), doc.items.end(), [](const Item& item) { return item.kind == Kind::Redact; });
+    const auto afterRedactions
+        = std::stable_partition(doc.items.begin(), doc.items.end(), [](const Item& item) { return item.kind == Kind::Redact; });
+    std::stable_partition(afterRedactions, doc.items.end(), [](const Item& item) { return item.kind == Kind::Spotlight; });
     const qint64 nextId = wholeFrom(json.value(u"nextId"_s), 1, 0xFFFFFFFFll).value_or(1);
     const qint64 nextSeq = wholeFrom(json.value(u"nextSeq"_s), 1, 0xFFFFFFFFll).value_or(1);
     doc.nextId = quint32(std::max<qint64>(nextId, qint64(maxId) + 1));

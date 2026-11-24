@@ -73,7 +73,7 @@ Item {
     // The overlay's own keys: R and A pick the area there, so the rectangle and the arrow are 1 and 3.
     readonly property var tool: annot && annot.tool >= 0 ? annot.tools[annot.tool] : null
     readonly property string toolKey: !tool ? "" : tool.letter === "R" ? "1" : tool.letter === "A" ? "3" : tool.letter
-    // annot::Kind: 0 rectangle, 1 ellipse, 2 arrow, 3 line, 4 pen, 5 marker, 6 text, 7 number, 8 redaction.
+    // annot::Kind: 0 rectangle, 1 ellipse, 2 arrow, 3 line, 4 pen, 5 marker, 6 text, 7 number, 8 redaction, 9 spotlight.
     readonly property int toolKind: tool ? tool.kind : -1
 
     function describe(id) {
@@ -94,10 +94,11 @@ Item {
         case "long": return { keys: ["Ctrl+L", "Ctrl+R"], text: qsTr("长截图 / 录屏") }
         case "recalled": return { keys: ["R", "Shift+R"],
                                   text: qsTr("最近选区 %1/%2").arg(session.recalledSelection + 1).arg(session.selectionHistoryCount) }
-        case "shift": return { keys: ["Shift"], text: toolKind <= 1 ? qsTr("按住画正方形、正圆")
+        case "shift": return { keys: ["Shift"], text: toolKind <= 1 || toolKind === 9 ? qsTr("按住画正方形、正圆")
                                                    : toolKind <= 3 ? qsTr("按住让线吸附 15°") : qsTr("按住画直线") }
         case "width": return { keys: ["[", "]"], text: toolKind === 6 || toolKind === 7 ? qsTr("字号小一档 / 大一档")
-                                                   : toolKind === 8 ? qsTr("格子小一档 / 大一档") : qsTr("细一档 / 粗一档") }
+                                                   : toolKind === 8 ? qsTr("格子小一档 / 大一档")
+                                                   : toolKind === 9 ? qsTr("遮罩浅一档 / 深一档") : qsTr("细一档 / 粗一档") }
         case "undo": return { keys: ["Ctrl+Z", "Ctrl+Y"], text: qsTr("撤销 / 重做") }
         case "delete": return { keys: ["Delete"], text: qsTr("删除选中的对象") }
         case "toolOff": return { keys: [toolKey, "Esc"], text: tool ? qsTr("关掉“%1”").arg(tool.name) : "" }

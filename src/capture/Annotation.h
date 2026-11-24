@@ -26,8 +26,8 @@ class QFont;
 // lands on whole pixels at any Windows scale (3.4).
 //
 // How each kind keeps its points:
-//   Rect, Ellipse, Redact  two pixel edges (whole numbers), the box's top left
-//                          and bottom right corners, right and bottom
+//   Rect, Ellipse, Redact, Spotlight  two pixel edges (whole numbers), the box's
+//                          top left and bottom right corners, right and bottom
 //                          excluded; either order
 //   Arrow, Line            start and end, pixel centres (whole + 0.5)
 //   Pen, Marker            a stabilized polyline; its start and live end are
@@ -38,21 +38,25 @@ class QFont;
 //                          label (Item::text, may be empty) stands to the right
 namespace ws::capture::annot {
 
-enum class Kind : quint8 { Rect, Ellipse, Arrow, Line, Pen, Marker, Text, Number, Redact };
+enum class Kind : quint8 { Rect, Ellipse, Arrow, Line, Pen, Marker, Text, Number, Redact, Spotlight };
 // Soft is the stroke's colour at 20 % opacity.
 enum class Fill : quint8 { None, Soft, Solid };
 // Smooth fills the area from the background around it, with no noise.
 enum class RedactMode : quint8 { Mosaic, Blur, Solid, Smooth };
 // Brush: the pixels along a stroke (Style::width wide) instead of a box.
 enum class RedactShape : quint8 { Box, Brush };
+// Spotlight cutout shape: multiple spotlights union into one veil (discontinuous selection).
+enum class SpotlightShape : quint8 { Rect, Ellipse };
 enum class LineMode : quint8 { Straight, Polyline, Bezier };
 enum class MarkerMode : quint8 { Freehand, Line, Rectangle };
 QString lineModeName(LineMode mode);
 std::optional<LineMode> lineModeFromName(QStringView name);
 QString markerModeName(MarkerMode mode);
 std::optional<MarkerMode> markerModeFromName(QStringView name);
+QString spotlightShapeName(SpotlightShape shape);
+std::optional<SpotlightShape> spotlightShapeFromName(QStringView name);
 
-constexpr int kKindCount = 9;
+constexpr int kKindCount = 10;
 
 // How a series writes its numbers (#57): 1 2 3, A B C (after Z comes AA),
 // a b c, I II III (to 3999), and the same digits inside a ring (a hollow
@@ -75,6 +79,8 @@ struct Style {
     int cell = 18; // mosaic cell, image px
     LineMode lineMode = LineMode::Straight;
     MarkerMode markerMode = MarkerMode::Freehand;
+    SpotlightShape spotlightShape = SpotlightShape::Rect; // Spotlight: rectangle or ellipse cutout
+    int spotlightOpacity = 60; // Spotlight: veil opacity outside cutouts, 10..100 %
     bool operator==(const Style&) const = default;
 };
 
@@ -147,6 +153,10 @@ std::optional<QRgb> parseColor(QStringView text);
 // drawing them first keeps a later redaction from covering an earlier arrow
 // or text (Snow Shot #2041). This is the index where that segment ends.
 int redactionEnd(const Document& doc);
+// Spotlights sit right after redactions and below regular annotations so
+// redacted pixels remain hidden inside a spotlight while arrows/text stay
+// crisp above the dim veil.
+int spotlightEnd(const Document& doc);
 // The index an item of `kind` goes to when asked for `at` (-1: the top of
 // its segment), kept inside its segment.
 int insertionIndex(const Document& doc, Kind kind, int at);

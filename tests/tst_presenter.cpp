@@ -126,6 +126,7 @@ private slots:
         QCOMPARE(command(Qt::Key_B, none, false), Command::Blocked);
         QCOMPARE(command(Qt::Key_B, Qt::ShiftModifier, false), Command::Blocked); // smart redaction
         QCOMPARE(command(Qt::Key_9, Qt::KeypadModifier, false), Command::Blocked);
+        QCOMPARE(command(Qt::Key_G, none, false), Command::Blocked);
         QCOMPARE(command(Qt::Key_I, none, false), Command::Blocked);
         QCOMPARE(command(Qt::Key_W, Qt::ControlModifier, false), Command::None);
         QCOMPARE(command(Qt::Key_X, Qt::AltModifier, false), Command::None);
@@ -136,6 +137,7 @@ private slots:
         QVERIFY(toolOffered(-1));
         QVERIFY(toolOffered(int(Kind::Number)));
         QVERIFY(!toolOffered(int(Kind::Redact)));
+        QVERIFY(!toolOffered(int(Kind::Spotlight)));
     }
 
     // ---- the session ----

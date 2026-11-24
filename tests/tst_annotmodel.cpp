@@ -534,6 +534,7 @@ private slots:
             case Kind::Rect:
             case Kind::Ellipse:
             case Kind::Redact:
+            case Kind::Spotlight:
                 QCOMPARE(item->points, boxPoints(pixelBox(a, b)));
                 QCOMPARE(itemBox(*item), QRect(QPoint(50, 60), QPoint(120, 100)));
                 QVERIFY(selection.value(u"box"_s).toBool());
@@ -1108,30 +1109,42 @@ private slots:
         AnnotationModel& m = rig.model;
         QSignalSpy toolChanged(&m, &AnnotationModel::toolChanged);
         const QList<ToolInfo>& list = tools();
+        int expectedChanges = 0;
         for (qsizetype i = 0; i < list.size(); ++i) {
             const int letter = list[i].letter.unicode();
-            const int digit = Qt::Key_0 + list[i].digit;
             QVERIFY(m.key(letter, Qt::NoModifier));
             QCOMPARE(m.tool(), int(i));
             QVERIFY(m.key(letter, Qt::NoModifier)); // the key that opened it closes it
             QCOMPARE(m.tool(), -1);
-            QVERIFY(m.key(digit, Qt::NoModifier));
-            QCOMPARE(m.tool(), int(i));
-            if (list[i].kind == Kind::Redact) {
-                // Shift+B is 智能打码, not the tool: the tool stays on.
+            expectedChanges += 2;
+            if (list[i].digit >= 1 && list[i].digit <= 9) {
+                const int digit = Qt::Key_0 + list[i].digit;
+                QVERIFY(m.key(digit, Qt::NoModifier));
+                QCOMPARE(m.tool(), int(i));
+                if (list[i].kind == Kind::Redact) {
+                    // Shift+B is 智能打码, not the tool: the tool stays on.
+                    QVERIFY(m.key(letter, Qt::ShiftModifier));
+                    QCOMPARE(m.tool(), int(i));
+                    QVERIFY(m.key(letter, Qt::NoModifier));
+                } else {
+                    QVERIFY(m.key(letter, Qt::ShiftModifier)); // its letter closes what its digit opened
+                }
+                QCOMPARE(m.tool(), -1);
+                QVERIFY(!m.key(digit, Qt::ControlModifier)); // Ctrl + digit is PixPin's
+                expectedChanges += 2;
+            } else {
                 QVERIFY(m.key(letter, Qt::ShiftModifier));
                 QCOMPARE(m.tool(), int(i));
                 QVERIFY(m.key(letter, Qt::NoModifier));
-            } else {
-                QVERIFY(m.key(letter, Qt::ShiftModifier)); // its letter closes what its digit opened
+                QCOMPARE(m.tool(), -1);
+                expectedChanges += 2;
+                QVERIFY(!m.key(Qt::Key_0, Qt::NoModifier));
             }
-            QCOMPARE(m.tool(), -1);
             QVERIFY(!m.key(letter, Qt::ControlModifier));
-            QVERIFY(!m.key(digit, Qt::ControlModifier)); // Ctrl + digit is PixPin's
             QVERIFY(!m.key(letter, Qt::AltModifier));
             QCOMPARE(m.tool(), -1);
         }
-        QCOMPARE(toolChanged.count(), int(list.size()) * 4);
+        QCOMPARE(toolChanged.count(), expectedChanges);
         // Another tool's key switches to it.
         QVERIFY(m.key(Qt::Key_R, {}));
         QVERIFY(m.key(Qt::Key_E, {}));
@@ -2989,6 +3002,75 @@ private slots:
         QVERIFY(m.editingText());
         QCOMPARE(m.editing().value(u"id"_s).toUInt(), a);
         m.commitPending();
+    }
+
+    void spotlightModelAndUndo()
+    {
+        AnnotationModel m;
+        QImage base(300, 200, QImage::Format_RGB32);
+        base.fill(qRgb(210, 210, 210));
+        m.begin(base, 1.0, StyleMemory());
+        m.setSelection(base.rect());
+
+        // Key G selects Spotlight tool.
+        QVERIFY(m.key(Qt::Key_G, Qt::NoModifier));
+        QCOMPARE(m.tool(), toolIndex(Kind::Spotlight));
+        QCOMPARE(m.panel().value(u"spotlightShape"_s).toString(), u"rect"_s);
+        QCOMPARE(m.panel().value(u"spotlightOpacity"_s).toInt(), 60);
+
+        // Draw first rectangular spotlight.
+        drag(m, QPoint(20, 20), QPoint(90, 80));
+        QCOMPARE(m.itemCount(), 1);
+        const quint32 id1 = m.document().items[0].id;
+        QVERIFY(!m.panel().value(u"canRaise"_s).toBool());
+        QVERIFY(!m.panel().value(u"canLower"_s).toBool());
+
+        // Switch next spotlight shape to ellipse and draw second cutout (discontinuous highlight).
+        m.setPanel({{u"spotlightShape"_s, u"ellipse"_s}});
+        QCOMPARE(m.document().items[0].style.spotlightShape, SpotlightShape::Ellipse);
+        // Flip first back to rect, deselect, pick ellipse for second.
+        m.setPanel({{u"spotlightShape"_s, u"rect"_s}});
+        m.setTool(-1);
+        m.pressSecond(QPoint(5, 5), Qt::NoModifier); // click outside to deselect
+        m.release(QPoint(5, 5));
+        m.setTool(toolIndex(Kind::Spotlight));
+        m.setPanel({{u"spotlightShape"_s, u"ellipse"_s}});
+        drag(m, QPoint(160, 90), QPoint(240, 170));
+        QCOMPARE(m.itemCount(), 2);
+        QCOMPARE(m.document().items[0].style.spotlightShape, SpotlightShape::Rect);
+        QCOMPARE(m.document().items[1].style.spotlightShape, SpotlightShape::Ellipse);
+
+        // Changing veil opacity to 100 % updates ALL spotlights atomically and Ctrl+Z reverts both!
+        m.setPanel({{u"spotlightOpacity"_s, 100}});
+        QCOMPARE(m.document().items[0].style.spotlightOpacity, 100);
+        QCOMPARE(m.document().items[1].style.spotlightOpacity, 100);
+        QImage exported = m.composed();
+        QCOMPARE(exported.pixel(50, 50), qRgb(210, 210, 210));
+        QCOMPARE(exported.pixel(200, 130), qRgb(210, 210, 210));
+        QCOMPARE(exported.pixel(125, 100), qRgb(0, 0, 0));
+
+        m.undo();
+        QCOMPARE(m.document().items[0].style.spotlightOpacity, 60);
+        QCOMPARE(m.document().items[1].style.spotlightOpacity, 60);
+
+        // [ and ] step veil opacity in 10 % increments.
+        QVERIFY(m.key(Qt::Key_BracketRight, Qt::NoModifier));
+        QCOMPARE(m.document().items[0].style.spotlightOpacity, 70);
+        QCOMPARE(m.document().items[1].style.spotlightOpacity, 70);
+        QVERIFY(m.key(Qt::Key_BracketLeft, Qt::NoModifier));
+        QCOMPARE(m.document().items[0].style.spotlightOpacity, 60);
+
+        // Selecting a spotlight by clicking inside its cutout works, and regular shapes stay above it.
+        m.setTool(toolIndex(Kind::Rect));
+        drag(m, QPoint(30, 30), QPoint(70, 60));
+        QCOMPARE(m.itemCount(), 3);
+        QCOMPARE(m.document().items[2].kind, Kind::Rect);
+        QVERIFY(!m.panel().value(u"canLower"_s).toBool()); // cannot lower below spotlights
+
+        m.setTool(-1);
+        m.pressSecond(QPoint(80, 70), Qt::NoModifier); // inside spot1, outside the smaller rect
+        m.release(QPoint(80, 70));
+        QCOMPARE(selectedId(m), id1);
     }
 
     void qmlAnnotateObjectsLiveTextBorderDrag();

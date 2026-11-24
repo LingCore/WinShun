@@ -145,6 +145,10 @@ bool hits(const Item& item, QPointF q, qreal tolerance, qreal dpr, int number, N
         if (item.style.shape == RedactShape::Brush)
             return distanceToPolyline(q, item.points) <= w / 2.0 + tolerance;
         return QRectF(itemBox(item)).contains(q);
+    case Kind::Spotlight:
+        if (item.style.spotlightShape == SpotlightShape::Ellipse)
+            return nearEllipse(q, QRectF(itemBox(item)), 1, tolerance, true);
+        return QRectF(itemBox(item)).adjusted(-tolerance, -tolerance, tolerance, tolerance).contains(q);
     case Kind::Arrow: {
         if (item.style.lineMode == LineMode::Bezier) {
             const QPainterPath shape = arrowPath(item, dpr);
@@ -201,7 +205,7 @@ QPointF snapAngle(QPointF from, QPointF to)
 
 bool isBox(Kind kind)
 {
-    return kind == Kind::Rect || kind == Kind::Ellipse || kind == Kind::Redact;
+    return kind == Kind::Rect || kind == Kind::Ellipse || kind == Kind::Redact || kind == Kind::Spotlight;
 }
 
 bool isLine(Kind kind)
@@ -263,6 +267,24 @@ std::optional<MarkerMode> markerModeFromName(QStringView name)
     return std::nullopt;
 }
 
+QString spotlightShapeName(SpotlightShape shape)
+{
+    switch (shape) {
+    case SpotlightShape::Rect: return QStringLiteral("rect");
+    case SpotlightShape::Ellipse: return QStringLiteral("ellipse");
+    }
+    return {};
+}
+
+std::optional<SpotlightShape> spotlightShapeFromName(QStringView name)
+{
+    for (SpotlightShape shape : {SpotlightShape::Rect, SpotlightShape::Ellipse}) {
+        if (name == spotlightShapeName(shape))
+            return shape;
+    }
+    return std::nullopt;
+}
+
 bool isBrush(const Item& item)
 {
     return item.kind == Kind::Redact && item.style.shape == RedactShape::Brush;
@@ -294,6 +316,8 @@ QString kindName(Kind kind)
         return u"number"_s;
     case Kind::Redact:
         return u"redact"_s;
+    case Kind::Spotlight:
+        return u"spotlight"_s;
     }
     return {};
 }
@@ -445,11 +469,20 @@ int redactionEnd(const Document& doc)
     return end;
 }
 
+int spotlightEnd(const Document& doc)
+{
+    int end = redactionEnd(doc);
+    while (end < doc.items.size() && doc.items[end].kind == Kind::Spotlight)
+        ++end;
+    return end;
+}
+
 int insertionIndex(const Document& doc, Kind kind, int at)
 {
-    const int end = redactionEnd(doc);
-    const int low = kind == Kind::Redact ? 0 : end;
-    const int high = kind == Kind::Redact ? end : int(doc.items.size());
+    const int rEnd = redactionEnd(doc);
+    const int sEnd = spotlightEnd(doc);
+    const int low = kind == Kind::Redact ? 0 : kind == Kind::Spotlight ? rEnd : sEnd;
+    const int high = kind == Kind::Redact ? rEnd : kind == Kind::Spotlight ? sEnd : int(doc.items.size());
     return at < 0 ? high : std::clamp(at, low, high);
 }
 
@@ -1000,6 +1033,7 @@ QRectF bounds(const Item& item, qreal dpr, int number, NumberFormat format)
     case Kind::Rect:
     case Kind::Ellipse:
     case Kind::Redact:
+    case Kind::Spotlight:
         return QRectF(itemBox(item));
     case Kind::Arrow: {
         const QRectF r = arrowPath(item, dpr).boundingRect();

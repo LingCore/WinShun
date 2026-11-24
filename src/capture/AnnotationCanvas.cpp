@@ -298,22 +298,29 @@ void AnnotationCanvas::updatePolish()
         skip = m_liveId;
     const std::optional<quint32> unworded = model->unworded();
     const std::optional<quint32> draft = model->draft();
+    const QRect sample = model->sampleBounds();
     // Sparse: where the objects reach, measured once for all the tiles. The
     // text being typed is not drawn, so it does not count.
     std::vector<QRect> reach;
     if (m_sparse) {
         const QHash<quint32, int> numbers = annot::numbers(doc);
+        const QRect canvasBounds(QPoint(0, 0), m_size);
+        const QRect spotlightDomain = sample.isEmpty() ? canvasBounds : (sample & canvasBounds);
         reach.reserve(std::size_t(doc.items.size()));
         for (const annot::Item& item : doc.items) {
             if (skip && item.id == *skip)
                 continue;
+            if (item.kind == annot::Kind::Spotlight) {
+                if (!spotlightDomain.isEmpty() && annot::itemBox(item).intersects(spotlightDomain))
+                    reach.push_back(spotlightDomain);
+                continue;
+            }
             const int number = item.kind == annot::Kind::Number ? numbers.value(item.id, 1) : 1;
             const QRectF r = annot::bounds(item, doc.dpr, number, annot::formatOf(doc, item.series));
             if (!r.isEmpty())
                 reach.push_back(r.toAlignedRect());
         }
     }
-    const QRect sample = model->sampleBounds();
     bool any = false;
     int drawn = 0;
     bool pending = false;

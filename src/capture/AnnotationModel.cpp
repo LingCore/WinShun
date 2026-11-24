@@ -51,6 +51,7 @@ std::vector<int> ladder(std::initializer_list<Band> bands, int last)
 const std::vector<int> kWidthSteps = ladder({{1, 1}, {16, 2}, {32, 4}}, 64);
 const std::vector<int> kSizeSteps = ladder({{10, 1}, {40, 2}, {80, 4}}, 120);
 const std::vector<int> kCellSteps = ladder({{3, 1}, {16, 2}, {32, 4}}, 64);
+const std::vector<int> kSpotlightOpacitySteps {20, 30, 40, 50, 60, 70, 80, 90, 100};
 constexpr int kMaxLogical = 500; // as StyleMemory keeps them
 constexpr int kMaxNumber = 99999;
 // A touchpad sends the wheel in small pieces: a notch is 120 of them, and
@@ -195,6 +196,17 @@ bool applyPanel(const QVariantMap& change, Kind kind, annot::Style& style, qreal
         } else if (key == u"shape" && kind == Kind::Redact) {
             if (const std::optional<annot::RedactShape> shape = annot::redactShapeFromName(value.toString())) {
                 style.shape = *shape;
+                any = true;
+            }
+        } else if (key == u"spotlightShape" && kind == Kind::Spotlight) {
+            if (const std::optional<annot::SpotlightShape> shape = annot::spotlightShapeFromName(value.toString())) {
+                style.spotlightShape = *shape;
+                any = true;
+            }
+        } else if (key == u"spotlightOpacity" && kind == Kind::Spotlight) {
+            const double v = value.toDouble();
+            if (std::isfinite(v)) {
+                style.spotlightOpacity = static_cast<int>(std::lround(std::clamp(v, 10.0, 100.0)));
                 any = true;
             }
         }
@@ -772,6 +784,17 @@ QVariantMap AnnotationModel::panel() const
         if (s.shape == annot::RedactShape::Brush)
             t.width = annot::toLogicalPx(s.width, dpr);
         t.cell = annot::toLogicalPx(s.cell, dpr);
+        t.spotlightShape = s.spotlightShape;
+        t.spotlightOpacity = s.spotlightOpacity;
+    } else if (kind == Kind::Spotlight) {
+        // When the Spotlight tool is active and spotlights already exist,
+        // reflect the live veil's colour and opacity on the panel.
+        for (const annot::Item& item : m_document.items) {
+            if (item.kind == Kind::Spotlight) {
+                t.color = item.style.color;
+                t.spotlightOpacity = item.style.spotlightOpacity;
+            }
+        }
     }
     // Objects of different kinds share the colour and the layer buttons only.
     m[u"kind"_s] = mixed ? -1 : int(kind);
@@ -783,6 +806,15 @@ QVariantMap AnnotationModel::panel() const
         m[u"canRaise"_s] = false;
         m[u"canLower"_s] = false;
         return m;
+    }
+    if (kind == Kind::Spotlight) {
+        QStringList spotlightPalette;
+        for (QRgb c : annot::spotlightColors())
+            spotlightPalette.append(colorHex(c));
+        m[u"colors"_s] = spotlightPalette;
+        m[u"spotlightShape"_s] = annot::spotlightShapeName(t.spotlightShape);
+        m[u"spotlightOpacity"_s] = t.spotlightOpacity;
+        m[u"spotlightOpacities"_s] = variantList(annot::spotlightOpacities());
     }
     const annot::MarkerMode markerMode = target->ids.isEmpty() ? t.markerMode : targetStyle(*target).markerMode;
     if (usesWidth(kind) && !(kind == Kind::Marker && markerMode == annot::MarkerMode::Rectangle)) {
@@ -1533,10 +1565,20 @@ void AnnotationModel::startDraw(Kind kind, QPoint p, Qt::KeyboardModifiers modif
     case Kind::Rect:
     case Kind::Ellipse:
     case Kind::Redact:
+    case Kind::Spotlight:
         if (kind == Kind::Redact)
             item.seed = QRandomGenerator::global()->generate64();
         if (kind == Kind::Redact && !annot::isBrush(item))
             item.style.width = annot::Style {}.width; // the tool's width is the brush's
+        if (kind == Kind::Spotlight) {
+            // Keep a new cutout's veil aligned with any spotlight already on the canvas.
+            for (const annot::Item& existing : m_document.items) {
+                if (existing.kind == Kind::Spotlight) {
+                    item.style.color = existing.style.color;
+                    item.style.spotlightOpacity = existing.style.spotlightOpacity;
+                }
+            }
+        }
         if (annot::isBrush(item)) {
             item.points = {annot::pixelCentre(QPointF(at))};
             break;
@@ -2532,19 +2574,42 @@ void AnnotationModel::setPanel(const QVariantMap& change)
     forObjects.remove(u"lineMode"_s);
     forObjects.remove(u"markerMode"_s);
     QList<Kind> kinds;
-    if (!target->ids.isEmpty()) {
+    const bool spotlightVeilChange = target->kind == Kind::Spotlight && !target->mixed
+        && (forObjects.contains(u"color"_s) || forObjects.contains(u"spotlightOpacity"_s));
+    if (!target->ids.isEmpty() || spotlightVeilChange) {
         QList<quint32> ids;
         QList<annot::Style> styles;
-        for (const quint32 id : target->ids) {
-            const annot::Item* item = find(id);
-            if (!item)
-                continue;
-            if (!kinds.contains(item->kind))
-                kinds.append(item->kind);
-            annot::Style style = item->style;
-            if (applyPanel(forObjects, item->kind, style, dpr()) && style != item->style) {
-                ids.append(id);
-                styles.append(style);
+        if (!target->ids.isEmpty()) {
+            for (const quint32 id : target->ids) {
+                const annot::Item* item = find(id);
+                if (!item)
+                    continue;
+                if (!kinds.contains(item->kind))
+                    kinds.append(item->kind);
+                annot::Style style = item->style;
+                if (applyPanel(forObjects, item->kind, style, dpr()) && style != item->style) {
+                    ids.append(id);
+                    styles.append(style);
+                }
+            }
+        }
+        // Spotlight cutouts share one veil: changing colour or opacity updates
+        // every spotlight in the document atomically (including when the tool
+        // is active with nothing selected).
+        if (spotlightVeilChange) {
+            QVariantMap veilOnly;
+            if (forObjects.contains(u"color"_s))
+                veilOnly[u"color"_s] = forObjects.value(u"color"_s);
+            if (forObjects.contains(u"spotlightOpacity"_s))
+                veilOnly[u"spotlightOpacity"_s] = forObjects.value(u"spotlightOpacity"_s);
+            for (const annot::Item& item : m_document.items) {
+                if (item.kind != Kind::Spotlight || ids.contains(item.id))
+                    continue;
+                annot::Style style = item.style;
+                if (applyPanel(veilOnly, Kind::Spotlight, style, dpr()) && style != item.style) {
+                    ids.append(item.id);
+                    styles.append(style);
+                }
             }
         }
         if (!ids.isEmpty())
@@ -2571,8 +2636,9 @@ void AnnotationModel::setPanel(const QVariantMap& change)
     sync();
 }
 
-// [ and ], a notch of the wheel: the target's width, size or cell one step
-// on, as a panel change, so an object and the tool's memory both take it.
+// [ and ], a notch of the wheel: the target's width, size, cell or spotlight
+// opacity one step on, as a panel change, so an object and the tool's memory
+// both take it.
 void AnnotationModel::stepSize(int direction, int count)
 {
     const std::optional<Target> target = styleTarget();
@@ -2602,6 +2668,16 @@ void AnnotationModel::stepSize(int direction, int count)
         field = u"cell"_s;
         value = remembered ? memory.cell : annot::toLogicalPx(style.cell, dpr);
         next = steppedBy(kCellSteps, value, direction, count);
+    } else if (kind == Kind::Spotlight) {
+        field = u"spotlightOpacity"_s;
+        value = remembered ? memory.spotlightOpacity : style.spotlightOpacity;
+        if (remembered) {
+            for (const annot::Item& item : m_document.items) {
+                if (item.kind == Kind::Spotlight)
+                    value = item.style.spotlightOpacity;
+            }
+        }
+        next = steppedBy(kSpotlightOpacitySteps, value, direction, count);
     }
     if (field.isEmpty() || next == value)
         return;
@@ -2678,16 +2754,17 @@ void AnnotationModel::lower(bool toBottom)
 }
 
 // One layer up or down, or to the end, inside the object's own segment
-// (redactions stay below everything else, 3.2).
+// (redactions stay below spotlights, spotlights stay below regular annotations).
 bool AnnotationModel::canReorder(int direction) const
 {
     const annot::Item* item = find(single());
-    if (!item)
+    if (!item || item->kind == Kind::Spotlight)
         return false;
     const int i = annot::indexOf(m_document, item->id);
-    const int end = annot::redactionEnd(m_document);
-    const int low = item->kind == Kind::Redact ? 0 : end;
-    const int high = item->kind == Kind::Redact ? end : int(m_document.items.size());
+    const int rEnd = annot::redactionEnd(m_document);
+    const int sEnd = annot::spotlightEnd(m_document);
+    const int low = item->kind == Kind::Redact ? 0 : sEnd;
+    const int high = item->kind == Kind::Redact ? rEnd : int(m_document.items.size());
     return direction > 0 ? i < high - 1 : i > low;
 }
 
@@ -2705,7 +2782,7 @@ void AnnotationModel::reorder(int direction, bool toEnd)
     // Reorder's index is in the list without the item: one past the next
     // one up, the one below, or the segment's end (insertionIndex keeps it
     // inside the segment).
-    const int low = item->kind == Kind::Redact ? 0 : annot::redactionEnd(m_document);
+    const int low = item->kind == Kind::Redact ? 0 : annot::spotlightEnd(m_document);
     const int to = direction > 0 ? (toEnd ? -1 : i + 1) : (toEnd ? low : i - 1);
     push(std::make_unique<annot::Reorder>(item->id, to));
     sync();
@@ -2718,7 +2795,8 @@ void AnnotationModel::resetStyle()
         return;
     static const annot::StyleMemory defaults;
     QList<Kind> kinds;
-    if (!target->ids.isEmpty()) {
+    const bool resetSpotlightVeil = target->kind == Kind::Spotlight && !target->mixed;
+    if (!target->ids.isEmpty() || resetSpotlightVeil) {
         QList<quint32> ids;
         QList<annot::Style> styles;
         for (const quint32 id : target->ids) {
@@ -2733,6 +2811,20 @@ void AnnotationModel::resetStyle()
             if (style != item->style) {
                 ids.append(id);
                 styles.append(style);
+            }
+        }
+        if (resetSpotlightVeil) {
+            const annot::Style defSpot = defaults.forTool(Kind::Spotlight, dpr());
+            for (const annot::Item& item : m_document.items) {
+                if (item.kind != Kind::Spotlight || ids.contains(item.id))
+                    continue;
+                annot::Style style = item.style;
+                style.color = defSpot.color;
+                style.spotlightOpacity = defSpot.spotlightOpacity;
+                if (style != item.style) {
+                    ids.append(item.id);
+                    styles.append(style);
+                }
             }
         }
         if (!ids.isEmpty())
