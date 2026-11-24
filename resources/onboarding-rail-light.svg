@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 264 540" width="264" height="540">
+  <!-- Win顺 onboarding sidebar background (light): golden-ratio tapered silk curves, zero filters, 8-bit safe -->
+  <defs>
+    <clipPath id="clip"><rect width="264" height="540"/></clipPath>
+    <linearGradient id="ridgeT" gradientUnits="userSpaceOnUse" x1="0" y1="168" x2="264" y2="52">
+      <stop offset="0%" stop-color="#FF5A4A" stop-opacity="0.06"/>
+      <stop offset="28%" stop-color="#F5A623" stop-opacity="0.92"/>
+      <stop offset="68%" stop-color="#26BA5C" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#0EA5E9" stop-opacity="0.80"/>
+    </linearGradient>
+    <linearGradient id="ridgeB" gradientUnits="userSpaceOnUse" x1="0" y1="358" x2="264" y2="510">
+      <stop offset="0%" stop-color="#2D86FF" stop-opacity="0.06"/>
+      <stop offset="36%" stop-color="#0EA5E9" stop-opacity="0.92"/>
+      <stop offset="74%" stop-color="#F5A623" stop-opacity="0.98"/>
+      <stop offset="100%" stop-color="#FF5A4A" stop-opacity="0.72"/>
+    </linearGradient>
+  </defs>
+  <g clip-path="url(#clip)" fill="none" stroke-linecap="round">
+    <g>
+      <path d="M-20 146 C54 108, 144 178, 284 36" stroke="url(#ridgeT)" stroke-opacity="0.63" stroke-width="1.46"/>
+      <path d="M-20 147.5 C54 110.2, 144 177.2, 284 40.4" stroke="url(#ridgeT)" stroke-opacity="0.59" stroke-width="1.41"/>
+      <path d="M-20 149.9 C54 113.9, 144 175.9, 284 47.9" stroke="url(#ridgeT)" stroke-opacity="0.56" stroke-width="1.37"/>
+      <path d="M-20 153 C54 118.4, 144 174.2, 284 57.2" stroke="url(#ridgeT)" stroke-opacity="0.52" stroke-width="1.32"/>
+      <path d="M-20 156.5 C54 123.7, 144 172.3, 284 67.9" stroke="url(#ridgeT)" stroke-opacity="0.48" stroke-width="1.27"/>
+      <path d="M-20 160.4 C54 129.5, 144 170.2, 284 79.7" stroke="url(#ridgeT)" stroke-opacity="0.44" stroke-width="1.22"/>
+      <path d="M-20 164.6 C54 135.9, 144 167.9, 284 92.7" stroke="url(#ridgeT)" stroke-opacity="0.4" stroke-width="1.16"/>
+      <path d="M-20 169.2 C54 142.7, 144 165.4, 284 106.5" stroke="url(#ridgeT)" stroke-opacity="0.36" stroke-width="1.1"/>
+      <path d="M-20 174 C54 150, 144 162.7, 284 121.3" stroke="url(#ridgeT)" stroke-opacity="0.31" stroke-width="1.04"/>
+      <path d="M-20 179.1 C54 157.6, 144 160, 284 136.8" stroke="url(#ridgeT)" stroke-opacity="0.26" stroke-width="0.97"/>
+      <path d="M-20 184.4 C54 165.6, 144 157, 284 153" stroke="url(#ridgeT)" stroke-opacity="0.19" stroke-width="0.9"/>
+      <path d="M-20 190 C54 174, 144 154, 284 170" stroke="url(#ridgeT)" stroke-opacity="0.1" stroke-width="0.77"/>
+    </g>
+    <g>
+      <path d="M-20 392 C68 412, 152 446, 284 558" stroke="url(#ridgeB)" stroke-opacity="0.63" stroke-width="1.46"/>
+      <path d="M-20 390.5 C68 411.2, 152 442.3, 284 553.8" stroke="url(#ridgeB)" stroke-opacity="0.59" stroke-width="1.41"/>
+      <path d="M-20 388.1 C68 409.9, 152 436.2, 284 546.8" stroke="url(#ridgeB)" stroke-opacity="0.56" stroke-width="1.37"/>
+      <path d="M-20 385 C68 408.2, 152 428.6, 284 538.1" stroke="url(#ridgeB)" stroke-opacity="0.52" stroke-width="1.32"/>
+      <path d="M-20 381.5 C68 406.3, 152 419.8, 284 528" stroke="url(#ridgeB)" stroke-opacity="0.48" stroke-width="1.27"/>
+      <path d="M-20 377.6 C68 404.2, 152 410.1, 284 516.9" stroke="url(#ridgeB)" stroke-opacity="0.44" stroke-width="1.22"/>
+      <path d="M-20 373.4 C68 401.9, 152 399.5, 284 504.7" stroke="url(#ridgeB)" stroke-opacity="0.4" stroke-width="1.16"/>
+      <path d="M-20 368.8 C68 399.4, 152 388.1, 284 491.7" stroke="url(#ridgeB)" stroke-opacity="0.36" stroke-width="1.1"/>
+      <path d="M-20 364 C68 396.7, 152 376, 284 477.8" stroke="url(#ridgeB)" stroke-opacity="0.31" stroke-width="1.04"/>
+      <path d="M-20 358.9 C68 394, 152 363.3, 284 463.2" stroke="url(#ridgeB)" stroke-opacity="0.26" stroke-width="0.97"/>
+      <path d="M-20 353.6 C68 391, 152 349.9, 284 447.9" stroke="url(#ridgeB)" stroke-opacity="0.19" stroke-width="0.9"/>
+      <path d="M-20 348 C68 388, 152 336, 284 432" stroke="url(#ridgeB)" stroke-opacity="0.1" stroke-width="0.77"/>
+    </g>
+  </g>
+</svg>

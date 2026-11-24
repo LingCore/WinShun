@@ -462,7 +462,9 @@ qt_add_resources(WinShun "ocr_component"
 qt_add_resources(WinShun "branding"
     PREFIX /branding
     BASE "${PROJECT_SOURCE_DIR}/resources"
-    FILES "${PROJECT_SOURCE_DIR}/resources/logo.svg")
+    FILES "${PROJECT_SOURCE_DIR}/resources/logo.svg"
+          "${PROJECT_SOURCE_DIR}/resources/onboarding-rail-light.svg"
+          "${PROJECT_SOURCE_DIR}/resources/onboarding-rail-dark.svg")
 # The icons: Phosphor Icons 2.1.2 (MIT), Regular and Fill (see Phosphor.h).
 qt_add_resources(WinShun "phosphor"
     PREFIX /fonts

@@ -125,12 +125,12 @@ Window {
                 Glyph {
                     y: Theme.snap((title.height - height) / 2, window.dpr)
                     glyph: card.glyph
-                    size: 20
+                    size: 16
                     color: card.checked || !card.switchShown ? Theme.accent : Theme.subtext
                 }
                 Text {
                     id: title
-                    x: 32
+                    x: 26
                     width: parent.width - x - (card.switchShown ? toggle.width + 20 : 0)
                     text: card.heading
                     color: Theme.text
@@ -150,8 +150,8 @@ Window {
                     Accessible.name: card.heading
                 }
             }
-            Explanation { x: 32; width: parent.width - 32; text: card.description; visible: text.length > 0 }
-            Column { id: extras; x: 32; width: parent.width - 32; topPadding: 4; spacing: 10; visible: children.length > 0 }
+            Explanation { x: 26; width: parent.width - 26; text: card.description; visible: text.length > 0 }
+            Column { id: extras; x: 26; width: parent.width - 26; topPadding: 4; spacing: 10; visible: children.length > 0 }
         }
     }
 

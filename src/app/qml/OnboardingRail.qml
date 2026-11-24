@@ -23,6 +23,18 @@ Item {
         anchors.fill: parent
         color: Qt.alpha(Theme.text, Theme.dark ? 0.045 : 0.03)
     }
+    Image { // golden-ratio tapered brand silk curves (light/dark, zero blur filters, 8-bit safe)
+        readonly property real coverScale: Math.max(width / 264, height / 540, 1)
+        anchors.fill: parent
+        clip: true
+        source: Theme.dark ? "qrc:/branding/onboarding-rail-dark.svg"
+                           : "qrc:/branding/onboarding-rail-light.svg"
+        fillMode: Image.PreserveAspectCrop
+        sourceSize.width: Math.ceil(264 * coverScale)
+        sourceSize.height: Math.ceil(540 * coverScale)
+        smooth: true
+        Accessible.ignored: true
+    }
     Hook { // the style's line between two parts (Theme.separator)
         id: seam
         anchors.right: parent.right
@@ -169,16 +181,16 @@ Item {
 
                 Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
-                    width: 22
-                    height: 22
-                    radius: 11
+                    width: 20
+                    height: 20
+                    radius: 10
                     color: step.done || step.current ? Theme.accentFill : Theme.track
 
                     Glyph {
                         visible: step.done
                         anchors.centerIn: parent
-                        glyph: "\uE73E"
-                        size: 12
+                        iconName: "check"
+                        size: 10
                         color: Theme.accentText
                     }
                     CenteredNumber {
