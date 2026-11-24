@@ -8925,15 +8925,6 @@ bool checkClipboardHoverCopy(QQmlEngine* engine, const QDir& output)
 // launcher and search workers, Main.qml shown.
 bool checkContentKinds(QQmlEngine* qml, const QDir& output)
 {
-    // The launcher's line on rows that came late is said, not counted: a
-    // file written a moment ago is now and then held about a second on
-    // being opened (the antivirus's look at it), which is not what this
-    // checks and fails it at random.
-    static QtMessageHandler counted = nullptr;
-    counted = qInstallMessageHandler([](QtMsgType type, const QMessageLogContext& context, const QString& message) {
-        counted(type == QtWarningMsg && message.startsWith(u"WinShun: new rows "_s) ? QtInfoMsg : type, context, message);
-    });
-    const auto restore = qScopeGuard([] { qInstallMessageHandler(counted); });
     QTemporaryDir temporary;
     IndexService index(temporary.filePath(u"index"_s), IndexService::Options{});
     AppCatalog apps;
@@ -9100,8 +9091,7 @@ bool checkTypeStripScroll(QQmlEngine* qml, const QDir& output)
     counted = qInstallMessageHandler([](QtMsgType type, const QMessageLogContext& context, const QString& message) {
         if (message.contains(u"Binding loop detected"_s))
             ++loops;
-        // The launcher's line on rows that came late: said, not counted (see checkContentKinds).
-        counted(type == QtWarningMsg && message.startsWith(u"WinShun: new rows "_s) ? QtInfoMsg : type, context, message);
+        counted(type, context, message);
     });
     const auto restore = qScopeGuard([] { qInstallMessageHandler(counted); });
     QTemporaryDir temporary;
