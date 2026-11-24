@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdlib>
 #include <cstring>
 #include <limits>
 
@@ -90,39 +91,169 @@ HRESULT loopForever(IWICBitmapEncoder* encoder)
     return metadata->SetMetadataByName(L"/appext/Data", &value);
 }
 
-QRect changedArea(const QImage& current, const QImage& previous)
+// H.264 decode quantization introduces +/-1..3 luma/chroma jitter on static
+// desktop backgrounds; ignoring micro-noise keeps GIF update rectangles tight
+// and prevents static areas from shimmering under error diffusion.
+inline bool pixelDiffers(QRgb a, QRgb b)
 {
-    if (previous.isNull())
+    const int dr = std::abs(qRed(a) - qRed(b));
+    const int dg = std::abs(qGreen(a) - qGreen(b));
+    const int db = std::abs(qBlue(a) - qBlue(b));
+    return dr > 4 || dg > 4 || db > 4 || (dr + dg + db) > 8;
+}
+
+QRect changedArea(const QImage& current, const QImage& committed)
+{
+    if (committed.isNull())
         return current.rect();
     int left = current.width(), top = current.height(), right = -1, bottom = -1;
     for (int y = 0; y < current.height(); ++y) {
         const auto* a = reinterpret_cast<const QRgb*>(current.constScanLine(y));
-        const auto* b = reinterpret_cast<const QRgb*>(previous.constScanLine(y));
+        const auto* b = reinterpret_cast<const QRgb*>(committed.constScanLine(y));
         int first = 0;
-        while (first < current.width() && (a[first] & 0xFFFFFF) == (b[first] & 0xFFFFFF))
+        while (first < current.width() && !pixelDiffers(a[first], b[first]))
             ++first;
         if (first == current.width())
             continue;
         int last = current.width() - 1;
-        while (last > first && (a[last] & 0xFFFFFF) == (b[last] & 0xFFFFFF))
+        while (last > first && !pixelDiffers(a[last], b[last]))
             --last;
         left = std::min(left, first);
         right = std::max(right, last);
         top = std::min(top, y);
         bottom = y;
     }
-    // An unchanged frame needs only one pixel to carry its delay. Keeping
-    // each timestamp also preserves very long still sections without a
-    // 16-bit GIF delay overflowing or progress appearing stuck.
-    return right < left ? QRect(0, 0, 1, 1) : QRect(QPoint(left, top), QPoint(right, bottom));
+    return right < left ? QRect() : QRect(QPoint(left, top), QPoint(right, bottom));
 }
 
-HRESULT writeFrame(
-    IWICImagingFactory* factory, IWICBitmapEncoder* encoder, const QImage& source, const QRect& area, int delay)
+void commitArea(QImage& committed, const QImage& current, const QRect& area)
 {
-    const QImage image = area == source.rect() ? source : source.copy(area);
+    if (committed.isNull() || area == current.rect()) {
+        committed = current;
+        return;
+    }
+    if (area.isEmpty())
+        return;
+    committed.detach();
+    for (int y = area.top(); y <= area.bottom(); ++y) {
+        const auto* src = reinterpret_cast<const QRgb*>(current.constScanLine(y));
+        auto* dst = reinterpret_cast<QRgb*>(committed.scanLine(y));
+        for (int x = area.left(); x <= area.right(); ++x)
+            if (pixelDiffers(src[x], dst[x]))
+                dst[x] = src[x];
+    }
+}
+
+HRESULT setGifFrameMetadata(IWICBitmapFrameEncode* frame, int left, int top, int delay, int transparentIndex)
+{
+    ComPtr<IWICMetadataQueryWriter> metadata;
+    HRESULT hr = frame->GetMetadataQueryWriter(&metadata);
+    if (FAILED(hr))
+        return hr;
+    PROPVARIANT value {};
+    value.vt = VT_UI2;
+    value.uiVal = USHORT(left);
+    hr = metadata->SetMetadataByName(L"/imgdesc/Left", &value);
+    if (FAILED(hr))
+        return hr;
+    value.uiVal = USHORT(top);
+    hr = metadata->SetMetadataByName(L"/imgdesc/Top", &value);
+    if (FAILED(hr))
+        return hr;
+    value.uiVal = USHORT(std::clamp(delay, 2, int(std::numeric_limits<USHORT>::max())));
+    hr = metadata->SetMetadataByName(L"/grctlext/Delay", &value);
+    if (FAILED(hr))
+        return hr;
+    value.vt = VT_UI1;
+    value.bVal = 1; // retain previous pixels outside changed pixels
+    hr = metadata->SetMetadataByName(L"/grctlext/Disposal", &value);
+    if (FAILED(hr))
+        return hr;
+    if (transparentIndex >= 0) {
+        value.vt = VT_BOOL;
+        value.boolVal = VARIANT_TRUE;
+        hr = metadata->SetMetadataByName(L"/grctlext/TransparencyFlag", &value);
+        if (FAILED(hr))
+            return hr;
+        value.vt = VT_UI1;
+        value.bVal = BYTE(transparentIndex);
+        hr = metadata->SetMetadataByName(L"/grctlext/TransparentColorIndex", &value);
+        if (FAILED(hr))
+            return hr;
+    }
+    return S_OK;
+}
+
+HRESULT writeFrame(IWICImagingFactory* factory, IWICBitmapEncoder* encoder, const QImage& source,
+    const QImage* committed, const QRect& area, int delay)
+{
+    // Unchanged frame: emit a 1x1 transparent placeholder carrying the delay
+    // (~25 bytes) so long static sections preserve timing without overwriting
+    // any pixel or writing a full 256-color local palette.
+    if (area.isEmpty()) {
+        ComPtr<IWICPalette> palette;
+        HRESULT hr = factory->CreatePalette(&palette);
+        if (FAILED(hr))
+            return hr;
+        std::array<WICColor, 2> colors {0x00000000u, 0xFF000000u};
+        hr = palette->InitializeCustom(colors.data(), UINT(colors.size()));
+        if (FAILED(hr))
+            return hr;
+        ComPtr<IWICBitmapFrameEncode> frame;
+        hr = encoder->CreateNewFrame(&frame, nullptr);
+        if (FAILED(hr))
+            return hr;
+        hr = frame->Initialize(nullptr);
+        if (FAILED(hr))
+            return hr;
+        hr = frame->SetSize(1, 1);
+        if (FAILED(hr))
+            return hr;
+        WICPixelFormatGUID format = GUID_WICPixelFormat8bppIndexed;
+        hr = frame->SetPixelFormat(&format);
+        if (FAILED(hr) || format != GUID_WICPixelFormat8bppIndexed)
+            return FAILED(hr) ? hr : E_UNEXPECTED;
+        hr = frame->SetPalette(palette.Get());
+        if (FAILED(hr))
+            return hr;
+        hr = setGifFrameMetadata(frame.Get(), 0, 0, delay, 0);
+        if (FAILED(hr))
+            return hr;
+        BYTE pixel = 0;
+        hr = frame->WritePixels(1, 1, 1, &pixel);
+        if (FAILED(hr))
+            return hr;
+        return frame->Commit();
+    }
+
+    QImage image;
+    bool useTransparency = false;
+    if (committed && !committed->isNull()) {
+        image = QImage(area.size(), QImage::Format_ARGB32);
+        if (image.isNull())
+            return E_OUTOFMEMORY;
+        int transparentPixels = 0;
+        for (int y = 0; y < area.height(); ++y) {
+            const auto* src = reinterpret_cast<const QRgb*>(source.constScanLine(area.top() + y)) + area.left();
+            const auto* prev = reinterpret_cast<const QRgb*>(committed->constScanLine(area.top() + y)) + area.left();
+            auto* dst = reinterpret_cast<QRgb*>(image.scanLine(y));
+            for (int x = 0; x < area.width(); ++x) {
+                if (!pixelDiffers(src[x], prev[x])) {
+                    dst[x] = 0x00000000u;
+                    ++transparentPixels;
+                } else {
+                    dst[x] = src[x] | 0xFF000000u;
+                }
+            }
+        }
+        useTransparency = transparentPixels > 0;
+    }
+    if (!useTransparency)
+        image = area == source.rect() ? source : source.copy(area);
+
     ComPtr<IWICBitmap> bitmap;
-    HRESULT hr = factory->CreateBitmapFromMemory(UINT(image.width()), UINT(image.height()), GUID_WICPixelFormat32bppBGR,
+    const WICPixelFormatGUID srcFormat = useTransparency ? GUID_WICPixelFormat32bppBGRA : GUID_WICPixelFormat32bppBGR;
+    HRESULT hr = factory->CreateBitmapFromMemory(UINT(image.width()), UINT(image.height()), srcFormat,
         UINT(image.bytesPerLine()), UINT(image.sizeInBytes()), const_cast<BYTE*>(image.constBits()), &bitmap);
     if (FAILED(hr))
         return hr;
@@ -130,15 +261,43 @@ HRESULT writeFrame(
     hr = factory->CreatePalette(&palette);
     if (FAILED(hr))
         return hr;
-    hr = palette->InitializeFromBitmap(bitmap.Get(), 256, FALSE);
+    hr = palette->InitializeFromBitmap(bitmap.Get(), 256, useTransparency ? TRUE : FALSE);
     if (FAILED(hr))
         return hr;
+
+    int transparentIndex = -1;
+    if (useTransparency) {
+        std::array<WICColor, 256> colors {};
+        UINT count = 0;
+        if (SUCCEEDED(palette->GetColors(UINT(colors.size()), colors.data(), &count))) {
+            for (UINT i = 0; i < count; ++i) {
+                if ((colors[i] >> 24) == 0) {
+                    transparentIndex = int(i);
+                    break;
+                }
+            }
+        }
+        if (transparentIndex < 0) {
+            // Unexpected fallback: if WIC omitted a transparent slot, write opaquely.
+            useTransparency = false;
+            image = area == source.rect() ? source : source.copy(area);
+            bitmap.Reset();
+            hr = factory->CreateBitmapFromMemory(UINT(image.width()), UINT(image.height()), GUID_WICPixelFormat32bppBGR,
+                UINT(image.bytesPerLine()), UINT(image.sizeInBytes()), const_cast<BYTE*>(image.constBits()), &bitmap);
+            if (FAILED(hr))
+                return hr;
+            hr = palette->InitializeFromBitmap(bitmap.Get(), 256, FALSE);
+            if (FAILED(hr))
+                return hr;
+        }
+    }
+
     ComPtr<IWICFormatConverter> converter;
     hr = factory->CreateFormatConverter(&converter);
     if (FAILED(hr))
         return hr;
     hr = converter->Initialize(bitmap.Get(), GUID_WICPixelFormat8bppIndexed, WICBitmapDitherTypeErrorDiffusion,
-        palette.Get(), 0, WICBitmapPaletteTypeCustom);
+        palette.Get(), useTransparency ? 50.0 : 0.0, WICBitmapPaletteTypeCustom);
     if (FAILED(hr))
         return hr;
     ComPtr<IWICBitmapFrameEncode> frame;
@@ -158,27 +317,7 @@ HRESULT writeFrame(
     hr = frame->SetPalette(palette.Get());
     if (FAILED(hr))
         return hr;
-    ComPtr<IWICMetadataQueryWriter> metadata;
-    hr = frame->GetMetadataQueryWriter(&metadata);
-    if (FAILED(hr))
-        return hr;
-    PROPVARIANT value {};
-    value.vt = VT_UI2;
-    value.uiVal = USHORT(area.x());
-    hr = metadata->SetMetadataByName(L"/imgdesc/Left", &value);
-    if (FAILED(hr))
-        return hr;
-    value.uiVal = USHORT(area.y());
-    hr = metadata->SetMetadataByName(L"/imgdesc/Top", &value);
-    if (FAILED(hr))
-        return hr;
-    value.uiVal = USHORT(std::clamp(delay, 2, int(std::numeric_limits<USHORT>::max())));
-    hr = metadata->SetMetadataByName(L"/grctlext/Delay", &value);
-    if (FAILED(hr))
-        return hr;
-    value.vt = VT_UI1;
-    value.bVal = 1; // retain previous pixels outside this opaque update rectangle
-    hr = metadata->SetMetadataByName(L"/grctlext/Disposal", &value);
+    hr = setGifFrameMetadata(frame.Get(), area.x(), area.y(), delay, transparentIndex);
     if (FAILED(hr))
         return hr;
     hr = frame->WriteSource(converter.Get(), nullptr);
@@ -286,13 +425,16 @@ Result exportGif(const QString& video, const GifOptions& options, Control& contr
             return hr;
         const qint64 interval = 10000000 / std::clamp(options.fps, 5, 50);
         QImage pending;
+        QImage committed;
         QRect pendingArea;
         qint64 first = -1, pendingTime = 0, next = 0, end = 0, writtenCs = 0;
         const auto append = [&](qint64 until) -> HRESULT {
             const qint64 targetCs = (until + 50000) / 100000;
             const int delay = int(std::clamp(targetCs - writtenCs, qint64(2), qint64(65535)));
-            const HRESULT added = writeFrame(factory.Get(), encoder.Get(), pending, pendingArea, delay);
+            const QImage* previous = committed.isNull() ? nullptr : &committed;
+            const HRESULT added = writeFrame(factory.Get(), encoder.Get(), pending, previous, pendingArea, delay);
             if (SUCCEEDED(added)) {
+                commitArea(committed, pending, pendingArea);
                 writtenCs += delay;
                 ++result.frames;
                 result.elapsedMs = until / 10000;
@@ -349,12 +491,12 @@ Result exportGif(const QString& video, const GifOptions& options, Control& contr
                         current = current.copy(display);
                     if (current.size() != size)
                         current = current.scaled(size, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-                    const QRect area = changedArea(current, pending);
                     if (!pending.isNull()) {
                         hr = append(at);
                         if (FAILED(hr))
                             return hr;
                     }
+                    const QRect area = changedArea(current, committed);
                     pending = std::move(current);
                     pendingArea = area;
                     pendingTime = at;

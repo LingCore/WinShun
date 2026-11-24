@@ -118,6 +118,7 @@ public:
     Q_INVOKABLE void skipCountdown();
     Q_INVOKABLE void pause();
     Q_INVOKABLE void finish(); // also the screenshot hotkey while recording
+    Q_INVOKABLE void discard(); // cancel in-progress recording without saving
     Q_INVOKABLE void close();
     Q_INVOKABLE void chooseFolder();
     Q_INVOKABLE void play();
@@ -160,6 +161,7 @@ private:
     bool m_clicksActive = false;
     std::unique_ptr<recording::KeyHook> m_keyHook; // while recording with keycaps
     bool m_exporting = false;
+    bool m_discarded = false;
     bool m_compatibilityFallback = false;
 };
 

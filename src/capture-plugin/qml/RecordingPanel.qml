@@ -134,6 +134,13 @@ Window {
                         width: 6; height: 6; radius: 3
                         color: panel.recorder.stage === Recorder.Failed ? Theme.danger : panel.recorder.stage === Recorder.Done ? Theme.success
                              : panel.recorder.stage === Recorder.Recording ? Theme.danger : Theme.subtext
+                        opacity: 1.0
+                        SequentialAnimation on opacity {
+                            running: panel.visible && panel.recorder.stage === Recorder.Recording
+                            loops: Animation.Infinite
+                            NumberAnimation { from: 1.0; to: 0.3; duration: 650; easing.type: Easing.InOutSine }
+                            NumberAnimation { from: 0.3; to: 1.0; duration: 650; easing.type: Easing.InOutSine }
+                        }
                         Accessible.ignored: true
                     }
                     Column {
@@ -237,13 +244,21 @@ Window {
                 }
             }
             RecordingButton {
+                objectName: "recordingDiscard"
+                visible: panel.recording
+                iconName: "trash"
+                tip: qsTr("放弃本次录制（不保存）")
+                tipsEnabled: panel.recording
+                onClicked: panel.recorder.discard()
+            }
+            RecordingButton {
                 objectName: "recordingStart"
                 visible: !panel.completed
                 enabled: panel.recorder.stage !== Recorder.Saving
                 highlighted: true
                 text: panel.ready ? qsTr("开始录制") : panel.recorder.stage === Recorder.Counting ? qsTr("立即开始")
                     : panel.recorder.stage === Recorder.Saving ? qsTr("保存中…") : qsTr("停止并保存")
-                glyph: panel.ready || panel.recorder.stage === Recorder.Counting ? "\uEA3A" : "\uE71A"
+                iconName: panel.ready || panel.recorder.stage === Recorder.Counting ? "record" : "stop"
                 tip: qsTr("再次按截图快捷键也可停止；控制条不会录入视频。")
                 tipsEnabled: panel.ready
                 onClicked: {

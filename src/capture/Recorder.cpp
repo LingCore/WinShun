@@ -296,6 +296,7 @@ void Recorder::prepare(const QRect& region, HMONITOR monitor, double dpr)
     if (m_preferences.keys < KeysOff || m_preferences.keys > KeysAll)
         m_preferences.keys = KeysOff;
     m_exporting = false;
+    m_discarded = false;
     m_compatibilityFallback = false;
     m_progress = {};
     m_path.clear();
@@ -451,7 +452,7 @@ void Recorder::begin()
         const recording::WorkerProgram worker {QCoreApplication::applicationFilePath(),
             {u"--app-dir"_s, qEnvironmentVariable("WS_APP_DIR", QCoreApplication::applicationDirPath())}};
         auto result = recording::recordIsolated(worker, options, *control, update);
-        if (gif && result.error.isEmpty() && !result.path.isEmpty()) {
+        if (gif && !control->discard && result.error.isEmpty() && !result.path.isEmpty()) {
             QMetaObject::invokeMethod(this, [this, elapsedMs = result.elapsedMs] {
                 m_exporting = true;
                 m_stage = Saving;
@@ -462,12 +463,18 @@ void Recorder::begin()
                 emit changed();
             }, Qt::QueuedConnection);
             auto exported = recording::exportGifIsolated(worker, result.path, gifOptions, *control, update);
-            if (!exported.path.isEmpty() && exported.error.isEmpty()) {
+            if (control->discard) {
+                QFile::remove(result.path);
+                result = {};
+            } else if (!exported.path.isEmpty() && exported.error.isEmpty()) {
                 QFile::remove(result.path); // this worker created the intermediate video
                 result = std::move(exported);
             } else {
                 result.error = tr("%1\n已保留原始视频：%2").arg(exported.error, QDir::toNativeSeparators(result.path));
             }
+        } else if (control->discard && !result.path.isEmpty()) {
+            QFile::remove(result.path);
+            result = {};
         }
         QMetaObject::invokeMethod(this, [this, result] { completed(result); }, Qt::QueuedConnection);
     });
@@ -494,17 +501,37 @@ void Recorder::finish()
     }
 }
 
+void Recorder::discard()
+{
+    if (m_control) {
+        m_discarded = true;
+        m_control->discard = true;
+        m_control->stop = true;
+        releaseKeys();
+        releaseClicks();
+        m_stage = Saving;
+        emit changed();
+    } else {
+        close();
+    }
+}
+
 void Recorder::completed(const recording::Result& result)
 {
     if (m_worker.joinable()) m_worker.join();
     releaseClicks(); // detach before a changed handler can begin the next take
     releaseKeys();
     m_control.reset();
+    const bool discarded = std::exchange(m_discarded, false);
     m_progress = result;
     m_path = result.path;
     m_error = result.error;
     m_stage = result.error.isEmpty() && !result.path.isEmpty() ? Done : Failed;
-    if (!result.frames && result.error.isEmpty()) { close(); return; }
+    if (discarded || (!result.frames && result.error.isEmpty())) {
+        close();
+        if (m_hooks.finished) m_hooks.finished();
+        return;
+    }
     m_border.reset();
     emit changed();
     if (m_panel) m_panel->requestActivate();

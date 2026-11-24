@@ -11,6 +11,7 @@ import WinShun
 Button {
     id: button
     property string glyph
+    property string iconName
     property string tip
     property bool tipsEnabled: false
     property bool selectionFill: true
@@ -46,9 +47,10 @@ Button {
             anchors.centerIn: parent
             anchors.verticalCenterOffset: button.markOffsetY
             Glyph {
-                visible: button.glyph.length > 0
+                visible: button.glyph.length > 0 || button.iconName.length > 0
                 anchors.verticalCenter: parent.verticalCenter
                 glyph: button.glyph
+                iconName: button.iconName
                 size: 16
                 color: button.foreground
             }

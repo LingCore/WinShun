@@ -370,6 +370,30 @@ private slots:
         QVERIFY(QDir(temporary.path()).entryList(QDir::Files | QDir::Hidden).isEmpty());
     }
 
+    void discardDuringRecording()
+    {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        Options options;
+        options.path = temporary.filePath(u"discarded.mp4"_s);
+        options.region = QRect(0, 0, 640, 360);
+        Control control;
+        Result result;
+        std::jthread worker([&] {
+            result = sample(options, 1200, control, [&](const Progress& progress) {
+                if (progress.frames >= 2) {
+                    control.discard = true;
+                    control.stop = true;
+                }
+            });
+        });
+        worker.join();
+        QVERIFY2(result.error.isEmpty(), qPrintable(result.error));
+        QVERIFY(result.path.isEmpty());
+        QVERIFY(!QFileInfo::exists(options.path));
+        QVERIFY(QDir(temporary.path()).entryList(QDir::Files | QDir::Hidden).isEmpty());
+    }
+
     void animatedGif()
     {
         QTemporaryDir temporary;
@@ -381,6 +405,7 @@ private slots:
         const GifOptions gif {temporary.filePath(u"animated.gif"_s), 15, 320};
         HRESULT decoded = E_FAIL;
         UINT count = 0, width = 0, height = 0;
+        int transparentFrames = 0, subFrames = 0;
         qint64 totalDelay = 0;
         QByteArray firstPixels;
         QByteArray loopData;
@@ -424,10 +449,15 @@ private slots:
                 frame->GetSize(&frameWidth, &frameHeight);
                 if (i == 0) { width = frameWidth; height = frameHeight; }
                 if (!frameWidth || !frameHeight || frameWidth > width || frameHeight > height) { decoded = E_UNEXPECTED; return; }
+                if (i > 0 && (frameWidth < width || frameHeight < height)) ++subFrames;
                 ComPtr<IWICMetadataQueryReader> metadata;
                 frame->GetMetadataQueryReader(&metadata);
                 if (metadata && SUCCEEDED(metadata->GetMetadataByName(L"/grctlext/Delay", &value))) {
                     if (value.vt == VT_UI2) totalDelay += value.uiVal * 10;
+                    ::PropVariantClear(&value);
+                }
+                if (i > 0 && metadata && SUCCEEDED(metadata->GetMetadataByName(L"/grctlext/TransparencyFlag", &value))) {
+                    if (value.vt == VT_BOOL && value.boolVal == VARIANT_TRUE) ++transparentFrames;
                     ::PropVariantClear(&value);
                 }
                 if (i == 0) {
@@ -449,12 +479,16 @@ private slots:
         QCOMPARE(QSize(int(width), int(height)), QSize(320, 180));
         QVERIFY(count >= 8 && count <= 10);
         QCOMPARE(result.frames, quint64(count));
+        QVERIFY2(transparentFrames > 0 || subFrames > 0, "GIF delta frames should encode unchanged regions compactly");
         QImageReader animation(gif.path);
         QCOMPARE(animation.loopCount(), -1);
         for (UINT i = 0; i < count; ++i) {
             const QImage frame = animation.read();
             QVERIFY2(!frame.isNull(), qPrintable(animation.errorString()));
             QCOMPARE(frame.size(), QSize(320, 180)); // Qt composites GIF update rectangles into full pictures
+            const QRgb corner = frame.pixel(3, 180 / 4);
+            QVERIFY2(qRed(corner) > 210 && qGreen(corner) > 210 && qBlue(corner) > 210,
+                qPrintable(u"frame %1 static pixel drifted: %2,%3,%4"_s.arg(i).arg(qRed(corner)).arg(qGreen(corner)).arg(qBlue(corner))));
         }
         QVERIFY2(totalDelay >= 560 && totalDelay <= 730, qPrintable(QString::number(totalDelay)));
         QCOMPARE(loopData, QByteArray::fromHex("03010000")); // WIC omits the sub-block terminator when reading
