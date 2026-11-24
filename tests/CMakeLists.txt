@@ -565,7 +565,8 @@ qt_add_executable(tst_foldermenu tst_foldermenu.cpp
     ${file_dialog_backend}
     ${PROJECT_SOURCE_DIR}/src/app/platform/FileManagers.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/FolderViewHit.cpp
-    ${PROJECT_SOURCE_DIR}/src/app/platform/Integrity.cpp)
+    ${PROJECT_SOURCE_DIR}/src/app/platform/Integrity.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/Power.cpp) # the power commands a places row runs
 target_include_directories(tst_foldermenu PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_link_libraries(tst_foldermenu PRIVATE wscore wsplugin Qt6::Quick Qt6::Svg Qt6::Test
     ole32 oleaut32 oleacc shell32 shlwapi user32 advapi32 taskschd uiautomationcore userenv dwmapi comctl32 shcore gdi32 winhttp)
