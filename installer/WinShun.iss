@@ -266,9 +266,11 @@ Filename: "{app}\{#AppExe}"; Parameters: "--take-autostart {code:TakeAutostartAr
 ; new files is slow (the antivirus reads each one: seconds, tens of them at
 ; times), and nothing would show for that long after Finish. Finish then has the running
 ; copy put up its search box, at once (the second start hands it "show"), or,
-; unticked, has it quit (CurStepChanged). Not runhidden: a hidden start would
-; hide the first window it shows later on.
-Filename: "{app}\{#AppExe}"; Parameters: "--background"; Flags: nowait runasoriginaluser
+; unticked, has it quit (CurStepChanged). A first install's welcome guide is made
+; but kept back until that "show" (--setup-page): up at once, after this page,
+; and only once. Not runhidden: a hidden start would hide the first window it
+; shows later on.
+Filename: "{app}\{#AppExe}"; Parameters: "--background{code:SetupPageArgs}"; Flags: nowait runasoriginaluser
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent runasoriginaluser
 #endif
 
@@ -1130,6 +1132,16 @@ begin
     Result := '--had-autostart'
   else
     Result := '';
+end;
+
+// For [Run]: started while the last page is up, Win顺 keeps a welcome guide
+// still to come until Finish asks for it. A silent install has no such page.
+function SetupPageArgs(Param: String): String;
+begin
+  if WizardSilent() then
+    Result := ''
+  else
+    Result := ' --setup-page';
 end;
 
 // ---- What still holds Win顺's files (GitHub #97) -----------------------------

@@ -150,6 +150,9 @@ class App : public QObject {
 public:
     struct StartOptions {
         bool background = false; // start in the tray without showing the window
+        // Started by Setup while its last page is up (--setup-page): the
+        // welcome guide, if it is still to come, waits for Finish to ask for it.
+        bool setupPage = false;
         QString query;
         bool settings = false; // open the settings window
         QString settingsAt; // there (SettingsWindow.showPlace), after a restart from the settings
@@ -260,6 +263,7 @@ private:
     bool settingsShown() const; // the settings window on show (it is kept, hidden, once made)
     void settingsFirstFrame(int opening); // after the first frame of an opening: what waited for it
     bool showOnboarding(const StartOptions& options);
+    void revealOnboarding(); // the guide's window up and in front
     void finishOnboarding(const StartOptions& options);
     bool createWindow();
     bool createClipWindow();
@@ -1004,6 +1008,9 @@ private:
     std::unique_ptr<SettingsEditor> m_onboardingEditor;
     std::unique_ptr<QQmlApplicationEngine> m_onboardingQml;
     QPointer<QQuickWindow> m_onboardingWindow;
+    // While the guide is up and the runtime (with m_messages) is not: what a
+    // second start of Win顺 asks for, Setup's Finish among them, comes here.
+    std::unique_ptr<MessageWindow> m_guideMessages;
     // The plugins' tray submenus as they last answered trayMenu (prefetchTrayMenus): plugin id -> entries.
     std::map<QString, QJsonArray> m_trayMenus;
     std::map<QString, QStringList> m_pluginHotkeys; // the shortcuts plugins register themselves (winshun/hotkeys)

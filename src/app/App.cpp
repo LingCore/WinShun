@@ -155,6 +155,7 @@
 #include <windows.h>
 #include <dwmapi.h>
 #include <psapi.h>
+#include <tlhelp32.h>
 
 #include <cmath>
 #include <thread>
@@ -576,8 +577,40 @@ bool App::start(const StartOptions& options)
     return startRuntime(options, firstRun, clipboardIsNew);
 }
 
+namespace {
+// The process that started this one: Setup's, for --setup-page (for an
+// install that asks for administrator rights, its unelevated first process,
+// which starts the programs run as the user and lasts until Setup ends).
+DWORD parentProcessId()
+{
+    const win32::UniqueHandle snapshot(::CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0));
+    PROCESSENTRY32W entry {sizeof entry};
+    const DWORD self = ::GetCurrentProcessId();
+    if (snapshot.valid() && ::Process32FirstW(snapshot.get(), &entry)) {
+        do {
+            if (entry.th32ProcessID == self)
+                return entry.th32ParentProcessID;
+        } while (::Process32NextW(snapshot.get(), &entry));
+    }
+    return 0;
+}
+} // namespace
+
 bool App::showOnboarding(const StartOptions& options)
 {
+    // Made first, so that a second start finds it at once: what it hands
+    // over waits until the guide below is made (sendToRunningInstance waits
+    // for the answer). Setup's Finish says "show" (the guide comes up), Finish
+    // with "run Win顺" unticked says "quit"; any other start brings the guide
+    // up, there being nothing else yet to show.
+    MessageWindow::Callbacks guide;
+    guide.commandReceived = [this](const QString& command) {
+        if (command == u"quit")
+            QCoreApplication::exit(0);
+        else
+            revealOnboarding();
+    };
+    m_guideMessages = std::make_unique<MessageWindow>(std::move(guide));
     m_onboarding = std::make_unique<Onboarding>(m_settings);
     m_onboardingFrame = std::make_unique<WindowFrame>(true);
     m_onboardingQml = std::make_unique<QQmlApplicationEngine>();
@@ -604,6 +637,7 @@ bool App::showOnboarding(const StartOptions& options)
     window->setPosition(area.center() - QPoint(window->width() / 2, window->height() / 2));
     connect(m_onboarding.get(), &Onboarding::accepted, this, [this, options] {
         m_settings = m_onboarding->settings();
+        m_guideMessages.reset(); // the runtime's own takes over (startRuntime)
         StartOptions quiet;
         quiet.background = true;
         if (!startRuntime(quiet, true, false, true)) {
@@ -629,13 +663,52 @@ bool App::showOnboarding(const StartOptions& options)
             m_onboardingEditor->setSettings(m_settings);
     });
     connect(m_onboarding.get(), &Onboarding::finished, this, [this, options] { finishOnboarding(options); });
-    window->setProperty("arriving", true);
-    win::expectActivation(window);
-    window->show();
+    // Started by Setup while its last page is up: the guide would come over
+    // that page, and Finish then start Win顺 a second time. It waits for
+    // Finish ("show"), made and ready, so that it comes up at once.
+    if (options.setupPage) {
+        // Should Setup end without a word from Finish (closed some other
+        // way, its second start lost), the guide comes up all the same: what
+        // it did before it waited.
+        const DWORD setup = parentProcessId();
+        HANDLE process = setup ? ::OpenProcess(SYNCHRONIZE, FALSE, setup) : nullptr;
+        if (!process) {
+            qWarning() << "Welcome guide: Setup's process not found, shown at once";
+            revealOnboarding();
+            return true;
+        }
+        qInfo() << "Welcome guide: waits for Setup's Finish";
+        auto* ended = new QWinEventNotifier(process, window);
+        connect(ended, &QObject::destroyed, [process] { ::CloseHandle(process); });
+        connect(ended, &QWinEventNotifier::activated, this, [this, ended] {
+            ended->setEnabled(false);
+            ended->deleteLater();
+            QTimer::singleShot(10s, this, [this] {
+                if (m_onboardingWindow && !m_onboardingWindow->isVisible()) {
+                    qWarning() << "Welcome guide: Setup ended without asking for it, shown";
+                    revealOnboarding();
+                }
+            });
+        });
+        return true;
+    }
+    revealOnboarding();
+    return true;
+}
+
+void App::revealOnboarding()
+{
+    QQuickWindow* window = m_onboardingWindow;
+    if (!window)
+        return;
+    if (!window->isVisible()) {
+        window->setProperty("arriving", true);
+        win::expectActivation(window);
+        window->show();
+    }
     window->raise();
     win::bringToFront(window);
     window->requestActivate();
-    return true;
 }
 
 void App::finishOnboarding(const StartOptions& options)

@@ -369,7 +369,12 @@ int main(int argc, char* argv[])
     // For tests: the running copy writes what its launcher shows into this file (App::dumpLauncher).
     QCommandLineOption dump(u"dump"_s, u"Write the launcher's rows and state to this file."_s, u"file"_s);
     dump.setFlags(QCommandLineOption::HiddenFromHelp);
-    parser.addOptions({background, toggle, query, quit, settings, settingsAt, takeAutostart, hadAutostart, uninstallCleanup, profile, dump, unelevatedOnce});
+    // With --background, from Setup while its last page is up (installer [Run]):
+    // a welcome guide still to come waits for Finish (App::showOnboarding).
+    QCommandLineOption setupPage(u"setup-page"_s, u"With --background: started by Setup before its last page closes."_s);
+    setupPage.setFlags(QCommandLineOption::HiddenFromHelp);
+    parser.addOptions({background, toggle, query, quit, settings, settingsAt, takeAutostart, hadAutostart, uninstallCleanup, profile,
+        dump, unelevatedOnce, setupPage});
     parser.process(app);
 
     // Before the instance check: it ends this copy itself and must not hand
@@ -486,6 +491,7 @@ int main(int argc, char* argv[])
         ws::App application;
         ws::App::StartOptions options;
         options.background = parser.isSet(background);
+        options.setupPage = parser.isSet(setupPage);
         options.query = parser.value(query);
         options.settings = parser.isSet(settings);
         options.settingsAt = parser.value(settingsAt);
