@@ -101,6 +101,12 @@ try {
         # The plugins that come with Win顺 (plugins\, staged by the build with
         # their SDK files and WinShunTools.exe): installed off by default.
         Copy-Item "$binary\plugins" "$dist\plugins" -Recurse
+        # The screenshot is a plugin of the library, and comes along all the
+        # same: the first-run guide installs it from this copy, with no network
+        # (src/app/Onboarding.cpp); the library updates it from then on. Its
+        # files as they are: the setup compresses them with everything else.
+        New-Item -ItemType Directory -Force "$dist\library-plugins" | Out-Null
+        Copy-Item "$binary\library-plugins\winshun.capture" "$dist\library-plugins\winshun.capture" -Recurse
         # Documents are read by WinShunExtract.exe (src/extract), PDFs with
         # PDFium; their licenses go along.
         Copy-Item "$binary\WinShunExtract.exe", "$binary\pdfium.dll" $dist

@@ -52,6 +52,10 @@ function New-Version([int] $number) {
     }
     Copy-Item $library "$folder\Lib.dll"
     [IO.File]::WriteAllBytes("$folder\fonts\Font.ttf", [byte[]](1..64))
+    # A library plugin's copy that comes with it ([InstallDelete]): a file only version 1 has must not outlive it.
+    New-Item -ItemType Directory -Path "$folder\library-plugins\winshun.capture" | Out-Null
+    Set-Content -LiteralPath "$folder\library-plugins\winshun.capture\plugin.json" -Value $number -NoNewline
+    if ($number -eq 1) { Set-Content -LiteralPath "$folder\library-plugins\winshun.capture\Old.dll" -Value 1 -NoNewline }
     if ($number -gt 1) {
         foreach ($name in 'WsSetupTest.exe', 'bin\Helper.exe', 'Lib.dll', 'fonts\Font.ttf') {
             $stream = [IO.File]::Open((Join-Path $folder $name), 'Append'); $stream.Write([byte[]](0..15), 0, 16); $stream.Dispose()
@@ -117,6 +121,11 @@ function Release([Diagnostics.Process] $process) {
 function AsideFiles([string] $app) { @(Get-ChildItem -LiteralPath $app -Recurse -File | Where-Object Name -like '*.wsold*') }
 function Version([string] $app) { (Get-Content -LiteralPath "$app\version.txt" -Raw).Trim() }
 function Is([string] $app, [string] $name, [int] $version) { (Get-Item -LiteralPath "$app\$name").Length -eq $size[$name][$version - 1] }
+function CopiesAre([string] $app, [int] $version) {
+    $copy = "$app\library-plugins\winshun.capture"
+    (Test-Path -LiteralPath "$copy\plugin.json") -and (Get-Content -LiteralPath "$copy\plugin.json" -Raw).Trim() -eq "$version" -and
+        ((Test-Path -LiteralPath "$copy\Old.dll") -eq ($version -eq 1))
+}
 
 $results = [Collections.Generic.List[object]]::new()
 function Case([string] $name, [scriptblock] $body) {
@@ -126,7 +135,7 @@ function Case([string] $name, [scriptblock] $body) {
     $failures = [Collections.Generic.List[string]]::new()
     $check = { param([bool] $ok, [string] $what) if (-not $ok) { $failures.Add($what) } }
     $first = Install $setup1 $app $log1
-    & $check ($first.exit -eq 0 -and (Version $app) -eq '1') "version 1 did not install (exit $($first.exit))"
+    & $check ($first.exit -eq 0 -and (Version $app) -eq '1' -and (CopiesAre $app 1)) "version 1 did not install (exit $($first.exit))"
     $update = $null
     try {
         if ($failures.Count -eq 0) { $update = & $body $app $log2 $check }
@@ -149,6 +158,7 @@ Case 'plain-update' {
     $r = Install $setup2 $app $log
     & $check ($r.exit -eq 0) "exit $($r.exit)"
     & $check ((Version $app) -eq '2' -and (Is $app 'Lib.dll' 2)) 'version 2 is not in place'
+    & $check (CopiesAre $app 2) "library-plugins is not version 2's alone"
     & $check (@(AsideFiles $app).Count -eq 0) 'files were moved aside with nothing holding them'
     $r
 }
@@ -198,7 +208,7 @@ Case 'file-nobody-may-touch' {
     & $check ($r.exit -ne 0 -and $r.exit -ne 'timeout') "exit $($r.exit): expected Setup to give up, in time"
     & $check ($r.seconds -lt 30) "gave up only after $($r.seconds) s"
     & $check (LogHas $log 'Update blocked by:') 'the log does not name what blocked it'
-    & $check ((Version $app) -eq '1' -and (Is $app 'Lib.dll' 1) -and (Is $app 'fonts\Font.ttf' 1) -and (Is $app 'WsSetupTest.exe' 1)) 'version 1 is not whole'
+    & $check ((Version $app) -eq '1' -and (Is $app 'Lib.dll' 1) -and (Is $app 'fonts\Font.ttf' 1) -and (Is $app 'WsSetupTest.exe' 1) -and (CopiesAre $app 1)) 'version 1 is not whole'
     & $check (@(AsideFiles $app).Count -eq 0) 'files stayed moved aside after Setup gave up'
     Release $locked
     $again = Install $setup2 $app "$log.again.log"
@@ -225,6 +235,7 @@ Case 'delta-setup' {
     foreach ($name in 'WinShunMcp.exe', 'WinShunSearch.exe', 'bin\Helper.exe') {
         & $check (Test-Path -LiteralPath "$app\$name") "$name of version 2 is missing"
     }
+    & $check (CopiesAre $app 2) "library-plugins is not version 2's alone"
     & $check (@(AsideFiles $app).Count -eq 0) 'files were moved aside with nothing holding them'
     & $check (Test-Path -LiteralPath "$payload\WsSetupTest.exe") 'Setup removed its payload'
     # The relay last, once (GitHub #97): the wildcard entry leaves it out here too.

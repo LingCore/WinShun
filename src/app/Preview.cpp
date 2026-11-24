@@ -14811,15 +14811,20 @@ int runRuntime(const QStringList& args)
             report.insert(u"error"_s, QString::fromUtf8(error.what()));
             say(u"onboarding probe aborted: "_s + QString::fromUtf8(error.what()));
         }
-        int expectedWarnings = 0;
-        if (onboardingAction == u"offline" || onboardingAction == u"retry") {
-            QFile log(g_logPath);
-            if (log.open(QIODevice::ReadOnly))
-                expectedWarnings = static_cast<int>(log.readAll().count("WARNING: Plugin library: no list from http://127.0.0.1:1/unreachable.json"));
-        }
+        QByteArray logged;
+        if (QFile log(g_logPath); log.open(QIODevice::ReadOnly))
+            logged = log.readAll();
+        // The probe's own: showOffScreen gives the guide, shown already, new
+        // window flags, and Qt a new native handle for them (WindowFrame says so).
+        qsizetype expectedWarnings = logged.count("WARNING: Window frame: the window has a new native handle (onboardingWindow), hooked again");
+        if (onboardingAction == u"offline" || onboardingAction == u"retry")
+            expectedWarnings += logged.count("WARNING: Plugin library: no list from http://127.0.0.1:1/unreachable.json");
+        // The screenshot's copy made unreadable on purpose (verify-onboarding.ps1, included-broken): the library instead.
+        if (args.contains(u"--copy-fallback"_s))
+            expectedWarnings += logged.count("WARNING: Onboarding: screenshot not installed from");
         report.insert(u"warnings"_s, g_warnings);
-        report.insert(u"expected_network_diagnostics"_s, expectedWarnings);
-        const int unexpected = std::max(0, g_warnings - expectedWarnings);
+        report.insert(u"expected_warnings"_s, static_cast<int>(expectedWarnings));
+        const int unexpected = std::max(0, g_warnings - static_cast<int>(expectedWarnings));
         report.insert(u"unexpected_warnings"_s, unexpected);
         report.insert(u"passed"_s, passed);
         QFile json(out.filePath(u"onboarding.json"_s));

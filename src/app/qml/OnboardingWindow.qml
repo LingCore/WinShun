@@ -385,7 +385,10 @@ Window {
                         switchShown: true
                         checked: window.setup.capture
                         onToggled: (on) => window.setup.capture = on
-                        description: qsTr("框选截图、标注和贴图。首次开启会下载组件；打开即允许它读写剪贴板、保存图片。")
+                        // Its component comes with Win顺 (Onboarding::copyOfCapture): nothing to download then.
+                        description: window.setup.captureIncluded
+                            ? qsTr("框选截图、标注和贴图。打开即允许它读写剪贴板、保存图片。")
+                            : qsTr("框选截图、标注和贴图。首次开启会下载组件；打开即允许它读写剪贴板、保存图片。")
 
                         Flow {
                             width: parent.width

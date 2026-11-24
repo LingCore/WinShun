@@ -43,6 +43,8 @@ class Onboarding : public QObject {
     Q_PROPERTY(bool canRetry READ canRetry NOTIFY stateChanged FINAL)
     Q_PROPERTY(bool captureReady READ captureReady NOTIFY stateChanged FINAL)
     Q_PROPERTY(double progress READ progress NOTIFY stateChanged FINAL)
+    // Win顺 carries the screenshot's component (copyOfCapture): turning it on downloads nothing.
+    Q_PROPERTY(bool captureIncluded READ captureIncluded CONSTANT FINAL)
     Q_PROPERTY(ws::PluginSettings* plugins READ plugins NOTIFY pluginsChanged FINAL)
 
 public:
@@ -64,7 +66,15 @@ public:
     bool canRetry() const { return m_canRetry; }
     bool captureReady() const { return m_captureReady; }
     double progress() const { return m_progress; }
+    bool captureIncluded() const { return !m_captureCopy.isEmpty(); }
     PluginSettings* plugins() const { return m_plugins; }
+
+    // The screenshot plugin's copy that comes with Win顺 in `appDir`
+    // (library-plugins\winshun.capture: the setup's and the portable copy's,
+    // staged so by the build): its folder, or empty when there is none.
+    // WINSHUN_PLUGIN_COPIES names another folder of copies (tests; a missing
+    // one for none).
+    static QString copyOfCapture(const QString& appDir);
 
     Q_INVOKABLE void next();
     Q_INVOKABLE void previous();
@@ -92,6 +102,7 @@ private:
     void updateKeyCapture();
     void updateCaptureState();
     void captureProblem(const QString& message);
+    bool installCopy();
 
     Settings m_settings;
     QPointer<QWindow> m_window;
@@ -121,6 +132,8 @@ private:
     bool m_installRequested = false;
     bool m_enableRequested = false;
     QString m_captureFolder;
+    QString m_captureCopy; // copyOfCapture(): installed from, with no network
+    bool m_copyTried = false; // once: a copy that will not install leaves it to the library
 };
 
 } // namespace ws
