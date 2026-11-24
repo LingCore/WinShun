@@ -157,6 +157,24 @@ private slots:
                 const auto* accessible = reinterpret_cast<const MSAAMENUINFO*>(entry.dwItemData);
                 QCOMPARE(accessible->dwMSAASignature, DWORD(MSAA_MENU_SIG));
                 QCOMPARE(QString::fromWCharArray(accessible->pszWText, accessible->cchWText), items[0].text);
+                // Windows' old square shadow (a SysShadow window beside the
+                // menu): gone where DWM shadows the rounded menu, kept where not.
+                const bool dwmShadow = win::nativeWindowCorners() && round;
+                const auto classStyle = static_cast<ULONG_PTR>(::GetClassLongPtrW(window, GCL_STYLE));
+                QCOMPARE(bool(classStyle & CS_DROPSHADOW), !dwmShadow);
+                int squareShadows = 0;
+                ::EnumThreadWindows(::GetCurrentThreadId(), [](HWND w, LPARAM count) -> BOOL {
+                    wchar_t name[32] {};
+                    if (::IsWindowVisible(w) && ::GetClassNameW(w, name, 32) && QStringView(name) == u"SysShadow")
+                        ++*reinterpret_cast<int*>(count);
+                    return TRUE;
+                }, reinterpret_cast<LPARAM>(&squareShadows));
+                BOOL systemShadows = FALSE;
+                ::SystemParametersInfoW(SPI_GETDROPSHADOW, 0, &systemShadows, 0);
+                if (dwmShadow)
+                    QCOMPARE(squareShadows, 0);
+                else if (systemShadows)
+                    QVERIFY2(squareShadows > 0, "square corners: Windows' own menu shadow stays");
                 Microsoft::WRL::ComPtr<IAccessible> object;
                 QVERIFY(SUCCEEDED(
                     ::AccessibleObjectFromWindow(window, static_cast<DWORD>(OBJID_CLIENT), IID_PPV_ARGS(&object))));

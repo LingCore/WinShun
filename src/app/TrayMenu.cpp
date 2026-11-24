@@ -467,6 +467,34 @@ LRESULT CALLBACK ownerProc(HWND owner, UINT message, WPARAM wParam, LPARAM lPara
 
 thread_local Menu* currentMenu = nullptr;
 
+// Windows' old menu shadow: a square one, offset right and down, from the
+// menu class's CS_DROPSHADOW. On Windows 11 DWM shadows the rounded menu
+// itself, and the old one showed as a square edge round it; it stays where
+// DWM gives none (Windows 10, square corners). The class is this process's
+// copy of the system's, so other programs' menus keep theirs. Set before a
+// menu opens: Windows makes the shadow when it shows the menu.
+void setMenuDropShadow(HWND menuWindow, bool on)
+{
+    const auto style = static_cast<ULONG_PTR>(::GetClassLongPtrW(menuWindow, GCL_STYLE));
+    const ULONG_PTR wanted = on ? style | CS_DROPSHADOW : style & ~ULONG_PTR(CS_DROPSHADOW);
+    if (style && wanted != style)
+        ::SetClassLongPtrW(menuWindow, GCL_STYLE, static_cast<LONG_PTR>(wanted));
+}
+
+void matchMenuDropShadow()
+{
+    // A menu window of our own, never shown, to reach the class with.
+    static const HWND probe = [] {
+        const HWND window = ::CreateWindowExW(WS_EX_TOOLWINDOW, MAKEINTATOM(0x8000), L"", WS_POPUP, 0, 0, 0, 0,
+            nullptr, nullptr, ::GetModuleHandleW(nullptr), nullptr);
+        if (!window)
+            qWarning("Tray menu: no menu window to turn the square shadow off with (error %lu)", ::GetLastError());
+        return window;
+    }();
+    if (probe)
+        setMenuDropShadow(probe, !(win::nativeWindowCorners() && win::roundedCorners()));
+}
+
 void CALLBACK menuShown(HWINEVENTHOOK, DWORD, HWND window, LONG, LONG, DWORD, DWORD)
 {
     if (!currentMenu || !window)
@@ -508,6 +536,7 @@ int popup(HWND owner, const std::vector<shell::MenuItem>& items, POINT screenPos
         currentMenu = previous;
         ::RemoveWindowSubclass(owner, ownerProc, id);
     });
+    matchMenuDropShadow();
     ::SetForegroundWindow(owner);
     const int chosen = static_cast<int>(::TrackPopupMenuEx(
         menu.root, TPM_RETURNCMD | TPM_NONOTIFY | TPM_RIGHTBUTTON, screenPos.x, screenPos.y, owner, nullptr));
