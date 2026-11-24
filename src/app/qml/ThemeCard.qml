@@ -43,7 +43,10 @@ Item {
 
         property bool dark: false
         property real line: 1 // one device pixel, for the search box's edge
-        readonly property color accent: Theme.tok("previewAccent", dark ? Qt.lighter(SystemTheme.accent, 1.55) : SystemTheme.accent)
+        // The caret and the selected row in plain black and white: the
+        // picture shows light or dark, not a colour (the style picker shows
+        // the style's colours; the choice is marked by the tick below).
+        readonly property color accent: dark ? "#D6D6D6" : "#3A3A3A"
         readonly property color ink: dark ? "#5A5A5A" : "#CFCFCF"
         readonly property color faintInk: dark ? "#3A3A3A" : "#E3E3E3"
 
