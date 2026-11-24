@@ -631,7 +631,7 @@ void CaptureApp::apply()
                 static_cast<capture::Recorder::Quality>(p.recordingQuality), p.recordingCursor, p.recordingCountdown,
                 p.recordingClicks, static_cast<capture::Recorder::Format>(p.recordingFormat),
                 static_cast<capture::Recorder::KeyDisplay>(capture::keycaps::modeFromName(p.recordingKeys)),
-                p.recordingMouseButtons};
+                p.recordingMouseButtons, p.recordingFrameRate};
         };
         callbacks.recording.remember = [this](const capture::Recorder::Preferences& prefs) {
             m_settings.update([&](CaptureOptions& next) {
@@ -639,6 +639,7 @@ void CaptureApp::apply()
                 next.recordingSystemAudio = prefs.systemAudio;
                 next.recordingMicrophone = prefs.microphone;
                 next.recordingQuality = prefs.quality;
+                next.recordingFrameRate = prefs.frameRate;
                 next.recordingCursor = prefs.cursor;
                 next.recordingCountdown = prefs.countdown;
                 next.recordingClicks = prefs.clickHighlights;

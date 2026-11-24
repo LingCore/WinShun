@@ -2074,14 +2074,6 @@ The unfinished recording is kept at: %1</translation>
         <translation>Smaller file</translation>
     </message>
     <message>
-        <source>标准画质</source>
-        <translation>Standard</translation>
-    </message>
-    <message>
-        <source>更清晰</source>
-        <translation>Clearer</translation>
-    </message>
-    <message>
         <source>10 帧/秒，最长边 960 像素，适合简单操作。</source>
         <translation>10 fps, up to 960 px on the longest edge. For simple actions.</translation>
     </message>
@@ -2092,18 +2084,6 @@ The unfinished recording is kept at: %1</translation>
     <message>
         <source>15 帧/秒，最长边 1280 像素，兼顾清晰度和体积。</source>
         <translation>15 fps, up to 1280 px on the longest edge. Balances clarity and size.</translation>
-    </message>
-    <message>
-        <source>15 帧/秒，保留原始尺寸，适合文字和简单操作。</source>
-        <translation>15 fps at the original size, for text and simple actions.</translation>
-    </message>
-    <message>
-        <source>30 帧/秒，优先保留细节，文件可能更大。</source>
-        <translation>30 fps with more detail. Files may be larger.</translation>
-    </message>
-    <message>
-        <source>30 帧/秒，兼顾清晰度和文件大小。</source>
-        <translation>30 fps, balancing clarity and file size.</translation>
     </message>
     <message>
         <source>鼠标指针</source>
@@ -2118,12 +2098,84 @@ The unfinished recording is kept at: %1</translation>
         <translation>Click highlight</translation>
     </message>
     <message>
+        <source>文件最小，细节略有损失，适合简单操作。</source>
+        <translation>Smallest file with slightly less detail. For simple actions.</translation>
+    </message>
+    <message>
+        <source>标准</source>
+        <translation>Standard</translation>
+    </message>
+    <message>
+        <source>兼顾清晰度和文件大小。</source>
+        <translation>Balances clarity and file size.</translation>
+    </message>
+    <message>
+        <source>高清</source>
+        <translation>High</translation>
+    </message>
+    <message>
+        <source>细节更锐利，文件更大。</source>
+        <translation>Sharper detail, larger files.</translation>
+    </message>
+    <message>
+        <source>超清</source>
+        <translation>Ultra</translation>
+    </message>
+    <message>
+        <source>20 帧/秒，保持原始尺寸，文件最大。</source>
+        <translation>20 fps at the original size. Largest files.</translation>
+    </message>
+    <message>
+        <source>最清晰，文件也最大。选区不超过 1920 × 1080 时按 2 倍尺寸保存，彩色小字和屏幕上一样清楚。</source>
+        <translation>The sharpest, and the largest files. A selection up to 1920 × 1080 is saved at twice its size, so small coloured text stays as clear as on screen.</translation>
+    </message>
+    <message>
+        <source>帧率</source>
+        <translation>FPS</translation>
+    </message>
+    <message>
+        <source>15 帧</source>
+        <translation>15</translation>
+    </message>
+    <message>
+        <source>每秒 15 帧，文件最小，适合文字和简单操作。</source>
+        <translation>15 frames a second: the smallest files, for text and simple actions.</translation>
+    </message>
+    <message>
+        <source>30 帧</source>
+        <translation>30</translation>
+    </message>
+    <message>
+        <source>每秒 30 帧，流畅，适合大多数情况。</source>
+        <translation>30 frames a second: smooth, right for most recordings.</translation>
+    </message>
+    <message>
+        <source>60 帧</source>
+        <translation>60</translation>
+    </message>
+    <message>
+        <source>每秒 60 帧，最顺滑，适合游戏、动画和滚动；文件更大，也更吃电脑性能。</source>
+        <translation>60 frames a second: the smoothest, for games, animation and scrolling. Larger files, and more work for the computer.</translation>
+    </message>
+    <message>
+        <source>%1 帧/秒，随画质</source>
+        <translation>%1 fps, set by the quality</translation>
+    </message>
+    <message>
+        <source>鼠标</source>
+        <translation>Mouse</translation>
+    </message>
+    <message>
         <source>鼠标按键</source>
         <translation>Mouse buttons</translation>
     </message>
     <message>
         <source>显示按键</source>
         <translation>Show keys</translation>
+    </message>
+    <message>
+        <source>按键</source>
+        <translation>Keys</translation>
     </message>
     <message>
         <source>不显示</source>
@@ -3098,6 +3150,18 @@ click here to cancel</translation>
     <message>
         <source>无法写入 %1，请选择其他保存文件夹。</source>
         <translation>Cannot write to %1. Choose another save folder.</translation>
+    </message>
+    <message>
+        <source>这台电脑录不了 2 倍尺寸，这一段按原尺寸保存。</source>
+        <translation>This computer cannot record at twice the size: this one was saved at the selection's own size.</translation>
+    </message>
+    <message>
+        <source>这台电脑没跟上 %1 帧/秒，实际约 %2 帧/秒。下次可以把画质换成“高清”，或选低一档的帧率。</source>
+        <translation>This computer could not keep up with %1 fps: about %2 fps were recorded. Next time, choose “High” quality or a lower frame rate.</translation>
+    </message>
+    <message>
+        <source>这台电脑没跟上 %1 帧/秒，实际约 %2 帧/秒。下次可以选低一档的帧率。</source>
+        <translation>This computer could not keep up with %1 fps: about %2 fps were recorded. Next time, choose a lower frame rate.</translation>
     </message>
     <message>
         <source>选择录屏保存文件夹</source>

@@ -2590,9 +2590,11 @@ int runRecording(const QStringList& args)
         ? QRect(fixtureRegion.topLeft() + QPoint(40, 40), QSize(std::min(800, int(client.right) - 80), std::min(460, int(client.bottom) - 80)))
         : fixtureRegion;
     const auto quality = args.contains(u"--small-file"_s) ? Recorder::SmallFile
-        : args.contains(u"--high-quality"_s) ? Recorder::HighQuality : Recorder::Standard;
+        : args.contains(u"--high-quality"_s) ? Recorder::HighQuality
+        : args.contains(u"--ultra-quality"_s) ? Recorder::UltraQuality : Recorder::Standard;
     Recorder::Preferences preferences {out.absolutePath(), args.contains(u"--system-audio"_s), false, quality,
         !args.contains(u"--no-cursor"_s), !args.contains(u"--no-countdown"_s), args.contains(u"--clicks"_s)};
+    preferences.frameRate = valueAfter(args, u"--fps", u"30"_s).toInt();
     std::unique_ptr<RawClicks> clicks;
     Capture::Callbacks callbacks;
     callbacks.recording.preferences = [&] { return preferences; };
@@ -2764,7 +2766,7 @@ int runRecording(const QStringList& args)
             const qreal dpr = panel->devicePixelRatio();
             const int gapBefore = qRound((dividerTop - toolbarBottom) * dpr);
             const int gapAfter = qRound((optionsTop - dividerTop - divider->height()) * dpr);
-            const bool compact = panel->height() <= 200 && gapBefore >= qRound(8 * dpr) && gapAfter >= qRound(8 * dpr);
+            const bool compact = panel->height() <= 240 && gapBefore >= qRound(8 * dpr) && gapAfter >= qRound(8 * dpr);
             say(u"compact options with spacing on both sides of divider: %1 (%2 x %3; native gaps %4/%5 px)"_s
                 .arg(compact).arg(panel->width()).arg(panel->height()).arg(gapBefore).arg(gapAfter));
             saved = compact && saved;
@@ -2840,7 +2842,29 @@ int runRecording(const QStringList& args)
     saved = recorder->quality() == Recorder::HighQuality && saved;
     click("recordingHighQuality");
     saved = panel->findChild<QQuickItem*>(u"recordingHighQuality"_s)->property("checked").toBool() && saved;
-    click(quality == Recorder::SmallFile ? "recordingSmallFile" : quality == Recorder::HighQuality ? "recordingHighQuality" : "recordingStandard");
+    click("recordingUltraQuality");
+    saved = recorder->quality() == Recorder::UltraQuality && saved;
+    settle(panel);
+    saved = saveGrab(panel, out.filePath(u"options-ultra.png"_s)) && saved;
+    if (recorder->format() == Recorder::Mp4) {
+        // 超清 saves a region this small at twice its size, and the panel says so.
+        const QSize doubled = recorder->region().size() * recording::sharpScale(recorder->region().size(), recorder->frameRate());
+        const bool sized = recorder->dimensions().startsWith(u"%1 × %2 "_s.arg(doubled.width()).arg(doubled.height()));
+        say(u"ultra quality shows the saved size (%1): %2"_s.arg(recorder->dimensions()).arg(sized));
+        saved = sized && saved;
+        const int originalRate = recorder->frameRate();
+        click("recordingFps60");
+        saved = recorder->frameRate() == 60 && recorder->dimensions().contains(u" 60 "_s) && saved;
+        click("recordingFps15");
+        saved = recorder->frameRate() == 15 && recorder->dimensions().contains(u" 15 "_s) && saved;
+        click(originalRate == 60 ? "recordingFps60" : originalRate == 15 ? "recordingFps15" : "recordingFps30");
+        saved = recorder->frameRate() == originalRate && saved;
+    } else {
+        const auto* rate = panel->findChild<QQuickItem*>(u"recordingFps60"_s);
+        saved = rate && !rate->isVisible() && saved; // a GIF's rate goes with its quality
+    }
+    click(quality == Recorder::SmallFile ? "recordingSmallFile" : quality == Recorder::HighQuality ? "recordingHighQuality"
+        : quality == Recorder::UltraQuality ? "recordingUltraQuality" : "recordingStandard");
     saved = recorder->quality() == quality && recorder->cursor() == originalCursor && recorder->countdown() == originalCountdown
         && recorder->clickHighlights() == originalClicks && saved;
     click("recordingOptions");
@@ -2932,7 +2956,8 @@ int runRecording(const QStringList& args)
         if (recorder->stage() == Recorder::Done || recorder->stage() == Recorder::Failed) {
             QTimer::singleShot(200, &loop, [&] {
                 saved = saveGrab(panel, out.filePath(completed ? u"completed-second.png"_s : u"completed.png"_s)) && saved;
-                say(u"recording: %1; %2; %3; %4"_s.arg(recorder->status(), recorder->timeText(), recorder->sizeText(), recorder->error()));
+                say(u"recording: %1; %2; %3; %4; %5"_s.arg(recorder->status(), recorder->timeText(), recorder->sizeText(), recorder->error(),
+                    recorder->advice()));
                 passed = recorder->stage() == Recorder::Done;
                 if (passed && !completed) {
                     previousClip = out.filePath(recorder->fileName());
