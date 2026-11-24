@@ -16,6 +16,7 @@
 #include "SystemCatalog.h"
 #include "WebShortcut.h"
 #include "Wtf8.h"
+#include "Details.h"
 #include "platform/SiteIcons.h"
 #include "platform/Shell.h"
 #include "KeepAwakeText.h"
@@ -438,6 +439,13 @@ QVariant ResultModel::data(const QModelIndex& index, int role) const
     case GalleryThumbnailRole:
         if (r->clipId > 0) // a screenshot (jt): its picture, whatever the option says
             return r->target.isEmpty() ? QString() : ThumbnailProvider::url(r->target, r->modified);
+        // A plugin's row that opens a file (图片文字搜索's): that file's
+        // picture, as its own row would show (GitHub #448). A mail asks
+        // its plugin for what it shows; it keeps the plugin's icon.
+        if (r->isPlugin() && !plugin::asksDetails(*r->plugin)) {
+            const QString file = plugin::rowFile(*r->plugin);
+            return file.isEmpty() || r->missing ? QString() : ThumbnailProvider::url(file, r->modified);
+        }
         if (r->isApp() || r->isDir || r->offline || r->missing)
             return QString();
         return ThumbnailProvider::url(r->path, r->modified);

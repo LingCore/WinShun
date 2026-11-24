@@ -7420,6 +7420,24 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
         .openKind = PluginRow::OpenKind::Path, .openTarget = u"C:\\发票\\2026 年项目发票.pdf"_s});
     SearchResult legacy {.name = u"未提供文件信息的插件条目"_s, .path = u"plugin:fixture:legacy"_s, .app = AppKind::Plugin};
     legacy.plugin.row = std::make_shared<PluginRow>(PluginRow {.source = u"旧版插件"_s, .icon = u"glyph:U+EA86"_s});
+    {
+        // GitHub #448: 大图 of a plugin's row that opens a picture (图片文字搜索's)
+        // is that picture, as the file's own row's; with no file, the icon.
+        SearchResult picture {.name = u"牛蛙.jpg"_s, .path = u"plugin:fixture:ocr"_s, .modified = 1792857600, .app = AppKind::Plugin};
+        picture.plugin.row = std::make_shared<PluginRow>(PluginRow {.source = u"图片文字搜索"_s, .icon = u"glyph:U+EB9F"_s,
+            .openKind = PluginRow::OpenKind::Path, .openTarget = u"C:/图片/牛蛙.jpg"_s});
+        SearchResult mail = legacy;
+        mail.path = u"plugin:fixture:mail"_s;
+        mail.plugin.row = std::make_shared<PluginRow>(PluginRow {.source = u"邮件"_s, .openKind = PluginRow::OpenKind::Path,
+            .openTarget = u"C:\\邮件\\牛蛙.jpg"_s, .item = QJsonObject {{u"details"_s, true}}});
+        launcher.results()->assign({picture, legacy, mail}, {});
+        const auto bigPicture = [&](int row) {
+            return launcher.results()->data(launcher.results()->index(row), ResultModel::GalleryThumbnailRole).toString();
+        };
+        check(bigPicture(0) == ThumbnailProvider::url(u"C:\\图片\\牛蛙.jpg"_s, 1792857600),
+            "大图 of a plugin's picture row is not that picture (GitHub #448)");
+        check(bigPicture(1).isEmpty() && bigPicture(2).isEmpty(), "大图 of a plugin's row with no file of its own is not its icon");
+    }
     launcher.results()->assign({plugin, legacy}, {});
     settle(panelWindow);
     check(saveGrab(panelWindow, output.filePath(u"panel-plugin-metadata.png"_s)), "could not render plugin metadata columns");
