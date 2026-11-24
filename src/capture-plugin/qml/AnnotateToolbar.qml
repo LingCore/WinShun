@@ -85,20 +85,6 @@ Item {
     readonly property int popupTitleGap: 8 // the key list's title to its rows
     readonly property int popupColumnGap: 16 // keys to what they do
     readonly property int popupRowGap: 6
-    // The drawn tool icons, in sixteenths of the icon (scaled to its device
-    // pixels, then rounded to whole ones): the inset of the arrow, line and T;
-    // the arrowhead's sides; the numbered disc's ring inset, the 1's top and
-    // flag; the mosaic's inset.
-    readonly property real iconInset: 2.5
-    readonly property real arrowHead: 5.5
-    readonly property real ringInset: 1.5
-    readonly property real oneTop: 4.5
-    readonly property real oneFlag: 2
-    readonly property real mosaicInset: 2
-    // Their stroke, device px: 1 up to 20 device px across (100 %, 125 %),
-    // 1.5 up to 28 (150 %, 175 %), 2 above, as Fluent icons step it.
-    readonly property int thinUpTo: 20
-    readonly property int midUpTo: 28
 
     // A CaptureSession.Action asked for.
     signal action(int which)
@@ -221,19 +207,12 @@ Item {
                 border.color: Theme.text
             }
 
-            Column {
+            Glyph {
                 anchors.centerIn: parent
                 anchors.verticalCenterOffset: gripFace.out("contentOffsetY", 0)
-                spacing: 3
-                Repeater {
-                    model: 3
-                    Rectangle {
-                        width: 3
-                        height: 3
-                        radius: Theme.pillRadius(3)
-                        color: gripFace.out("foreground", gripHover.hovered || toolbarDrag.active ? Theme.text : Theme.subtext)
-                    }
-                }
+                iconName: "dots-six-vertical"
+                size: bar.iconSize
+                color: gripFace.out("foreground", gripHover.hovered || toolbarDrag.active ? Theme.text : Theme.subtext)
             }
             HoverHandler {
                 id: gripHover
@@ -643,12 +622,12 @@ Item {
             pressed: helpArea.pressed
             current: bar.keysOpen
         }
-        Text {
+        Glyph {
             anchors.centerIn: parent
             anchors.verticalCenterOffset: helpFace.out("contentOffsetY", 0)
-            text: "?"
+            iconName: "question"
+            size: bar.iconSize
             color: helpFace.out("foreground", helpArea.containsMouse || bar.keysOpen ? Theme.text : Theme.subtext)
-            font.pixelSize: Theme.fontBody
         }
         MouseArea {
             id: helpArea
@@ -724,10 +703,11 @@ Item {
             pressed: toolArea.pressed
             checked: tool.current
         }
-        ToolIcon {
+        AnnotateToolIcon {
             x: bar.snap((bar.toolWidth - bar.iconSize) / 2)
             y: bar.snap((bar.buttonHeight - bar.iconSize) / 2 + toolFace.out("contentOffsetY", 0))
             kind: tool.modelData.kind
+            size: bar.iconSize
             color: toolFace.out("foreground", tool.current ? Theme.accentText : Theme.text)
         }
 
@@ -737,129 +717,6 @@ Item {
             hoverEnabled: true
             onClicked: bar.annot.tool = tool.current ? -1 : tool.index
             onContainsMouseChanged: bar.hover(tool, containsMouse, tool.index)
-        }
-    }
-
-    // A tool's 16 logical px icon. The rectangle, ellipse, pen and marker are
-    // glyphs (Phosphor, through Glyph.qml); the arrow, line, T, numbered disc and mosaic
-    // are drawn in device pixels, as Glyph.qml draws its own: 1 px strokes up
-    // to 20 device px (100 %, 125 %), 1.5 px up to 28 (150 %, 175 %), 2 above.
-    component ToolIcon: Item {
-        id: icon
-
-        property int kind: 0
-        property color color: Theme.text
-        // Kind -> glyph or Phosphor iconName (AnnotationStyles: Rect, Ellipse, Arrow, Line, Pen, Marker, Text, Number, Redact, Spotlight).
-        readonly property string glyph: kind === 0 ? String.fromCharCode(0xE739) // Checkbox (a square)
-                                      : kind === 1 ? String.fromCharCode(0xEA3A) // CircleRing
-                                      : kind === 4 ? String.fromCharCode(0xE76D) // InkingTool
-                                      : kind === 5 ? String.fromCharCode(0xE7E6) // Highlight
-                                      : ""
-        readonly property string iconName: kind === 9 ? "vignette" : ""
-        readonly property bool usesGlyph: glyph.length > 0 || iconName.length > 0
-
-        width: bar.iconSize
-        height: bar.iconSize
-
-        Glyph {
-            anchors.centerIn: parent
-            visible: icon.usesGlyph
-            glyph: icon.glyph
-            iconName: icon.iconName
-            size: bar.iconSize
-            color: icon.color
-        }
-
-        Canvas {
-            id: drawn
-
-            // Nudged off the exact half pixel, as Glyph.qml's drawn icons.
-            x: 1 / 64
-            y: 1 / 64
-            width: bar.iconSize
-            height: bar.iconSize
-            visible: !icon.usesGlyph
-            antialiasing: true
-            smooth: false
-            onVisibleChanged: requestPaint()
-
-            Connections {
-                target: icon
-                function onColorChanged() { drawn.requestPaint() }
-                function onKindChanged() { drawn.requestPaint() }
-            }
-            Connections {
-                target: bar
-                function onDprChanged() { drawn.requestPaint() }
-            }
-
-            onPaint: {
-                const ctx = getContext("2d")
-                ctx.reset()
-                if (!visible)
-                    return
-                // n device pixels across; draw in them.
-                const n = Math.round(width * bar.dpr)
-                const s = n <= bar.thinUpTo ? 1 : n <= bar.midUpTo ? 1.5 : 2
-                const u = n / 16
-                ctx.scale(width / n, height / n)
-                ctx.strokeStyle = icon.color
-                ctx.fillStyle = icon.color
-                ctx.lineWidth = s
-                ctx.lineCap = "round"
-                ctx.lineJoin = "round"
-                const lo = Math.round(bar.iconInset * u) + s / 2 // an outer edge on a whole pixel
-                const hi = n - lo
-                ctx.beginPath()
-                if (icon.kind === 2) { // arrow, up to the right
-                    const head = Math.round(bar.arrowHead * u)
-                    ctx.moveTo(lo, hi)
-                    ctx.lineTo(hi, lo)
-                    ctx.moveTo(hi - head, lo)
-                    ctx.lineTo(hi, lo)
-                    ctx.lineTo(hi, lo + head)
-                    ctx.stroke()
-                } else if (icon.kind === 3) { // line
-                    ctx.moveTo(lo, hi)
-                    ctx.lineTo(hi, lo)
-                    ctx.stroke()
-                } else if (icon.kind === 6) { // T
-                    const mid = Math.floor((n - s) / 2) + s / 2 // the stem's left edge on a whole pixel
-                    ctx.moveTo(lo, lo)
-                    ctx.lineTo(hi, lo)
-                    ctx.moveTo(mid, lo)
-                    ctx.lineTo(mid, hi)
-                    ctx.stroke()
-                } else if (icon.kind === 7) { // a disc's ring with a 1 in it
-                    const c = n / 2
-                    ctx.arc(c, c, c - Math.round(bar.ringInset * u) - s / 2, 0, 2 * Math.PI)
-                    ctx.stroke()
-                    ctx.beginPath()
-                    // The 1 centred by its ink (flag to stem), not by its stem:
-                    // the stem sits right of the middle by half the flag, its
-                    // left edge on a whole pixel, and the flag reaches as far
-                    // left of the middle as the stem's right edge is right of it.
-                    const flag = Math.round(bar.oneFlag * u)
-                    const one = Math.round(c + flag / 2 - s / 2) + s / 2
-                    const top = Math.round(bar.oneTop * u)
-                    ctx.moveTo(c - (one - c), top + flag)
-                    ctx.lineTo(one, top)
-                    ctx.lineTo(one, n - top)
-                    ctx.stroke()
-                } else if (icon.kind === 8) { // mosaic: a 3 x 3 checker of whole-pixel cells
-                    const cell = Math.floor((n - 2 * Math.round(bar.mosaicInset * u)) / 3)
-                    const m = Math.floor((n - 3 * cell) / 2)
-                    // The corners and the middle (no loop: qmllint 6.12 stops
-                    // checking the whole file at a nested `for (let …)`).
-                    ctx.fillRect(m, m, cell, cell)
-                    ctx.fillRect(m + 2 * cell, m, cell, cell)
-                    ctx.fillRect(m + cell, m + cell, cell, cell)
-                    ctx.fillRect(m, m + 2 * cell, cell, cell)
-                    ctx.fillRect(m + 2 * cell, m + 2 * cell, cell, cell)
-                    ctx.lineWidth = s
-                    ctx.strokeRect(m + s / 2, m + s / 2, 3 * cell - s, 3 * cell - s)
-                }
-            }
         }
     }
 }

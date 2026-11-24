@@ -53,14 +53,6 @@ Window {
     // The tools offered, in the toolbar's order (AnnotationStyles' kinds):
     // pen, marker, arrow, line, rectangle, ellipse, text, number.
     readonly property var toolOrder: [4, 5, 2, 3, 0, 1, 6, 7]
-    // ToolIcon's drawing, as the capture toolbar's.
-    readonly property real iconInset: 2.5
-    readonly property real arrowHead: 5.5
-    readonly property real ringInset: 1.5
-    readonly property real oneTop: 4.5
-    readonly property real oneFlag: 2
-    readonly property int thinUpTo: 20
-    readonly property int midUpTo: 28
 
     function snap(v) { return Math.round(v * dpr) / dpr }
     function centre(outer, inner) { return snap((outer - inner) / 2) } // on whole pixels
@@ -187,10 +179,11 @@ Window {
                             window.presenter.draw()
                         }
 
-                        ToolIcon {
+                        AnnotateToolIcon {
                             anchors.centerIn: parent
                             anchors.verticalCenterOffset: toolButton.markOffsetY
                             kind: toolButton.modelData
+                            size: window.iconSize
                             color: toolButton.foreground
                         }
                     }
@@ -460,102 +453,6 @@ Window {
             hoverEnabled: true
             onClicked: if (button.enabled) button.clicked()
             onContainsMouseChanged: window.hover(containsMouse, button)
-        }
-    }
-
-    // A tool's 16 logical px icon, as the capture toolbar's (AnnotateToolbar's ToolIcon).
-    component ToolIcon: Item {
-        id: icon
-
-        property int kind: 0
-        property color color: Theme.text
-        readonly property string glyph: kind === 0 ? String.fromCharCode(0xE739) // Checkbox (a square)
-                                      : kind === 1 ? String.fromCharCode(0xEA3A) // CircleRing
-                                      : kind === 4 ? String.fromCharCode(0xE76D) // InkingTool
-                                      : kind === 5 ? String.fromCharCode(0xE7E6) // Highlight
-                                      : ""
-
-        width: window.iconSize
-        height: window.iconSize
-
-        Glyph {
-            anchors.centerIn: parent
-            visible: icon.glyph.length > 0
-            glyph: icon.glyph
-            size: window.iconSize
-            color: icon.color
-        }
-
-        Canvas {
-            id: drawn
-
-            x: 1 / 64
-            y: 1 / 64
-            width: window.iconSize
-            height: window.iconSize
-            visible: icon.glyph.length === 0
-            antialiasing: true
-            smooth: false
-            onVisibleChanged: requestPaint()
-
-            Connections {
-                target: icon
-                function onColorChanged() { drawn.requestPaint() }
-                function onKindChanged() { drawn.requestPaint() }
-            }
-            Connections {
-                target: window
-                function onDprChanged() { drawn.requestPaint() }
-            }
-
-            onPaint: {
-                const ctx = getContext("2d")
-                ctx.reset()
-                if (!visible)
-                    return
-                const n = Math.round(width * window.dpr)
-                const s = n <= window.thinUpTo ? 1 : n <= window.midUpTo ? 1.5 : 2
-                const u = n / 16
-                ctx.scale(width / n, height / n)
-                ctx.strokeStyle = icon.color
-                ctx.lineWidth = s
-                ctx.lineCap = "round"
-                ctx.lineJoin = "round"
-                const lo = Math.round(window.iconInset * u) + s / 2
-                const hi = n - lo
-                ctx.beginPath()
-                if (icon.kind === 2) { // arrow, up to the right
-                    const head = Math.round(window.arrowHead * u)
-                    ctx.moveTo(lo, hi)
-                    ctx.lineTo(hi, lo)
-                    ctx.moveTo(hi - head, lo)
-                    ctx.lineTo(hi, lo)
-                    ctx.lineTo(hi, lo + head)
-                    ctx.stroke()
-                } else if (icon.kind === 3) { // line
-                    ctx.moveTo(lo, hi)
-                    ctx.lineTo(hi, lo)
-                    ctx.stroke()
-                } else if (icon.kind === 6) { // T
-                    const mid = Math.floor((n - s) / 2) + s / 2
-                    ctx.moveTo(lo, lo)
-                    ctx.lineTo(hi, lo)
-                    ctx.moveTo(mid, lo)
-                    ctx.lineTo(mid, hi)
-                    ctx.stroke()
-                } else if (icon.kind === 7) { // a disc's ring with a 1 in it
-                    const c = n / 2
-                    ctx.arc(c, c, c - Math.round(window.ringInset * u) - s / 2, 0, 2 * Math.PI)
-                    ctx.stroke()
-                    ctx.beginPath()
-                    const one = Math.floor((n - s) / 2) + s / 2
-                    const top = Math.round(window.oneTop * u)
-                    ctx.moveTo(one - Math.round(window.oneFlag * u), top + Math.round(window.oneFlag * u))
-                    ctx.lineTo(one, top)
-                    ctx.lineTo(one, n - top)
-                    ctx.stroke()
-                }
-            }
         }
     }
 }

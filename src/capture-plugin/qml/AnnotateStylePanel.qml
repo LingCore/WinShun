@@ -27,6 +27,7 @@ Item {
     readonly property int pad: 4 // card edge to the controls
     readonly property int controlHeight: 32
     readonly property int cellWidth: 28 // a swatch, a size dot, a fill or toggle button
+    readonly property int compactCell: 24 // compact number format and stepper cells (whole device px at 125%–200%)
     readonly property int swatchSize: 20
     readonly property int checkSize: 12 // the tick on the chosen swatch
     readonly property var dots: [4, 8, 12] // the three widths' dots, thin to thick
@@ -37,7 +38,7 @@ Item {
     readonly property int stepGlyph: 12 // the start value's minus and plus
     readonly property int layerGlyph: 14 // up, down, delete
     readonly property int boldGlyph: 16
-    readonly property int startWidth: 28 // the start value's number
+    readonly property int startWidth: 24 // the start value's number
     readonly property int textPad: 8 // each side of a word button's text
     readonly property int separatorWidth: 12 // a 1 device px line in the middle
     readonly property int separatorHeight: 20
@@ -75,7 +76,7 @@ Item {
         return false
     }
 
-    property PanelButton tipItem: null
+    property var tipItem: null
 
     onStrokeOnChanged: if (!strokeOn) strokeMode = false
     onKindChanged: strokeMode = false
@@ -496,48 +497,6 @@ Item {
         }
 
         Separator { visible: panel.showNumber }
-        Row { // numbers: the group's first number, a new group
-            visible: panel.showNumber
-            WordLabel { words: qsTr("起始") }
-            PanelButton {
-                enabled: panel.p.start !== undefined && panel.p.start > 0
-                tip: qsTr("起始值减 1")
-                onClicked: panel.annot.setStart(panel.p.start - 1)
-
-                Glyph {
-                    anchors.centerIn: parent
-                    anchors.verticalCenterOffset: parent.markOffsetY
-                    glyph: String.fromCharCode(0xE738) // Remove
-                    size: panel.stepGlyph
-                    color: parent.foreground
-                }
-            }
-            WordLabel {
-                words: panel.p.start !== undefined ? String(panel.p.start) : ""
-                minWidth: panel.startWidth
-                strong: true
-            }
-            PanelButton {
-                enabled: panel.p.start !== undefined && panel.p.start < 99999
-                tip: qsTr("起始值加 1")
-                onClicked: panel.annot.setStart(panel.p.start + 1)
-
-                Glyph {
-                    anchors.centerIn: parent
-                    anchors.verticalCenterOffset: parent.markOffsetY
-                    glyph: String.fromCharCode(0xE710) // Add
-                    size: panel.stepGlyph
-                    color: parent.foreground
-                }
-            }
-            WordButton {
-                words: qsTr("另起一组")
-                tip: qsTr("之后的序号从 1 重新数")
-                onClicked: panel.annot.newSeries()
-            }
-        }
-
-        Separator { visible: panel.showNumber }
         Row { // how this group writes its numbers
             visible: panel.showNumber
             Repeater {
@@ -546,11 +505,89 @@ Item {
                     ["circled", "①", qsTr("序号写成 ① ② ③（圈里的数字）")]]
                 delegate: WordButton {
                     required property var modelData
+                    width: panel.compactCell
                     words: modelData[1]
                     checked: panel.p.format === modelData[0]
                     tip: modelData[2]
                     onClicked: panel.change({format: modelData[0]})
                 }
+            }
+        }
+
+        Separator { visible: panel.showNumber }
+        Row { // numbers: the group's first number, a new group
+            visible: panel.showNumber
+            PanelButton {
+                id: startMinus
+                width: panel.compactCell
+                enabled: panel.p.start !== undefined && panel.p.start > 0
+                tip: qsTr("起始值减 1")
+                onClicked: panel.annot.setStart(panel.p.start - 1)
+
+                Glyph {
+                    anchors.centerIn: parent
+                    anchors.verticalCenterOffset: startMinus.markOffsetY
+                    iconName: "minus"
+                    size: panel.stepGlyph
+                    color: startMinus.foreground
+                }
+            }
+            Item {
+                id: startValue
+                property string tip: qsTr("当前组起始值（滚轮或点两侧增减）")
+                property string tipKeys: ""
+                width: Math.max(panel.startWidth, Math.ceil((startText.implicitWidth + 8) / 4) * 4)
+                height: panel.controlHeight
+
+                Text {
+                    id: startText
+                    anchors.centerIn: parent
+                    text: panel.p.start !== undefined ? String(panel.p.start) : ""
+                    color: Theme.text
+                    font.pixelSize: Theme.fontCaption
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    acceptedButtons: Qt.NoButton
+                    onContainsMouseChanged: {
+                        if (containsMouse)
+                            panel.tipItem = startValue
+                        else if (panel.tipItem === startValue)
+                            panel.tipItem = null
+                    }
+                    onWheel: (wheel) => {
+                        if (panel.p.start === undefined || !panel.annot)
+                            return
+                        const step = wheel.angleDelta.y > 0 ? 1 : wheel.angleDelta.y < 0 ? -1 : 0
+                        if (step !== 0) {
+                            const next = Math.max(0, Math.min(99999, panel.p.start + step))
+                            if (next !== panel.p.start)
+                                panel.annot.setStart(next)
+                        }
+                        wheel.accepted = true
+                    }
+                }
+            }
+            PanelButton {
+                id: startPlus
+                width: panel.compactCell
+                enabled: panel.p.start !== undefined && panel.p.start < 99999
+                tip: qsTr("起始值加 1")
+                onClicked: panel.annot.setStart(panel.p.start + 1)
+
+                Glyph {
+                    anchors.centerIn: parent
+                    anchors.verticalCenterOffset: startPlus.markOffsetY
+                    iconName: "plus"
+                    size: panel.stepGlyph
+                    color: startPlus.foreground
+                }
+            }
+            WordButton {
+                words: qsTr("新组")
+                tip: qsTr("另起一组：之后的序号从 1 重新数")
+                onClicked: panel.annot.newSeries()
             }
         }
 
