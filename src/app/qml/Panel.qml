@@ -43,6 +43,8 @@ Item {
         return list
     }
     function typeActive(type) {
+        if (launcher.scope === Launcher.Content) // the words in those kinds only (GitHub #447)
+            return type === -1 ? launcher.contentFileTypes.length === 0 : launcher.contentFileTypes.includes(type)
         if (type === -1)
             return launcher.scope === Launcher.All || (launcher.scope !== Launcher.Folders && launcher.fileType < 0)
         if (type === -2)

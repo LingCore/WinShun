@@ -318,15 +318,24 @@ Item {
 
                     required property int index
                     required property var modelData
-                    readonly property bool active: !strip.folders && !strip.apps && modelData.type >= 0
+                    // 内容 narrowed to a kind of file (Launcher.folderChips' `kind`, GitHub #447):
+                    // on, with 文件's icon and colour for it; a click takes it off.
+                    readonly property bool kindChip: strip.folders && modelData.kind !== undefined
+                    // 不限 in 内容 is off while it is narrowed to kinds: a click takes them off too.
+                    readonly property bool active: kindChip || (!strip.folders && !strip.apps && modelData.type >= 0
                         ? strip.launcher.scope === Launcher.Files && strip.launcher.selectedFileTypes.includes(modelData.type)
                         : modelData.type === strip.current
+                          && !(strip.folders && modelData.type === "" && strip.launcher.contentFileTypes.length > 0))
                     // 不限: in 内容 the chip without a folder's dot (Launcher.folderChips).
-                    readonly property bool isAll: strip.apps ? false : strip.folders ? !modelData.dot : modelData.type === -1
+                    readonly property bool isAll: strip.apps || kindChip ? false : strip.folders ? !modelData.dot : modelData.type === -1
                     // The mode changes before the delegate model is replaced.
-                    readonly property string glyph: strip.folders ? (isAll ? "" : strip.folderGlyph) : (modelData.glyph ?? "")
-                    readonly property int hue: strip.folders ? (isAll ? -1 : -2) : (modelData.hue ?? -1)
-                    readonly property bool parted: isAll && index === 0 && strip.chips.length > 1
+                    readonly property string glyph: kindChip ? strip.typeGlyph((modelData.extensions ?? "").split(" "))
+                        : strip.folders ? (isAll ? "" : strip.folderGlyph) : (modelData.glyph ?? "")
+                    readonly property int hue: kindChip ? modelData.kind : strip.folders ? (isAll ? -1 : -2) : (modelData.hue ?? -1)
+                    // A line after 不限 (the first, or the first after the kinds), and after the last kind.
+                    readonly property bool parted: index + 1 < strip.chips.length
+                        && (kindChip ? strip.chips[index + 1].kind === undefined
+                                     : isAll && (index === 0 || strip.chips[index - 1].kind !== undefined))
                     readonly property bool tipWanted: area.containsMouse
                     onTipWantedChanged: {
                         if (tipWanted) {
@@ -363,7 +372,7 @@ Item {
                         NumberAnimation { duration: 120 }
                     }
                     height: Theme.typeChipHeight
-                    Accessible.role: !strip.folders && !strip.apps && modelData.type >= 0 ? Accessible.CheckBox : Accessible.RadioButton
+                    Accessible.role: kindChip || (!strip.folders && !strip.apps && modelData.type >= 0) ? Accessible.CheckBox : Accessible.RadioButton
                     Accessible.name: modelData.name
                     Accessible.checked: active
 

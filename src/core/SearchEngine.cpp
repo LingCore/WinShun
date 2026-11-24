@@ -2599,6 +2599,7 @@ void SearchEngine::runContentSearch(const Job& job)
     const ContentFilter filter {ExtensionFilter(set == ContentSet::OtherTypes ? otherTypes.extensions() : listed),
         request.contentInLowPriority || set == ContentSet::LowPriority};
     const ExtensionFilter skipped(request.excludedTypes); // packed once, asked of each candidate
+    const ExtensionFilter onlyTypes(request.contentTypes); // the kinds 内容 is narrowed to; empty: any
     const std::vector<std::string> skippedNames = foldedExtensions(request.excludedFileNames);
     // The quick filters: a file to read is one they let through, by its name,
     // folders, size and time, as a name search would.
@@ -2694,7 +2695,11 @@ void SearchEngine::runContentSearch(const Job& job)
                 std::string_view name;
                 std::size_t extLength = 0;
                 bool remote = false;
-                switch (filter.classify(*index, e, name, extLength)) {
+                const ContentVerdict verdict = filter.classify(*index, e, name, extLength);
+                // Not of the kinds chosen: neither read nor counted as passed over.
+                if (verdict != ContentVerdict::Never && !onlyTypes.empty() && !onlyTypes.matches(name, extLength))
+                    continue;
+                switch (verdict) {
                 case ContentVerdict::Never:
                     continue;
                 case ContentVerdict::Remote:

@@ -189,6 +189,12 @@ class Launcher : public QObject {
     // was left, 文件夹 too (fileChoice, remembered between runs).
     Q_PROPERTY(int fileType READ fileType NOTIFY fileTypeChanged FINAL)
     Q_PROPERTY(QList<int> selectedFileTypes READ selectedFileTypes NOTIFY fileTypeChanged FINAL)
+    // 内容 narrowed to kinds of file (GitHub #447: the words in pictures
+    // only): their indexes in fileTypes, empty for any. Chosen with the same
+    // toggleFileType / chooseFileType while in 内容, which then stays 内容;
+    // kept apart from 文件's kind and, like the folder chosen, while the app
+    // runs. Shown as chips of 内容's strip (folderChips) and in the placeholder.
+    Q_PROPERTY(QList<int> contentFileTypes READ contentFileTypes NOTIFY fileTypeChanged FINAL)
     Q_PROPERTY(QString queryError READ queryError NOTIFY queryErrorChanged FINAL)
     Q_PROPERTY(bool gallery READ gallery WRITE setGallery NOTIFY galleryChanged FINAL)
     Q_PROPERTY(int thumbnailSize READ thumbnailSize WRITE setThumbnailSize NOTIFY galleryChanged FINAL)
@@ -770,6 +776,7 @@ public:
     Q_INVOKABLE void cycleScope(int delta);
     int fileType() const { return m_fileType; }
     QList<int> selectedFileTypes() const;
+    QList<int> contentFileTypes() const { return m_contentTypes; }
     QString queryError() const;
     bool gallery() const { return m_gallery; }
     void setGallery(bool gallery);
@@ -800,7 +807,8 @@ public:
     QString contentWords() const;
     QString contentWhere() const;
     QString whereMissing() const;
-    // A chip of the strip in 内容 (folderChips): searched there.
+    // A chip of the strip in 内容 (folderChips): searched there. 不限 ("")
+    // also takes off the kinds of file it is narrowed to (GitHub #447).
     Q_INVOKABLE void chooseFolderChip(const QString& key);
     // Ctrl+Tab in 内容: the next folder chip (or the one before), round; nothing with none to go to.
     Q_INVOKABLE void cycleFolderChip(int delta);
@@ -1432,6 +1440,12 @@ private:
     bool clearQueryPrefix(); // an explicit scope/type choice replaces the typed prefix
     int m_fileType = -1; // see fileType
     QList<int> m_extraFileTypes;
+    QList<int> m_contentTypes; // see contentFileTypes
+    void setContentTypes(QList<int> types); // and search again
+    void chooseFolder(const QString& key); // chooseFolderChip's folders; Ctrl+Tab's, the kinds kept
+    QStringList contentTypeExtensions() const; // the kinds chosen in 内容: their extensions, any case, no dot
+    QStringList contentTypeFolders() const; // ... the folders they are bound to; empty when one is not
+    QString contentTypesKey() const { return contentTypeExtensions().join(u' ') + u'\n' + contentTypeFolders().join(u'\n'); }
     bool m_gallery = false;
     int m_thumbnailSize = 160;
     QString m_queryError;
@@ -1449,6 +1463,7 @@ private:
     SearchEngine::Request::ContentPick m_contentPick;
     ContentScope m_contentScope; // as the last content scan made it out (onContentScope)
     QString m_shownContentFolder; // what the rows are for, as m_shownText
+    QString m_shownContentTypes; // the same (contentTypesKey)
     QString m_shownPick;
     QString m_shownPanelKey; // panelKey() of the rows
 

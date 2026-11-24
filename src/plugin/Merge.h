@@ -92,6 +92,12 @@ public:
     // of the rows for keywords that begin with what was typed.
     void setHintText(const QString& text) { m_hintText = text; }
     void setPrefixHintText(const QString& text) { m_prefixHintText = text; }
+    // 内容 narrowed to kinds of file (GitHub #447): a content provider's row
+    // goes in only when its file has one of these extensions (no dot, any
+    // case) and, when folders are given, lies in one of them; a row with no
+    // file (a mail) does not. The providers are told so too (`filters`);
+    // this holds for one that does not listen. Empty: any. Kept until set again.
+    void setContentKinds(QStringList extensions, QStringList folders);
 
     // A query begins: earlier answers are dropped. With `keywordPlugin`
     // and `keywordCommand`, keyword mode for that command. `text` as typed
@@ -156,6 +162,9 @@ private:
     QString m_moreText = QStringLiteral("（%1 查看全部）");
     QString m_hintText = QStringLiteral("按空格进入；Enter 或 Tab 也行");
     QString m_prefixHintText = QStringLiteral("按 Tab 补全；Enter 直接进入");
+    QStringList m_contentExtensions; // setContentKinds: folded, no dot
+    QStringList m_contentFolders; // ... ending in "\"
+    bool contentKindFits(const PluginRow& row) const;
     std::uint64_t m_queryId = 0;
     QString m_text;
     QString m_keywordPlugin;

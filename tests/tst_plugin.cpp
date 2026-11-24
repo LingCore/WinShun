@@ -722,6 +722,54 @@ private slots:
         QVERIFY(!merge.answerHeld());
     }
 
+    // GitHub #447: 内容 narrowed to kinds of file keeps a provider's rows to
+    // files of those kinds (any case), in the folders given when there are
+    // any; a row with no file (a mail) goes then. Cleared, all come back.
+    void contentProviderRowsNarrowedToKinds()
+    {
+        Fixture f;
+        Spec provider;
+        provider.id = u"test.kinds"_s;
+        provider.commandExtra = {{u"contentSearch"_s, true}};
+        QVERIFY(!f.install(provider).isEmpty());
+        const Catalog& catalog = f.host->catalog();
+        const QString command = catalog.find(provider.id)->manifest->commands.first().id;
+        Items items;
+        const auto file = [&](const QString& id, const QString& path) {
+            Item item;
+            item.id = id;
+            item.title = path.section(u'\\', -1);
+            item.open.kind = Open::Kind::Path;
+            item.open.target = path;
+            items.append(item);
+        };
+        file(u"1"_s, u"C:\\pics\\牛蛙.JPG"_s);
+        file(u"2"_s, u"C:\\docs\\牛蛙.docx"_s);
+        file(u"3"_s, u"D:\\elsewhere\\牛蛙.png"_s);
+        file(u"4"_s, u"C:\\pics\\no-extension"_s);
+        Item mail;
+        mail.id = u"5"_s;
+        mail.title = u"牛蛙 mail"_s;
+        mail.details = true;
+        items.append(mail);
+
+        ListSink sink;
+        Merge merge(sink, catalog);
+        const auto answer = [&](std::uint64_t id) {
+            sink.rows.clear();
+            merge.begin(id, u"牛蛙"_s, {}, {}, true);
+            merge.namesShown();
+            merge.results(id, provider.id, command, items, false, true);
+            return sink.names();
+        };
+        merge.setContentKinds({u".jpg"_s, u"png"_s}, {});
+        QCOMPARE(answer(1), (QStringList {u"牛蛙.JPG"_s, u"牛蛙.png"_s}));
+        merge.setContentKinds({u"jpg"_s, u"png"_s}, {u"C:/pics"_s});
+        QCOMPARE(answer(2), (QStringList {u"牛蛙.JPG"_s}));
+        merge.setContentKinds({}, {});
+        QCOMPARE(answer(3).size(), 5);
+    }
+
     // GitHub #202: in 内容, a provider's row with no file stays when it says
     // "details" (a mail), and holds the answer as a file's row does; one
     // with neither still goes. A once plugin's "details" counts for nothing.

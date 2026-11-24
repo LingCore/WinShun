@@ -8807,6 +8807,176 @@ bool checkClipboardTextSelection(QQmlEngine* engine, const QDir& output)
     return ok;
 }
 
+// --content-kinds (GitHub #447): 内容 narrowed to kinds of file with 文件's
+// chips (the panel's 筛选): it stays 内容 and reads only those kinds, nor
+// counts other kinds of text as passed over; the placeholder and its strip
+// name them, the strip's chip takes one off, 文件's own kind is untouched,
+// and the choice outlives a trip to 文件. Real files read by the production
+// launcher and search workers, Main.qml shown.
+bool checkContentKinds(QQmlEngine* qml, const QDir& output)
+{
+    // The launcher's line on rows that came late is said, not counted: a
+    // file written a moment ago is now and then held about a second on
+    // being opened (the antivirus's look at it), which is not what this
+    // checks and fails it at random.
+    static QtMessageHandler counted = nullptr;
+    counted = qInstallMessageHandler([](QtMsgType type, const QMessageLogContext& context, const QString& message) {
+        counted(type == QtWarningMsg && message.startsWith(u"WinShun: new rows "_s) ? QtInfoMsg : type, context, message);
+    });
+    const auto restore = qScopeGuard([] { qInstallMessageHandler(counted); });
+    QTemporaryDir temporary;
+    IndexService index(temporary.filePath(u"index"_s), IndexService::Options{});
+    AppCatalog apps;
+    SystemCatalog places;
+    apps.setApps(std::make_shared<const AppList>());
+    places.setPlaces(std::make_shared<const PlaceList>());
+    History history(temporary.filePath(u"history.tsv"_s));
+    SearchEngine search(&index, &apps, &places);
+    Launcher launcher(&index, &apps, &places, &search, &history);
+    launcher.setContentOptions(true, {u"txt"_s, u"md"_s}, ContentSizeLimits{}, false, false);
+    launcher.setFileTypes({FileType {u"文本"_s, {u"txt"_s}, u"text"_s}, FileType {u"笔记"_s, {u"md"_s}, u"notes"_s},
+        FileType {u"图片"_s, {u"jpg"_s, u"png"_s}, u"pictures"_s}});
+    ClipStore store(temporary.filePath(u"clipboard"_s));
+    if (!store.open(QDateTime::currentMSecsSinceEpoch())) return false;
+    ClipboardWatcher watcher({}, {});
+    Clipboard clipboard(&store, &watcher);
+    Placement placement(temporary.filePath(u"state.ini"_s), u"Launcher"_s);
+    WindowFrame frame(false);
+    QQmlComponent component(qml, u"WinShun"_s, u"Main"_s);
+    std::unique_ptr<QObject> object(component.createWithInitialProperties({
+        {u"launcher"_s, QVariant::fromValue(&launcher)}, {u"clipboard"_s, QVariant::fromValue(&clipboard)},
+        {u"frame"_s, QVariant::fromValue(&frame)}, {u"placement"_s, QVariant::fromValue(&placement)}}));
+    auto* window = qobject_cast<QQuickWindow*>(object.get());
+    if (!window) { say(component.errorString()); return false; }
+    window->create();
+    launcher.setWindow(window);
+    frame.setWindow(window);
+    placement.setWindow(window);
+    showOffScreen(window);
+    bool ok = true;
+    const auto check = [&](bool condition, const char* reason) {
+        ok = condition && ok;
+        if (!condition) qWarning("content kinds regression: %s", reason);
+    };
+    const auto files = index.index();
+    // Indexed as a drive is, from "C:" down, so that the folder is one a chip can choose.
+    EntryId root = kNoEntry;
+    {
+        const auto lock = files->writeLock();
+        const QStringList parts = QDir::toNativeSeparators(temporary.path()).split(u'\\', Qt::SkipEmptyParts);
+        for (const QString& part : parts) {
+            const std::string name = part.toUtf8().toStdString();
+            root = root == kNoEntry ? files->addRoot(name) : files->add(root, name, EntryFlag::Directory);
+        }
+    }
+    const auto write = [&](const QString& name, const QByteArray& bytes) {
+        {
+            QFile file(temporary.filePath(name));
+            if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size()) return false;
+        }
+        // Read back once: the antivirus's first look at a new file (up to
+        // a second) taken here, not in the first search's time.
+        QFile back(temporary.filePath(name));
+        if (!back.open(QIODevice::ReadOnly) || back.readAll() != bytes) return false;
+        const auto lock = files->writeLock();
+        return files->add(root, name.toUtf8().toStdString(), 0) != kNoEntry;
+    };
+    check(write(u"牛蛙.txt"_s, "关于牛蛙的笔记\n") && write(u"牛蛙.md"_s, "# 牛蛙\n") && write(u"牛蛙.py"_s, "# 牛蛙\n"),
+        "the files could not be written");
+    int finishes = 0;
+    QObject::connect(&search, &SearchEngine::contentProgress, &launcher,
+        [&](quint64, int, int, bool finished) { if (finished) ++finishes; });
+    // A change, then the content search it starts until it is over.
+    const auto run = [&](const auto& change) {
+        const int before = finishes;
+        change();
+        QElapsedTimer timer;
+        timer.start();
+        while (!(finishes > before && !launcher.searching()) && timer.elapsed() < 20000)
+            pump(10);
+        settle(window);
+        return finishes > before;
+    };
+    const auto names = [&] {
+        QStringList listed;
+        for (int i = 0; i < launcher.results()->count(); ++i)
+            listed.append(launcher.results()->at(i)->name);
+        listed.sort();
+        return listed;
+    };
+    const auto otherTypesOffered = [&] {
+        return std::ranges::any_of(launcher.leftOutHints(), [](const QVariant& h) { return h.toMap().value(u"kind"_s) == u"types"_s; });
+    };
+    const auto firstChip = [&] { return launcher.folderChips().value(0).toMap(); };
+
+    launcher.setScope(Launcher::Content);
+    check(run([&] { launcher.setQuery(u"牛蛙"_s); }), "the content search did not run");
+    check(names() == (QStringList {u"牛蛙.md"_s, u"牛蛙.txt"_s}), "内容 did not find the words in both kinds");
+    check(otherTypesOffered(), "the .py file passed over was not offered");
+
+    // 文本 from the panel's 筛选 (as Panel.chooseType): still 内容, the .txt alone.
+    check(run([&] { launcher.toggleFileType(0); }), "choosing a kind did not search again");
+    check(launcher.scope() == Launcher::Content && launcher.contentFileTypes() == QList<int> {0},
+        "choosing a kind in 内容 left 内容 (GitHub #447)");
+    check(names() == QStringList {u"牛蛙.txt"_s}, "内容 was not narrowed to 文本");
+    check(launcher.placeholder() == u"搜索文本中的文字", "the placeholder does not name the kind");
+    check(firstChip().value(u"kind"_s).toInt() == 0 && firstChip().value(u"type"_s).toString().startsWith(u"type:"),
+        "the strip does not show the kind first");
+    check(launcher.selectedFileTypes().isEmpty() && launcher.fileType() == -1, "文件's own kind was changed");
+
+    // 图片: no file of it has the words, and the .py is not of it either.
+    check(run([&] { launcher.chooseFileType(2); }), "another kind did not search again");
+    check(launcher.contentFileTypes() == QList<int> {2} && names().isEmpty(), "图片 did not narrow 内容 to pictures");
+    check(!otherTypesOffered(), "text of another kind was offered while narrowed to pictures");
+
+    // Two kinds; then the strip's chip of one takes it off.
+    check(run([&] { launcher.toggleFileType(1); }), "a second kind did not search again");
+    check(launcher.contentFileTypes() == (QList<int> {2, 1}) && names() == QStringList {u"牛蛙.md"_s},
+        "two kinds were not both looked in");
+    auto* strip = visualNamed(window->contentItem(), u"searchTypeStrip"_s);
+    auto* chip = visualNamed(window->contentItem(), u"searchTypeChiptype:pictures"_s);
+    check(strip && strip->property("shown").toBool() && chip && chip->property("active").toBool()
+            && chip->property("glyph").toString().size() > 0,
+        "the strip does not show 图片 on, with its icon");
+    check(saveGrab(window, output.filePath(u"content-kinds.png"_s)), "the window did not render");
+    check(run([&] { launcher.chooseFolderChip(firstChip().value(u"type"_s).toString()); }), "the chip did not search again");
+    check(launcher.contentFileTypes() == QList<int> {1} && names() == QStringList {u"牛蛙.md"_s}, "the chip did not take 图片 off");
+    check(launcher.placeholder() == u"搜索笔记中的文字", "the placeholder does not name what is left");
+
+    // Kept through 文件 and back; 不限 clears it; 文件夹 is 文件夹's scope.
+    launcher.setScope(Launcher::Files);
+    check(launcher.selectedFileTypes().isEmpty(), "文件 took 内容's kind");
+    check(run([&] { launcher.setScope(Launcher::Content); }) && launcher.contentFileTypes() == QList<int> {1}
+            && names() == QStringList {u"牛蛙.md"_s},
+        "内容's kind was lost on the way through 文件");
+    // The strip's 不限 (在所有文件里搜) is off while kinds are on; a click takes them off.
+    const auto anyChip = [&] { return visualNamed(window->contentItem(), u"searchTypeChip"_s); }; // its key ""
+    check(anyChip() && !anyChip()->property("active").toBool(), "the strip's 不限 shows on while 内容 is narrowed");
+    check(run([&] { launcher.chooseFolderChip(QString()); }) && launcher.contentFileTypes().isEmpty()
+            && names() == (QStringList {u"牛蛙.md"_s, u"牛蛙.txt"_s}) && anyChip() && anyChip()->property("active").toBool(),
+        "the strip's 不限 did not give every kind back");
+    // Ctrl+Tab goes round the folders only: the kinds stay.
+    check(run([&] { launcher.toggleFileType(0); }) && launcher.contentFileTypes() == QList<int> {0}, "文本 again did not narrow");
+    const QString folder = QDir::toNativeSeparators(temporary.path());
+    const bool searchedThere = run([&] { launcher.chooseFolderChip(u"pin:"_s + folder); });
+    check(searchedThere && launcher.folderChip() == u"pin:"_s + folder
+            && launcher.contentFileTypes() == QList<int> {0} && names() == QStringList {u"牛蛙.txt"_s},
+        "a folder with a kind did not search the kind there");
+    check(launcher.placeholder().contains(u"文本中的文字"_s), "the placeholder does not name the kind in a folder");
+    check(run([&] { launcher.cycleFolderChip(1); }) && launcher.folderChip().isEmpty(), "Ctrl+Tab did not go to 不限");
+    check(launcher.contentFileTypes() == QList<int> {0} && names() == QStringList {u"牛蛙.txt"_s},
+        "Ctrl+Tab over the folders took the kind off");
+    // And the panel's 不限.
+    check(run([&] { launcher.chooseFileType(-1); }), "不限 did not search again");
+    check(launcher.contentFileTypes().isEmpty() && names() == (QStringList {u"牛蛙.md"_s, u"牛蛙.txt"_s}),
+        "不限 did not give every kind back");
+    launcher.chooseFileType(Launcher::kFoldersChip);
+    check(launcher.scope() == Launcher::Folders, "文件夹 in 内容 is not 文件夹's scope");
+    window->hide();
+    say(u"content kinds: 内容 narrowed by 文件's chips, real files and search workers"_s);
+    return ok;
+}
+
 // --apps-grid (GitHub #296): 应用 as the settings bring it, with this PC's own
 // apps: the tab last among the scopes and gone with the setting, the grid in
 // place of the rows, the strip's three choices, words typed matched as 全部
@@ -10424,6 +10594,8 @@ int runResults(const QStringList& args)
         return checkClipboardPictureView(&engine, out, valueAfter(args, u"--gallery-image")) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-select"_s))
         return checkClipboardTextSelection(&engine, out) ? std::min(g_warnings, 100) : 4;
+    if (args.contains(u"--content-kinds"_s))
+        return checkContentKinds(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-crashed-reading"_s)) // its warning when it gives up is expected
         return checkClipboardCrashedReading() ? 0 : 4;
     if (const qsizetype at = args.indexOf(u"--terminal-launch"_s); at >= 0 && at + 2 < args.size()) {

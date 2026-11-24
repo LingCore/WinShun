@@ -13736,6 +13736,20 @@ Content index: %5</translation>
         <translation>Search text in %1</translation>
     </message>
     <message>
+        <source>搜索%1中的文字</source>
+        <comment>kinds of file, as 图片</comment>
+        <translation>Search %1 for text</translation>
+    </message>
+    <message>
+        <source>在 %1 里搜索%2中的文字</source>
+        <comment>a folder, then kinds of file</comment>
+        <translation>Search %2 in %1 for text</translation>
+    </message>
+    <message>
+        <source>只搜%1中的文字，点一下取消</source>
+        <translation>Only %1 is searched; click to remove</translation>
+    </message>
+    <message>
         <source>搜索 %1 等文件中的文字</source>
         <translation>Search %1 files…</translation>
     </message>

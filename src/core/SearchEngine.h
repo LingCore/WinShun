@@ -223,6 +223,10 @@ public:
         QStringList contentExtensions; // e.g. {"txt"}
         ContentSizeLimits contentSizeLimits; // by kind of file
         bool contentDocuments = true; // and Word, Excel, PowerPoint, PDF (documentExtensions())
+        // 内容 narrowed to kinds of file (GitHub #447: 图片, 文档): only files
+        // with one of these extensions (no dot, any case) are read, and only
+        // those are counted as passed over (ContentLeftOut). Empty: any.
+        QStringList contentTypes;
         int maxContentResults = 300;
         // Also inside system, program and tool folders (EntryFlag::LowPriority).
         bool contentInLowPriority = false;

@@ -413,6 +413,39 @@ int Merge::placeFor(int score) const
     return at;
 }
 
+void Merge::setContentKinds(QStringList extensions, QStringList folders)
+{
+    for (QString& extension : extensions) {
+        while (extension.startsWith(u'.') || extension.startsWith(u'*'))
+            extension.remove(0, 1);
+        extension = extension.toCaseFolded();
+    }
+    extensions.removeAll(QString());
+    for (QString& folder : folders) {
+        folder.replace(u'/', u'\\');
+        if (!folder.endsWith(u'\\'))
+            folder += u'\\';
+    }
+    m_contentExtensions = std::move(extensions);
+    m_contentFolders = std::move(folders);
+}
+
+bool Merge::contentKindFits(const PluginRow& row) const
+{
+    if (m_contentExtensions.isEmpty() && m_contentFolders.isEmpty())
+        return true;
+    const QString file = rowFile(row);
+    if (file.isEmpty())
+        return false; // a mail is no picture nor document
+    if (!m_contentExtensions.isEmpty()) {
+        const qsizetype dot = file.lastIndexOf(u'.');
+        if (dot <= file.lastIndexOf(u'\\') || !m_contentExtensions.contains(file.sliced(dot + 1).toCaseFolded()))
+            return false;
+    }
+    return m_contentFolders.isEmpty()
+        || std::ranges::any_of(m_contentFolders, [&](const QString& folder) { return file.startsWith(folder, Qt::CaseInsensitive); });
+}
+
 void Merge::apply(const Batch& batch)
 {
     const Entry* entry = m_catalog.find(batch.pluginId);
@@ -427,7 +460,7 @@ void Merge::apply(const Batch& batch)
     const bool content = command->contentSearch;
     if (content) {
         rows.removeIf([&](const SearchResult& row) {
-            if (!row.plugin)
+            if (!row.plugin || !contentKindFits(*row.plugin))
                 return true;
             // A row that is no file stays when the plugin tells what it is
             // (a mail: "details", GitHub #202); other such rows (setup hints) go.

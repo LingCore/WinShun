@@ -1746,6 +1746,14 @@ QString Launcher::placeholder() const
     case Folders:
         return tr("搜索文件夹");
     case Content:
+        if (!m_contentTypes.isEmpty()) { // GitHub #447: the kinds chosen, 图片 or 文档
+            QStringList names;
+            for (int type : m_contentTypes)
+                names.append(m_fileTypes[type].name);
+            return m_contentFolder.isEmpty()
+                ? tr("搜索%1中的文字", "kinds of file, as 图片").arg(names.join(tr("、")))
+                : tr("在 %1 里搜索%2中的文字", "a folder, then kinds of file").arg(folderLabel(m_contentFolder), names.join(tr("、")));
+        }
         if (!m_contentFolder.isEmpty())
             return tr("搜索 %1 里的文字").arg(folderLabel(m_contentFolder));
         if (m_contentDocuments)
@@ -2751,7 +2759,8 @@ void Launcher::search(bool more)
         && rankBy() == m_shownRankBy && nameOrder() == m_shownOrder && (m_panel || sort() == m_shownSort)
         && m_kindOrder == m_shownKindOrder
         && m_preferredTypes == m_shownPreferredTypes && keywordKey == m_shownKeyword
-        && (m_scope != Content || (m_contentFolder == m_shownContentFolder && pickKey(m_contentPick) == m_shownPick))
+        && (m_scope != Content || (m_contentFolder == m_shownContentFolder && pickKey(m_contentPick) == m_shownPick
+                                   && contentTypesKey() == m_shownContentTypes))
         && (!text.isEmpty() || m_startList == m_shownStartList) && panelKey() == m_shownPanelKey
         && typingKey() == m_shownTyping && regexTerms() == m_shownRegex
         && (m_scope != Apps || m_appsView == m_shownAppsView);
@@ -3042,6 +3051,7 @@ void Launcher::showRows(SearchResults rows, QStringList highlights)
     m_shownPreferredTypes = m_preferredTypes;
     m_shownKeyword = m_keyword ? m_keyword->pluginId + u'/' + m_keyword->commandId : QString();
     m_shownContentFolder = m_contentFolder;
+    m_shownContentTypes = contentTypesKey();
     m_shownPick = pickKey(m_contentPick);
     m_shownPanelKey = panelKey();
     m_shownTyping = typingKey();
@@ -4083,8 +4093,17 @@ QJsonObject Launcher::pluginFilters() const
         {u"excludedExtensions"_s, QJsonArray::fromStringList(m_excludedTypes)},
         {u"excludedFileNames"_s, QJsonArray::fromStringList(m_excludedFileNames)}};
     if (m_scope == Content) {
-        content.insert(u"folder"_s, m_contentFolder.isEmpty() ? m_folderFilter : m_contentFolder);
+        const QStringList typeFolders = contentTypeFolders();
+        content.insert(u"folder"_s, !m_contentFolder.isEmpty() ? m_contentFolder
+                : !m_folderFilter.isEmpty() || typeFolders.size() != 1 ? m_folderFilter : typeFolders.front());
         content.insert(u"contentPick"_s, m_contentPick.folder);
+        if (!m_contentTypes.isEmpty()) { // the kinds chosen (GitHub #447), as the panel's filters name them
+            QJsonArray kinds;
+            for (int type : m_contentTypes)
+                kinds.append(m_fileTypes[type].id.isEmpty() ? m_fileTypes[type].name : m_fileTypes[type].id);
+            content.insert(u"kinds"_s, kinds);
+            content.insert(u"extensions"_s, QJsonArray::fromStringList(contentTypeExtensions()));
+        }
     }
     if (!m_panel)
         return content;
@@ -4600,7 +4619,17 @@ void Launcher::setFileTypes(const FileTypes& types)
     const auto oldTypes = selectedFileTypes();
     for (int type : oldTypes)
         chosen.append(fileTypeKey(m_fileTypes[type]));
+    QStringList contentChosen;
+    for (int type : m_contentTypes)
+        contentChosen.append(fileTypeKey(m_fileTypes[type]));
     m_fileTypes = types;
+    QList<int> contentTypes;
+    for (const QString& key : contentChosen) {
+        if (const int type = fileTypeIndex(key); type >= 0)
+            contentTypes.append(type);
+    }
+    const bool contentMoved = contentTypes != m_contentTypes;
+    m_contentTypes = std::move(contentTypes);
     QList<int> selected;
     for (const QString& key : chosen) {
         const int type = fileTypeIndex(key);
@@ -4612,12 +4641,15 @@ void Launcher::setFileTypes(const FileTypes& types)
         m_extraFileTypes = selected;
         emit fileTypeChanged();
         emit fileChoiceChanged();
+    } else if (contentMoved) {
+        emit fileTypeChanged();
     }
     emit fileTypesChanged();
+    emit folderChipsChanged(); // 内容's strip names its kinds
     updateQueryPrefix();
     emit scopeChanged(); // the placeholder names the kind
     // Its extensions changed: listed again (a refresh when they did not).
-    if (m_fileType >= 0 && m_window && m_window->isVisible())
+    if ((m_fileType >= 0 || (m_scope == Content && (contentMoved || !m_contentTypes.isEmpty()))) && m_window && m_window->isVisible())
         search();
 }
 
@@ -4646,6 +4678,45 @@ QStringList Launcher::fileTypeFolders() const
     }
     folders.removeDuplicates();
     return folders;
+}
+
+QStringList Launcher::contentTypeExtensions() const
+{
+    QStringList extensions;
+    for (int type : m_contentTypes)
+        extensions.append(m_fileTypes[type].extensions);
+    extensions.removeDuplicates();
+    return extensions;
+}
+
+QStringList Launcher::contentTypeFolders() const
+{
+    QStringList folders;
+    for (int type : m_contentTypes) {
+        const QString& folder = m_fileTypes[type].folder;
+        if (folder.isEmpty())
+            return {}; // one kind is anywhere: so is the search (as fileTypeFolders)
+        folders.append(folder);
+    }
+    folders.removeDuplicates();
+    return folders;
+}
+
+void Launcher::setContentTypes(QList<int> types)
+{
+    types.removeIf([&](int type) { return type < 0 || type >= m_fileTypes.size(); });
+    if (types == m_contentTypes)
+        return;
+    m_contentTypes = std::move(types);
+    emit fileTypeChanged();
+    emit folderChipsChanged(); // the strip shows them
+    emit scopeChanged(); // the placeholder names them
+    if (m_scope != Content)
+        return; // kept for when 内容 comes back
+    m_results.setSelection({});
+    m_held.reset();
+    refreshKeyHints();
+    search(); // the rows stay until the new ones come (see setScope)
 }
 
 QList<int> Launcher::selectedFileTypes() const
@@ -4684,6 +4755,15 @@ void Launcher::toggleFileType(int type)
         chooseFileType(type);
         return;
     }
+    if (m_scope == Content) { // the words in that kind of file too, or no longer (GitHub #447)
+        QList<int> types = m_contentTypes;
+        if (types.contains(type))
+            types.removeAll(type);
+        else
+            types.append(type);
+        setContentTypes(std::move(types));
+        return;
+    }
     clearQueryPrefix();
     auto types = m_scope == Files ? selectedFileTypes() : QList<int>();
     if (types.contains(type))
@@ -4706,6 +4786,11 @@ void Launcher::toggleFileType(int type)
 
 void Launcher::chooseFileType(int type)
 {
+    // In 内容 a kind narrows the words' search; 文件夹 (no words in a folder) is 文件夹's scope.
+    if (m_scope == Content && type != kFoldersChip) {
+        setContentTypes(type >= 0 && type < m_fileTypes.size() ? QList<int> {type} : QList<int> {});
+        return;
+    }
     const bool hadMultiple = !m_extraFileTypes.isEmpty();
     m_extraFileTypes.clear();
     const bool hadPrefix = clearQueryPrefix();
@@ -4830,6 +4915,7 @@ constexpr QStringView kPinPrefix = u"pin:"; // a folder chosen: m_contentFolder
 constexpr QStringView kPickPrefix = u"pick:"; // one of those the name typed stands for: m_contentPick
 constexpr QStringView kMissingChip = u"missing"; // a place not in the index: nothing to choose
 constexpr QStringView kTypedChip = u"typed"; // a folder typed, not made out yet
+constexpr QStringView kTypePrefix = u"type:"; // a kind of file 内容 is narrowed to (m_contentTypes): taken off when clicked
 constexpr QStringView kFolderDot = u"#E8B84A"; // as the strip's 文件夹 in 文件
 
 // The last few names of each path, as many as tell them apart (up to
@@ -4880,6 +4966,11 @@ void Launcher::setContentPlace(SearchEngine::Request& request) const
     if (!m_contentFolder.isEmpty())
         request.contentFolders = {m_contentFolder}; // the strip's choice, before the panel's folder
     request.contentPick = m_contentPick;
+    // The kinds chosen (GitHub #447), and where they are kept when each is
+    // bound to a folder (as 文件's typeFolders), unless a folder is chosen.
+    request.contentTypes = contentTypeExtensions();
+    if (request.contentFolders.isEmpty())
+        request.contentFolders = contentTypeFolders();
 }
 
 const ContentScope::Place* Launcher::typedPlace() const
@@ -4917,6 +5008,15 @@ QVariantList Launcher::folderChips() const
     };
     if (m_scope != Content)
         return chips;
+    // The kinds of file it is narrowed to (GitHub #447), first and on; a
+    // click takes one off. `kind` its index in fileTypes (its colour), with
+    // its extensions (its icon), as 文件's chips.
+    for (const int type : m_contentTypes) {
+        const FileType& kind = m_fileTypes[type];
+        chips.append(QVariantMap {{u"type"_s, kTypePrefix.toString() + fileTypeKey(kind)}, {u"name"_s, kind.name},
+            {u"tip"_s, tr("只搜%1中的文字，点一下取消").arg(kind.name)}, {u"dot"_s, QString()}, {u"kind"_s, type},
+            {u"extensions"_s, kind.extensions.join(u' ')}});
+    }
     // A folder named among the words: that one, or the ones it stands for.
     const ContentQuery typed = splitContentQuery(searchText(), m_regexMode);
     if (!typed.folders.empty()) {
@@ -5056,6 +5156,21 @@ QString Launcher::whereMissing() const
 
 void Launcher::chooseFolderChip(const QString& key)
 {
+    if (key.startsWith(kTypePrefix)) { // a kind it is narrowed to: off
+        QList<int> types = m_contentTypes;
+        types.removeAll(fileTypeIndex(key.sliced(kTypePrefix.size())));
+        setContentTypes(std::move(types));
+        return;
+    }
+    if (key.isEmpty() && !m_contentTypes.isEmpty()) { // 不限: in all files, of any kind
+        m_contentTypes.clear();
+        emit fileTypeChanged();
+    }
+    chooseFolder(key);
+}
+
+void Launcher::chooseFolder(const QString& key)
+{
     if (key == kAllChip) {
         m_contentPick = {};
     } else if (key.startsWith(kPickPrefix)) {
@@ -5085,14 +5200,14 @@ void Launcher::cycleFolderChip(int delta)
     QStringList keys;
     for (const QVariant& c : folderChips()) {
         const QString key = c.toMap()[u"type"_s].toString();
-        if (key != kMissingChip && key != kTypedChip)
+        if (key != kMissingChip && key != kTypedChip && !key.startsWith(kTypePrefix)) // the folders, not the kinds
             keys.append(key);
     }
     if (keys.size() < 2)
         return; // no folder to go to
     const auto count = keys.size();
     const qsizetype at = std::max<qsizetype>(0, keys.indexOf(folderChip()));
-    chooseFolderChip(keys[((at + delta) % count + count) % count]);
+    chooseFolder(keys[((at + delta) % count + count) % count]);
 }
 
 bool Launcher::clearContentWords()
@@ -7537,6 +7652,10 @@ void Launcher::startPluginQuery(const QString& text, std::optional<KeywordMode> 
     const auto scope = keyword && m_panel ? ws::Scope::All : static_cast<ws::Scope>(m_scope);
     const std::uint64_t id = ++m_pluginQueryId;
     m_keyword = std::move(keyword);
+    // 内容 narrowed to kinds of file: the providers' rows too (GitHub #447), as the scan's (setContentPlace).
+    const bool kinds = m_scope == Content && !m_keyword;
+    m_merge->setContentKinds(kinds ? contentTypeExtensions() : QStringList(),
+        kinds && m_contentFolder.isEmpty() && m_folderFilter.isEmpty() ? contentTypeFolders() : QStringList());
     // The keywords offered as rows are 全部's (matchKeyword): in 文件 and 文件夹 they could not be run.
     m_merge->begin(id, text, m_keyword ? m_keyword->pluginId : QString(), m_keyword ? m_keyword->commandId : QString(),
         m_scope == Content, m_scope == All || m_panel);
