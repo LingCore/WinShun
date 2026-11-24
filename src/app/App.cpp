@@ -798,6 +798,8 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     connect(m_launcher.get(), &Launcher::pinnedChanged, this, &App::launcherPinnedChanged);
     connect(m_launcher.get(), &Launcher::pinRequested, this,
         [this](const QString& path, bool screenshot) { pictureAction(u"pin"_s, 0, path, screenshot); });
+    connect(m_launcher.get(), &Launcher::editPictureRequested, this,
+        [this](const QString& path) { pictureAction(u"edit"_s, 0, path, false); });
     connect(m_launcher.get(), &Launcher::settingsRequested, this, [this] { showSettings(); });
     connect(m_launcher.get(), &Launcher::shortcutSettingsRequested, this, &App::showShortcutSettings);
     // Only the chosen folders are indexed (GitHub #52): the notes under the results.
@@ -942,9 +944,11 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
         if (m_settingsEditor) // its copy must not bring the old value back with its next change
             m_settingsEditor->setSettings(m_settings);
     });
-    connect(m_clipboard.get(), &Clipboard::pinRequested, this, [this](qint64 id) { pictureAction(u"pin"_s, id, {}, false); });
+    connect(m_clipboard.get(), &Clipboard::pinRequested, this,
+        [this](qint64 id, const QString& file, int slot) { pictureAction(u"pin"_s, id, file, false, slot); });
     connect(m_clipboard.get(), &Clipboard::pinTextRequested, this, &App::pinText);
-    connect(m_clipboard.get(), &Clipboard::editRequested, this, [this](qint64 id) { pictureAction(u"edit"_s, id, {}, false); });
+    connect(m_clipboard.get(), &Clipboard::editRequested, this,
+        [this](qint64 id, const QString& file) { pictureAction(u"edit"_s, id, file, false); });
     connect(m_clipboard.get(), &Clipboard::lanSendSetupRequested, this, [this](bool update) {
         hideClipboard(false);
         if (update) {
@@ -2094,6 +2098,7 @@ void App::applySettings(bool initial)
     const QString clipboardSize = m_settings.clipboardUiSize == u"follow" ? m_settings.uiSize : m_settings.clipboardUiSize;
     const bool clipboardResized = clipboardSize != m_clipboard->uiSize();
     m_clipboard->setRowOptions(m_settings.clipboardClickToPaste, m_settings.clipboardPictureSize, clipboardSize);
+    m_clipboard->setPastePlain(m_settings.clipboardPlainByDefault);
     if (clipboardResized && m_clipPlacement)
         m_clipPlacement->resized(); // the rows have another height
     m_clipboard->setLayoutOptions(m_settings.clipboardFlipAbove, m_settings.clipboardSearchBoxSide == u"far", m_settings.clipboardSearchBox);
@@ -2439,13 +2444,17 @@ void App::updateScreenshotPlugin()
 
 // 贴到屏幕 and 编辑 go to the plugin that does them (`picture`), with the
 // picture's file, and its project when the entry has one; the plugin reads
-// both from where they are.
-void App::pictureAction(const QString& verb, qint64 clipId, const QString& path, bool screenshot)
+// both from where they are. A picture file (no entry): only its path.
+// `slot`: the place among several pinned at once (the plugin sets each a
+// little off the one before; one before 1.1.33 puts them all at the pointer).
+void App::pictureAction(const QString& verb, qint64 clipId, const QString& path, bool screenshot, int slot)
 {
     const QString plugin = picturePlugin(verb);
     if (plugin.isEmpty())
         return;
     QJsonObject params {{u"action"_s, verb}, {u"screenshot"_s, screenshot}};
+    if (slot > 0)
+        params.insert(u"slot"_s, slot);
     if (clipId > 0) {
         if (!m_clipStore || !m_clipStore->isOpen())
             return;

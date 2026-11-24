@@ -8,7 +8,8 @@ import WinShun
 // full on the right when asked for (a click on the row, Alt+P, → at the end
 // of the search). A brief hover opens a separate, temporary preview. A row's paste
 // button or a double click pastes it into the program that was in front,
-// as Enter does; Shift+Enter as plain text, Alt+1…9 the first nine rows, Ctrl/Shift pick
+// as Enter does; Shift+Enter the other way (as plain text, or kept formatted
+// when plain is the usual: Clipboard.pastePlain), Alt+1…9 the first nine rows, Ctrl/Shift pick
 // several, Tab switches categories. Opened from a field of Win顺's own (a
 // search box, which it drops down under), it pastes into that field, and Esc
 // goes back to it (Clipboard). Over another program that keeps the focus,
@@ -428,6 +429,7 @@ Item {
                 availableArea: page.frame.availableArea(page)
                 metrics: page.metrics
                 info: page.previewRevision >= 0 ? page.clipboard.preview(page.previewIndex) : ({})
+                plainByDefault: page.clipboard.pastePlain
                 onCopyRequested: (text, remember) => page.clipboard.copyText(text, remember)
                 onHoveredChanged: if (!hovered) hoverLeaveTimer.restart()
                 wordsShown: page.clipboard.pictureWords
@@ -1361,6 +1363,7 @@ Item {
             ClipPreview {
                 id: preview
                 metrics: page.metrics
+                plainByDefault: page.clipboard.pastePlain
                 visible: page.previewOpen && !page.findingGroup
                 onCopyRequested: (text, remember) => page.clipboard.copyText(text, remember)
                 pictureZoomable: true
@@ -1701,6 +1704,7 @@ Item {
                 context: ({
                     numberModifier: page.numberKey < 0 ? "" : modifier, // the numbers in the rows' left column
                     intoField: page.intoField,
+                    plainByDefault: page.clipboard.pastePlain,
                     holdKey: page.clipboard.holdToStep ? page.clipboard.shortcut : ""
                 })
             }

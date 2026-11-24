@@ -1227,6 +1227,10 @@
         <translation>Click to paste</translation>
     </message>
     <message>
+        <source>默认粘贴为纯文本</source>
+        <translation>Paste as plain text by default</translation>
+    </message>
+    <message>
         <source>粘贴后保持位置</source>
         <translation>Keep place after pasting</translation>
     </message>
@@ -1805,6 +1809,10 @@
     <message>
         <source>带格式，Shift+Enter 粘贴为纯文本</source>
         <translation>Formatted; Shift+Enter pastes plain text</translation>
+    </message>
+    <message>
+        <source>带格式，Shift+Enter 保留格式粘贴</source>
+        <translation>Formatted; Shift+Enter keeps the formatting</translation>
     </message>
     <message>
         <source>在“%1”里，不会过期</source>
@@ -7639,6 +7647,22 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Click to paste</translation>
     </message>
     <message>
+        <source>默认粘贴为纯文本</source>
+        <translation>Paste as plain text by default</translation>
+    </message>
+    <message>
+        <source>纯文本;格式;去格式;无格式;去掉格式;富文本;样式;字体;保留格式;Word;WPS</source>
+        <translation>plain text;format;formatting;unformatted;strip formatting;rich text;style;font;keep formatting;Word;WPS</translation>
+    </message>
+    <message>
+        <source>粘贴文字时去掉字体、颜色、链接等格式，贴进 Word、WPS 也和打字一样。要保留格式时按 Shift+Enter，或在右键菜单里选“保留格式粘贴”</source>
+        <translation>Pasted words leave their fonts, colours and links behind, so in Word or WPS they look as if typed. To keep the formatting, press Shift+Enter or choose “Paste with formatting” in the right-click menu</translation>
+    </message>
+    <message>
+        <source>单击、双击、Enter、Alt+数字和快速粘贴快捷键都按纯文本粘贴；文件和图片照常粘贴</source>
+        <translation>A click, a double click, Enter, Alt+number and the quick paste keys all paste plain text; files and pictures paste as they are</translation>
+    </message>
+    <message>
         <source>单击;点击;点一下;直接粘贴;双击;远程;手机;触屏</source>
         <translation>click;single click;one click;paste directly;double click;remote;phone;touch</translation>
     </message>
@@ -8960,6 +8984,10 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>With the clipboard panel open, press %1+1 to paste the first visible entry, through 9 for the ninth (follows scrolling). Add Shift to paste as plain text.</translation>
     </message>
     <message>
+        <source>打开剪贴板面板后，按 %1+1 粘贴当前可见的第 1 条，依此类推到第 9 条（随列表滚动更新）；加按 Shift 保留格式粘贴</source>
+        <translation>With the clipboard panel open, press %1+1 to paste the first visible entry, through 9 for the ninth (follows scrolling). Add Shift to keep the formatting.</translation>
+    </message>
+    <message>
         <source>不打开面板直接粘贴</source>
         <translation>Paste without opening the panel</translation>
     </message>
@@ -10149,6 +10177,14 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>第几条粘贴为纯文本</source>
         <translation>Paste that row as plain text</translation>
+    </message>
+    <message>
+        <source>保留格式粘贴</source>
+        <translation>Paste with formatting</translation>
+    </message>
+    <message>
+        <source>第几条保留格式粘贴</source>
+        <translation>Paste that row with formatting</translation>
     </message>
     <message>
         <source>按住连按往下选，松开粘贴</source>
@@ -11825,6 +11861,14 @@ Double-click grip: expand/collapse search panel</translation>
         <source>%1 · 单击粘贴</source>
         <translation>%1 · click to paste</translation>
     </message>
+    <message>
+        <source>%1 · 单击粘贴纯文本</source>
+        <translation>%1 · click to paste plain text</translation>
+    </message>
+    <message>
+        <source>%1 · 双击粘贴纯文本</source>
+        <translation>%1 · double-click to paste plain text</translation>
+    </message>
     <message numerus="yes">
         <source>%Ln 条</source>
         <translation>
@@ -12012,6 +12056,10 @@ Double-click grip: expand/collapse search panel</translation>
         <source>粘贴为纯文本</source>
         <translation>Paste as plain text</translation>
     </message>
+    <message>
+        <source>保留格式粘贴</source>
+        <translation>Paste with formatting</translation>
+    </message>
     <message numerus="yes">
         <source>复制 %Ln 条</source>
         <translation>
@@ -12110,6 +12158,27 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>移出分组</source>
         <translation>Take out of the group</translation>
+    </message>
+    <message numerus="yes">
+        <source>贴 %Ln 张到屏幕</source>
+        <translation>
+            <numerusform>Pin %Ln picture to screen</numerusform>
+            <numerusform>Pin %Ln pictures to screen</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>贴前 %Ln 张到屏幕</source>
+        <translation>
+            <numerusform>Pin the first %Ln to screen</numerusform>
+            <numerusform>Pin the first %Ln to screen</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>有 %Ln 个文件已经不存在了</source>
+        <translation>
+            <numerusform>%Ln file is gone</numerusform>
+            <numerusform>%Ln files are gone</numerusform>
+        </translation>
     </message>
     <message numerus="yes">
         <source>删除 %Ln 条</source>

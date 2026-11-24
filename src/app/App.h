@@ -280,8 +280,9 @@ private:
     QString picturePlugin(const QString& verb) const;
     void pluginPicturesChanged(); // which of them are on offer: to the launcher and the clipboard
     // 贴到屏幕 / 编辑: an entry of the clipboard history (`clipId`; its
-    // picture's file and project) or a picture file (`clipId` 0).
-    void pictureAction(const QString& verb, qint64 clipId, const QString& path, bool screenshot);
+    // picture's file and project) or a picture file (`clipId` 0); `slot`:
+    // its place among several pinned at once.
+    void pictureAction(const QString& verb, qint64 clipId, const QString& path, bool screenshot, int slot = 0);
     void prefetchTrayMenus();
     QJsonObject pluginLook() const; // the look plugin::Host::setAppearance passes on
     void setUpAppTools(); // plugin::Host::setAppTools: what the screenshot plugin asks of Win顺

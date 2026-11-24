@@ -8,7 +8,7 @@ import QtQuick
 //   where    "launcher", "clipboard", or "global" (settings only: what opens them)
 //   group    its heading
 //   keys     a string, or a function of the context
-//   text     what the keys do
+//   text     what the keys do: a string, or a function of the context
 //   brief    in the panel (else in the settings only)
 //   when     a function of the context; false hides the entry in the panel
 //   setting  {page, tab}: the settings can change the keys; where (page: the
@@ -17,7 +17,8 @@ import QtQuick
 // The context (`c`) is what the entries depend on: launcher.previewHotkey as
 // `previewKey`; `numberModifier` ("Alt", "Ctrl", or "" for none) of the
 // number keys; `folderTyping` (the folder window's Ctrl+Shift+D applies),
-// `intoField` (the clipboard pastes into a field of Win顺's) and `holdKey`
+// `intoField` (the clipboard pastes into a field of Win顺's), `plainByDefault`
+// (Clipboard.pastePlain: Shift keeps the words' formatting) and `holdKey`
 // (the clipboard's hotkey, when it can be held to step). The settings show
 // every entry (`all`), and give the keys that open Win顺 (`openKeys`,
 // `clipboardHotkey`), and `captureKeys` (the screenshot plugin's).
@@ -66,8 +67,8 @@ QtObject {
         // the clipboard
         { where: "clipboard", group: qsTr("粘贴"), brief: true, keys: c => c.numberModifier.length > 0 ? c.numberModifier + "+1…9" : "", text: qsTr("粘贴第几条"),
           when: c => c.numberModifier.length > 0, setting: { page: "clipboard", tab: 1, part: "clipboardNumberKeysRow" } },
-        { where: "clipboard", group: qsTr("粘贴"), brief: true, keys: "Shift+Enter", text: qsTr("粘贴为纯文本"), when: c => !c.intoField },
-        { where: "clipboard", group: qsTr("粘贴"), keys: c => c.numberModifier.length > 0 ? c.numberModifier + "+Shift+1…9" : "", text: qsTr("第几条粘贴为纯文本"),
+        { where: "clipboard", group: qsTr("粘贴"), brief: true, keys: "Shift+Enter", text: c => c.plainByDefault ? qsTr("保留格式粘贴") : qsTr("粘贴为纯文本"), when: c => !c.intoField },
+        { where: "clipboard", group: qsTr("粘贴"), keys: c => c.numberModifier.length > 0 ? c.numberModifier + "+Shift+1…9" : "", text: c => c.plainByDefault ? qsTr("第几条保留格式粘贴") : qsTr("第几条粘贴为纯文本"),
           when: c => c.numberModifier.length > 0 },
         // Only where it works: a hotkey with something to hold (a lone F9 has not), over another program.
         { where: "clipboard", group: qsTr("粘贴"), brief: true, keys: c => c.holdKey, text: qsTr("按住连按往下选，松开粘贴"),
@@ -96,7 +97,7 @@ QtObject {
             if (entry.where !== where || (brief && !entry.brief) || (!c.all && entry.when && !entry.when(c)))
                 continue
             list.push({ group: entry.group, keys: typeof entry.keys === "function" ? entry.keys(c) : entry.keys,
-                        text: entry.text, setting: entry.setting ?? null })
+                        text: typeof entry.text === "function" ? entry.text(c) : entry.text, setting: entry.setting ?? null })
         }
         return list
     }

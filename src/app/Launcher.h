@@ -340,7 +340,7 @@ public:
         RemoveScreenshot, // 从历史删除: a screenshot's row (Delete)
         SwitchOn, // a system switch's row, set on / off (the menu's two entries; Enter is the row's own)
         SwitchOff,
-        EditPicture, // 编辑: a screenshot's row, in the editing window (Shift+Enter)
+        EditPicture, // 编辑: a screenshot's row (Shift+Enter) or a picture file's, in the editing window
         BrowseFolder, // list a folder in Win顺, then keep typing to search there
         Rename, // 重命名: a file's or folder's row, in place (F2; Main.qml opens the box, see beginRename)
         RunAsUser, // 以普通权限运行: a row whose Enter runs as administrator (adminRemembered); Open from then on
@@ -981,6 +981,7 @@ signals:
     // 贴到屏幕 (PinPicture, Ctrl+Enter on a screenshot): the picture in
     // `path`; `screenshot`: it is one of the history's.
     void pinRequested(const QString& path, bool screenshot);
+    void editPictureRequested(const QString& path); // 编辑 on a picture file's row: the editing window
     void folderChipsChanged();
     void typingFolderChanged();
     void folderSearchChanged();

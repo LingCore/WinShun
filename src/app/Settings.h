@@ -544,6 +544,9 @@ struct Settings {
     QString clipboardNumberKeys = QStringLiteral("alt"); // alt | ctrl | off: Alt+1…9 pastes the nth row
     QString clipboardQuickPaste = QStringLiteral("off"); // off | ctrl | alt: the first nine of All, without opening the window
     bool clipboardClickToPaste = false; // a click pastes the row (Windows' way); off: picks it, a double click pastes
+    // The usual paste of words (a click, Enter, Alt+1…9, the quick paste keys) drops their formatting;
+    // Shift+Enter and 保留格式粘贴 keep it. Off: the other way round. Files and pictures go as they are.
+    bool clipboardPlainByDefault = false;
     QString clipboardUiSize = QStringLiteral("follow"); // follow (界面大小) | dense | compact | standard | roomy: its own type and row heights
     // A picture's thumbnail in the list: "small" on a row as high as any other (GitHub #328),
     // "standard" on a taller one, "large" enough to make out its details (forum #137).

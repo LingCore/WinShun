@@ -110,11 +110,14 @@ private:
     // `window` (logical size) beside `where` (physical, virtual desktop) on its monitor.
     void placeNear(QQuickWindow* window, const QRect& where);
     void notifySaved(const QString& path, const QString& error);
-    void pinPicture(const QString& path, bool screenshot);
+    // `slot`: its place among several pinned at once (pinimage::cascaded).
+    void pinPicture(const QString& path, bool screenshot, int slot = 0);
+    void pinInTurn(quint64 ticket, QImage image, QPoint origin, QPoint anchor, bool screenshot);
     void pinCurrentImage(); // clipboard picture first, then copied words, otherwise the editable last capture
     // Copied words as a card on the screen (GitHub #388), at the cursor; Ctrl+C on it copies them.
     void pinText(const QString& text);
     void editPicture(qint64 clipId, const QString& file, const QString& projectFile);
+    void editFile(const QString& path);
     void editPin(capture::PinWindow* pin);
     void showSettings();
     QJsonArray trayMenu() const;
@@ -186,6 +189,16 @@ private:
     QTimer m_applyLater;
     bool m_started = false;
     bool m_pinPending = false;
+    // Picture files read side by side, pinned in the order asked for (pinInTurn).
+    struct ReadPin {
+        QImage image; // null: it could not be read
+        QPoint origin;
+        QPoint anchor;
+        bool screenshot = false;
+    };
+    std::map<quint64, ReadPin> m_pinsRead;
+    quint64 m_pinTicket = 0; // the next one asked for
+    quint64 m_pinTurn = 0; // the next one to go on the screen
     QString m_uiFont; // the family of Win顺's words (its look's resolvedUiFont): copied words pinned
     bool m_themeMade = false; // ensureTheme
 };

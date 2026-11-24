@@ -12,6 +12,7 @@ Item {
     property UiScale metrics: Theme.metrics
     readonly property real dpr: Screen.devicePixelRatio
     property var info: ({}) // Clipboard.preview(row)
+    property bool plainByDefault: false // Clipboard.pastePlain: Shift+Enter keeps the formatting
     readonly property string entryId: info.id ?? ""
     property bool completed: false
     Component.onCompleted: completed = true
@@ -681,7 +682,8 @@ Item {
             width: parent.width
             visible: text.length > 0
             text: picked ? qsTr("已选 %Ln 字：Ctrl+C 复制，Enter 粘贴", "", preview.selectedText.length)
-                         : [preview.info.formatted ? qsTr("带格式，Shift+Enter 粘贴为纯文本") : "",
+                         : [!preview.info.formatted ? "" : preview.plainByDefault ? qsTr("带格式，Shift+Enter 保留格式粘贴")
+                                                                  : qsTr("带格式，Shift+Enter 粘贴为纯文本"),
                             (preview.info.group ?? "").length > 0 ? qsTr("在“%1”里，不会过期").arg(preview.info.group) : ""]
                            .filter(s => s.length > 0).join(" · ")
             textFormat: Text.PlainText

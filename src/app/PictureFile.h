@@ -14,7 +14,8 @@ namespace ws {
 
 // Picture extensions Windows Imaging Component reads (built-in codecs plus
 // Windows' WebP, HEIF and AVIF extensions): shared by Explorer's 贴到屏幕
-// AppliesTo filter (ShellMenu.cpp) and the launcher's own 贴到屏幕 menu item.
+// AppliesTo filter (ShellMenu.cpp), and 贴到屏幕 and 编辑 on a picture file
+// in the launcher's and the clipboard history's menus.
 inline constexpr std::array<QStringView, 18> kPinnablePictureExtensions {
     u"png", u"jpg", u"jpeg", u"jpe", u"jfif", u"bmp", u"dib", u"gif", u"webp",
     u"tif", u"tiff", u"ico", u"heic", u"heif", u"avif", u"jxr", u"wdp", u"hdp",
