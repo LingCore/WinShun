@@ -22,6 +22,7 @@
 #include <windows.graphics.directx.direct3d11.interop.h>
 #include <audioclient.h>
 #include <codecapi.h>
+#include <d2d1_1.h>
 #include <d3d10_1.h>
 #include <d3d11.h>
 #include <dxgi1_6.h>
@@ -30,6 +31,7 @@
 #include <mfidl.h>
 #include <mfreadwrite.h>
 #include <mmdeviceapi.h>
+#include <timeapi.h>
 
 #include <algorithm>
 #include <optional>
@@ -101,11 +103,101 @@ void bgraToNv12(const unsigned char* bgra, int pitch, int width, int height, uns
     }
 }
 
+QImage sampleBackdrop(QSize size)
+{
+    QImage picture(size, QImage::Format_RGB32);
+    picture.fill(QColor(248, 249, 251));
+    // A dark strip, as an editor's; below the moving block, above the keycaps.
+    const QRect strip(0, size.height() * 5 / 8, size.width(), size.height() / 5);
+    QPainter painter(&picture);
+    painter.fillRect(strip, QColor(30, 31, 34));
+    painter.setFont(QFont(u"Segoe UI"_s, 12));
+    // Dark and light text, and the colours that 4:2:0 video smears first.
+    static constexpr std::array inks {qRgb(28, 33, 42), qRgb(200, 30, 30), qRgb(20, 80, 200), qRgb(20, 130, 60)};
+    static constexpr std::array lights {qRgb(222, 225, 230), qRgb(240, 110, 110), qRgb(110, 170, 255), qRgb(120, 200, 130)};
+    const QString words = QCoreApplication::translate("Recording", "WinShun  区域录屏 — clear text 0123456789    C++20 / MP4");
+    size_t line = 0;
+    for (int y = 35; y < size.height(); y += 30, ++line) {
+        const QRect row(0, y - 18, size.width(), 26);
+        if (strip.intersects(row) && !strip.contains(row))
+            continue; // half on each ground
+        painter.setPen(QColor((strip.contains(row) ? lights : inks)[line % inks.size()]));
+        painter.drawText(20, y, words);
+    }
+    return picture;
+}
+
+int videoBitrate(QSize size, int fps, int quality)
+{
+    // 0.06 bits a pixel at quality 70, twice that for every 10 more. Frames
+    // closer together differ less: the rate counts by its square root.
+    const double perPixel = 0.06 * std::pow(2.0, (std::clamp(quality, 0, 100) - 70) / 10.0);
+    const double frames = 30 * std::sqrt(std::clamp(fps, 1, 60) / 30.0);
+    return int(std::clamp(double(size.width()) * size.height() * frames * perPixel, 500'000.0, 60'000'000.0));
+}
+
+int sharpScale(QSize region, int fps)
+{
+    // H.264 level 5.2, the highest that players and GPUs commonly take:
+    // 36,864 macroblocks (16 × 16) a frame, 2,073,600 a second.
+    const qint64 width = (region.width() * 2 + 15) / 16, height = (region.height() * 2 + 15) / 16;
+    return region.width() <= 2048 && region.height() <= 2048 && width * height <= 36'864
+        && width * height * fps <= 2'073'600 ? 2 : 1;
+}
+
+int fallenShortFps(quint64 frames, qint64 elapsedMs, int fps)
+{
+    if (elapsedMs < 2000 || fps < 1) return 0; // too short to tell
+    const double came = double(frames) * 1000 / double(elapsedMs);
+    return came < fps * 0.9 ? std::max(1, qRound(came)) : 0;
+}
+
 namespace {
 
 constexpr qint64 kSecond = 10'000'000;
 constexpr int kAudioRate = 48000;
 constexpr int kChannels = 2;
+// The system's software encoder doubles a region up to this: 1920 × 1080,
+// which becomes 3840 × 2160.
+constexpr qint64 kSoftwareDoubledPixels = 1920 * 1080;
+
+// Waits a part of a millisecond exactly. Sleep() ends on the system's timer
+// tick, 15.6 ms apart unless something asked for less: at 60 frames a second
+// (16.7 ms each) one run in four came out with 133 frames of 180, and gaps
+// of up to 83 ms; with this, every run has all of them.
+class Pacer {
+public:
+    Pacer() : m_timer(::CreateWaitableTimerExW(nullptr, nullptr, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS))
+    {
+        // Where the system has no such timer (before Windows 10 1803): the
+        // tick itself at 1 ms, for as long as the recording lasts.
+        if (!m_timer) m_tick = ::timeBeginPeriod(1) == TIMERR_NOERROR;
+    }
+    Pacer(const Pacer&) = delete;
+    Pacer& operator=(const Pacer&) = delete;
+    ~Pacer()
+    {
+        if (m_timer) ::CloseHandle(m_timer);
+        if (m_tick) ::timeEndPeriod(1);
+    }
+
+    void wait(qint64 ticks) const
+    {
+        LARGE_INTEGER due {};
+        due.QuadPart = -std::max<qint64>(1, ticks); // relative, 100 ns
+        if (m_timer && ::SetWaitableTimer(m_timer, &due, 0, nullptr, nullptr, FALSE))
+            ::WaitForSingleObject(m_timer, INFINITE);
+        else
+            ::Sleep(DWORD(std::max<qint64>(1, ticks / 10000)));
+    }
+
+    // For the log: how frames are waited for.
+    const char* name() const { return m_timer ? "timer" : m_tick ? "1 ms tick" : "sleep"; }
+
+private:
+    HANDLE m_timer;
+    bool m_tick = false;
+};
 
 qint64 nowTicks()
 {
@@ -193,7 +285,8 @@ public:
         desc.MipLevels = desc.ArraySize = desc.SampleDesc.Count = 1;
         desc.Format = format;
         desc.Usage = staging ? D3D11_USAGE_STAGING : D3D11_USAGE_DEFAULT;
-        desc.BindFlags = staging ? 0 : D3D11_BIND_RENDER_TARGET;
+        // A picture is also drawn from, when it is doubled (Doubler).
+        desc.BindFlags = staging ? 0 : D3D11_BIND_RENDER_TARGET | (format == DXGI_FORMAT_B8G8R8A8_UNORM ? D3D11_BIND_SHADER_RESOURCE : 0);
         desc.CPUAccessFlags = staging ? D3D11_CPU_ACCESS_READ : 0;
         winrt::com_ptr<ID3D11Texture2D> result;
         check(device->CreateTexture2D(&desc, nullptr, result.put()), "video texture");
@@ -272,10 +365,67 @@ private:
     winrt::com_ptr<ID3D11VideoProcessor> m_processor;
 };
 
+// A picture at twice its size, every pixel a 2×2 block, on the GPU. 4:2:0
+// video keeps one colour for each 2×2 block: at this size each pixel of the
+// screen keeps its own, and coloured and ClearType text stays as on screen.
+class Doubler {
+public:
+    Doubler(Graphics& graphics, QSize size)
+        : m_graphics(graphics), m_texture(graphics.texture(size * 2, DXGI_FORMAT_B8G8R8A8_UNORM))
+    {
+        winrt::com_ptr<ID2D1Factory1> factory;
+        check(::D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, factory.put()), "Direct2D factory");
+        winrt::com_ptr<ID2D1Device> device;
+        check(factory->CreateDevice(graphics.device.as<IDXGIDevice>().get(), device.put()), "Direct2D device");
+        check(device->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, m_painter.put()), "Direct2D context");
+        winrt::com_ptr<ID2D1Bitmap1> target;
+        const auto drawnOn = properties(D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW);
+        check(m_painter->CreateBitmapFromDxgiSurface(m_texture.as<IDXGISurface>().get(), &drawnOn, target.put()), "doubled picture");
+        m_painter->SetTarget(target.get());
+        m_painter->SetUnitMode(D2D1_UNIT_MODE_PIXELS);
+        m_painter->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_COPY);
+    }
+
+    ID3D11Texture2D* draw(ID3D11Texture2D* source)
+    {
+        if (source != m_source.get()) { // the screen's picture, or the one with clicks and keycaps on it
+            m_source.copy_from(source);
+            m_bitmap = nullptr;
+            const auto drawnFrom = properties(D2D1_BITMAP_OPTIONS_NONE);
+            check(m_painter->CreateBitmapFromDxgiSurface(m_source.as<IDXGISurface>().get(), &drawnFrom, m_bitmap.put()), "picture to double");
+        }
+        const D2D1_SIZE_U size = m_bitmap->GetPixelSize();
+        const D2D1_RECT_F whole {0, 0, float(size.width * 2), float(size.height * 2)};
+        // Direct2D sets the device's state over several calls: the encoder's
+        // threads, on the same device, stay out for that long.
+        const auto threads = m_graphics.context.try_as<ID3D10Multithread>();
+        if (threads) threads->Enter();
+        const auto leave = qScopeGuard([&] { if (threads) threads->Leave(); });
+        m_painter->BeginDraw();
+        m_painter->DrawBitmap(m_bitmap.get(), &whole, 1, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, nullptr, nullptr);
+        check(m_painter->EndDraw(), "double the picture");
+        m_graphics.context->OMSetRenderTargets(0, nullptr, nullptr); // the video processor reads it next
+        return m_texture.get();
+    }
+
+private:
+    static D2D1_BITMAP_PROPERTIES1 properties(D2D1_BITMAP_OPTIONS options)
+    {
+        return {{DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_IGNORE}, 96, 96, options, nullptr};
+    }
+
+    Graphics& m_graphics;
+    winrt::com_ptr<ID3D11Texture2D> m_texture;
+    winrt::com_ptr<ID2D1DeviceContext> m_painter;
+    winrt::com_ptr<ID3D11Texture2D> m_source;
+    winrt::com_ptr<ID2D1Bitmap1> m_bitmap;
+};
+
 class Writer {
 public:
-    Writer(Graphics& graphics, const Options& options, const QString& temporary, bool hardware)
-        : m_graphics(graphics), m_size((options.region.width() + 1) & ~1, (options.region.height() + 1) & ~1), m_gpu(hardware)
+    // `size`: the video's, even.
+    Writer(Graphics& graphics, const Options& options, QSize size, const QString& temporary, bool hardware)
+        : m_graphics(graphics), m_size(size), m_gpu(hardware)
     {
         winrt::com_ptr<IMFAttributes> attributes;
         check(::MFCreateAttributes(attributes.put(), 4), "writer attributes");
@@ -289,8 +439,8 @@ public:
         check(out->SetUINT32(MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_High), "H.264 high profile");
         // Required when negotiating the output type. Quality mode, once
         // accepted, controls the actual bitrate rather than this estimate.
-        const auto rate = UINT32(std::clamp<qint64>(qint64(m_size.width()) * m_size.height() * options.fps / 12, 500'000, 24'000'000));
-        check(out->SetUINT32(MF_MT_AVG_BITRATE, rate), "video bitrate");
+        const int bitrate = videoBitrate(m_size, options.fps, options.quality);
+        check(out->SetUINT32(MF_MT_AVG_BITRATE, UINT32(bitrate)), "video bitrate");
         check(m_writer->AddStream(out.get(), &m_video), "MP4 video stream");
         const auto in = videoType(MFVideoFormat_NV12, m_size, options.fps);
         LONG stride = 0;
@@ -303,9 +453,12 @@ public:
         check(encoding->SetUINT32(CODECAPI_AVEncCommonRateControlMode, eAVEncCommonRateControlMode_Quality), "quality mode");
         check(encoding->SetUINT32(CODECAPI_AVEncCommonQuality, UINT32(options.quality)), "video quality");
         check(encoding->SetUINT32(CODECAPI_AVEncMPVGOPSize, UINT32(options.fps * 2)), "keyframe interval");
-        HRESULT negotiated = m_writer->SetInputMediaType(m_video, in.get(), encoding.get());
-        if (FAILED(negotiated)) // a vendor may only implement bitrate-based VBR
+        HRESULT negotiated = options.bitrateOnly ? E_NOTIMPL : m_writer->SetInputMediaType(m_video, in.get(), encoding.get());
+        rate = u"quality %1"_s.arg(options.quality);
+        if (FAILED(negotiated)) { // a vendor may only implement bitrate-based VBR
             negotiated = m_writer->SetInputMediaType(m_video, in.get(), nullptr);
+            rate = u"bitrate %1 kbps"_s.arg(bitrate / 1000);
+        }
         check(negotiated, "negotiate H.264 encoder");
         if (options.systemAudio || options.microphone)
             addAudio();
@@ -422,6 +575,7 @@ public:
     HRESULT finish() { return m_writer ? m_writer->Finalize() : E_UNEXPECTED; }
     bool usesGpu() const { return m_gpu; }
     QString encoder;
+    QString rate; // Progress::rate
     bool actualHardware = false;
 
 private:
@@ -460,6 +614,63 @@ private:
     winrt::com_ptr<IMFVideoSampleAllocatorEx> m_allocator;
     winrt::com_ptr<ID3D11Texture2D> m_nv12;
     winrt::com_ptr<ID3D11Texture2D> m_staging;
+};
+
+// A frame of the region on its way into the MP4: doubled, or padded to even
+// sizes; then NV12 and H.264.
+class Encoder {
+public:
+    Encoder(Graphics& graphics, const Options& options, const QString& temporary, bool hardware, int scale)
+        : m_graphics(graphics), m_region(options.region.size()), m_scale(scale)
+    {
+        const QSize size((m_region.width() * scale + 1) & ~1, (m_region.height() * scale + 1) & ~1);
+        if (graphics.video)
+            m_converter.emplace(graphics, size, size, options.fps);
+        if (scale == 2)
+            m_doubler.emplace(graphics, m_region);
+        else if (size != m_region)
+            m_padded = graphics.texture(size, DXGI_FORMAT_B8G8R8A8_UNORM);
+        m_writer.emplace(graphics, options, size, temporary, hardware);
+    }
+
+    void write(ID3D11Texture2D* frame, qint64 time, qint64 duration)
+    {
+        if (m_doubler) {
+            frame = m_doubler->draw(frame);
+        } else if (m_padded) {
+            const UINT w = UINT(m_region.width()), h = UINT(m_region.height());
+            const D3D11_BOX whole {0, 0, 0, w, h, 1};
+            m_graphics.context->CopySubresourceRegion(m_padded.get(), 0, 0, 0, 0, frame, 0, &whole);
+            // NV12 processors need even rectangles. Extend the final
+            // row/column on the GPU; never stretch the selected text.
+            if (w & 1) {
+                const D3D11_BOX edge {w - 1, 0, 0, w, h, 1};
+                m_graphics.context->CopySubresourceRegion(m_padded.get(), 0, w, 0, 0, frame, 0, &edge);
+            }
+            if (h & 1) {
+                const D3D11_BOX edge {0, h - 1, 0, w, h, 1};
+                m_graphics.context->CopySubresourceRegion(m_padded.get(), 0, 0, h, 0, frame, 0, &edge);
+            }
+            if ((w & 1) && (h & 1)) {
+                const D3D11_BOX corner {w - 1, h - 1, 0, w, h, 1};
+                m_graphics.context->CopySubresourceRegion(m_padded.get(), 0, w, h, 0, frame, 0, &corner);
+            }
+            frame = m_padded.get();
+        }
+        m_writer->video(m_converter ? &*m_converter : nullptr, frame, time, duration);
+    }
+
+    Writer& writer() { return *m_writer; }
+    int scale() const { return m_scale; }
+
+private:
+    Graphics& m_graphics;
+    QSize m_region;
+    int m_scale;
+    std::optional<Converter> m_converter;
+    std::optional<Doubler> m_doubler;
+    winrt::com_ptr<ID3D11Texture2D> m_padded;
+    std::optional<Writer> m_writer;
 };
 
 // WASAPI converts each default endpoint to the same 48 kHz stereo PCM
@@ -600,6 +811,17 @@ public:
         try {
             if (auto border = m_session.try_as<wgc::IGraphicsCaptureSession3>()) border.IsBorderRequired(false);
         } catch (const winrt::hresult_error&) { }
+        // From Windows 11 24H2 on: no more pictures than the recording takes.
+        // Without it one arrives for every frame the display shows, 144 or
+        // 240 a second on such a display, for 30 or 60 kept: at 60 on a
+        // 240 Hz display this took the recorder from 11% of a core to 5.5%,
+        // and 5 points off the GPU.
+        try {
+            if (auto pacing = m_session.try_as<wgc::IGraphicsCaptureSession5>()) {
+                pacing.MinUpdateInterval(winrt::Windows::Foundation::TimeSpan {kSecond / options.fps});
+                paced = true;
+            }
+        } catch (const winrt::hresult_error&) { }
         m_shared = std::make_shared<Shared>();
         m_token = m_pool.FrameArrived([state = m_shared](const auto& pool, const auto&) {
             try {
@@ -667,6 +889,8 @@ public:
         m_have = true;
         return m_image.get();
     }
+
+    bool paced = false; // the system delivers at the recording's rate (Windows 11 24H2)
 
 private:
     struct Shared {
@@ -793,7 +1017,7 @@ std::unique_ptr<Source> openScreen(Graphics& graphics, const Options& options, Q
     if (!options.screenByGdi) {
         try {
             auto source = std::make_unique<CaptureSource>(graphics, options, display);
-            screen = u"Windows.Graphics.Capture"_s;
+            screen = source->paced ? u"Windows.Graphics.Capture, paced"_s : u"Windows.Graphics.Capture"_s;
             return source;
         } catch (const winrt::hresult_error& error) {
             unavailable = u"0x%1 %2"_s.arg(quint32(error.code().value), 8, 16, QChar(u'0')).arg(QString::fromWCharArray(error.message().c_str()));
@@ -811,7 +1035,8 @@ Result run(const Options& options, Control& control, const std::function<void(co
     Result result;
     if (control.stop) return result;
     if (options.path.isEmpty() || QFileInfo::exists(options.path) || options.region.width() < 16 || options.region.height() < 16
-        || options.region.width() > 7680 || options.region.height() > 4320 || options.fps < 1 || options.fps > 60) {
+        || options.region.width() > 7680 || options.region.height() > 4320 || options.fps < 1 || options.fps > 60
+        || options.scale > sharpScale(options.region.size(), options.fps)) {
         result.error = QCoreApplication::translate("Recording", "录屏路径已存在，或录制区域 / 帧率不可用");
         return result;
     }
@@ -826,7 +1051,7 @@ Result run(const Options& options, Control& control, const std::function<void(co
     }
     reservation.close();
     bool finalized = false;
-    std::unique_ptr<Writer> writer;
+    std::unique_ptr<Encoder> encoder;
     const auto stage = [&](const QString& name) {
         result.stage = name;
         if (progress) progress(result);
@@ -850,30 +1075,53 @@ Result run(const Options& options, Control& control, const std::function<void(co
         });
         check(::MFStartup(MF_VERSION), "Media Foundation startup");
         const auto shutdown = qScopeGuard([&] {
-            if (writer && !finalized && result.frames && !control.discard)
-                finalized = SUCCEEDED(writer->finish()); // preserve completed media on a recoverable error
-            writer.reset();
+            if (encoder && !finalized && result.frames && !control.discard)
+                finalized = SUCCEEDED(encoder->writer().finish()); // preserve completed media on a recoverable error
+            encoder.reset();
             ::MFShutdown();
         });
         const RECT area {options.region.left(), options.region.top(), options.region.right() + 1, options.region.bottom() + 1};
         stage(u"graphics device"_s);
         Graphics graphics(::MonitorFromRect(&area, MONITOR_DEFAULTTOPRIMARY), !options.noVideoDevice);
-        const QSize encodedSize((options.region.width() + 1) & ~1, (options.region.height() + 1) & ~1);
-        std::optional<Converter> converter;
-        if (graphics.video)
-            converter.emplace(graphics, encodedSize, encodedSize, options.fps);
-        winrt::com_ptr<ID3D11Texture2D> padded;
-        if (encodedSize != options.region.size())
-            padded = graphics.texture(encodedSize, DXGI_FORMAT_B8G8R8A8_UNORM);
         stage(u"encoder startup"_s);
+        // The ways to encode, best first: the next one where an encoder
+        // refuses. A GPU's encoder may not take the doubled size (older ones
+        // stop at 1920 × 1088); the system's software one is too slow for a
+        // large one, and without D3D11 video (#214) the CPU makes each frame.
+        const bool doubled = options.scale == 2 && graphics.video;
+        const int softwareScale = doubled && qint64(options.region.width()) * options.region.height() <= kSoftwareDoubledPixels ? 2 : 1;
+        std::vector<std::pair<bool, int>> ways; // on the GPU, scale
         if (!options.software && graphics.video) {
-            try { writer = std::make_unique<Writer>(graphics, options, temporary, true); }
-            catch (const Failure&) { writer.reset(); }
+            if (doubled) ways.emplace_back(true, 2);
+            ways.emplace_back(true, 1);
         }
-        if (!writer)
-            writer = std::make_unique<Writer>(graphics, options, temporary, false);
-        result.encoder = graphics.video ? writer->encoder : writer->encoder + u" (no D3D11 video: NV12 on the CPU)"_s;
-        result.hardware = writer->actualHardware;
+        if (softwareScale == 2) ways.emplace_back(false, 2);
+        ways.emplace_back(false, 1);
+        // Opens the first of the ways from `first` on that an encoder takes,
+        // and with `frame` writes it: some refuse only then. What refused
+        // goes into the log, the last way's refusal to the caller.
+        const auto open = [&](size_t first, ID3D11Texture2D* frame = nullptr, qint64 time = 0, qint64 duration = 0) {
+            for (size_t way = first; way < ways.size(); ++way) {
+                const auto [hardware, scale] = ways[way];
+                try {
+                    encoder.reset();
+                    encoder = std::make_unique<Encoder>(graphics, options, temporary, hardware, scale);
+                    if (frame) encoder->write(frame, time, duration);
+                    const Writer& writer = encoder->writer();
+                    result.encoder = graphics.video ? writer.encoder : writer.encoder + u" (no D3D11 video: NV12 on the CPU)"_s;
+                    result.hardware = writer.actualHardware;
+                    result.rate = writer.rate;
+                    result.scale = scale;
+                    return way;
+                } catch (const Failure& failure) {
+                    result.refused += u"%1 %2x: %3 0x%4; "_s.arg(hardware ? u"GPU"_s : u"software"_s).arg(scale)
+                        .arg(failure.stage).arg(quint32(failure.hr), 8, 16, QChar(u'0'));
+                    if (way + 1 == ways.size()) throw;
+                }
+            }
+            Q_UNREACHABLE_RETURN(ways.size());
+        };
+        size_t way = open(0);
         std::vector<std::unique_ptr<Audio>> audio;
         stage(u"audio startup"_s);
         if (syntheticMs < 0) {
@@ -903,16 +1151,7 @@ Result run(const Options& options, Control& control, const std::function<void(co
                 throw Failure {u"no first screen frame"_s, HRESULT_FROM_WIN32(WAIT_TIMEOUT)};
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
-        QImage sampleBase;
-        if (generated) {
-            sampleBase = QImage(options.region.size(), QImage::Format_RGB32);
-            sampleBase.fill(QColor(248, 249, 251));
-            QPainter painter(&sampleBase);
-            painter.setPen(QColor(28, 33, 42));
-            painter.setFont(QFont(u"Segoe UI"_s, 12));
-            for (int y = 35; y < sampleBase.height(); y += 30)
-                painter.drawText(20, y, QCoreApplication::translate("Recording", "WinShun  区域录屏 — clear text 0123456789    C++20 / MP4"));
-        }
+        const QImage sampleBase = generated ? sampleBackdrop(options.region.size()) : QImage();
         std::unique_ptr<PointerOverlay> pointer;
         const bool showKeys = options.keys.mode != keycaps::Mode::Off || options.keys.mouse;
         if ((options.clickHighlights || showKeys) && image && !control.stop)
@@ -936,8 +1175,19 @@ Result run(const Options& options, Control& control, const std::function<void(co
         if (options.keyInput) options.keyInput->discardBefore(start);
         for (const auto& input : audio) input->start();
         stage(u"encoding"_s);
-        qint64 nextVideo = 0, nextAudio = 0, lastUpdate = -kSecond;
-        const qint64 interval = kSecond / options.fps;
+        // Frames are numbered, and each one's time comes from its number: at
+        // 60 a second a whole number of 100 ns per frame would drift.
+        const auto frameTime = [fps = qint64(options.fps)](qint64 frame) { return frame * kSecond / fps; };
+        qint64 nextFrame = 0, nextAudio = 0, lastUpdate = -kSecond;
+        const Pacer pacer;
+        // Where a recording's time goes, for the log: a computer that does
+        // not keep up says which part is slow.
+        qint64 readTicks = 0, encodeTicks = 0;
+        const auto timed = qScopeGuard([&] {
+            const double frames = double(std::max<quint64>(1, result.frames)) * 10000;
+            result.timing = u"read %1 ms, encode %2 ms a frame, waits by %3"_s.arg(readTicks / frames, 0, 'f', 1)
+                .arg(encodeTicks / frames, 0, 'f', 1).arg(QLatin1StringView(pacer.name()));
+        });
         const bool withAudio = options.systemAudio || options.microphone;
         const auto audioUntil = [&](qint64 target) {
             while (nextAudio < target) {
@@ -950,7 +1200,7 @@ Result run(const Options& options, Control& control, const std::function<void(co
                             = int(5000 * std::sin(double(nextAudio + frame) * 2 * 3.141592653589793 * 440 / kAudioRate));
                 std::vector<qint16> pcm(mixed.size());
                 std::transform(mixed.begin(), mixed.end(), pcm.begin(), [](int v) { return qint16(std::clamp(v, -32768, 32767)); });
-                writer->audio(pcm, nextAudio);
+                encoder->writer().audio(pcm, nextAudio);
                 nextAudio += count;
             }
         };
@@ -1006,8 +1256,11 @@ Result run(const Options& options, Control& control, const std::function<void(co
                 pulses.add({QPoint(options.region.width() * 3 / 4, options.region.height() / 4), elapsed, false});
                 syntheticClick = elapsed + kSecond;
             }
-            if (!paused && elapsed >= nextVideo) {
+            if (!paused && elapsed >= frameTime(nextFrame)) {
+                const qint64 time = frameTime(nextFrame), duration = frameTime(nextFrame + 1) - time;
+                const qint64 reading = nowTicks();
                 if (source) image = source->next();
+                readTicks += nowTicks() - reading;
                 if (generated) {
                     QImage picture = sampleBase.copy();
                     QPainter painter(&picture);
@@ -1039,40 +1292,23 @@ Result run(const Options& options, Control& control, const std::function<void(co
                 }
                 ID3D11Texture2D* input = image;
                 if (pointer) input = pointer->draw(image, pulses.active(elapsed), elapsed, keyDraws);
-                if (padded) {
-                    const UINT w = UINT(options.region.width()), h = UINT(options.region.height());
-                    const D3D11_BOX whole {0, 0, 0, w, h, 1};
-                    graphics.context->CopySubresourceRegion(padded.get(), 0, 0, 0, 0, input, 0, &whole);
-                    // NV12 processors need even rectangles. Extend the final
-                    // row/column on the GPU; never stretch the selected text.
-                    if (w & 1) {
-                        const D3D11_BOX edge {w - 1, 0, 0, w, h, 1};
-                        graphics.context->CopySubresourceRegion(padded.get(), 0, w, 0, 0, input, 0, &edge);
-                    }
-                    if (h & 1) {
-                        const D3D11_BOX edge {0, h - 1, 0, w, h, 1};
-                        graphics.context->CopySubresourceRegion(padded.get(), 0, 0, h, 0, input, 0, &edge);
-                    }
-                    if ((w & 1) && (h & 1)) {
-                        const D3D11_BOX corner {w - 1, h - 1, 0, w, h, 1};
-                        graphics.context->CopySubresourceRegion(padded.get(), 0, w, h, 0, input, 0, &corner);
-                    }
-                    input = padded.get();
-                }
+                const qint64 encoding = nowTicks();
+                const auto encoded = qScopeGuard([&] { encodeTicks += nowTicks() - encoding; });
                 try {
-                    writer->video(converter ? &*converter : nullptr, input, nextVideo, interval);
-                } catch (const Failure&) {
-                    // Transform metadata is only diagnostic: some vendors do
-                    // not expose a hardware URL even on the GPU input path.
-                    if (result.frames || !writer->usesGpu()) throw;
-                    writer.reset();
-                    writer = std::make_unique<Writer>(graphics, options, temporary, false);
-                    result.encoder = writer->encoder;
-                    result.hardware = writer->actualHardware;
-                    writer->video(converter ? &*converter : nullptr, input, nextVideo, interval);
+                    encoder->write(input, time, duration);
+                } catch (const Failure& failure) {
+                    // An encoder may open and refuse only its first frame:
+                    // the next way then. (Transform metadata is only
+                    // diagnostic: some vendors do not expose a hardware URL
+                    // even on the GPU input path.)
+                    if (result.frames || way + 1 == ways.size()) throw;
+                    result.refused += u"first frame: %1 0x%2; "_s.arg(failure.stage).arg(quint32(failure.hr), 8, 16, QChar(u'0'));
+                    way = open(way + 1, input, time, duration);
                 }
                 ++result.frames;
-                nextVideo = std::max(nextVideo + interval, elapsed / interval * interval);
+                // The next one, or the one due by now where this computer
+                // cannot keep up: the frame before it stays on screen longer.
+                nextFrame = std::max(nextFrame + 1, elapsed * options.fps / kSecond);
             }
             if (!paused && withAudio) {
                 // Give both endpoints 100 ms to deliver their timestamped packets.
@@ -1087,9 +1323,8 @@ Result run(const Options& options, Control& control, const std::function<void(co
             }
             // No input polling: Raw Input delivers clicks on its own thread.
             // Wake for the next video/audio deadline, or check stop within 16 ms.
-            const qint64 remaining = nextVideo - clock.elapsed(nowTicks());
-            const qint64 sleep = paused ? 25 : std::clamp<qint64>(remaining / 10000, 1, withAudio ? 5 : 16);
-            std::this_thread::sleep_for(std::chrono::milliseconds(sleep));
+            const qint64 remaining = frameTime(nextFrame) - clock.elapsed(nowTicks());
+            pacer.wait(paused ? 25 * 10000 : std::clamp<qint64>(remaining, 2000, (withAudio ? 5 : 16) * 10000));
         }
         const qint64 end = clock.elapsed(nowTicks());
         result.elapsedMs = end / 10000;
@@ -1103,9 +1338,9 @@ Result run(const Options& options, Control& control, const std::function<void(co
         pointer.reset();
         audio.clear();
         stage(u"finalize MP4"_s);
-        if (result.frames && !control.discard) check(writer->finish(), "finalize MP4");
+        if (result.frames && !control.discard) check(encoder->writer().finish(), "finalize MP4");
         finalized = true;
-        writer.reset();
+        encoder.reset();
         graphics.context->ClearState();
         graphics.context->Flush();
         if (const auto dxgi = graphics.device.try_as<IDXGIDevice3>()) dxgi->Trim();
@@ -1121,7 +1356,7 @@ Result run(const Options& options, Control& control, const std::function<void(co
     // Nothing pressed lives on past the recording (through a GIF's export):
     // what the hook handed over since the last frame goes, and anything later.
     if (options.keyInput) options.keyInput->discardBefore(std::numeric_limits<qint64>::max());
-    writer.reset();
+    encoder.reset();
     if (!result.frames && control.stop) result.error.clear(); // cancelled during initialization
     if (control.discard || !result.frames) {
         QFile::remove(temporary); // only this call's UUID-named, reserved file

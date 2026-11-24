@@ -38,7 +38,7 @@ QJsonObject progressJson(const Progress& p)
 {
     return {{u"elapsed"_s, p.elapsedMs}, {u"bytes"_s, p.bytes}, {u"frames"_s, qint64(p.frames)},
         {u"encoder"_s, p.encoder}, {u"hardware"_s, p.hardware}, {u"percent"_s, p.percent}, {u"stage"_s, p.stage},
-        {u"screen"_s, p.screen}};
+        {u"screen"_s, p.screen}, {u"rate"_s, p.rate}, {u"scale"_s, p.scale}, {u"refused"_s, p.refused}, {u"timing"_s, p.timing}};
 }
 
 Progress readProgress(const QJsonObject& json)
@@ -52,6 +52,10 @@ Progress readProgress(const QJsonObject& json)
     p.percent = json.value(u"percent"_s).toInt(-1);
     p.stage = json.value(u"stage"_s).toString();
     p.screen = json.value(u"screen"_s).toString();
+    p.rate = json.value(u"rate"_s).toString();
+    p.scale = json.value(u"scale"_s).toInt(1);
+    p.refused = json.value(u"refused"_s).toString();
+    p.timing = json.value(u"timing"_s).toString();
     return p;
 }
 
@@ -233,7 +237,7 @@ Result recordIsolated(const WorkerProgram& program, const Options& options, Cont
     for (const auto& key : options.keys.own) hotkeys.append(QJsonArray {key.mods, key.vk});
     QJsonObject request {{u"operation"_s, u"record"_s}, {u"path"_s, options.path},
         {u"region"_s, QJsonArray {options.region.x(), options.region.y(), options.region.width(), options.region.height()}},
-        {u"fps"_s, options.fps}, {u"quality"_s, options.quality}, {u"cursor"_s, options.cursor},
+        {u"fps"_s, options.fps}, {u"quality"_s, options.quality}, {u"scale"_s, options.scale}, {u"cursor"_s, options.cursor},
         {u"systemAudio"_s, options.systemAudio}, {u"microphone"_s, options.microphone},
         {u"clickHighlights"_s, options.clickHighlights}, {u"pointerScale"_s, options.pointerScale},
         {u"outputScale"_s, options.outputScale}, {u"font"_s, options.keyFont.toString()},
@@ -243,6 +247,10 @@ Result recordIsolated(const WorkerProgram& program, const Options& options, Cont
     Result result;
     for (int attempt = 0; attempt < (options.software ? 1 : 2); ++attempt) {
         request.insert(u"software"_s, options.software || attempt > 0);
+        // The second attempt is the plainest way there is: the system's
+        // encoder at the region's own size. Whatever stalled the first (a
+        // GPU's encoder, or its driver at the doubled size) is not asked again.
+        if (attempt > 0) request.insert(u"scale"_s, 1);
         request.insert(u"temporary"_s, options.path + u'.' + QUuid::createUuid().toString(QUuid::Id128) + u".partial.mp4"_s);
         result = supervise(program, request, &options, control, progress);
         const QString temporary = request.value(u"temporary"_s).toString();
@@ -256,8 +264,11 @@ Result recordIsolated(const WorkerProgram& program, const Options& options, Cont
             if (progress) progress(retry);
         }
     }
-    qInfo().noquote() << "Recording finished: encoder" << result.encoder << "hardware" << result.hardware << "screen" << result.screen
-                     << "frames" << result.frames << "elapsed ms" << result.elapsedMs << "stage" << result.stage;
+    // Frames against the time say whether this computer kept up with the rate asked for.
+    qInfo().noquote() << "Recording finished: encoder" << result.encoder << "hardware" << result.hardware << result.rate
+                     << "screen" << result.screen << "size" << options.region.size() << "scale" << result.scale << "fps" << options.fps
+                     << "frames" << result.frames << "elapsed ms" << result.elapsedMs << "stage" << result.stage << "-" << result.timing;
+    if (!result.refused.isEmpty()) qWarning().noquote() << "Recording: refused before that:" << result.refused;
     if (!result.error.isEmpty()) qWarning().noquote() << result.error;
     return result;
 }
@@ -272,7 +283,8 @@ Result exportGifIsolated(const WorkerProgram& program, const QString& mp4, const
         return result;
     }
     return supervise(program, {{u"operation"_s, u"gif"_s}, {u"input"_s, mp4}, {u"path"_s, options.path},
-        {u"fps"_s, options.fps}, {u"longest"_s, options.maximumEdge}, {u"scratch"_s, staging.path()}}, nullptr, control, progress);
+        {u"fps"_s, options.fps}, {u"longest"_s, options.maximumEdge}, {u"sourceScale"_s, options.sourceScale},
+        {u"scratch"_s, staging.path()}}, nullptr, control, progress);
 }
 
 static int runWorker()
@@ -291,7 +303,8 @@ static int runWorker()
     options.path = request.value(u"path"_s).toString();
     options.temporary = request.value(u"temporary"_s).toString();
     options.fps = request.value(u"fps"_s).toInt(30);
-    options.quality = request.value(u"quality"_s).toInt(75);
+    options.quality = request.value(u"quality"_s).toInt(options.quality);
+    options.scale = request.value(u"scale"_s).toInt(1);
     options.cursor = request.value(u"cursor"_s).toBool();
     options.systemAudio = request.value(u"systemAudio"_s).toBool();
     options.microphone = request.value(u"microphone"_s).toBool();
@@ -341,7 +354,8 @@ static int runWorker()
     Result result;
     if (request.value(u"operation"_s).toString() == u"gif") {
         result = exportGif(request.value(u"input"_s).toString(), {options.path, options.fps,
-            request.value(u"longest"_s).toInt(), request.value(u"scratch"_s).toString()}, control, update);
+            request.value(u"longest"_s).toInt(), request.value(u"scratch"_s).toString(),
+            request.value(u"sourceScale"_s).toInt(1)}, control, update);
     } else if (request.value(u"operation"_s).toString() == u"record") {
         const int syntheticMs = request.value(u"syntheticMs"_s).toInt(-1);
         result = syntheticMs < 0 ? record(options, control, update) : sample(options, syntheticMs, control, update);

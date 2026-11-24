@@ -173,7 +173,8 @@ int main(int argc, char** argv)
     QGuiApplication app(argc, argv);
     const QStringList args = app.arguments();
     if (args.size() < 4) {
-        QTextStream(stderr) << "recording-probe sample|screen|fixture file.mp4 milliseconds [x y width height] [--software] [--system-audio] [--microphone] [--pause] [--clicks]\n"
+        QTextStream(stderr) << "recording-probe sample|screen|fixture file.mp4 milliseconds [x y width height] [--software] [--fps 15|30|60] [--quality 0-100] [--scale 2] [--bitrate-only]\n"
+                              "    [--system-audio] [--microphone] [--pause] [--clicks] [--backdrop sample.png]\n"
                               "recording-probe inspect file.mp4 frame.png [--find-click]\n";
         return 2;
     }
@@ -193,9 +194,18 @@ int main(int argc, char** argv)
     options.systemAudio = args.contains(u"--system-audio");
     options.microphone = args.contains(u"--microphone");
     options.clickHighlights = args.contains(u"--clicks");
-    options.fps = args.contains(u"--small-file") ? 15 : 30;
-    options.quality = args.contains(u"--small-file") ? 70 : args.contains(u"--high-quality") ? 88 : 75;
+    const auto valueAfter = [&](QStringView name, int otherwise) {
+        const qsizetype at = args.indexOf(name);
+        return at > 0 && at + 1 < args.size() ? args[at + 1].toInt() : otherwise;
+    };
+    options.fps = valueAfter(u"--fps", 30);
+    options.quality = valueAfter(u"--quality", options.quality);
+    options.scale = valueAfter(u"--scale", 1);
+    options.bitrateOnly = args.contains(u"--bitrate-only");
     const int duration = args[3].toInt();
+    // What sample's frames are made from, to hold a decoded frame against.
+    if (const qsizetype at = args.indexOf(u"--backdrop"); at > 0 && at + 1 < args.size())
+        ws::capture::recording::sampleBackdrop(options.region.size()).save(args[at + 1]);
     std::unique_ptr<ws::KeyListener> clicks;
     const auto listen = [&] {
         if (!options.clickHighlights) return true;
@@ -257,7 +267,7 @@ int main(int argc, char** argv)
     }
     QTextStream(stdout) << QJsonDocument(QJsonObject {{u"path"_s, result.path}, {u"error"_s, result.error},
         {u"durationMs"_s, result.elapsedMs}, {u"frames"_s, qint64(result.frames)}, {u"bytes"_s, result.bytes},
-        {u"encoder"_s, result.encoder}, {u"hardware"_s, result.hardware},
+        {u"encoder"_s, result.encoder}, {u"hardware"_s, result.hardware}, {u"rate"_s, result.rate},
         {u"cancelled"_s, result.error.isEmpty() && !result.frames}}).toJson(QJsonDocument::Compact) << '\n';
     return result.error.isEmpty() ? 0 : 1;
 }

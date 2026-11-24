@@ -90,6 +90,130 @@ HRESULT forEachFrame(const QString& path, const std::function<void(qint64 ms, co
     return S_OK;
 }
 
+// The last frame of a sample()'s MP4 (`size` × `scale`), as a player shows
+// it at the region's size: a doubled video halved again, each pixel the
+// mean of its 2×2 block. Null where it does not decode.
+QImage lastFrame(const QString& path, QSize size, int scale)
+{
+    QImage frame(size, QImage::Format_RGB32);
+    HRESULT decoded = E_FAIL;
+    std::jthread reader([&] {
+        const HRESULT com = ::CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        if (FAILED(com)) return;
+        const auto uninit = qScopeGuard([] { ::CoUninitialize(); });
+        decoded = forEachFrame(path, [&](qint64, const unsigned char* top, LONG pitch) {
+            for (int y = 0; y < size.height(); ++y) {
+                auto* out = reinterpret_cast<QRgb*>(frame.scanLine(y));
+                for (int x = 0; x < size.width(); ++x) {
+                    int sum[3] {};
+                    for (int dy = 0; dy < scale; ++dy)
+                        for (int dx = 0; dx < scale; ++dx)
+                            for (int c = 0; c < 3; ++c)
+                                sum[c] += top[qint64(y * scale + dy) * pitch + (x * scale + dx) * 4 + c];
+                    const int n = scale * scale;
+                    out[x] = qRgb((sum[2] + n / 2) / n, (sum[1] + n / 2) / n, (sum[0] + n / 2) / n);
+                }
+            }
+        });
+    });
+    reader.join();
+    return SUCCEEDED(decoded) ? frame : QImage();
+}
+
+// The brightness (Y) plane of an MP4's last frame, `size` rows of its
+// width, as the decoder gives it: nothing converted. Empty where it does
+// not decode.
+QByteArray lastLuma(const QString& path, QSize size)
+{
+    QByteArray luma;
+    std::jthread reading([&] {
+        if (FAILED(::CoInitializeEx(nullptr, COINIT_MULTITHREADED))) return;
+        const auto uninit = qScopeGuard([] { ::CoUninitialize(); });
+        if (FAILED(::MFStartup(MF_VERSION))) return;
+        const auto shutdown = qScopeGuard([] { ::MFShutdown(); });
+        ComPtr<IMFSourceReader> reader;
+        ComPtr<IMFMediaType> type;
+        if (FAILED(::MFCreateSourceReaderFromURL(reinterpret_cast<const wchar_t*>(path.utf16()), nullptr, &reader))
+            || FAILED(::MFCreateMediaType(&type)))
+            return;
+        type->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+        type->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_NV12);
+        if (FAILED(reader->SetCurrentMediaType(DWORD(MF_SOURCE_READER_FIRST_VIDEO_STREAM), nullptr, type.Get()))) return;
+        for (int i = 0; i < 1000; ++i) {
+            DWORD flags = 0;
+            ComPtr<IMFSample> sample;
+            if (FAILED(reader->ReadSample(DWORD(MF_SOURCE_READER_FIRST_VIDEO_STREAM), 0, nullptr, &flags, nullptr, &sample))
+                || (flags & MF_SOURCE_READERF_ENDOFSTREAM))
+                return;
+            if (!sample) continue;
+            ComPtr<IMFMediaBuffer> buffer;
+            ComPtr<IMF2DBuffer> twoD;
+            BYTE* top = nullptr;
+            LONG pitch = 0;
+            if (FAILED(sample->GetBufferByIndex(0, &buffer)) || FAILED(buffer.As(&twoD)) || FAILED(twoD->Lock2D(&top, &pitch))) return;
+            luma.resize(qsizetype(size.width()) * size.height());
+            for (int y = 0; y < size.height(); ++y)
+                std::memcpy(luma.data() + qsizetype(y) * size.width(), top + qint64(y) * pitch, size_t(size.width()));
+            twoD->Unlock2D();
+        }
+    });
+    reading.join();
+    return luma;
+}
+
+// Rows of sample()'s picture away from its moving block, and from the
+// encoder's blocks around it.
+bool still(int y, int height)
+{
+    return y < height / 2 - 4 || y >= height / 2 + 40;
+}
+
+double decibels(double squares, qint64 count)
+{
+    return 10 * std::log10(255.0 * 255.0 * double(count) / std::max(squares, 1e-9));
+}
+
+// How close an MP4's last frame is to sample()'s picture in brightness, in
+// dB: what the encoder's quality decides.
+double brightnessCloseness(const QString& path, const QImage& backdrop)
+{
+    const QSize size = backdrop.size();
+    const QByteArray decoded = lastLuma(path, size);
+    if (decoded.isEmpty()) return 0;
+    // The picture's own Y, as the recording makes it (studio-range BT.709).
+    const QImage bgra = backdrop.convertToFormat(QImage::Format_RGB32);
+    QByteArray expected(qsizetype(size.width()) * size.height(), 0), chroma(expected.size() / 2, 0);
+    bgraToNv12(bgra.constBits(), int(bgra.bytesPerLine()), size.width(), size.height(),
+        reinterpret_cast<unsigned char*>(expected.data()), size.width(), reinterpret_cast<unsigned char*>(chroma.data()), size.width());
+    double squares = 0;
+    qint64 count = 0;
+    for (int y = 0; y < size.height(); ++y) {
+        if (!still(y, size.height())) continue;
+        for (int x = 0; x < size.width(); ++x, ++count) {
+            const qsizetype at = qsizetype(y) * size.width() + x;
+            squares += std::pow(double(uchar(decoded[at])) - uchar(expected[at]), 2);
+        }
+    }
+    return decibels(squares, count);
+}
+
+// How close a picture is to sample()'s in colour, in dB: what 4:2:0 video
+// takes from small coloured text.
+double colourCloseness(const QImage& frame, const QImage& backdrop)
+{
+    double squares = 0;
+    qint64 count = 0;
+    for (int y = 0; y < backdrop.height(); ++y) {
+        if (!still(y, backdrop.height())) continue;
+        const auto* a = reinterpret_cast<const QRgb*>(frame.constScanLine(y));
+        const auto* b = reinterpret_cast<const QRgb*>(backdrop.constScanLine(y));
+        for (int x = 0; x < backdrop.width(); ++x, ++count)
+            squares += (std::pow(qRed(a[x]) - qRed(b[x]), 2) + std::pow(qGreen(a[x]) - qGreen(b[x]), 2)
+                + std::pow(qBlue(a[x]) - qBlue(b[x]), 2)) / 3;
+    }
+    return decibels(squares, count);
+}
+
 } // namespace
 
 class TestRecording : public QObject {
@@ -301,6 +425,178 @@ private slots:
         QCOMPARE(mixed, (Nv12 {235, 16, 16, 235, 128, 128}));
     }
 
+    // Twice the region's size where H.264 (level 5.2) takes it.
+    void sharpScaleLimits()
+    {
+        QCOMPARE(sharpScale(QSize(1920, 1080), 30), 2);
+        QCOMPARE(sharpScale(QSize(1920, 1080), 60), 2); // 3840 × 2160 at 60
+        QCOMPARE(sharpScale(QSize(1080, 1920), 30), 2);
+        QCOMPARE(sharpScale(QSize(2048, 1152), 30), 2); // 4096 × 2304: the largest frame
+        QCOMPARE(sharpScale(QSize(2048, 1152), 60), 1); // too many blocks a second
+        QCOMPARE(sharpScale(QSize(2050, 400), 30), 1);
+        QCOMPARE(sharpScale(QSize(2560, 1440), 30), 1);
+        QCOMPARE(sharpScale(QSize(641, 361), 60), 2);
+        // Asked for where it cannot be: refused before anything is opened.
+        QTemporaryDir temporary;
+        Options options;
+        options.path = temporary.filePath(u"large.mp4"_s);
+        options.region = QRect(0, 0, 2560, 1440);
+        options.scale = 2;
+        QVERIFY(!sample(options, 100).error.isEmpty());
+        QVERIFY(!QFileInfo::exists(options.path));
+    }
+
+    // Twice the size is asked for, and the way to encode cannot make it: the
+    // region's own size then, never a failed recording.
+    void doubledWhereItCan_data()
+    {
+        QTest::addColumn<QSize>("size");
+        QTest::addColumn<bool>("software");
+        QTest::addColumn<bool>("noVideoDevice");
+        QTest::addColumn<int>("scale");
+        QTest::newRow("gpu") << QSize(640, 360) << false << false << 0; // 2, or what refused it is said
+        QTest::newRow("software") << QSize(640, 360) << true << false << 2;
+        QTest::newRow("software-large-region") << QSize(2000, 1100) << true << false << 1; // too slow doubled
+        QTest::newRow("no-video-device") << QSize(640, 360) << false << true << 1; // the CPU makes each frame (#214)
+    }
+
+    void doubledWhereItCan()
+    {
+        QFETCH(QSize, size);
+        QFETCH(bool, software);
+        QFETCH(bool, noVideoDevice);
+        QFETCH(int, scale);
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        Options options;
+        options.path = temporary.filePath(u"doubled.mp4"_s);
+        options.region = QRect(QPoint(), size);
+        options.software = software;
+        options.noVideoDevice = noVideoDevice;
+        options.scale = 2;
+        Result result;
+        std::jthread worker([&] { result = sample(options, 300); });
+        worker.join();
+        QVERIFY2(result.error.isEmpty(), qPrintable(result.error));
+        if (scale)
+            QCOMPARE(result.scale, scale);
+        else
+            QVERIFY2(result.scale == 2 || !result.refused.isEmpty(), "a GPU that refuses the doubled size must say why");
+        QVERIFY2(!lastFrame(result.path, size, result.scale).isNull(), qPrintable(result.refused));
+    }
+
+    // What the panel says after a recording the computer did not keep up with.
+    void fallenShort()
+    {
+        QCOMPARE(fallenShortFps(600, 10'000, 60), 0);
+        QCOMPARE(fallenShortFps(545, 10'000, 60), 0); // nine tenths and more: kept up
+        QCOMPARE(fallenShortFps(410, 10'000, 60), 41);
+        QCOMPARE(fallenShortFps(410, 10'000, 30), 0);
+        QCOMPARE(fallenShortFps(20, 1'000, 60), 0); // too short to tell
+        QCOMPARE(fallenShortFps(2, 10'000, 15), 1);
+    }
+
+    // An encoder that takes no quality gets a bitrate: more for each
+    // quality, more for a higher rate, within what a level allows.
+    void bitrateByQuality()
+    {
+        const QSize size(1920, 1080);
+        int previous = 0;
+        for (const int quality : kQualities) {
+            const int rate = videoBitrate(size, 30, quality);
+            QVERIFY2(rate >= previous * 3 / 2, qPrintable(u"%1 at %2"_s.arg(rate).arg(quality)));
+            previous = rate;
+        }
+        QVERIFY(videoBitrate(size, 60, 80) > videoBitrate(size, 30, 80));
+        QVERIFY(videoBitrate(size, 60, 80) < videoBitrate(size, 30, 80) * 2); // frames closer together differ less
+        QVERIFY(videoBitrate(size, 15, 80) < videoBitrate(size, 30, 80));
+        QCOMPARE(videoBitrate(QSize(3840, 2160), 60, 100), 60'000'000);
+        QCOMPARE(videoBitrate(QSize(16, 16), 15, 0), 500'000);
+
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        qint64 bytes[2] {};
+        for (int i = 0; i < 2; ++i) {
+            Options options;
+            options.path = temporary.filePath(u"bitrate-%1.mp4"_s.arg(i));
+            options.region = QRect(0, 0, 640, 360);
+            options.software = true;
+            options.bitrateOnly = true;
+            options.quality = i ? kQualities.back() : kQualities.front();
+            Result result;
+            std::jthread worker([&] { result = sample(options, 600); });
+            worker.join();
+            QVERIFY2(result.error.isEmpty(), qPrintable(result.error));
+            QVERIFY2(result.rate.startsWith(u"bitrate "), qPrintable(result.rate));
+            QVERIFY(!lastFrame(result.path, options.region.size(), 1).isNull());
+            bytes[i] = result.bytes;
+        }
+        QVERIFY2(bytes[1] > bytes[0], qPrintable(u"%1, %2"_s.arg(bytes[0]).arg(bytes[1])));
+    }
+
+    // What the panel's 画质 choices come to, on small dark, coloured and
+    // light-on-dark text: each one closer to the screen than the one before,
+    // and 超清's doubled size far closer in colour than any quality alone.
+    void clarityByQuality_data()
+    {
+        QTest::addColumn<bool>("software");
+        QTest::newRow("hardware") << false;
+        QTest::newRow("software") << true;
+    }
+
+    void clarityByQuality()
+    {
+        QFETCH(bool, software);
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const QSize size(640, 360);
+        const QImage backdrop = sampleBackdrop(size);
+        QString seen;
+        struct Closeness {
+            double brightness = 0;
+            double colour = 0;
+        };
+        const auto record = [&](int quality, int scale, Closeness& close, qint64& bytes) {
+            Options options;
+            options.path = temporary.filePath(u"q%1-x%2.mp4"_s.arg(quality).arg(scale));
+            options.region = QRect(QPoint(), size);
+            options.software = software;
+            options.quality = quality;
+            options.scale = scale;
+            Result result;
+            std::jthread worker([&] { result = sample(options, 600); });
+            worker.join();
+            QVERIFY2(result.error.isEmpty(), qPrintable(result.error));
+            QCOMPARE(result.scale, scale);
+            QCOMPARE(result.rate, u"quality %1"_s.arg(quality));
+            const QImage frame = lastFrame(result.path, size, scale);
+            QVERIFY(!frame.isNull());
+            close = {scale == 1 ? brightnessCloseness(result.path, backdrop) : 0, colourCloseness(frame, backdrop)};
+            bytes = result.bytes;
+            seen += u"q%1 x%2: %3 dB, colour %4 dB, %5 bytes; "_s.arg(quality).arg(scale)
+                .arg(close.brightness, 0, 'f', 1).arg(close.colour, 0, 'f', 1).arg(bytes);
+        };
+        Closeness previous, plain;
+        qint64 previousBytes = 0;
+        for (const int quality : kQualities) {
+            qint64 bytes = 0;
+            record(quality, 1, plain, bytes);
+            if (QTest::currentTestFailed()) return;
+            QVERIFY2(plain.brightness >= previous.brightness + 0.8, qPrintable(seen));
+            QVERIFY2(bytes > previousBytes, qPrintable(seen));
+            previous = plain;
+            previousBytes = bytes;
+        }
+        QVERIFY2(plain.brightness >= 45, qPrintable(seen)); // 超清: no visible loss in brightness
+        Closeness doubled;
+        qint64 bytes = 0;
+        record(kQualities.back(), 2, doubled, bytes);
+        if (QTest::currentTestFailed()) return;
+        QVERIFY2(doubled.colour >= plain.colour + 8 && doubled.colour >= 38, qPrintable(seen));
+        QVERIFY2(bytes < previousBytes * 4, qPrintable(seen)); // four times the pixels, far less than four times the file
+        qInfo().noquote() << seen;
+    }
+
     void neverOverwrite()
     {
         QTemporaryDir temporary;
@@ -505,6 +801,41 @@ private slots:
         QCOMPARE(gifSize(QSize(200, 100), 1280), QSize(200, 100));
     }
 
+    // A GIF that keeps the region's size is made from a doubled video: the
+    // same size as from a plain one, its small coloured text closer to the screen's.
+    void gifFromDoubledVideo()
+    {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const QSize size(641, 361); // odd: a plain video is padded to 642 × 362, a doubled one needs none
+        const QImage backdrop = sampleBackdrop(size);
+        double colour[2] {};
+        for (const int scale : {1, 2}) {
+            Options options;
+            options.path = temporary.filePath(u"x%1.mp4"_s.arg(scale));
+            options.region = QRect(QPoint(), size);
+            options.software = true;
+            options.quality = kQualities.back();
+            options.scale = scale;
+            Result video, gif;
+            std::jthread worker([&] {
+                video = sample(options, 400);
+                if (!video.error.isEmpty()) return;
+                Control control;
+                gif = exportGif(video.path, {temporary.filePath(u"x%1.gif"_s.arg(scale)), 15, 1280, {}, video.scale}, control);
+            });
+            worker.join();
+            QVERIFY2(video.error.isEmpty(), qPrintable(video.error));
+            QCOMPARE(video.scale, scale);
+            QVERIFY2(gif.error.isEmpty(), qPrintable(gif.error));
+            const QImage first = QImageReader(gif.path).read().convertToFormat(QImage::Format_RGB32);
+            QCOMPARE(first.size(), scale == 2 ? size : QSize(642, 362));
+            colour[scale - 1] = colourCloseness(first, backdrop);
+        }
+        QVERIFY2(colour[1] >= colour[0] + 3, qPrintable(u"plain %1 dB, doubled %2 dB"_s.arg(colour[0]).arg(colour[1])));
+        qInfo().noquote() << "GIF colour: from a plain video" << colour[0] << "dB, from a doubled one" << colour[1] << "dB";
+    }
+
     void encodedVideo_data()
     {
         QTest::addColumn<bool>("software");
@@ -516,7 +847,9 @@ private slots:
         QTest::newRow("hardware") << false << QSize(640, 360) << false << 30 << false << false;
         QTest::newRow("hardware-aac") << false << QSize(640, 360) << true << 30 << false << false;
         QTest::newRow("software-odd-region") << true << QSize(641, 361) << false << 30 << false << false;
-        QTest::newRow("smaller-file") << false << QSize(640, 360) << false << 15 << false << false;
+        QTest::newRow("15-frames") << false << QSize(640, 360) << false << 15 << false << false;
+        QTest::newRow("60-frames") << false << QSize(640, 360) << false << 60 << false << false;
+        QTest::newRow("software-60-frames-aac") << true << QSize(640, 360) << true << 60 << false << false;
         QTest::newRow("gpu-click-highlight") << false << QSize(640, 360) << false << 30 << true << false;
         // GitHub #214: hardware asked for, but the driver has no D3D11 video.
         QTest::newRow("no-video-device-odd-region") << false << QSize(641, 361) << false << 30 << false << true;
@@ -539,7 +872,6 @@ private slots:
         options.software = software;
         options.noVideoDevice = noVideoDevice;
         options.fps = fps;
-        if (fps == 15) options.quality = 70;
         options.systemAudio = audio; // sample() generates a tone, never opens an endpoint
         options.clickHighlights = clickHighlights;
         Result result;
@@ -663,7 +995,8 @@ private slots:
         QCOMPARE(actual, QSize((size.width() + 1) & ~1, (size.height() + 1) & ~1));
         QVERIFY(fpsDenominator > 0);
         QVERIFY(std::abs(double(actualFps) / fpsDenominator - fps) < 0.05); // MP4 timestamps use a rational time base
-        QVERIFY(result.frames >= 5);
+        // On time: 60 a second are 16.7 ms apart, closer than Sleep()'s 15.6 ms tick tells apart.
+        QVERIFY2(result.frames >= quint64(fps * 600 / 1000 * 8 / 10), qPrintable(QString::number(result.frames)));
         QCOMPARE(hasAudio, audio);
         if (audio) {
             QVERIFY(SUCCEEDED(audioDecoded));

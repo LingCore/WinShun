@@ -82,7 +82,7 @@ add_library(wscapture STATIC
 target_include_directories(wscapture PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 # miniz: the projects' zip (AnnotationFormat). ole32: UI Automation (ScrollInput).
 target_link_libraries(wscapture PUBLIC winshun_options Qt6::Gui
-    PRIVATE miniz ZXing::ZXing windowsapp windowscodecs d3d11 d2d1 dxgi mfplat mfreadwrite mfuuid oleaut32 dwmapi user32 gdi32 advapi32 ole32)
+    PRIVATE miniz ZXing::ZXing windowsapp windowscodecs d3d11 d2d1 dxgi mfplat mfreadwrite mfuuid oleaut32 dwmapi user32 gdi32 advapi32 ole32 winmm)
 
 # Optional media components: Windows N still starts and takes screenshots.
 target_link_options(wscapture INTERFACE /DELAYLOAD:mfplat.dll /DELAYLOAD:mfreadwrite.dll)

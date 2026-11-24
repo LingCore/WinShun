@@ -3,9 +3,11 @@
 #include "Keycaps.h"
 
 #include <QFont>
+#include <QImage>
 #include <QRect>
 #include <QString>
 
+#include <array>
 #include <atomic>
 #include <functional>
 #include <memory>
@@ -28,12 +30,19 @@ private:
     qint64 m_paused = 0;
 };
 
+// The encoder's quality (0–100) for each picture quality the panel offers,
+// smallest file first: 小体积, 标准, 高清, 原画. Measured on small text
+// (tst_recording clarityByQuality): each step is closer to the screen in
+// brightness, 46 to 55 dB. Colour is another matter: see sharpScale().
+inline constexpr std::array<int, 4> kQualities {70, 80, 90, 100};
+
 struct Options {
     QRect region; // physical pixels, virtual desktop; wholly on one display
     QString path; // a new MP4 file; never overwrite an existing file
     QString temporary; // supervisor-owned UUID staging path; empty for a direct call
-    int fps = 30;
-    int quality = 75;
+    int fps = 30; // 1 to 60
+    int quality = kQualities[1];
+    int scale = 1; // 2: at twice the region's size, where sharpScale() allows
     bool systemAudio = false;
     bool microphone = false;
     bool cursor = true;
@@ -49,6 +58,7 @@ struct Options {
     double outputScale = 1; // a GIF scaled down: its size against the region's
     bool software = false; // the probe's deterministic software-encoder path
     bool noVideoDevice = false; // tests: as on a driver without D3D11 video (GitHub #214)
+    bool bitrateOnly = false; // tests: as with an encoder that takes no quality
     bool screenByGdi = false; // tests: the screen through GDI, as on Windows 10 1809
 };
 
@@ -67,6 +77,10 @@ struct Progress {
     int percent = -1; // export progress; -1 while capturing or without a duration
     QString stage; // last media operation, for timeout diagnostics
     QString screen; // how the screen is read: Windows.Graphics.Capture, or GDI and why
+    QString rate; // what the encoder was given to aim for: "quality 90", or "bitrate 12000 kbps" where it takes no quality
+    int scale = 1; // the video's size against the region's: 2 only where Options::scale asked and the encoder took it
+    QString refused; // the ways to encode that were tried before this one, and why each was refused; for the log
+    QString timing; // at the end, for the log: what a frame took to read from the screen and to encode, and how frames are waited for
 };
 
 struct Result : Progress {
@@ -84,6 +98,27 @@ Result record(const Options& options, Control& control, const std::function<void
 // keycaps on, "Ctrl + S" (or a click) at 100 ms. `control` pauses it.
 Result sample(const Options& options, int milliseconds, const std::function<void(const Progress&)>& progress = {});
 Result sample(const Options& options, int milliseconds, Control& control, const std::function<void(const Progress&)>& progress = {});
+
+// The still part of sample()'s picture: small dark, coloured and light-on-dark
+// text, as on a desktop. The moving block covers rows height / 2 to
+// height / 2 + 34; everywhere else a decoded frame can be held against this.
+QImage sampleBackdrop(QSize size);
+
+// 2 where a region can be recorded at twice its size, every pixel a 2×2 block;
+// 1 where that is more than H.264 takes. H.264 keeps one colour for each 2×2
+// block (4:2:0), which smears coloured and ClearType text at the region's own
+// size; doubled, each pixel of the screen keeps its colour.
+int sharpScale(QSize region, int fps);
+
+// The frames a second a recording came to where the computer did not keep
+// up: under nine tenths of the rate asked for, over two seconds or more.
+// 0 where it kept up.
+int fallenShortFps(quint64 frames, qint64 elapsedMs, int fps);
+
+// Bits per second for an encoder that takes no quality (a vendor's that only
+// implements bitrate-based VBR): more for a higher quality, so that the
+// panel's choices still differ there.
+int videoBitrate(QSize size, int fps, int quality);
 
 // Full-range BGRA to studio-range BT.709 NV12, as the GPU's video processor
 // makes it, for a device without D3D11 video (GitHub #214). Even width and

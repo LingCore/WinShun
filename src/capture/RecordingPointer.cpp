@@ -101,7 +101,7 @@ struct PointerOverlay::Impl {
         desc.MipLevels = desc.ArraySize = desc.SampleDesc.Count = 1;
         desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
         desc.Usage = D3D11_USAGE_DEFAULT;
-        desc.BindFlags = D3D11_BIND_RENDER_TARGET;
+        desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE; // drawn from, when the video is doubled
         winrt::check_hresult(device->CreateTexture2D(&desc, nullptr, texture.put()));
         winrt::com_ptr<ID2D1Factory1> factory;
         winrt::check_hresult(::D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, factory.put()));
