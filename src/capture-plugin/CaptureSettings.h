@@ -73,7 +73,8 @@ struct CaptureOptions {
     QString recordingFolder;
     bool recordingSystemAudio = false;
     bool recordingMicrophone = false;
-    int recordingQuality = 1; // 0: smaller file, 1: standard, 2: higher quality
+    int recordingQuality = 1; // 0: smaller file, 1: standard, 2: high, 3: ultra (Recorder::Quality)
+    int recordingFrameRate = 30; // an MP4's: 15, 30 or 60
     bool recordingCursor = true;
     bool recordingCountdown = true;
     bool recordingClicks = false;

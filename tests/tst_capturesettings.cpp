@@ -80,6 +80,7 @@ private slots:
         QVERIFY(fresh.recordingFolder.isEmpty());
         QVERIFY(!fresh.recordingSystemAudio && !fresh.recordingMicrophone);
         QCOMPARE(fresh.recordingQuality, 1);
+        QCOMPARE(fresh.recordingFrameRate, 30);
         QVERIFY(fresh.recordingCursor && fresh.recordingCountdown);
         QVERIFY(!fresh.recordingClicks);
         QCOMPARE(fresh.recordingFormat, 0);
@@ -90,7 +91,8 @@ private slots:
         o.recordingFolder = dir.filePath(u"录屏"_s);
         o.recordingSystemAudio = true;
         o.recordingMicrophone = true;
-        o.recordingQuality = 0;
+        o.recordingQuality = 3;
+        o.recordingFrameRate = 60;
         o.recordingCursor = false;
         o.recordingCountdown = false;
         o.recordingClicks = true;
@@ -101,7 +103,8 @@ private slots:
         QCOMPARE(back.saveFolder, o.saveFolder);
         QCOMPARE(back.recordingFolder, o.recordingFolder);
         QVERIFY(back.recordingSystemAudio && back.recordingMicrophone);
-        QCOMPARE(back.recordingQuality, 0);
+        QCOMPARE(back.recordingQuality, 3);
+        QCOMPARE(back.recordingFrameRate, 60);
         QVERIFY(!back.recordingCursor && !back.recordingCountdown);
         QVERIFY(back.recordingClicks);
         QCOMPARE(back.recordingFormat, 1);
@@ -113,12 +116,27 @@ private slots:
         }
         QCOMPARE(CaptureOptions::load(file).recordingQuality, 2);
         {
+            // Saved before the rate was a choice: 小体积 was 15 frames a second, the others 30.
+            QSettings ini(file, QSettings::IniFormat);
+            ini.setValue(u"Capture/RecordingQuality"_s, 0);
+            ini.remove(u"Capture/RecordingFrameRate"_s);
+        }
+        QCOMPARE(CaptureOptions::load(file).recordingFrameRate, 15);
+        {
+            QSettings ini(file, QSettings::IniFormat);
+            ini.setValue(u"Capture/RecordingQuality"_s, 2);
+            ini.remove(u"Capture/RecordingFrameRate"_s);
+        }
+        QCOMPARE(CaptureOptions::load(file).recordingFrameRate, 30);
+        {
             QSettings ini(file, QSettings::IniFormat);
             ini.setValue(u"Capture/RecordingQuality"_s, 99);
+            ini.setValue(u"Capture/RecordingFrameRate"_s, 24);
             ini.setValue(u"Capture/RecordingFormat"_s, 99);
         }
         const CaptureOptions odd = CaptureOptions::load(file);
         QCOMPARE(odd.recordingQuality, 1);
+        QCOMPARE(odd.recordingFrameRate, 30);
         QCOMPARE(odd.recordingFormat, 0);
     }
 

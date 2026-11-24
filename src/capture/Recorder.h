@@ -39,6 +39,9 @@ class Recorder : public QObject {
     Q_PROPERTY(bool systemAudio READ systemAudio WRITE setSystemAudio NOTIFY changed FINAL)
     Q_PROPERTY(bool microphone READ microphone WRITE setMicrophone NOTIFY changed FINAL)
     Q_PROPERTY(Quality quality READ quality WRITE setQuality NOTIFY changed FINAL)
+    Q_PROPERTY(int frameRate READ frameRate WRITE setFrameRate NOTIFY changed FINAL)
+    Q_PROPERTY(int savedFrameRate READ savedFrameRate NOTIFY changed FINAL)
+    Q_PROPERTY(QString advice READ advice NOTIFY changed FINAL)
     Q_PROPERTY(Format format READ format WRITE setFormat NOTIFY changed FINAL)
     Q_PROPERTY(bool cursor READ cursor WRITE setCursor NOTIFY changed FINAL)
     Q_PROPERTY(bool countdown READ countdown WRITE setCountdown NOTIFY changed FINAL)
@@ -49,7 +52,9 @@ class Recorder : public QObject {
 public:
     enum Stage { Ready, Counting, Starting, Recording, Paused, Saving, Done, Failed };
     Q_ENUM(Stage)
-    enum Quality { SmallFile, Standard, HighQuality }; // persisted as 0, 1, 2
+    // Persisted as 0 to 3. UltraQuality also doubles the video's size where
+    // the region allows (recording::sharpScale).
+    enum Quality { SmallFile, Standard, HighQuality, UltraQuality };
     Q_ENUM(Quality)
     enum Format { Mp4, Gif }; // persisted as 0, 1
     Q_ENUM(Format)
@@ -68,6 +73,7 @@ public:
         Format format = Mp4;
         KeyDisplay keys = KeysOff;
         bool mouseButtons = false;
+        int frameRate = 30; // an MP4's: 15, 30 or 60; a GIF's goes with its quality
     };
     struct Hooks {
         std::function<Preferences()> preferences;
@@ -97,6 +103,12 @@ public:
     bool systemAudio() const { return m_preferences.systemAudio; }
     bool microphone() const { return m_preferences.microphone; }
     Quality quality() const { return m_preferences.quality; }
+    int frameRate() const { return m_preferences.frameRate; }
+    int savedFrameRate() const { return encoding().fps; } // a GIF's goes with its quality
+    // After a recording that did not come out as chosen (at the region's own
+    // size where twice was asked for, or with fewer frames a second): what
+    // happened, and what to change. Empty otherwise.
+    QString advice() const { return m_advice; }
     Format format() const { return m_preferences.format; }
     bool cursor() const { return m_preferences.cursor; }
     bool countdown() const { return m_preferences.countdown; }
@@ -106,6 +118,7 @@ public:
     void setSystemAudio(bool on);
     void setMicrophone(bool on);
     void setQuality(Quality value);
+    void setFrameRate(int value);
     void setFormat(Format value);
     void setCursor(bool on);
     void setCountdown(bool on);
@@ -131,8 +144,23 @@ signals:
 
 private:
     class Border;
+    // What the choices come to for the region as it is.
+    struct Encoding {
+        int fps;
+        int quality; // the encoder's, 0–100
+        int scale; // the video's size against the region's
+        int gifEdge; // a GIF's longest side at most
+        QSize size; // of what is saved
+    };
+    Encoding encoding() const;
     void begin();
-    void completed(const recording::Result& result);
+    // What was asked of an MP4's recording, for advice(): the scale, and its
+    // frames a second where they fell short of the rate (0 where they did not).
+    struct Outcome {
+        int askedScale = 1;
+        int achievedFps = 0;
+    };
+    void completed(const recording::Result& result, Outcome outcome = {});
     void remember();
     void createPanel();
     void keepPanelVisible();
@@ -155,6 +183,7 @@ private:
     QTimer m_timer;
     recording::Progress m_progress;
     QString m_error;
+    QString m_advice;
     QString m_path;
     std::unique_ptr<recording::Control> m_control;
     std::jthread m_worker;

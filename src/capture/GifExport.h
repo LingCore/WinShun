@@ -9,6 +9,9 @@ struct GifOptions {
     int fps = 15;
     int maximumEdge = 1280;
     QString temporaryDirectory; // an isolated supervisor's owned staging directory
+    // The video's size against the recorded region's (Result::scale). The GIF
+    // is sized from the region: a doubled video only gives it truer colours.
+    int sourceScale = 1;
 };
 
 QSize gifSize(QSize source, int maximumEdge);

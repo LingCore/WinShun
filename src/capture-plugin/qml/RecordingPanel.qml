@@ -336,6 +336,16 @@ Window {
             elide: Text.ElideMiddle
         }
         Text {
+            objectName: "recordingAdvice"
+            visible: panel.recorder.stage === Recorder.Done && panel.recorder.advice.length > 0
+            topPadding: 6
+            width: parent.width
+            text: panel.recorder.advice
+            color: Theme.caution
+            font.pixelSize: Theme.fontCaption
+            wrapMode: Text.Wrap
+        }
+        Text {
             visible: panel.recording && panel.recorder.keys === Recorder.KeysAll
             topPadding: 8
             width: parent.width

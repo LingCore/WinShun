@@ -206,8 +206,12 @@ CaptureOptions CaptureOptions::load(const QString& file)
     o.recordingMicrophone = readOrDefault(s, u"Capture/RecordingMicrophone"_s, d.recordingMicrophone);
     o.recordingQuality = readOrDefault(s, u"Capture/RecordingQuality"_s,
         readOrDefault(s, u"Capture/RecordingHighQuality"_s, false) ? 2 : d.recordingQuality); // the first version's
-    if (o.recordingQuality < 0 || o.recordingQuality > 2)
+    if (o.recordingQuality < 0 || o.recordingQuality > 3)
         o.recordingQuality = d.recordingQuality;
+    // Before the rate was a choice of its own, 小体积 recorded 15 frames a second: kept for who had chosen it.
+    o.recordingFrameRate = readOrDefault(s, u"Capture/RecordingFrameRate"_s, o.recordingQuality == 0 ? 15 : d.recordingFrameRate);
+    if (o.recordingFrameRate != 15 && o.recordingFrameRate != 30 && o.recordingFrameRate != 60)
+        o.recordingFrameRate = d.recordingFrameRate;
     o.recordingCursor = readOrDefault(s, u"Capture/RecordingCursor"_s, d.recordingCursor);
     o.recordingCountdown = readOrDefault(s, u"Capture/RecordingCountdown"_s, d.recordingCountdown);
     o.recordingClicks = readOrDefault(s, u"Capture/RecordingClicks"_s, d.recordingClicks);
@@ -288,6 +292,7 @@ void CaptureOptions::save(const QString& file) const
     s.setValue(u"Capture/RecordingSystemAudio"_s, recordingSystemAudio);
     s.setValue(u"Capture/RecordingMicrophone"_s, recordingMicrophone);
     s.setValue(u"Capture/RecordingQuality"_s, recordingQuality);
+    s.setValue(u"Capture/RecordingFrameRate"_s, recordingFrameRate);
     s.setValue(u"Capture/RecordingCursor"_s, recordingCursor);
     s.setValue(u"Capture/RecordingCountdown"_s, recordingCountdown);
     s.setValue(u"Capture/RecordingClicks"_s, recordingClicks);

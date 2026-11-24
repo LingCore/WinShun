@@ -142,13 +142,29 @@ QString Recorder::folder() const
 }
 
 QString Recorder::fileName() const { return QFileInfo(m_path).fileName(); }
+Recorder::Encoding Recorder::encoding() const
+{
+    const QSize region = m_region.size();
+    const size_t choice = size_t(quality());
+    if (format() == Gif) {
+        // 超清 keeps the region's size (gifSize's own limit), the others fit a longest side.
+        static constexpr std::array rates {10, 15, 20, 20};
+        static constexpr std::array edges {960, 1280, 1920, 4096};
+        const QSize size = recording::gifSize(region, edges[choice]);
+        // A GIF that keeps the region's size is made from a doubled video:
+        // each of its pixels then has its own colour, as in an 超清 MP4. The
+        // video is deleted afterwards, so it is as good as the encoder makes it.
+        const int scale = size == region ? recording::sharpScale(region, rates[choice]) : 1;
+        return {rates[choice], recording::kQualities.back(), scale, edges[choice], size};
+    }
+    const int scale = quality() == UltraQuality ? recording::sharpScale(region, frameRate()) : 1;
+    return {frameRate(), recording::kQualities[choice], scale, 0, region * scale};
+}
+
 QString Recorder::dimensions() const
 {
-    if (format() == Gif) {
-        const QSize size = recording::gifSize(m_region.size(), quality() == SmallFile ? 960 : quality() == HighQuality ? 1920 : 1280);
-        return tr("%1 × %2 · %3 帧/秒").arg(size.width()).arg(size.height()).arg(quality() == SmallFile ? 10 : quality() == HighQuality ? 20 : 15);
-    }
-    return tr("%1 × %2 · %3 帧/秒").arg(m_region.width()).arg(m_region.height()).arg(quality() == SmallFile ? 15 : 30);
+    const Encoding saved = encoding();
+    return tr("%1 × %2 · %3 帧/秒").arg(saved.size.width()).arg(saved.size.height()).arg(saved.fps);
 }
 
 void Recorder::remember()
@@ -173,8 +189,15 @@ void Recorder::setMicrophone(bool on)
 
 void Recorder::setQuality(Quality value)
 {
-    if (m_stage != Ready || value < SmallFile || value > HighQuality || m_preferences.quality == value) return;
+    if (m_stage != Ready || value < SmallFile || value > UltraQuality || m_preferences.quality == value) return;
     m_preferences.quality = value;
+    remember();
+}
+
+void Recorder::setFrameRate(int value)
+{
+    if (m_stage != Ready || (value != 15 && value != 30 && value != 60) || m_preferences.frameRate == value) return;
+    m_preferences.frameRate = value;
     remember();
 }
 
@@ -289,8 +312,10 @@ void Recorder::prepare(const QRect& region, HMONITOR monitor, double dpr)
     m_monitor = monitor;
     m_dpr = dpr;
     m_preferences = m_hooks.preferences ? m_hooks.preferences() : Preferences {};
-    if (m_preferences.quality < SmallFile || m_preferences.quality > HighQuality)
+    if (m_preferences.quality < SmallFile || m_preferences.quality > UltraQuality)
         m_preferences.quality = Standard;
+    if (m_preferences.frameRate != 15 && m_preferences.frameRate != 60)
+        m_preferences.frameRate = 30;
     if (m_preferences.format < Mp4 || m_preferences.format > Gif)
         m_preferences.format = Mp4;
     if (m_preferences.keys < KeysOff || m_preferences.keys > KeysAll)
@@ -301,6 +326,7 @@ void Recorder::prepare(const QRect& region, HMONITOR monitor, double dpr)
     m_progress = {};
     m_path.clear();
     m_error.clear();
+    m_advice.clear();
     m_stage = Ready;
     createPanel();
     if (!m_panel) return;
@@ -380,8 +406,10 @@ void Recorder::begin()
     recording::Options options;
     options.region = m_region;
     const bool gif = format() == Gif;
-    options.fps = gif ? (quality() == SmallFile ? 10 : quality() == HighQuality ? 20 : 15) : (quality() == SmallFile ? 15 : 30);
-    options.quality = gif ? 92 : quality() == SmallFile ? 70 : quality() == HighQuality ? 88 : 75;
+    const Encoding saved = encoding();
+    options.fps = saved.fps;
+    options.quality = saved.quality;
+    options.scale = saved.scale;
     options.cursor = cursor();
     options.systemAudio = !gif && systemAudio();
     options.microphone = !gif && microphone();
@@ -398,7 +426,6 @@ void Recorder::begin()
         }
         m_clicksActive = true;
     }
-    const int gifLongest = quality() == SmallFile ? 960 : quality() == HighQuality ? 1920 : 1280;
     const auto keyMode = static_cast<keycaps::Mode>(keys());
     if (keyMode != keycaps::Mode::Off || mouseButtons()) {
         // GitHub #98: the keys and buttons pressed, drawn into the frames.
@@ -410,7 +437,7 @@ void Recorder::begin()
         options.keyFont = QGuiApplication::font();
         // A GIF is scaled down: its keycaps are drawn larger to stay legible.
         if (gif)
-            options.outputScale = std::min(1.0, double(recording::gifSize(m_region.size(), gifLongest).width()) / m_region.width());
+            options.outputScale = std::min(1.0, double(saved.size.width()) / m_region.width());
         options.keyInput = std::make_shared<recording::KeyStream>();
         m_keyHook = std::make_unique<recording::KeyHook>(recording::KeyHook::Setup {
             keyMode, m_region, m_panel ? quintptr(m_panel->winId()) : 0, options.keyInput});
@@ -430,7 +457,7 @@ void Recorder::begin()
         name = base + u"_%1.mp4"_s.arg(i);
     options.path = QDir(folder()).filePath(name);
     const recording::GifOptions gifOptions {QDir(folder()).filePath(QFileInfo(name).completeBaseName() + u".gif"_s),
-        options.fps, gifLongest};
+        options.fps, saved.gifEdge};
     m_control = std::make_unique<recording::Control>();
     m_stage = Starting;
     emit changed();
@@ -452,6 +479,9 @@ void Recorder::begin()
         const recording::WorkerProgram worker {QCoreApplication::applicationFilePath(),
             {u"--app-dir"_s, qEnvironmentVariable("WS_APP_DIR", QCoreApplication::applicationDirPath())}};
         auto result = recording::recordIsolated(worker, options, *control, update);
+        // Fewer frames than the time at this rate holds: the computer did not
+        // keep up (a GIF's few frames a second are not looked at).
+        const Outcome outcome {gif ? 1 : options.scale, gif ? 0 : recording::fallenShortFps(result.frames, result.elapsedMs, options.fps)};
         if (gif && !control->discard && result.error.isEmpty() && !result.path.isEmpty()) {
             QMetaObject::invokeMethod(this, [this, elapsedMs = result.elapsedMs] {
                 m_exporting = true;
@@ -462,7 +492,9 @@ void Recorder::begin()
                 releaseKeys();
                 emit changed();
             }, Qt::QueuedConnection);
-            auto exported = recording::exportGifIsolated(worker, result.path, gifOptions, *control, update);
+            recording::GifOptions sized = gifOptions;
+            sized.sourceScale = result.scale; // 2 only where the encoder took the doubled size
+            auto exported = recording::exportGifIsolated(worker, result.path, sized, *control, update);
             if (control->discard) {
                 QFile::remove(result.path);
                 result = {};
@@ -476,7 +508,7 @@ void Recorder::begin()
             QFile::remove(result.path);
             result = {};
         }
-        QMetaObject::invokeMethod(this, [this, result] { completed(result); }, Qt::QueuedConnection);
+        QMetaObject::invokeMethod(this, [this, result, outcome] { completed(result, outcome); }, Qt::QueuedConnection);
     });
 }
 
@@ -516,7 +548,7 @@ void Recorder::discard()
     }
 }
 
-void Recorder::completed(const recording::Result& result)
+void Recorder::completed(const recording::Result& result, Outcome outcome)
 {
     if (m_worker.joinable()) m_worker.join();
     releaseClicks(); // detach before a changed handler can begin the next take
@@ -526,6 +558,16 @@ void Recorder::completed(const recording::Result& result)
     m_progress = result;
     m_path = result.path;
     m_error = result.error;
+    // Never silently less than what was chosen: said here, and in the log
+    // (RecordingWorker) with what refused.
+    QStringList advice;
+    if (outcome.askedScale == 2 && result.scale == 1 && result.frames)
+        advice += tr("这台电脑录不了 2 倍尺寸，这一段按原尺寸保存。");
+    if (outcome.achievedFps && result.scale == 2)
+        advice += tr("这台电脑没跟上 %1 帧/秒，实际约 %2 帧/秒。下次可以把画质换成“高清”，或选低一档的帧率。").arg(frameRate()).arg(outcome.achievedFps);
+    else if (outcome.achievedFps)
+        advice += tr("这台电脑没跟上 %1 帧/秒，实际约 %2 帧/秒。下次可以选低一档的帧率。").arg(frameRate()).arg(outcome.achievedFps);
+    m_advice = advice.join(u'\n');
     m_stage = result.error.isEmpty() && !result.path.isEmpty() ? Done : Failed;
     if (discarded || (!result.frames && result.error.isEmpty())) {
         close();

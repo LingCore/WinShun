@@ -30,8 +30,9 @@
 //
 //   WinShunCapture.exe --preview-recording <folder> --renderer d3d11 [--scale 1.5] --auto
 //     A real Capture -> selection -> Recorder -> WGC -> MP4 run over a
-//     window of its own. --gif, --small-file, --high-quality, --clicks,
-//     --no-cursor, --no-countdown, --skip-countdown, --system-audio, --english.
+//     window of its own. --gif, --small-file, --high-quality, --ultra-quality,
+//     --fps 15|30|60, --clicks, --no-cursor, --no-countdown, --skip-countdown,
+//     --system-audio, --english.
 //     --ui-only: options, keyboard, short viewport and screen-edge checks;
 //     --failure-ui: invalid save folder, actual worker validation failure and retry.
 //

@@ -392,7 +392,7 @@ Result exportGif(const QString& video, const GifOptions& options, Control& contr
         if (FAILED(hr) || !width || !height || width > 32768 || height > 32768)
             return E_UNEXPECTED;
         const QSize source {int(width), int(height)};
-        const QSize size = gifSize(source, options.maximumEdge);
+        const QSize size = gifSize(options.sourceScale == 2 ? source / 2 : source, options.maximumEdge);
         QSize decodedSize = source;
         QRect display(QPoint(), source);
         qint64 duration = 0;
