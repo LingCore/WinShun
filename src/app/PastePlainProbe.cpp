@@ -1,11 +1,15 @@
 #include "PastePlainProbe.h"
 
 #include "App.h"
+#include "ClipImage.h"
+#include "ClipStore.h"
 
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QImage>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
@@ -209,10 +213,10 @@ void bringToFront(HWND target)
 }
 
 // The chord pressed and let go, as a person would (the keys then are up for the paste).
-void pressChord()
+void pressChord(UINT key = kKey)
 {
     INPUT keys[8] {};
-    const WORD order[] {VK_CONTROL, VK_MENU, VK_SHIFT, static_cast<WORD>(kKey)};
+    const WORD order[] {VK_CONTROL, VK_MENU, VK_SHIFT, static_cast<WORD>(key)};
     for (int i = 0; i < 4; ++i) {
         keys[i].type = INPUT_KEYBOARD;
         keys[i].ki.wVk = order[i];
@@ -223,15 +227,40 @@ void pressChord()
     ::SendInput(8, keys, sizeof(INPUT));
 }
 
+void pressKey(WORD key)
+{
+    INPUT keys[2] {};
+    keys[0].type = keys[1].type = INPUT_KEYBOARD;
+    keys[0].ki.wVk = keys[1].ki.wVk = key;
+    keys[1].ki.dwFlags = KEYEVENTF_KEYUP;
+    ::SendInput(2, keys, sizeof(INPUT));
+}
+
+bool chordFree(UINT key)
+{
+    constexpr int id = 0xBF08;
+    if (!::RegisterHotKey(nullptr, id, kModifiers | MOD_NOREPEAT, key))
+        return false;
+    ::UnregisterHotKey(nullptr, id);
+    return true;
+}
+
+// Registered by this process (the App's hotkey): another registration of it fails so.
+bool chordOurs(UINT key)
+{
+    constexpr int id = 0xBF09;
+    if (::RegisterHotKey(nullptr, id, kModifiers | MOD_NOREPEAT, key)) {
+        ::UnregisterHotKey(nullptr, id);
+        return false;
+    }
+    return ::GetLastError() == ERROR_HOTKEY_ALREADY_REGISTERED;
+}
+
 } // namespace
 
 bool pastePlainChordFree()
 {
-    constexpr int id = 0xBF08;
-    if (!::RegisterHotKey(nullptr, id, kModifiers | MOD_NOREPEAT, kKey))
-        return false;
-    ::UnregisterHotKey(nullptr, id);
-    return true;
+    return chordFree(kKey);
 }
 
 // --probe-runtime <folder> --paste-plain-check (WINSHUN_TEST_NO_CLIP_HISTORY set)
@@ -264,9 +293,7 @@ bool checkPastePlain(App&, const QStringList&, const QDir& output)
     };
     check(qEnvironmentVariableIsSet("WINSHUN_TEST_NO_CLIP_HISTORY"), "WINSHUN_TEST_NO_CLIP_HISTORY not set: the paste would be in the histories");
     pump(1500); // started, its hotkeys registered
-    const bool ours = !::RegisterHotKey(nullptr, 0xBF09, kModifiers | MOD_NOREPEAT, kKey) && ::GetLastError() == ERROR_HOTKEY_ALREADY_REGISTERED;
-    if (!ours)
-        ::UnregisterHotKey(nullptr, 0xBF09);
+    const bool ours = chordOurs(kKey);
     report.insert(u"hotkey_registered"_s, ours);
     check(ours, "the hotkey is not registered");
     if (!ok)
@@ -356,6 +383,112 @@ bool checkPastePlain(App&, const QStringList&, const QDir& output)
         check(restored, "the clipboard as it was could not be put back");
     }
     QFile::remove(scriptPath);
+    return finish();
+}
+
+namespace {
+constexpr UINT kActivationKey = VK_F21;
+constexpr QRgb kProbePicture = qRgb(255, 0, 0); // what the harness looks for in the program
+} // namespace
+
+bool activationPasteChordFree()
+{
+    return chordFree(kActivationKey);
+}
+
+bool seedActivationPastePicture(const QString& clipboardFolder, int width)
+{
+    ClipStore store(clipboardFolder);
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (!store.open(now))
+        return false;
+    QImage picture(width, width * 2 / 3, QImage::Format_ARGB32);
+    picture.fill(kProbePicture);
+    const DecodedClipImage encoded = encodeClipImage(picture);
+    ClipCapture clip;
+    clip.kind = ClipKind::Image;
+    clip.imageData = encoded.data;
+    clip.imageFormat = encoded.format;
+    clip.hash = encoded.hash;
+    clip.width = picture.width();
+    clip.height = picture.height();
+    clip.source = u"Activation paste probe"_s;
+    const bool added = !encoded.data.isEmpty() && store.add(clip, now) != 0;
+    store.flush();
+    return added;
+}
+
+// --probe-runtime <folder> --activation-paste-check <window> (WINSHUN_TEST_NO_CLIP_HISTORY set)
+// The production App beside the Win顺 that runs, its clipboard's hotkey set to
+// Ctrl+Alt+Shift+F21 (free before it started, its own after), one red picture
+// in its history (seedActivationPastePicture). <window> (a number, the HWND)
+// is brought to the front, the chord pressed for real (SendInput, only while
+// <window> is in front): the clipboard opens over it without the focus, its
+// keys routed, the way it opens over any program. Enter pastes the picture.
+// Passed here: the keys went while <window> was in front, and it is in front
+// after. Whether the red picture is what went in is the harness's to read off
+// the program (its document's colour), against the picture the program read
+// as it came to the front. The clipboard as it was is put back after, marked
+// so that no history records it. Into activation-paste.json; the App's
+// journal ("clipboard-paste", reactivated) is in this run's profile.
+bool checkActivationPaste(App&, const QStringList& args, const QDir& output)
+{
+    QJsonObject report;
+    bool ok = true;
+    const auto check = [&](bool condition, const char* what) {
+        if (!condition) {
+            ok = false;
+            std::fprintf(stderr, "activation paste: FAILED: %s\n", what);
+        }
+    };
+    const auto finish = [&] {
+        report.insert(u"passed"_s, ok);
+        QFile file(output.filePath(u"activation-paste.json"_s));
+        const bool saved = file.open(QIODevice::WriteOnly) && file.write(QJsonDocument(report).toJson()) > 0;
+        std::fprintf(stderr, "activation paste: %s\n", ok ? "passed" : "FAILED");
+        return ok && saved;
+    };
+    check(qEnvironmentVariableIsSet("WINSHUN_TEST_NO_CLIP_HISTORY"), "WINSHUN_TEST_NO_CLIP_HISTORY not set: the paste would be in the histories");
+    const qsizetype at = args.indexOf(u"--activation-paste-check"_s);
+    const auto target = reinterpret_cast<HWND>(static_cast<quintptr>(at >= 0 && at + 1 < args.size() ? args[at + 1].toULongLong() : 0));
+    check(target && ::IsWindow(target), "no window to paste into (--activation-paste-check <HWND>)");
+    pump(1500); // started, its hotkeys registered
+    const bool ours = chordOurs(kActivationKey);
+    report.insert(u"hotkey_registered"_s, ours);
+    check(ours, "the clipboard's hotkey is not registered");
+    if (!ok)
+        return finish();
+
+    bool savedOk = false;
+    const std::vector<Item> before = saveClipboard(savedOk);
+    report.insert(u"clipboard_saved_formats"_s, static_cast<int>(before.size()));
+    check(savedOk, "the clipboard could not be read to be put back");
+    if (!ok)
+        return finish();
+    waitForQuietInput();
+    bringToFront(target);
+    pump(600);
+    report.insert(u"target_in_front"_s, inFront(target));
+    check(inFront(target), "the window could not be brought to the front (no key sent)");
+    if (ok)
+        pressChord(kActivationKey); // the clipboard over it, its keys routed
+    pump(900);
+    const bool frontAtEnter = inFront(target);
+    report.insert(u"target_in_front_at_enter"_s, frontAtEnter);
+    check(frontAtEnter, "the window lost the front as the clipboard opened");
+    if (ok && inFront(target))
+        pressKey(VK_RETURN);
+    pump(2500); // the paste: the window back in front, a moment, the keys
+    report.insert(u"target_in_front_after"_s, inFront(target));
+    const bool picture = openClipboard() && (::IsClipboardFormatAvailable(CF_DIB) || ::IsClipboardFormatAvailable(CF_DIBV5));
+    if (picture)
+        ::CloseClipboard();
+    report.insert(u"clipboard_picture"_s, picture);
+    if (ok)
+        check(picture, "the picture never went on the clipboard (nothing was pasted)");
+    const bool restored = putOnClipboard(before) || putOnClipboard(before);
+    report.insert(u"clipboard_restored"_s, restored);
+    check(restored, "the clipboard as it was could not be put back");
     return finish();
 }
 

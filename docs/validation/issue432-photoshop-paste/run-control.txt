@@ -1,0 +1,7 @@
+﻿10:35:45.265 Win+V history: 9 items; clipboard text saved: True
+10:35:45.352 clipboard: GREEN (marked); starting Photoshop
+10:36:02.774 Photoshop window 399148 in front: True; document centre before: 255,255,255
+10:36:02.784 probe: F:\电脑便捷工具\build\issues-1124b\WinShun.exe --activation-paste-check 399148 (CONTROL: reactivation off)
+10:36:10.873 probe exit : { "clipboard_picture": true, "clipboard_restored": true, "clipboard_saved_formats": 8, "hotkey_registered": true, "passed": true, "target_in_front": true, "target_in_front_after": true, "target_in_front_at_enter": true } 
+10:36:11.734 document centre after: 0,255,0 -> FAIL: Photoshop pasted the GREEN picture it read as it came to the front
+10:36:12.345 Win+V history after: 9 items (before 9)

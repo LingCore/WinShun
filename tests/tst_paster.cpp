@@ -12,6 +12,16 @@ class PasterTest : public QObject {
     HWND m_previous = nullptr;
     int m_pastes = 0;
     int m_keys = 0;
+    int m_deactivated = 0;
+    int m_activated = 0;
+
+    static LRESULT CALLBACK rootProc(HWND hwnd, UINT message, WPARAM w, LPARAM l, UINT_PTR, DWORD_PTR context)
+    {
+        auto* self = reinterpret_cast<PasterTest*>(context);
+        if (message == WM_ACTIVATE)
+            ++(LOWORD(w) == WA_INACTIVE ? self->m_deactivated : self->m_activated);
+        return ::DefSubclassProc(hwnd, message, w, l);
+    }
 
     static LRESULT CALLBACK editProc(HWND hwnd, UINT message, WPARAM w, LPARAM l, UINT_PTR, DWORD_PTR context)
     {
@@ -89,6 +99,34 @@ private slots:
         QCOMPARE(result.method, paste::Result::Method::Keys);
         QTRY_COMPARE_WITH_TIMEOUT(m_keys, 1, 1000);
         QTRY_COMPARE_WITH_TIMEOUT(m_pastes, 1, 1000); // Edit translates Ctrl+V to WM_PASTE
+    }
+    // GitHub #432: by the program's file name, any case; nothing else.
+    void programsThatReadTheClipboardOnActivation()
+    {
+        QVERIFY(paste::readsClipboardOnActivation(std::wstring_view(L"Photoshop.exe")));
+        QVERIFY(paste::readsClipboardOnActivation(std::wstring_view(L"PHOTOSHOP.EXE")));
+        QVERIFY(paste::readsClipboardOnActivation(std::wstring_view(L"Illustrator.exe")));
+        QVERIFY(!paste::readsClipboardOnActivation(std::wstring_view(L"Photoshop")));
+        QVERIFY(!paste::readsClipboardOnActivation(std::wstring_view(L"notepad.exe")));
+        QVERIFY(!paste::readsClipboardOnActivation(std::wstring_view(L"")));
+        QVERIFY(!paste::readsClipboardOnActivation(m_root)); // this test's own program
+        QVERIFY(!paste::readsClipboardOnActivation(HWND(nullptr)));
+    }
+    // The window in front loses it and gets it back, once, and keeps its focus.
+    void reactivateGivesTheFrontBack()
+    {
+        QVERIFY(::SetWindowSubclass(m_root, rootProc, 2, reinterpret_cast<DWORD_PTR>(this)));
+        m_deactivated = m_activated = 0;
+        QVERIFY(paste::reactivate(m_root));
+        QTRY_VERIFY_WITH_TIMEOUT(paste::isForeground(m_root), 1000);
+        QCOMPARE(m_deactivated, 1);
+        QVERIFY(m_activated >= 1);
+        QVERIFY(::RemoveWindowSubclass(m_root, rootProc, 2));
+        QVERIFY(!paste::reactivate(nullptr));
+        // Its keys still reach it.
+        ::SetFocus(m_edit);
+        QCOMPARE(paste::sendPasteKeys(m_root).method, paste::Result::Method::Keys);
+        QTRY_COMPARE_WITH_TIMEOUT(m_keys, 1, 1000);
     }
 };
 
