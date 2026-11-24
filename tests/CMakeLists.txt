@@ -37,6 +37,17 @@ set_target_properties(tst_hotpages PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODU
 add_test(NAME tst_hotpages COMMAND tst_hotpages -o -,txt)
 set_tests_properties(tst_hotpages PROPERTIES ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+qt_add_executable(tst_idletrim tst_idletrim.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/HotPages.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/IdleTrim.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/TriggerJournal.cpp)
+target_include_directories(tst_idletrim PRIVATE ${PROJECT_SOURCE_DIR}/src/app ${PROJECT_SOURCE_DIR}/src/core)
+target_link_libraries(tst_idletrim PRIVATE wscore winshun_options Qt6::Gui Qt6::Test psapi user32)
+set_target_properties(tst_idletrim PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
+add_test(NAME tst_idletrim COMMAND tst_idletrim -o -,txt)
+set_tests_properties(tst_idletrim PROPERTIES RUN_SERIAL TRUE
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 qt_add_executable(tst_paster tst_paster.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/Paster.cpp)
 target_include_directories(tst_paster PRIVATE ${PROJECT_SOURCE_DIR}/src/app ${PROJECT_SOURCE_DIR}/src/core)
 target_link_libraries(tst_paster PRIVATE winshun_options Qt6::Test user32 comctl32)

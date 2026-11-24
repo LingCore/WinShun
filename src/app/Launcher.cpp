@@ -684,7 +684,12 @@ Launcher::Launcher(IndexService* index, AppCatalog* apps, SystemCatalog* places,
     refreshStatus();
 }
 
-Launcher::~Launcher() = default;
+Launcher::~Launcher()
+{
+    m_windowsUsesWorker.request_stop();
+    if (m_windowsUsesWorker.joinable())
+        m_windowsUsesWorker.join();
+}
 
 void Launcher::setPluginHost(plugin::Host* host)
 {
@@ -772,6 +777,8 @@ void Launcher::setFolderKeyword(const QString& keyword)
     updateQueryPrefix();
     if (m_window && m_window->isVisible())
         search();
+    else
+        m_shownStale = true;
 }
 
 void Launcher::setSearchKinds(bool apps, bool places)
@@ -782,6 +789,8 @@ void Launcher::setSearchKinds(bool apps, bool places)
     m_searchPlaces = places;
     if (m_window && m_window->isVisible())
         search();
+    else
+        m_shownStale = true;
 }
 
 void Launcher::setRegexMode(bool on)
@@ -792,6 +801,8 @@ void Launcher::setRegexMode(bool on)
     emit regexModeChanged();
     if (m_window && m_window->isVisible())
         search();
+    else
+        m_shownStale = true;
 }
 
 void Launcher::toggleRegexMode()
@@ -1172,6 +1183,8 @@ void Launcher::setFolderSearch(bool enabled)
     if (m_folderSearch == enabled)
         return;
     m_folderSearch = enabled;
+    if (!m_window || !m_window->isVisible())
+        m_shownStale = true;
     emit folderSearchChanged();
     appsTabMoved();
 }
@@ -1824,8 +1837,12 @@ void Launcher::setContentOptions(
         return;
     }
     emit scopeChanged(); // placeholder text mentions the extensions
-    if (enabled != wasEnabled && m_scope == All && m_window && m_window->isVisible())
-        search(); // 全部: content matches below the names come or go
+    if (enabled != wasEnabled && m_scope == All) {
+        if (m_window && m_window->isVisible())
+            search(); // 全部: content matches below the names come or go
+        else
+            m_shownStale = true;
+    }
 }
 
 void Launcher::setWebShortcuts(const WebShortcuts& shortcuts)
@@ -1838,8 +1855,12 @@ void Launcher::setWebShortcuts(const WebShortcuts& shortcuts)
     // site may have changed its name or address) wait for the new answer.
     m_suggester.clearCache();
     dropSuggestions();
-    if (m_window && m_window->isVisible() && m_scope == All && !searchText().isEmpty())
-        search();
+    if (m_scope == All && !searchText().isEmpty()) {
+        if (m_window && m_window->isVisible())
+            search();
+        else
+            m_shownStale = true;
+    }
 }
 
 void Launcher::openWebAddress(const QString& url) const
@@ -1855,8 +1876,12 @@ void Launcher::setWebFallback(bool on)
     if (on == m_webFallback)
         return;
     m_webFallback = on;
-    if (m_window && m_window->isVisible() && m_scope == All && !searchText().isEmpty())
-        search();
+    if (m_scope == All && !searchText().isEmpty()) {
+        if (m_window && m_window->isVisible())
+            search();
+        else
+            m_shownStale = true;
+    }
 }
 
 // Nothing found for words typed in 全部: the row that searches the web for
@@ -1931,8 +1956,12 @@ void Launcher::setFavorites(Favorites* favorites)
         connect(favorites, &Favorites::changed, this, [this] {
             emit favoritesChanged();
             emit folderChipsChanged();
-            if (m_window && m_window->isVisible() && !m_keyword && m_scope != Content)
-                searchFor("the favorites changed"); // the rows refreshed in place: 收藏 comes or goes
+            if (!m_keyword && m_scope != Content) {
+                if (m_window && m_window->isVisible())
+                    searchFor("the favorites changed"); // the rows refreshed in place: 收藏 comes or goes
+                else
+                    m_shownStale = true;
+            }
         });
     }
     emit favoritesChanged();
@@ -2070,6 +2099,8 @@ void Launcher::setExcludedFiles(const QStringList& types, const QStringList& nam
     // Files come or go in whatever is listed now: asked again, in place.
     if (m_window && m_window->isVisible())
         search();
+    else
+        m_shownStale = true;
 }
 
 void Launcher::setLetterJump(bool on, const QString& key, const QString& keys)
@@ -2130,8 +2161,12 @@ void Launcher::setPureSearch(bool on)
         return;
     m_pureSearch = on;
     emit resultOptionsChanged();
-    if (m_window && m_window->isVisible() && m_query.trimmed().isEmpty())
-        search();
+    if (m_query.trimmed().isEmpty()) {
+        if (m_window && m_window->isVisible())
+            search();
+        else
+            m_shownStale = true;
+    }
 }
 
 void Launcher::setPanelListsAll(bool on)
@@ -2139,8 +2174,12 @@ void Launcher::setPanelListsAll(bool on)
     if (m_panelListsAll == on)
         return;
     m_panelListsAll = on;
-    if (m_panel && m_window && m_window->isVisible() && m_query.trimmed().isEmpty())
-        search();
+    if (m_panel && m_query.trimmed().isEmpty()) {
+        if (m_window && m_window->isVisible())
+            search();
+        else
+            m_shownStale = true;
+    }
 }
 
 void Launcher::setPreviewHotkey(const QString& shortcut)
@@ -2229,8 +2268,12 @@ void Launcher::setFavoriteTiles(bool on)
     if (m_favoriteTilesOn == on)
         return;
     m_favoriteTilesOn = on;
-    if (m_window && m_window->isVisible() && searchText().isEmpty())
-        search();
+    if (searchText().isEmpty()) {
+        if (m_window && m_window->isVisible())
+            search();
+        else
+            m_shownStale = true;
+    }
 }
 
 void Launcher::moveFavoriteTile(int from, int to)
@@ -2251,8 +2294,12 @@ void Launcher::setStartOptions(int recentItems, bool favorites)
         return;
     m_recentItems = recentItems;
     m_favoritesOnStart = favorites;
-    if (m_window && m_window->isVisible() && searchText().isEmpty())
-        search();
+    if (searchText().isEmpty()) {
+        if (m_window && m_window->isVisible())
+            search();
+        else
+            m_shownStale = true;
+    }
 }
 
 RankBy Launcher::rankBy() const
@@ -2308,6 +2355,8 @@ void Launcher::setInTaskbarBox(bool on)
     if (on == m_inTaskbarBox)
         return;
     m_inTaskbarBox = on;
+    if (!m_window || !m_window->isVisible())
+        m_shownStale = true;
     emit inTaskbarBoxChanged();
 }
 
@@ -2376,15 +2425,11 @@ void Launcher::startOver()
     refreshKeyHints();
 }
 
-void Launcher::handleShown()
+void Launcher::handleShown(bool deferBackgroundWork)
 {
     m_queryHistory.resetNavigation();
     m_index->contentIndexer()->setSearchBoxOpen(true); // the files it searches are read before the indexer's
     m_statusPoll.start();
-    m_apps->refresh(); // reads the list again only if apps were installed or removed
-    m_places->refresh(); // ... if Windows was updated or its language changed
-    if (m_switches)
-        m_switches->refresh(); // the switches' rows show what they are now
     scheduleAwakeTick();
     m_previewResume = m_previewWanted;
     // Up again, it starts on its first row, as ever: the row a step out of a
@@ -2400,19 +2445,55 @@ void Launcher::handleShown()
         m_pages = m_leftPages;
     }
     m_tabHeld = false;
-    search(); // refresh: files may have changed, and "recent" certainly has
+    m_deferredCatalogRefresh = deferBackgroundWork;
+    if (!deferBackgroundWork) {
+        m_apps->refresh(); // reads the list again only if apps were installed or removed
+        m_places->refresh(); // ... if Windows was updated or its language changed
+        if (m_switches)
+            m_switches->refresh(); // the switches' rows show what they are now
+    }
+    // Reopening to the exact list already on screen: reveal immediately and
+    // refresh quietly in place once visible (finishShownRefresh), instead of
+    // holding the window cloaked behind a cold FileIndex scan or disk stat.
+    const bool recentNeedsFresh = searchText().isEmpty() && m_startList == RecentlyOpened && m_historyDirty;
+    const bool deferSearch = deferBackgroundWork && !m_typingAwaited && !m_shownStale && !recentNeedsFresh
+        && m_scope != Apps && matchesShownRows();
+    m_deferredSearchRefresh = deferSearch;
+    if (!deferSearch)
+        search(); // new query, changed settings, or updated recent history
     emit historyChanged(); // things were opened since
-    refreshFrequentApps();
+    refreshFrequentApps(!deferBackgroundWork);
     emit shown();
 }
 
-void Launcher::refreshFrequentApps()
+void Launcher::finishShownRefresh()
+{
+    if (!m_window || !m_window->isVisible()) {
+        m_deferredCatalogRefresh = false;
+        m_deferredSearchRefresh = false;
+        return;
+    }
+    if (std::exchange(m_deferredCatalogRefresh, false)) {
+        m_apps->refresh();
+        m_places->refresh();
+        if (m_switches)
+            m_switches->refresh();
+        refreshFrequentApps(true);
+    }
+    if (std::exchange(m_deferredSearchRefresh, false)) {
+        m_searchWhy = "deferred open refresh";
+        search();
+    }
+}
+
+void Launcher::refreshFrequentApps(bool refreshWindows)
 {
     constexpr std::size_t kFrequentApps = 6; // a row over the taskbar
     std::vector<FrequentApp> picked;
     const std::shared_ptr<const AppList> apps = m_apps->apps();
     if (m_recordHistory && apps) {
-        readWindowsUses();
+        if (refreshWindows)
+            refreshWindowsUsesAsync();
         const bool dark = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
         const auto indexes
             = ws::frequentApps(*apps, *m_history, m_windowsUses, QDateTime::currentMSecsSinceEpoch(), kFrequentApps);
@@ -2428,12 +2509,29 @@ void Launcher::refreshFrequentApps()
     emit frequentAppsChanged();
 }
 
-void Launcher::readWindowsUses()
+void Launcher::refreshWindowsUsesAsync()
 {
-    if (!m_windowsUsesAge.isValid() || m_windowsUsesAge.hasExpired(60'000)) {
-        m_windowsUses = windowsAppUses(); // some 500 registry values: a few ms
-        m_windowsUsesAge.start();
-    }
+    if (m_windowsUsesLoading.load(std::memory_order_acquire))
+        return;
+    if (m_windowsUsesAge.isValid() && !m_windowsUsesAge.hasExpired(60'000))
+        return;
+    m_windowsUsesLoading.store(true, std::memory_order_release);
+    QPointer<Launcher> self(this);
+    m_windowsUsesWorker = std::jthread([self](std::stop_token stop) {
+        std::vector<AppUse> uses = windowsAppUses(); // some 500+ registry values: keep off the GUI thread
+        if (stop.stop_requested() || !self)
+            return;
+        QMetaObject::invokeMethod(self, [self, uses = std::move(uses)]() mutable {
+            if (!self)
+                return;
+            self->m_windowsUsesLoading.store(false, std::memory_order_release);
+            self->m_windowsUses = std::move(uses);
+            self->m_windowsUsesAge.start();
+            self->refreshFrequentApps(false);
+            if (self->m_scope == Apps && self->m_window && self->m_window->isVisible())
+                self->showApps();
+        }, Qt::QueuedConnection);
+    });
 }
 
 void Launcher::setAppsTab(bool wanted)
@@ -2562,7 +2660,7 @@ void Launcher::showApps()
         const qint64 now = QDateTime::currentMSecsSinceEpoch();
         std::vector<std::size_t> frequent;
         if (m_recordHistory) {
-            readWindowsUses();
+            refreshWindowsUsesAsync();
             frequent = ws::frequentApps(*apps, *m_history, m_windowsUses, now, kFrequentShown);
         }
         std::vector<std::size_t> favorites; // in the favorites' own order: each keeps its place
@@ -2732,6 +2830,8 @@ void Launcher::handleHidden()
     // Opened again, a page, as quick as ever; more as it is scrolled again.
     m_pages = 1;
     m_loadingMore = false;
+    m_deferredCatalogRefresh = false;
+    m_deferredSearchRefresh = false;
 }
 
 void Launcher::searchFor(const char* why)
@@ -2759,12 +2859,32 @@ void Launcher::searchAgainNow()
     search();
 }
 
+bool Launcher::matchesShownRows() const
+{
+    if (!m_haveResults || m_replacePending)
+        return false;
+    const QString text = searchText();
+    const std::optional<KeywordMode> keyword = m_filePrefix || m_scope == Apps ? std::nullopt : matchKeyword(m_query);
+    const QString keywordKey = keyword ? keyword->pluginId + u'/' + keyword->commandId : QString();
+    return text == m_shownText && m_scope == m_shownScope
+        && fileExtensions() == m_shownExtensions && fileTypeFolders() == m_shownTypeFolders
+        && rankBy() == m_shownRankBy && nameOrder() == m_shownOrder && (m_panel || sort() == m_shownSort)
+        && m_kindOrder == m_shownKindOrder
+        && m_preferredTypes == m_shownPreferredTypes && keywordKey == m_shownKeyword
+        && (m_scope != Content || (m_contentFolder == m_shownContentFolder && pickKey(m_contentPick) == m_shownPick
+                                   && contentTypesKey() == m_shownContentTypes))
+        && (!text.isEmpty() || m_startList == m_shownStartList) && panelKey() == m_shownPanelKey
+        && typingKey() == m_shownTyping && regexTerms() == m_shownRegex && m_fuzzyMode == m_shownFuzzyMode
+        && (m_scope != Apps || m_appsView == m_shownAppsView);
+}
+
 // Nothing is cleared up front: the rows on screen stay until results replace
 // them. Searching what is already shown again (the window reopens, the index
 // changes) is a refresh: the rows are updated in place, and content matches
 // from the last scan stay until the new scan has had a chance to find them.
 void Launcher::search(bool more)
 {
+    m_deferredSearchRefresh = false;
     const char* why = std::exchange(m_searchWhy, nullptr);
     const bool wasReplacing = m_replacePending && m_replaceClock.isValid();
     m_flash.clear();
@@ -2783,18 +2903,8 @@ void Launcher::search(bool more)
         m_queryError = error;
         emit queryErrorChanged();
     }
-    const QString keywordKey = keyword ? keyword->pluginId + u'/' + keyword->commandId : QString();
     // The folder typed in, first or alone (typingKey), is a list of its own too.
-    m_refresh = m_haveResults && !m_replacePending && text == m_shownText && m_scope == m_shownScope
-        && fileExtensions() == m_shownExtensions && fileTypeFolders() == m_shownTypeFolders
-        && rankBy() == m_shownRankBy && nameOrder() == m_shownOrder && (m_panel || sort() == m_shownSort)
-        && m_kindOrder == m_shownKindOrder
-        && m_preferredTypes == m_shownPreferredTypes && keywordKey == m_shownKeyword
-        && (m_scope != Content || (m_contentFolder == m_shownContentFolder && pickKey(m_contentPick) == m_shownPick
-                                   && contentTypesKey() == m_shownContentTypes))
-        && (!text.isEmpty() || m_startList == m_shownStartList) && panelKey() == m_shownPanelKey
-        && typingKey() == m_shownTyping && regexTerms() == m_shownRegex && m_fuzzyMode == m_shownFuzzyMode
-        && (m_scope != Apps || m_appsView == m_shownAppsView);
+    m_refresh = matchesShownRows();
     m_replacePending = !m_refresh;
     if (m_replacePending) {
         if (!wasReplacing) { // the rows on screen just became another query's
@@ -2883,6 +2993,8 @@ void Launcher::search(bool more)
             m_replacePending = false;
             m_results.clear();
             m_haveResults = false;
+            m_shownStale = false;
+            m_historyDirty = false;
             m_chosenPath.clear(); // nothing listed, nothing chosen (GitHub #361)
             emit resultsReplaced();
         } else if (m_refresh) {
@@ -3091,6 +3203,8 @@ void Launcher::showRows(SearchResults rows, QStringList highlights, QStringList 
     m_shownRegex = regexTerms();
     m_shownFuzzyMode = m_fuzzyMode;
     m_haveResults = true;
+    m_shownStale = false;
+    m_historyDirty = false;
     if (m_replacePending) {
         if (m_replaceClock.isValid() && m_replaceClock.elapsed() >= 300) {
             // Dimmed long enough to be seen (after 250 ms): why, in the log.
@@ -6670,6 +6784,8 @@ void Launcher::setRecordHistory(bool on)
     refreshFrequentApps();
     if (m_window && m_window->isVisible())
         search(); // "最近" rows come or go
+    else
+        m_shownStale = true;
 }
 
 bool Launcher::canClearHistory() const
@@ -6682,6 +6798,7 @@ void Launcher::clearHistory()
     m_history->clear();
     m_queryHistory.clear();
     m_queryRecorded = true;
+    m_historyDirty = true;
     emit queryHistoryChanged();
     emit historyChanged();
     refreshFrequentApps();
@@ -6693,8 +6810,10 @@ void Launcher::clearHistory()
 void Launcher::remember(const QString& path, const QString& query)
 {
     rememberQuery();
-    if (m_recordHistory)
+    if (m_recordHistory) {
         m_history->record(path, query, QDateTime::currentMSecsSinceEpoch());
+        m_historyDirty = true;
+    }
     if (m_recordHistory && m_adminNote)
         m_history->setAdmin(path, *m_adminNote);
     m_adminNote.reset();
@@ -6707,6 +6826,8 @@ void Launcher::setRememberAdmin(bool on)
     m_rememberAdmin = on;
     if (m_window && m_window->isVisible())
         search(); // 管理员 comes or goes
+    else
+        m_shownStale = true;
 }
 
 bool Launcher::canRememberAdmin(const SearchResult& r) const

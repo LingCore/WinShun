@@ -2,6 +2,7 @@
 
 #include "App.h"
 #include "IndexService.h"
+#include "Launcher.h"
 #include "platform/HotPages.h"
 #include "platform/IdleTrim.h"
 
@@ -27,8 +28,9 @@ using namespace Qt::StringLiterals;
 namespace ws::preview {
 
 // --probe-runtime <folder> --idle-open-check [--with-clipboard] [--renderer d3d11]
-//     [--idle-open-index <folder;folder>] [--idle-open-cycles 8] [--idle-open-after-use 3000]
-//     [--idle-open-rest 0] [--idle-open-pressure <folder>]
+//     [--idle-open-index <folder;folder>] [--idle-open-query <text>]
+//     [--idle-open-start-list opened|modified] [--idle-open-cycles 8]
+//     [--idle-open-after-use 3000] [--idle-open-rest 0] [--idle-open-pressure <folder>]
 // The production App beside the Win顺 that runs, its windows opened the way a
 // hotkey opens them (beginTrigger, then the toggle), each opening timed from
 // that call until the window is there to be seen (uncloaked after its first
@@ -105,7 +107,7 @@ struct IdleOpenProbe {
 
     static double megabytes(std::size_t bytes) { return std::round(static_cast<double>(bytes) / 1048576.0 * 10) / 10; }
 
-    static QJsonObject open(App& app, bool clipboard, const char* kind)
+    static QJsonObject open(App& app, bool clipboard, const char* kind, const QString& setQuery = {})
     {
         waitForQuietInput();
         const MachineTime machineBefore = machineTime();
@@ -134,6 +136,13 @@ struct IdleOpenProbe {
         const bool came = seen(app, clipboard);
         const PROCESS_MEMORY_COUNTERS_EX2 after = counters();
         const MachineTime machineAfter = machineTime();
+        if (!clipboard && !setQuery.isEmpty() && app.m_launcher) {
+            app.m_launcher->setQuery(setQuery);
+            QElapsedTimer searchWait;
+            searchWait.start();
+            while (app.m_launcher->waitingForNames() && searchWait.elapsed() < 5'000)
+                QCoreApplication::processEvents(QEventLoop::AllEvents, 5);
+        }
         pump(400); // up for a moment, as when used
         const PROCESS_MEMORY_COUNTERS_EX2 settled = counters();
         if (clipboard)
@@ -156,6 +165,8 @@ struct IdleOpenProbe {
             {u"hot_mb"_s, megabytes((clipboard ? app.m_clipPages : app.m_launcherPages)->bytes())},
             {u"cpu"_s, all ? std::round(100.0 * (1.0 - static_cast<double>(machineAfter.idle - machineBefore.idle) / static_cast<double>(all))) / 100 : 0.0},
         };
+        if (!clipboard && app.m_launcher && !app.m_launcher->query().isEmpty())
+            row.insert(u"query"_s, app.m_launcher->query());
         return row;
     }
 
@@ -181,6 +192,11 @@ struct IdleOpenProbe {
         const int cycles = std::clamp(number(u"--idle-open-cycles", 8), 1, 100);
         const int afterUse = std::clamp(number(u"--idle-open-after-use", 3'000), 1'000, 20'000);
         const int rest = std::clamp(number(u"--idle-open-rest", 0), 0, 600'000);
+        const qsizetype queryAt = args.indexOf(u"--idle-open-query"_s);
+        const QString query = queryAt >= 0 && queryAt + 1 < args.size() ? args[queryAt + 1] : QString();
+        const qsizetype startListAt = args.indexOf(u"--idle-open-start-list"_s);
+        if (startListAt >= 0 && startListAt + 1 < args.size() && args[startListAt + 1] == u"modified" && app.m_launcher)
+            app.m_launcher->setStartList(Launcher::RecentlyModified);
         QElapsedTimer loading;
         loading.start();
         while (app.m_index->state() != IndexService::State::Ready && loading.elapsed() < 900'000)
@@ -227,7 +243,7 @@ struct IdleOpenProbe {
         }
         for (int i = 0; i < cycles; ++i) {
             for (const bool clipboard : windows) {
-                open(app, clipboard, "use");
+                open(app, clipboard, "use", clipboard ? QString() : query);
                 const bool trimmed = waitForIdleTrim(app, app.m_idleTrim->lastTrim().atMs, afterUse + 6'000);
                 pump(rest);
                 const std::optional<bool> pressed = pressureAt >= 0 ? std::optional(press()) : std::nullopt;

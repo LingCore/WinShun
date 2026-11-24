@@ -11,6 +11,7 @@
 #include <atomic>
 #include <cstdint>
 #include <functional>
+#include <thread>
 
 namespace ws {
 
@@ -37,6 +38,7 @@ public:
     // without it, or while it has none to name, everything goes.
     explicit IdleTrim(std::function<const char*()> busy, std::function<bool()> up, std::function<PageSet()> keep = {},
         QObject* parent = nullptr);
+    ~IdleTrim() override;
 
     // Work `busy` reports may have ended (the index is loaded, a catch-up is
     // done): emptied a few seconds later, not at the next recheck.
@@ -102,6 +104,8 @@ private:
     // "idle-trim" entries: the first few, then one every ten minutes; each
     // resume's hold (notable) up to 30 an hour.
     diagnostics::JournalBudget m_journal;
+    std::atomic<bool> m_trimming {false}; // a background trim pass is running
+    std::jthread m_worker; // joined on destruction; stopped on used()/resumed()
 };
 
 } // namespace ws

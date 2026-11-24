@@ -133,7 +133,29 @@ PageSet PageSet::smallest(std::size_t bytes) const
     return PageSet(std::move(bySize));
 }
 
-void PageSet::release() const
+PageSet PageSet::committed() const
+{
+    std::vector<Range> live;
+    live.reserve(m_ranges.size());
+    for (const Range& r : m_ranges) {
+        std::uintptr_t at = r.start;
+        while (at < r.end()) {
+            MEMORY_BASIC_INFORMATION m {};
+            if (!::VirtualQuery(reinterpret_cast<const void*>(at), &m, sizeof m))
+                break;
+            const std::uintptr_t regionEnd = reinterpret_cast<std::uintptr_t>(m.BaseAddress) + m.RegionSize;
+            const std::uintptr_t to = std::min(r.end(), regionEnd);
+            if (to <= at)
+                break;
+            if (readable(m))
+                live.push_back({at, to - at});
+            at = to;
+        }
+    }
+    return PageSet(std::move(live));
+}
+
+void PageSet::release(std::stop_token stop) const
 {
     // VirtualUnlock on pages that are not locked takes them out of the
     // working set (and says ERROR_NOT_LOCKED): over several allocations at
@@ -151,6 +173,8 @@ void PageSet::release() const
     };
     for (const Range& r : m_ranges) {
         for (std::uintptr_t from = r.start; from < r.end();) {
+            if (stop.stop_requested())
+                return;
             asked.clear();
             for (std::uintptr_t at = from; at < r.end() && asked.size() < kBatch; at += kPage)
                 asked.push_back({reinterpret_cast<void*>(at), {}});
@@ -172,30 +196,15 @@ void PageSet::release() const
 
 std::size_t PageSet::prefetch() const
 {
-    std::vector<WIN32_MEMORY_RANGE_ENTRY> entries;
-    entries.reserve(m_ranges.size());
-    std::size_t total = 0;
-    // Freed or made inaccessible since: left out, a range split where its
-    // parts differ.
-    for (const Range& r : m_ranges) {
-        std::uintptr_t at = r.start;
-        while (at < r.end()) {
-            MEMORY_BASIC_INFORMATION m {};
-            if (!::VirtualQuery(reinterpret_cast<const void*>(at), &m, sizeof m))
-                break;
-            const std::uintptr_t regionEnd = reinterpret_cast<std::uintptr_t>(m.BaseAddress) + m.RegionSize;
-            const std::uintptr_t to = std::min(r.end(), regionEnd);
-            if (readable(m)) {
-                entries.push_back({reinterpret_cast<void*>(at), static_cast<SIZE_T>(to - at)});
-                total += to - at;
-            }
-            at = to;
-        }
-    }
-    if (entries.empty())
+    const PageSet live = committed();
+    if (live.empty())
         return 0;
+    std::vector<WIN32_MEMORY_RANGE_ENTRY> entries;
+    entries.reserve(live.ranges().size());
+    for (const Range& r : live.ranges())
+        entries.push_back({reinterpret_cast<void*>(r.start), static_cast<SIZE_T>(r.bytes)});
     ::PrefetchVirtualMemory(::GetCurrentProcess(), entries.size(), entries.data(), 0);
-    return total;
+    return live.bytes();
 }
 
 void HotPages::learn(const PageSet& used)
@@ -203,6 +212,7 @@ void HotPages::learn(const PageSet& used)
     const std::lock_guard lock(m_mutex);
     if (m_pages.empty()) {
         m_pages = m_first = used.smallest(kMostBytes);
+        m_firstBytes = m_first.bytes();
         m_once = {};
         m_whole = m_pages.bytes() == used.bytes();
         return;
@@ -215,6 +225,52 @@ void HotPages::learn(const PageSet& used)
         m_pages = m_first;
         m_once = {};
     }
+}
+
+void HotPages::dropLocked(const PageSet& gone)
+{
+    if (m_pages.empty() || gone.empty())
+        return;
+    m_pages = m_pages.without(gone);
+    m_once = m_once.without(gone);
+    m_first = m_first.without(gone);
+    if (m_pages.empty()) {
+        m_first = {};
+        m_once = {};
+        m_firstBytes = 0;
+        m_whole = true;
+        return;
+    }
+    if (m_first.bytes() * 2 < m_firstBytes) {
+        m_first = m_pages.smallest(kMostBytes);
+        m_firstBytes = m_first.bytes();
+        m_whole = m_first.bytes() == m_pages.bytes();
+    }
+}
+
+void HotPages::prune(const PageSet& live)
+{
+    const std::lock_guard lock(m_mutex);
+    if (m_pages.empty())
+        return;
+    const PageSet all = m_pages.united(m_once).united(m_first);
+    dropLocked(all.without(live));
+}
+
+void HotPages::pruneUncommitted()
+{
+    PageSet tracked;
+    {
+        const std::lock_guard lock(m_mutex);
+        if (m_pages.empty())
+            return;
+        tracked = m_pages.united(m_once).united(m_first);
+    }
+    const PageSet dead = tracked.without(tracked.committed());
+    if (dead.empty())
+        return;
+    const std::lock_guard lock(m_mutex);
+    dropLocked(dead);
 }
 
 PageSet HotPages::pages() const

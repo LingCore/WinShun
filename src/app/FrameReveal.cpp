@@ -12,7 +12,7 @@ void FrameReveal::setWindow(QQuickWindow* window, std::chrono::milliseconds time
     m_reveal = std::move(reveal);
     m_timeout.setSingleShot(true);
     m_defaultTimeout = timeout;
-    connect(&m_timeout, &QTimer::timeout, this, [this] { finish(m_pending); });
+    connect(&m_timeout, &QTimer::timeout, this, [this] { finish(m_pending, true); });
     connect(window, &QWindow::visibleChanged, this, [this](bool visible) {
         if (!visible)
             cancel();
@@ -22,15 +22,17 @@ void FrameReveal::setWindow(QQuickWindow* window, std::chrono::milliseconds time
     }, Qt::DirectConnection);
     connect(window, &QQuickWindow::frameSwapped, this, [this] {
         if (const quint64 generation = m_synchronized.exchange(0))
-            QMetaObject::invokeMethod(this, [this, generation] { finish(generation); }, Qt::QueuedConnection);
+            QMetaObject::invokeMethod(this, [this, generation] { finish(generation, false); }, Qt::QueuedConnection);
     }, Qt::DirectConnection);
 }
 
 void FrameReveal::begin(std::chrono::milliseconds timeout)
 {
     m_armed = 0;
+    m_timedOut = false;
+    m_activeTimeout = timeout.count() > 0 ? timeout : m_defaultTimeout;
     m_pending = ++m_generation;
-    m_timeout.start(timeout.count() > 0 ? timeout : m_defaultTimeout);
+    m_timeout.start(m_activeTimeout);
 }
 
 void FrameReveal::arm()
@@ -38,6 +40,9 @@ void FrameReveal::arm()
     if (!m_pending || !m_window)
         return;
     m_armed = m_pending;
+    // Give the render thread a full frame budget once results are ready, so
+    // waiting on a slow search cannot starve frame rendering and reveal early.
+    m_timeout.start(m_activeTimeout);
     m_window->update(); // a fresh frame even if its contents did not change
 }
 
@@ -45,16 +50,18 @@ void FrameReveal::cancel()
 {
     m_pending = 0;
     m_armed = 0;
+    m_timedOut = false;
     m_timeout.stop();
 }
 
-void FrameReveal::finish(quint64 generation)
+void FrameReveal::finish(quint64 generation, bool timedOut)
 {
     // A queued or in-flight frame from the last opening must not reveal
     // the next one or stop its fallback timer.
     if (!generation || generation != m_pending || !m_window || !m_window->isVisible())
         return;
     cancel();
+    m_timedOut = timedOut;
     m_reveal();
 }
 

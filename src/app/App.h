@@ -303,8 +303,9 @@ private:
     // (the diagnostics journal's "trigger", TriggerJournal); a double tap's
     // also says which listener told of it, and when.
     void beginTrigger(TriggerSource source, std::uint64_t pressedAt, std::optional<TriggerJournal::Told> told = {});
-    void openingSeen(TriggerWindow window, bool deferWarmup = false); // m_triggers->seen; warmup runs now or after slideIn
+    void openingSeen(TriggerWindow window, bool deferWarmup = false, bool timedOut = false); // m_triggers->seen; warmup runs now or after slideIn
     void finishOpeningWarmup(TriggerWindow window); // IdleTrim index warm + HotPages learning, deferred past slideIn
+    void finishDeferredLauncherRefresh(); // deferred catalog/search/share refreshes after reveal
     void journalTapNote(const KeyListener::Note& note);
     // win::bringToFront for a window a press asked for: how, and how long, to the journal.
     win::Front toFront(QWindow* window);
@@ -916,6 +917,10 @@ private:
     std::shared_ptr<HotPages> m_clipPages;
     std::shared_ptr<HotPages> m_recordPages; // of the opening under way, told what it used once it is seen
     std::array<qint64, 2> m_openingSeenMs {}; // by TriggerWindow, when each was last seen; ms since 1970, as IdleTrim::LastTrim
+    std::array<std::uint64_t, 2> m_lastActivityMs {}; // by TriggerWindow, GetTickCount64() when last shown or hidden
+    bool m_launcherWasLongIdle = false; // idle >= 5 min before this opening: warm FileIndex after reveal
+    bool m_deferredSharesLook = false; // shares().lookedAt() deferred past reveal
+    QTimer m_namesRevealWait; // caps waiting for Launcher::namesShown before arming reveal
     std::unique_ptr<BackgroundStatus> m_background; // what runs in the background, in words (after m_index, m_updater)
     std::unique_ptr<HealthMonitor> m_health; // the 运行状况 page's readings (after m_background, m_idleTrim)
     std::vector<std::wstring> m_sharesBuilding; // being read for the first time: told when done

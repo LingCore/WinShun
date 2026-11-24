@@ -85,6 +85,7 @@
 #include "platform/Http.h"
 #include "platform/HotPages.h"
 #include "platform/IdleTrim.h"
+#include "platform/ThreadQos.h"
 #include "platform/UiStall.h"
 #include "platform/MemoryReport.h"
 #include "BackgroundStatus.h"
@@ -152,6 +153,7 @@
 
 #include <windows.h>
 #include <dwmapi.h>
+#include <psapi.h>
 
 #include <cmath>
 #include <thread>
@@ -1459,10 +1461,22 @@ bool App::createWindow()
     // frame takes longer, and the window was seen before anything was drawn
     // in it, white or black (seen on Windows 10 in a VM, GitHub #234).
     m_launcherReveal.setWindow(m_window, 200ms, [this] { revealLauncher(); });
+    connect(m_window, &QQuickWindow::sceneGraphInitialized, this, [] {
+        qos::keepCurrentThreadResponsive(); // QSGRenderThread: stay off EcoQoS after long idle
+    }, Qt::DirectConnection);
     connect(m_window, &QQuickWindow::frameSwapped, this, [this] {
         if (m_prewarming.load())
             QMetaObject::invokeMethod(this, &App::finishPrewarm, Qt::QueuedConnection);
     }, Qt::DirectConnection);
+    // Cap how long we stay cloaked waiting for a cold name search or slow disk
+    // stat: reveal on time and let fresh rows arrive in place.
+    m_namesRevealWait.setSingleShot(true);
+    m_namesRevealWait.setInterval(60ms);
+    m_namesRevealWait.setTimerType(Qt::PreciseTimer);
+    connect(&m_namesRevealWait, &QTimer::timeout, this, [this] {
+        if (m_launcherReveal.pending() && m_typedRows == TypedRows::No)
+            armReveal();
+    });
     // Keys typed elsewhere wait for it (deliverTyping): its field becoming
     // the focus object (Qt has given the window its input method context by
     // then), and the cap. Then a moment's watch of what came of them. The
@@ -1515,6 +1529,9 @@ bool App::createClipWindow()
         return false;
     }
     m_clipWindow = window;
+    connect(window, &QQuickWindow::sceneGraphInitialized, this, [] {
+        qos::keepCurrentThreadResponsive(); // QSGRenderThread: stay off EcoQoS after long idle
+    }, Qt::DirectConnection);
     prepareBackdrop(window);
     window->create();
     window->installEventFilter(this); // the Menu key, pasting into its search box
@@ -5753,23 +5770,53 @@ void App::beginTrigger(TriggerSource source, std::uint64_t pressedAt, std::optio
     // opening since the memory was given back tells what else it uses, once
     // it is seen.
     const bool clipboard = source == TriggerSource::ClipboardHotkey || source == TriggerSource::WinV;
+    const TriggerWindow window = clipboard ? TriggerWindow::Clipboard : TriggerWindow::Launcher;
+    const std::size_t idx = static_cast<std::size_t>(window);
+    const std::uint64_t lastActive = m_lastActivityMs[idx];
+    const std::uint64_t idleMs = lastActive > 0 && pressedAt >= lastActive ? pressedAt - lastActive : 0;
+    context.idleSec = lastActive > 0 ? static_cast<std::int64_t>(idleMs / 1000) : -1;
     const std::shared_ptr<HotPages>& pages = clipboard ? m_clipPages : m_launcherPages;
     if (pages) {
-        context.hotMb = static_cast<int>(pages->bytes() >> 20);
-        if (context.hotMb > 0)
-            std::thread([kept = pages->pages()] { kept.prefetch(); }).detach();
+        const std::size_t hotBytes = pages->bytes();
+        context.hotMb = static_cast<int>(hotBytes >> 20);
+        if (hotBytes > 0) {
+            // Skip spawning a prefetch thread on immediate warm reopens unless
+            // IdleTrim ran, the window sat idle >= 15 s, or Windows silently
+            // trimmed the working set below the kept pages.
+            bool shouldPrefetch = context.trimmed || idleMs >= 15'000;
+            if (!shouldPrefetch) {
+                PROCESS_MEMORY_COUNTERS counters {};
+                counters.cb = sizeof counters;
+                shouldPrefetch = !::GetProcessMemoryInfo(::GetCurrentProcess(), &counters, sizeof counters)
+                    || counters.WorkingSetSize < hotBytes;
+            }
+            if (shouldPrefetch)
+                std::thread([kept = pages->pages()] { kept.prefetch(); }).detach();
+        }
     }
-    m_recordPages = trimmedAt > m_openingSeenMs[static_cast<std::size_t>(clipboard ? TriggerWindow::Clipboard : TriggerWindow::Launcher)] ? pages : nullptr;
+    m_recordPages = trimmedAt > m_openingSeenMs[idx] ? pages : nullptr;
     m_triggers->begin(source, pressedAt, context);
 }
 
-void App::openingSeen(TriggerWindow window, bool deferWarmup)
+void App::openingSeen(TriggerWindow window, bool deferWarmup, bool timedOut)
 {
     if (m_triggers)
-        m_triggers->seen(window);
+        m_triggers->seen(window, timedOut);
     m_openingSeenMs[static_cast<std::size_t>(window)] = QDateTime::currentMSecsSinceEpoch(); // IdleTrim::LastTrim's clock
+    m_lastActivityMs[static_cast<std::size_t>(window)] = ::GetTickCount64();
     if (!deferWarmup)
         finishOpeningWarmup(window);
+}
+
+void App::finishDeferredLauncherRefresh()
+{
+    const bool shares = std::exchange(m_deferredSharesLook, false);
+    if (!launcherShown())
+        return;
+    if (shares && m_index)
+        m_index->shares().lookedAt(); // a WebDAV server stopped meanwhile shows as offline (GitHub #114)
+    if (m_launcher)
+        m_launcher->finishShownRefresh();
 }
 
 void App::finishOpeningWarmup(TriggerWindow window)
@@ -5777,27 +5824,45 @@ void App::finishOpeningWarmup(TriggerWindow window)
     // The file index's pages back, before the first search needs them
     // (IdleTrim, FileIndex::warm). Once the opening slide has finished, not
     // while the window comes in: tens of thousands of page faults on another
-    // thread competed with the window's reveal and opening animation.
-    if (window == TriggerWindow::Launcher && m_idleTrim->takeTrimmed() && m_index->index()) {
-        std::thread([index = m_index->index()] {
-            const auto lock = index->longReadLock();
-            index->warm();
-        }).detach();
-    }
+    // thread competed with the window's reveal and opening animation. Also
+    // warm after 5+ min idle in case Windows aged out pages on its own.
+    const bool isLauncher = window == TriggerWindow::Launcher;
+    const bool longIdle = isLauncher && std::exchange(m_launcherWasLongIdle, false);
+    const bool shouldWarm = isLauncher && m_index && m_index->index()
+        && ((m_idleTrim && m_idleTrim->takeTrimmed()) || longIdle);
     // Its first opening since the memory was given back: what is in memory
     // now and was not kept came back for it, or for what ran meanwhile
-    // (HotPages tells them apart). Not the file index's large blocks, which
-    // the search it started is reading on its threads.
+    // (HotPages tells them apart). Snapshot BEFORE running deferred refreshes
+    // or index warming so search buffers do not bloat HotPages.
     const std::shared_ptr<HotPages>& own = window == TriggerWindow::Clipboard ? m_clipPages : m_launcherPages;
     if (m_recordPages && m_recordPages == own) {
-        std::thread([pages = std::exchange(m_recordPages, nullptr), launcher = m_launcherPages, clipboard = m_clipPages,
-                        index = m_index->index()] {
-            PageSet used = PageSet::resident().without(launcher->pages()).without(clipboard->pages());
+        QPointer<App> self(this);
+        std::thread([self, isLauncher, shouldWarm, pages = std::exchange(m_recordPages, nullptr),
+                        launcher = m_launcherPages, clipboard = m_clipPages,
+                        index = m_index ? m_index->index() : nullptr] {
+            const PageSet resident = PageSet::resident();
+            if (isLauncher && self)
+                QMetaObject::invokeMethod(self, &App::finishDeferredLauncherRefresh, Qt::QueuedConnection);
+            pages->pruneUncommitted();
+            PageSet used = resident.without(launcher->pages()).without(clipboard->pages());
             if (index) {
                 const auto lock = index->longReadLock();
                 used = used.without(PageSet::within(index->memoryBlocks()));
             }
             pages->learn(used);
+            if (shouldWarm && index) {
+                const auto lock = index->longReadLock();
+                index->warm();
+            }
+        }).detach();
+        return;
+    }
+    if (isLauncher)
+        finishDeferredLauncherRefresh();
+    if (shouldWarm && m_index && m_index->index()) {
+        std::thread([index = m_index->index()] {
+            const auto lock = index->longReadLock();
+            index->warm();
         }).detach();
     }
 }
@@ -6038,6 +6103,13 @@ void App::showLauncher(const QString& asked, const std::optional<taskbar::Spot>&
     QScopedValueRollback opening(m_launcherOpening, true);
     m_typedRows = TypedRows::No; // showFolderSearch sets it after
     m_typedRowsCap.stop();
+    m_namesRevealWait.stop();
+    m_deferredSharesLook = false;
+    {
+        const std::uint64_t nowTick = ::GetTickCount64();
+        const std::uint64_t lastLauncher = m_lastActivityMs[static_cast<std::size_t>(TriggerWindow::Launcher)];
+        m_launcherWasLongIdle = lastLauncher > 0 && nowTick >= lastLauncher && (nowTick - lastLauncher) >= 300'000;
+    }
     m_launcher->setFolderSearch(avoid && (inside || !::IsRectEmpty(&orInto)));
     cancelTypingSelection();
     m_typingOrigin = {}; // opened anew: set again by typingFolderKnown when that is why
@@ -6052,13 +6124,13 @@ void App::showLauncher(const QString& asked, const std::optional<taskbar::Spot>&
     m_frontTakenBack = 0;
     applyLauncherPin(); // left not topmost by a pin of before, perhaps
     m_idleTrim->used();
-    m_index->shares().lookedAt(); // a WebDAV server stopped meanwhile shows as offline (GitHub #114)
     if (!launcherShown()) { // what a screenshot of the history pastes into (jt, Enter)
         const HWND front = ::GetForegroundWindow();
         if (front != reinterpret_cast<HWND>(m_window->winId()))
             m_launcherTarget = front;
     }
     if (m_launcher->pinned() && launcherShown()) {
+        m_index->shares().lookedAt(); // a WebDAV server stopped meanwhile shows as offline (GitHub #114)
         if (asPanel)
             setPanel(true, true);
         // Pinned and up already, without the focus (or under another topmost
@@ -6073,6 +6145,8 @@ void App::showLauncher(const QString& asked, const std::optional<taskbar::Spot>&
         m_launcher->handleShown(); // refreshed (something was opened meanwhile), all typed selected
         if (!query.isEmpty())
             emit m_launcher->caretRequested(static_cast<int>(query.size()), false);
+        if (m_triggers)
+            m_triggers->showDone();
         lettersOnOpen(); // active and focused already, nothing else to come
         return;
     }
@@ -6156,11 +6230,22 @@ void App::showLauncher(const QString& asked, const std::optional<taskbar::Spot>&
     m_launcherFrontTick = ::GetTickCount(); // input after this is not its own empty one (logLauncherLostFront)
     if (refuseFrontForTest() == RefuseFront::No)
         m_window->requestActivate();
-    m_launcher->handleShown(); // selects all that is typed
+    const bool cloakedReveal = m_launcherReveal.pending();
+    if (cloakedReveal)
+        m_deferredSharesLook = true;
+    else
+        m_index->shares().lookedAt();
+    m_launcher->handleShown(cloakedReveal); // selects all that is typed; defers cold background refresh while cloaked
     if (!query.isEmpty() && !filled) // typed for the user (a folder, --query): words go after it
         emit m_launcher->caretRequested(static_cast<int>(query.size()), false);
-    if (m_launcherReveal.pending() && !m_launcher->waitingForNames())
-        armReveal(); // nothing to wait for (内容 refreshes in the background)
+    if (m_triggers)
+        m_triggers->showDone();
+    if (m_launcherReveal.pending()) {
+        if (!m_launcher->waitingForNames())
+            armReveal(); // rows already on screen, or 内容 refreshes in the background
+        else
+            m_namesRevealWait.start(); // cap how long we stay cloaked waiting for a cold search
+    }
     lettersOnOpen(); // back from on its way out: it may have kept its focus
 }
 
@@ -6249,6 +6334,8 @@ void App::showClipboard()
         // window as it looked when it was hidden, then our repaint.
         win::setCloaked(m_clipWindow, true);
         m_clipReveal.begin();
+        if (m_triggers)
+            m_triggers->armed(TriggerWindow::Clipboard);
         m_clipReveal.arm();
     }
     if (keepFocus) {
@@ -6264,11 +6351,15 @@ void App::showClipboard()
         // On top of the other topmost windows, as an activated one would be.
         ::SetWindowPos(panel, HWND_TOPMOST, 0, 0, 0, 0,
                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        if (m_triggers)
+            m_triggers->showDone();
         return;
     }
     m_clipWindow->show();
     toFront(m_clipWindow);
     m_clipWindow->requestActivate();
+    if (m_triggers)
+        m_triggers->showDone();
 }
 
 bool App::clipboardInCharge() const
@@ -6947,7 +7038,7 @@ void App::uncloakClipboard()
         if (m_clipDisplay->show()) {
             m_clipboard->setSeen(false); // this process's window stays cloaked: no file shown over it
             m_clipRevealedAt = ::GetTickCount64();
-            openingSeen(TriggerWindow::Clipboard);
+            openingSeen(TriggerWindow::Clipboard, false, m_clipReveal.timedOut());
             return; // the ordinary-process scene stays cloaked behind the peer
         }
     }
@@ -6973,7 +7064,7 @@ void App::uncloakClipboard()
     if (m_clipWindow->isVisible() && !m_clipPrewarming.load()) {
         m_clipRevealedAt = ::GetTickCount64(); // there to be seen from now on (seenBy)
         m_clipboard->setSeen(true); // a copied file beside the list, a document's handler over it
-        openingSeen(TriggerWindow::Clipboard, m_clipPlacement->sliding());
+        openingSeen(TriggerWindow::Clipboard, m_clipPlacement->sliding(), m_clipReveal.timedOut());
     }
 }
 
@@ -7036,6 +7127,7 @@ void App::hideClipboard(bool launcherToo)
         }
     }
     m_clipWindow->hide();
+    m_lastActivityMs[static_cast<std::size_t>(TriggerWindow::Clipboard)] = ::GetTickCount64();
     m_clipPlacement->settleSlide(); // caught coming in: at its place, its opacity whole
     m_clipRevealedAt.reset(); // only here: pinned, it stays up when it lets go of the keys
     stopKeyRouting(); // hidden first: no inactive backdrop on the way out
@@ -7112,12 +7204,16 @@ void App::returnToField(QQuickItem* field)
 
 void App::armReveal()
 {
+    m_namesRevealWait.stop();
     // Let Qt.callLater handlers (Main.qml's settleRows) finish sizing the
     // window before FrameReveal accepts the next rendered frame.
     const quint64 seq = ++m_revealArmSeq;
     QMetaObject::invokeMethod(this, [this, seq] {
-        if (seq == m_revealArmSeq && m_launcherReveal.pending())
+        if (seq == m_revealArmSeq && m_launcherReveal.pending()) {
+            if (m_triggers)
+                m_triggers->armed(TriggerWindow::Launcher);
             m_launcherReveal.arm();
+        }
     }, Qt::QueuedConnection);
 }
 
@@ -7143,6 +7239,7 @@ void App::revealLauncher()
 {
     if (!m_window)
         return;
+    m_namesRevealWait.stop();
     if (m_typedRows != TypedRows::No)
         qInfo().noquote() << u"Folder typing: a frame after %1 ms, state %2"_s.arg(m_typedRowsClock.elapsed()).arg(int(m_typedRows));
     if (m_typedRows == TypedRows::FirstFrame && launcherShown()) { // the rows are not in yet (typedRowsShown)
@@ -7172,7 +7269,7 @@ void App::revealLauncher()
     win::setCloaked(m_window, false);
     if (launcherShown()) {
         m_launcherRevealedAt = ::GetTickCount64(); // there to be seen from now on (seenBy)
-        openingSeen(TriggerWindow::Launcher, m_placement->sliding());
+        openingSeen(TriggerWindow::Launcher, m_placement->sliding(), m_launcherReveal.timedOut());
     }
     deliverTyping(); // asked for by typing elsewhere: the keys, if they waited for its first frame
 }
@@ -7598,6 +7695,8 @@ void App::hideLauncher()
         ::EndMenu(); // the shell's menu over it (Shift+right-click) goes with it: double Ctrl, say
     m_launcherHidden.start();
     m_boxPressGrace.stop();
+    m_namesRevealWait.stop();
+    m_deferredSharesLook = false;
     restoreLauncherInputMode(); // while it may still have the focus (an input method shared by all programs follows)
     if (std::exchange(m_deliverTyping, false)) {
         // Going before the keys typed for it went (they wait for it to be
@@ -7665,7 +7764,10 @@ void App::finishHidingLauncher()
     if (!m_window || !m_window->isVisible())
         return;
     m_window->hide();
+    m_lastActivityMs[static_cast<std::size_t>(TriggerWindow::Launcher)] = ::GetTickCount64();
     ++m_revealArmSeq;
+    m_namesRevealWait.stop();
+    m_deferredSharesLook = false;
     m_launcherReveal.cancel();
     m_typedRows = TypedRows::No;
     m_typedRowsCap.stop();
@@ -7704,7 +7806,11 @@ void App::panelHotkey(std::optional<std::uint64_t> pressedAt)
             m_triggers->decided("hide");
         return;
     }
+    if (m_triggers)
+        m_triggers->decided("panel", TriggerWindow::Launcher);
     showSearchPanel();
+    if (!m_launcherReveal.pending())
+        openingSeen(TriggerWindow::Launcher);
 }
 
 void App::settingsHotkey()

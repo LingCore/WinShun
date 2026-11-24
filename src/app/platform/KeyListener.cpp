@@ -2,6 +2,7 @@
 #include "KeyListenerProtocol.h"
 #include "OwnInput.h"
 #include "SearchTyping.h" // searchtyping::RawInputAside
+#include "ThreadQos.h"
 
 #include <shellscalingapi.h>
 
@@ -292,9 +293,11 @@ KeyListener::KeyListener(Callbacks callbacks)
         ready.count_down();
         if (!hwnd)
             return;
-        // Above normal: the second tap is timed from the message's own clock,
-        // but it should not wait behind other work for long either.
+        // Above normal and off EcoQoS: the second tap is timed from the
+        // message's own clock, but it should not wait behind other work or
+        // wake from background power throttling either.
         ::SetThreadPriority(::GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
+        qos::keepCurrentThreadResponsive();
         MSG msg;
         while (::GetMessageW(&msg, nullptr, 0, 0) > 0)
             ::DispatchMessageW(&msg);

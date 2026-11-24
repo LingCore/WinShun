@@ -284,6 +284,75 @@ private slots:
         twice(large, pages({{300'000, 300'001}}));
         QCOMPARE(large.pages(), pages({{0, first}}));
     }
+
+    void committedFiltersFreedAndDecommittedPages()
+    {
+        PageSet gone;
+        {
+            const Block block(16);
+            block.write('c');
+            QVERIFY(::VirtualFree(block.data + 4 * kPage, 4 * kPage, MEM_DECOMMIT));
+            DWORD oldProtect = 0;
+            QVERIFY(::VirtualProtect(block.data + 12 * kPage, 2 * kPage, PAGE_NOACCESS, &oldProtect));
+            const PageSet live = block.all().committed();
+            QCOMPARE(live, block.part(0, 4).united(block.part(8, 12)).united(block.part(14, 16)));
+            QVERIFY(::VirtualProtect(block.data + 12 * kPage, 2 * kPage, PAGE_READWRITE, &oldProtect));
+            gone = block.all();
+        }
+        QCOMPARE(gone.committed(), PageSet());
+    }
+
+    void releaseStopsEarlyWhenCancelled()
+    {
+        const Block block(64);
+        block.write('s');
+        std::stop_source stop;
+        stop.request_stop();
+        block.all().release(stop.get_token());
+        QCOMPARE(block.inMemory(0, 64), std::size_t {64});
+    }
+
+    void pruneDropsDeadPagesAndReanchorsFirst()
+    {
+        const std::size_t slack = HotPages::kSlackBytes / kPage;
+        HotPages hot;
+        // Baseline 200 pages, then learn another 200 live pages.
+        hot.learn(pages({{0, 200}}));
+        hot.learn(pages({{1'000, 1'200}}));
+        hot.learn(pages({{1'000, 1'200}}));
+        QCOMPARE(hot.pages(), pages({{0, 200}, {1'000, 1'200}}));
+
+        // Simulate >50% of the initial baseline freed while 1000..1200 stays alive.
+        hot.prune(pages({{0, 50}, {1'000, 1'200}}));
+        QCOMPARE(hot.pages(), pages({{0, 50}, {1'000, 1'200}}));
+
+        // Because m_first re-anchored to {0..50, 1000..1200}, triggering the 2x/slack
+        // cap later must keep those surviving live pages instead of reverting to {0..50}.
+        hot.learn(pages({{50'000, 50'000 + slack + 100}}));
+        hot.learn(pages({{50'000, 50'000 + slack + 100}}));
+        QCOMPARE(hot.pages(), pages({{0, 50}, {1'000, 1'200}}));
+
+        // Pruning everything resets cleanly so the next opening can learn fresh pages.
+        hot.prune(PageSet());
+        QCOMPARE(hot.bytes(), std::size_t {0});
+        hot.learn(pages({{2'000, 2'050}}));
+        QCOMPARE(hot.pages(), pages({{2'000, 2'050}}));
+    }
+
+    void pruneUncommittedDropsVirtualFreedMemory()
+    {
+        HotPages hot;
+        const Block kept(16);
+        kept.write('k');
+        {
+            const Block temp(16);
+            temp.write('t');
+            hot.learn(kept.all().united(temp.all()));
+            QCOMPARE(hot.bytes(), 32 * kPage);
+        }
+        hot.pruneUncommitted();
+        QCOMPARE(hot.pages(), kept.all());
+    }
 };
 
 QTEST_APPLESS_MAIN(HotPagesTest)

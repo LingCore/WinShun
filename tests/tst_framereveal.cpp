@@ -140,6 +140,52 @@ private slots:
         window.show(); // no results and no frame signal
         QTRY_COMPARE_WITH_TIMEOUT(revealed, 1, 1000);
         QVERIFY(!reveal.pending());
+        QVERIFY(reveal.timedOut());
+    }
+
+    void timedOutReflectsRealFrameVsFallback()
+    {
+        QQuickWindow window;
+        prepare(window);
+        int revealed = 0;
+        bool lastTimedOut = true;
+        ws::FrameReveal reveal;
+        reveal.setWindow(&window, 150ms, [&] {
+            ++revealed;
+            lastTimedOut = reveal.timedOut();
+        });
+        reveal.begin();
+        reveal.arm();
+        window.show();
+        frame(window);
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::MetaCall);
+        QCOMPARE(revealed, 1);
+        QVERIFY(!lastTimedOut);
+        QVERIFY(!reveal.timedOut());
+    }
+
+    void armGivesFullFrameBudgetAfterResultsWait()
+    {
+        QQuickWindow window;
+        prepare(window);
+        int revealed = 0;
+        bool lastTimedOut = false;
+        ws::FrameReveal reveal;
+        reveal.setWindow(&window, 120ms, [&] {
+            ++revealed;
+            lastTimedOut = reveal.timedOut();
+        });
+        const QSignalBlocker noFrame(&window);
+        reveal.begin();
+        window.show();
+        QTest::qWait(80);
+        QCOMPARE(revealed, 0);
+        // Arm near the initial deadline: render thread still gets a full 120 ms budget.
+        reveal.arm();
+        QTest::qWait(60);
+        QCOMPARE(revealed, 0);
+        QTRY_COMPARE_WITH_TIMEOUT(revealed, 1, 1000);
+        QVERIFY(lastTimedOut);
     }
 };
 

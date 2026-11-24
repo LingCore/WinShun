@@ -2,6 +2,7 @@
 
 #include "FolderViewHit.h"
 #include "QtKeys.h"
+#include "ThreadQos.h"
 
 #include <QtLogging>
 
@@ -248,6 +249,7 @@ KeyRouter::KeyRouter(
         m_threadId = ::GetCurrentThreadId();
         // Every key press and mouse move in the system waits for the hooks' answer.
         ::SetThreadPriority(::GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
+        qos::keepCurrentThreadResponsive();
         const HINSTANCE instance = ::GetModuleHandleW(nullptr);
         m_keyboard = ::SetWindowsHookExW(WH_KEYBOARD_LL, &KeyRouter::keyboardProc, instance, 0);
         if (!m_keyboard) {
