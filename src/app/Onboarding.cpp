@@ -65,12 +65,30 @@ bool available(const QString& shortcut)
     ::UnregisterHotKey(nullptr, id);
     return true;
 }
+
+// The screenshot's shortcut offered at first: the one people know from QQ,
+// unless something (QQ itself) holds it now, then the next free one.
+// Empty when none is free: the screenshot starts off then, to be recorded.
+QString freeCaptureHotkey()
+{
+    for (const QString& shortcut : {u"Ctrl+Alt+A"_s, u"Ctrl+Alt+S"_s, u"Ctrl+Alt+X"_s}) {
+        if (available(shortcut))
+            return shortcut;
+    }
+    return {};
+}
 } // namespace
 
 Onboarding::Onboarding(const Settings& settings, QObject* parent)
     : QObject(parent), m_settings(settings), m_captureCopy(copyOfCapture(QCoreApplication::applicationDirPath()))
 {
-    // New users explicitly opt into recording and background content work.
+    // What most want is on at first: the clipboard history (kept on this PC
+    // only) and the screenshot, whose component comes with Win顺. Left off:
+    // reading every file's content in the background (the content index) and
+    // taking Win+V from Windows; "稍后设置" turns none of them on.
+    m_clipboard = true;
+    m_captureHotkey = freeCaptureHotkey();
+    m_captureEnabled = !m_captureHotkey.isEmpty();
     connect(this, &Onboarding::choicesChanged, this, [this] {
         stopTest();
         m_testMessage.clear();
