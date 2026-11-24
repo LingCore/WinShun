@@ -14,6 +14,7 @@ bool checkPureSearch(QQmlEngine* engine, const QDir& output);
 // result, measured on the rendered ink (GitHub #245).
 bool checkResultRowSpacing(QQmlEngine* engine, const QDir& output);
 bool checkPluginReviewSettings(QQuickWindow* window, SettingsEditor* editor, const QDir& output);
+bool checkPluginGallerySettings(QQuickWindow* window, SettingsEditor* editor, const QDir& output);
 // Production QML/controller checks on isolated data and non-activating,
 // offscreen windows. No global key injection or clipboard writes.
 bool checkNavigationWorkflows(QQmlEngine* engine, const QDir& output, bool flipped);

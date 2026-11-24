@@ -1659,7 +1659,9 @@ add_test(NAME tst_puresearch COMMAND $<TARGET_FILE:WinShun>
     --preview-results "${CMAKE_CURRENT_BINARY_DIR}/pure-search" --pure-search --renderer d3d11 --scale 1.5)
 add_test(NAME tst_pluginreviewsettings COMMAND $<TARGET_FILE:WinShun>
     --preview-settings "${CMAKE_CURRENT_BINARY_DIR}/plugin-review-settings" --plugin-review-settings --renderer d3d11 --scale 1.5)
-set_tests_properties(tst_puresearch tst_pluginreviewsettings PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
+add_test(NAME tst_plugingallerysettings COMMAND $<TARGET_FILE:WinShun>
+    --preview-settings "${CMAKE_CURRENT_BINARY_DIR}/plugin-gallery-settings" --plugin-gallery-settings --renderer d3d11 --scale 1.5)
+set_tests_properties(tst_puresearch tst_pluginreviewsettings tst_plugingallerysettings PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 target_include_directories(tst_plugin PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_link_libraries(tst_plugin PRIVATE wsplugin miniz Qt6::Test advapi32 powrprof) # miniz: the test writes zips to install; the others: Power

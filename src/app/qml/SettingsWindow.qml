@@ -141,7 +141,10 @@ Window {
     }
     function closeWebForm() {
         webEditing = -2
-        const card = pageItem(pluginsPage)?.parts.pluginsSection.cardOf("winshun.web") // the form opens from that page
+        const parts = pageItem(pluginsPage)?.parts
+        const card = currentTab === 1
+            ? parts?.pluginGallerySection?.cardOf("winshun.web")
+            : parts?.pluginsSection?.cardOf("winshun.web") // the form opens from either 插件 tab
         const button = webReturnFocus || card?.webOptions?.addButton
         if (button && button.visible)
             button.forceActiveFocus()
@@ -174,8 +177,9 @@ Window {
     readonly property bool searching: settingsSearch.active
     readonly property bool modalOpen: updateDialog.open || readmeDialog.open || notesDialog.open
                                       || pluginDialog.open || donateDialog.open || webDialog.active
-    readonly property bool pluginDetailActive: !searching && currentPage === pluginsPage && currentTab === 0
-                                               && (pluginsSlot.item?.parts.pluginsSection.detailOpen ?? false)
+    readonly property bool pluginDetailActive: !searching && currentPage === pluginsPage
+                                               && ((currentTab === 0 && (pluginsSlot.item?.parts.pluginsSection.detailOpen ?? false))
+                                                   || (currentTab === 1 && (pluginsSlot.item?.parts.pluginGallerySection.detailOpen ?? false)))
     readonly property bool canNavigateBack: navHistory.canBack || searching
     readonly property bool canNavigateForward: navHistory.canForward
     readonly property string backTargetLabel: searching ? placeLabel(navHistory.currentEntry)
@@ -515,10 +519,17 @@ Window {
     }
 
     function activePluginDetailId() {
-        if (searching || currentPage !== pluginsPage || currentTab !== 0)
+        if (searching || currentPage !== pluginsPage)
             return ""
-        const section = pageItem(pluginsPage)?.parts.pluginsSection
-        return section && section.detailOpen && section.expandedIds.length > 0 ? section.expandedIds[0] : ""
+        if (currentTab === 0) {
+            const section = pageItem(pluginsPage)?.parts.pluginsSection
+            return section && section.detailOpen && section.expandedIds.length > 0 ? section.expandedIds[0] : ""
+        }
+        if (currentTab === 1) {
+            const section = pageItem(pluginsPage)?.parts.pluginGallerySection
+            return section && section.detailOpen ? section.detailPluginId : ""
+        }
+        return ""
     }
 
     function recordPlace(scrollY) {
@@ -543,7 +554,7 @@ Window {
             return ""
         const title = pages[index].title
         const pid = entry.pluginId ?? ""
-        if (index === pluginsPage && (entry.tab ?? 0) === 0 && pid.length > 0) {
+        if (index === pluginsPage && ((entry.tab ?? 0) === 0 || (entry.tab ?? 0) === 1) && pid.length > 0) {
             const card = pageItem(pluginsPage)?.parts.pluginsSection.cardOf(pid)
             return title + " › " + (card?.name ?? pid)
         }
@@ -644,6 +655,15 @@ Window {
                         section.open(targetPlugin)
                     else
                         section.expandedIds = []
+                }
+            } else if (index === pluginsPage && currentTab === 1) {
+                const section = pageItem(pluginsPage)?.parts.pluginGallerySection
+                if (section) {
+                    const targetPlugin = entry.pluginId ?? ""
+                    if (targetPlugin.length > 0 && window.editor.plugins.hasPlugin(targetPlugin))
+                        section.open(targetPlugin)
+                    else
+                        section.closeDetail()
                 }
             }
             if (index === gleaningPage) {
@@ -1316,39 +1336,47 @@ Window {
                 edgeGate.noteSwitched(0)
         }
     }
-    // 已安装的插件: a plugin opened in place of the grid shows from the top;
+    // 已安装的插件 / 插件库: a plugin opened in place of the grid shows from the top;
     // back, the grid is where it was left.
     property real pluginGridY: 0
-    function pluginDetailToggled(open) {
+    property real galleryGridY: 0
+    function pluginDetailToggled(open, tab) {
         if (navHistory.restoring)
             return
+        const targetTab = tab ?? 0
         const previousY = flick.contentY
         flick.stopScrolling()
         edgeGate.cancel()
         if (open) {
-            pluginGridY = previousY
+            if (targetTab === 1)
+                galleryGridY = previousY
+            else
+                pluginGridY = previousY
             flick.contentY = 0
-            if (visible && !searching && currentPage === pluginsPage && currentTab === 0) {
-                navHistory.updateScroll(pluginGridY)
+            if (visible && !searching && currentPage === pluginsPage && currentTab === targetTab) {
+                navHistory.updateScroll(previousY)
                 recordPlace(0)
                 edgeGate.noteSwitched(0)
             }
             return
         }
-        if (visible && !searching && currentPage === pluginsPage && currentTab === 0) {
+        const savedY = targetTab === 1 ? galleryGridY : pluginGridY
+        if (visible && !searching && currentPage === pluginsPage && currentTab === targetTab) {
             navHistory.updateScroll(previousY)
-            recordPlace(pluginGridY)
+            recordPlace(savedY)
             edgeGate.noteSwitched(0)
         }
         layoutNow()
-        Qt.callLater(() => flick.contentY = Math.max(0, Math.min(window.pluginGridY, flick.contentHeight - flick.height)))
+        Qt.callLater(() => flick.contentY = Math.max(0, Math.min(savedY, flick.contentHeight - flick.height)))
     }
     function showPluginLibrary(pluginId) {
+        pageItem(pluginsPage)?.parts.pluginGallerySection?.closeDetail()
         window.editor.plugins.gallery.updatesOnly = false
         window.editor.plugins.gallery.filter = pluginId
         showPage(pluginsPage, 1)
     }
     function showPluginUpdates() {
+        pageItem(pluginsPage)?.parts.pluginGallerySection?.closeDetail()
         window.editor.plugins.gallery.filter = ""
         window.editor.plugins.gallery.updatesOnly = true
         showPage(pluginsPage, 1)
@@ -7794,9 +7822,10 @@ Window {
                 index: window.pluginsPage
                 content: Component { SettingsPage {
                     host: settingsContext
-                    parts: ({ pluginsSection: pluginsSection, pluginDevSection: pluginDevSection })
+                    parts: ({ pluginsSection: pluginsSection, pluginGallerySection: pluginGallerySection, pluginDevSection: pluginDevSection })
                     onResetForReopen: {
                         pluginsSection.resetForReopen()
+                        pluginGallerySection.resetForReopen()
                         pluginDevSection.resetForReopen()
                     }
             // <page plugins>
@@ -7808,7 +7837,7 @@ Window {
                 plugins: window.editor.plugins
                 editor: window.editor
                 lockedElsewhere: pluginDevSection.lockedRows
-                onDetailToggled: (open) => window.pluginDetailToggled(open)
+                onDetailToggled: (open) => window.pluginDetailToggled(open, 0)
                 onSettingRequested: (which) => {
                     if (which === "dropPie")
                         window.showPart(window.favoritesPage, "dropPieRow")
@@ -7822,11 +7851,14 @@ Window {
             }
 
             PluginGallerySection {
+                id: pluginGallerySection
                 page: window.pluginsPage
                 tab: 1
                 width: parent.width
                 plugins: window.editor.plugins
-                onShowInstalled: (pluginId) => window.showPluginPage(pluginId)
+                editor: window.editor
+                onEditWebShortcut: (index, button) => window.editWebShortcut(index, button)
+                onDetailToggled: (open) => window.pluginDetailToggled(open, 1)
                 onShowProxySettings: window.goTo(window.part(window.generalPage, "proxyRow"))
                 onShowDeveloper: {
                     window.editor.plugins.developerMode = true

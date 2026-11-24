@@ -1439,6 +1439,319 @@ bool checkPluginReviewSettings(QQuickWindow* window, SettingsEditor* editor, con
     return check.passed;
 }
 
+bool checkPluginGallerySettings(QQuickWindow* window, SettingsEditor* editor, const QDir& output)
+{
+    Checks check;
+    QTemporaryDir temporary;
+    const QString userDir = temporary.filePath(u"installed"_s);
+    const QString bundledDir = temporary.filePath(u"bundled"_s);
+    const auto writePlugin = [&](const QString& root, const QString& id, const QJsonObject& manifest, bool dummyExe = false) {
+        const QString dir = QDir(root).filePath(id);
+        QDir().mkpath(dir);
+        QFile file(QDir(dir).filePath(u"plugin.json"_s));
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+            return false;
+        file.write(QJsonDocument(manifest).toJson());
+        if (dummyExe) {
+            QFile exe(QDir(dir).filePath(u"tool.exe"_s));
+            if (!exe.open(QIODevice::WriteOnly))
+                return false;
+            exe.write("MZ dummy");
+        }
+        return true;
+    };
+    const auto zeroCmd = [](const QString& kw) {
+        return QJsonObject {{u"id"_s, u"go"_s}, {u"title"_s, u"运行"_s}, {u"keyword"_s, kw},
+            {u"run"_s, QJsonObject {{u"folder"_s, u"C:\\"_s}}}};
+    };
+    check(writePlugin(userDir, u"probe.manifest"_s, QJsonObject {
+              {u"manifest"_s, 1}, {u"id"_s, u"probe.manifest"_s},
+              {u"name"_s, QJsonObject {{u"zh"_s, u"配置插件"_s}, {u"en"_s, u"Configured plugin"_s}}},
+              {u"version"_s, u"1.0.0"_s}, {u"author"_s, u"LingCore"_s},
+              {u"description"_s, u"带有清单设置项的已安装插件"_s},
+              {u"commands"_s, QJsonArray {zeroCmd(u"cfg"_s)}},
+              {u"settings"_s, QJsonArray {QJsonObject {{u"key"_s, u"token"_s}, {u"type"_s, u"text"_s},
+                                  {u"title"_s, u"令牌"_s}, {u"default"_s, u"abc"_s}}}}}),
+        u"write installed manifest-settings plugin fixture"_s);
+    check(writePlugin(userDir, u"probe.window"_s, QJsonObject {
+              {u"manifest"_s, 1}, {u"id"_s, u"probe.window"_s},
+              {u"name"_s, QJsonObject {{u"zh"_s, u"独立设置插件"_s}, {u"en"_s, u"Window settings plugin"_s}}},
+              {u"version"_s, u"1.0.0"_s}, {u"author"_s, u"LingCore"_s},
+              {u"description"_s, u"带独立设置窗口的已安装插件"_s},
+              {u"runtime"_s, QJsonObject {{u"mode"_s, u"resident"_s}, {u"program"_s, u"tool.exe"_s}, {u"start"_s, u"lazy"_s}}},
+              {u"permissions"_s, QJsonArray {u"ui"_s}},
+              {u"settingsWindow"_s, true},
+              {u"commands"_s, QJsonArray {QJsonObject {{u"id"_s, u"cap"_s}, {u"title"_s, u"独立设置"_s}, {u"keyword"_s, u"cap"_s}}}}}, true),
+        u"write installed settingsWindow plugin fixture"_s);
+    check(writePlugin(userDir, u"probe.disabled"_s, QJsonObject {
+              {u"manifest"_s, 1}, {u"id"_s, u"probe.disabled"_s},
+              {u"name"_s, QJsonObject {{u"zh"_s, u"已停用插件"_s}, {u"en"_s, u"Disabled plugin"_s}}},
+              {u"version"_s, u"1.0.0"_s}, {u"author"_s, u"LingCore"_s},
+              {u"description"_s, u"安装但当前已停用的插件"_s},
+              {u"runtime"_s, QJsonObject {{u"mode"_s, u"resident"_s}, {u"program"_s, u"tool.exe"_s}, {u"start"_s, u"lazy"_s}}},
+              {u"permissions"_s, QJsonArray {u"ui"_s}},
+              {u"settingsWindow"_s, true},
+              {u"commands"_s, QJsonArray {QJsonObject {{u"id"_s, u"off"_s}, {u"title"_s, u"停用"_s}, {u"keyword"_s, u"off"_s}}}}}, true),
+        u"write installed disabled plugin fixture"_s);
+    check(writePlugin(userDir, u"probe.update"_s, QJsonObject {
+              {u"manifest"_s, 1}, {u"id"_s, u"probe.update"_s},
+              {u"name"_s, QJsonObject {{u"zh"_s, u"可更新插件"_s}, {u"en"_s, u"Updatable plugin"_s}}},
+              {u"version"_s, u"1.0.0"_s}, {u"author"_s, u"LingCore"_s},
+              {u"description"_s, u"已安装且插件库有新版本"_s},
+              {u"commands"_s, QJsonArray {zeroCmd(u"upd"_s)}},
+              {u"settings"_s, QJsonArray {QJsonObject {{u"key"_s, u"flag"_s}, {u"type"_s, u"bool"_s},
+                                  {u"title"_s, u"开关选项"_s}, {u"default"_s, true}}}}}),
+        u"write updatable plugin fixture"_s);
+    check(writePlugin(bundledDir, u"probe.bundled"_s, QJsonObject {
+              {u"manifest"_s, 1}, {u"id"_s, u"probe.bundled"_s},
+              {u"name"_s, QJsonObject {{u"zh"_s, u"随包插件"_s}, {u"en"_s, u"Bundled plugin"_s}}},
+              {u"version"_s, u"1.0.0"_s}, {u"author"_s, u"LingCore"_s},
+              {u"description"_s, u"随 Win顺 自带的插件"_s},
+              {u"commands"_s, QJsonArray {zeroCmd(u"bnd"_s)}},
+              {u"settings"_s, QJsonArray {QJsonObject {{u"key"_s, u"mode"_s}, {u"type"_s, u"text"_s},
+                                  {u"title"_s, u"模式"_s}, {u"default"_s, u"fast"_s}}}}}),
+        u"write bundled plugin fixture"_s);
+
+    plugin::Host host({.userPluginDir = userDir, .bundledPluginDir = bundledDir, .dataRoot = temporary.filePath(u"data"_s),
+        .version = QStringLiteral(WINSHUN_VERSION), .elevatedHost = false,
+        .elevationRoot = temporary.filePath(u"elevated"_s), .elevationProtected = false});
+    host.catalog().scan();
+    editor->plugins()->setHost(&host);
+    const auto detach = qScopeGuard([&] { editor->plugins()->setHost(nullptr); });
+    const auto applyEnabled = [&] {
+        for (const QString& id : {u"probe.manifest"_s, u"probe.window"_s, u"probe.update"_s, u"probe.bundled"_s}) {
+            editor->plugins()->confirmEnable(id);
+            host.setEnabled(id, true);
+        }
+        editor->plugins()->setEnabled(u"probe.disabled"_s, false);
+        host.setEnabled(u"probe.disabled"_s, false);
+    };
+    applyEnabled();
+
+    const auto indexItem = [&](const QString& id, const QString& name, const QString& version, bool bundled = false, bool fullLinks = false) {
+        QJsonObject obj {
+            {u"id"_s, id}, {u"name"_s, name}, {u"version"_s, version}, {u"author"_s, u"LingCore"_s},
+            {u"description"_s, name + u" 的功能说明"_s}, {u"homepage"_s, u"https://github.com/LingCore/WinShun"_s},
+            {u"review"_s, u"official"_s}, {u"url"_s, temporary.filePath(id + u".wsplugin"_s)},
+            {u"size"_s, 1}, {u"sha256"_s, QString(64, u'a')}, {u"bundled"_s, bundled}};
+        if (fullLinks) {
+            obj.insert(u"readme"_s, u"https://example.test/README.md"_s);
+            obj.insert(u"readmeSha256"_s, QString(64, u'b'));
+            obj.insert(u"notes"_s, u"修复了一些问题"_s);
+        }
+        return obj;
+    };
+    const QString indexPath = temporary.filePath(u"gallery-settings-index.json"_s);
+    QFile indexFile(indexPath);
+    if (!indexFile.open(QIODevice::WriteOnly)) return false;
+    indexFile.write(QJsonDocument(QJsonObject {{u"schema"_s, 1}, {u"plugins"_s, QJsonArray {
+        indexItem(u"probe.manifest"_s, u"配置插件"_s, u"1.0.0"_s, false, true),
+        indexItem(u"probe.window"_s, u"独立设置插件"_s, u"1.0.0"_s, false, true),
+        indexItem(u"probe.disabled"_s, u"已停用插件"_s, u"1.0.0"_s, false, true),
+        indexItem(u"probe.update"_s, u"可更新插件"_s, u"1.2.0"_s, false, true),
+        indexItem(u"probe.bundled"_s, u"随包插件"_s, u"1.0.0"_s, true, true),
+        indexItem(u"probe.uninstalled"_s, u"未安装插件"_s, u"1.0.0"_s, false, true)
+    }}}).toJson());
+    indexFile.close();
+    const std::wstring oldIndex = qEnvironmentVariable("WINSHUN_PLUGIN_INDEX").toStdWString();
+    const bool hadIndex = qEnvironmentVariableIsSet("WINSHUN_PLUGIN_INDEX");
+    check(::_wputenv_s(L"WINSHUN_PLUGIN_INDEX", indexPath.toStdWString().c_str()) == 0,
+        u"configure local gallery index for settings probe"_s);
+    const auto restoreIndex = qScopeGuard([&] {
+        ::_wputenv_s(L"WINSHUN_PLUGIN_INDEX", hadIndex ? oldIndex.c_str() : L"");
+    });
+
+    auto* gallery = editor->plugins()->gallery();
+    gallery->refresh();
+    QElapsedTimer fetchTime;
+    fetchTime.start();
+    while (gallery->fetching() && fetchTime.elapsed() < 5000)
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 5);
+
+    QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, u"plugins"_s), Q_ARG(QVariant, 1));
+    settle(window);
+
+    auto* gallerySection = item(window->contentItem(), u"pluginGallerySection"_s);
+    check(gallerySection != nullptr && window->property("currentTab").toInt() == 1,
+        u"settings window opens the 插件库 tab"_s);
+    if (!gallerySection) return false;
+
+    auto* manifestBtn = item(window->contentItem(), u"gallerySettings-probe.manifest"_s);
+    auto* manifestAction = item(window->contentItem(), u"installPlugin-probe.manifest"_s);
+    auto* manifestStatus = item(window->contentItem(), u"pluginStatus-probe.manifest"_s);
+    check(manifestBtn && manifestBtn->isVisible() && manifestBtn->property("text").toString() == u"设置"
+            && manifestAction && !manifestAction->isVisible()
+            && manifestStatus && manifestStatus->isVisible() && manifestStatus->property("text").toString().contains(u"已安装"_s),
+        u"installed plugin shows 设置 button and 已安装 status in 插件库"_s);
+
+    auto* windowBtn = item(window->contentItem(), u"gallerySettings-probe.window"_s);
+    auto* disabledBtn = item(window->contentItem(), u"gallerySettings-probe.disabled"_s);
+    auto* disabledStatus = item(window->contentItem(), u"pluginStatus-probe.disabled"_s);
+    check(windowBtn && windowBtn->isVisible() && windowBtn->property("text").toString() == u"设置",
+        u"settingsWindow plugin shows 设置 button in 插件库"_s);
+    check(disabledBtn && disabledBtn->isVisible() && disabledStatus && disabledStatus->property("text").toString().contains(u"已停用"_s),
+        u"disabled installed plugin shows 已停用 status and 设置 button"_s);
+
+    auto* updateBtn = item(window->contentItem(), u"gallerySettings-probe.update"_s);
+    auto* updateAction = item(window->contentItem(), u"installPlugin-probe.update"_s);
+    check(updateBtn && updateBtn->isVisible() && updateBtn->property("text").toString().isEmpty()
+            && updateAction && updateAction->isVisible() && updateAction->property("text").toString() == u"更新到 1.2.0",
+        u"updatable plugin shows compact gear button alongside 更新到 button"_s);
+
+    auto* bundledBtn = item(window->contentItem(), u"gallerySettings-probe.bundled"_s);
+    auto* bundledStatus = item(window->contentItem(), u"pluginStatus-probe.bundled"_s);
+    check(bundledBtn && bundledBtn->isVisible() && bundledBtn->property("text").toString() == u"设置"
+            && bundledStatus && bundledStatus->property("text").toString().contains(u"自带"_s),
+        u"bundled plugin shows 自带 status and 设置 button in 插件库"_s);
+
+    auto* uninstalledBtn = item(window->contentItem(), u"gallerySettings-probe.uninstalled"_s);
+    auto* uninstalledAction = item(window->contentItem(), u"installPlugin-probe.uninstalled"_s);
+    check(uninstalledBtn && !uninstalledBtn->isVisible()
+            && uninstalledAction && uninstalledAction->isVisible() && uninstalledAction->property("text").toString() == u"安装",
+        u"uninstalled plugin hides 设置 button and shows 安装"_s);
+
+    // Verify no overlap between the left link icons and the right action buttons on every visible card.
+    bool noOverlap = true;
+    for (const QString& id : {u"probe.manifest"_s, u"probe.window"_s, u"probe.disabled"_s, u"probe.update"_s, u"probe.bundled"_s}) {
+        auto* notes = item(window->contentItem(), u"pluginNotes-"_s + id);
+        auto* gear = item(window->contentItem(), u"gallerySettings-"_s + id);
+        if (!notes || !gear) {
+            noOverlap = false;
+            continue;
+        }
+        const QRectF notesRect = notes->mapRectToScene(QRectF(0, 0, notes->width(), notes->height()));
+        const QRectF gearRect = gear->mapRectToScene(QRectF(0, 0, gear->width(), gear->height()));
+        if (notesRect.intersects(gearRect))
+            noOverlap = false;
+    }
+    check(noOverlap, u"footer links and settings/update buttons never overlap on gallery cards"_s);
+    check(window->grabWindow().save(output.filePath(u"gallery-grid.png"_s)), u"capture 插件库 grid with settings actions"_s);
+
+    // 1. Clicking 设置 on a manifest-settings plugin opens its PluginCard in-place right inside 插件库.
+    QMetaObject::invokeMethod(manifestBtn, "clicked");
+    settle(window);
+    auto* backBtn = item(window->contentItem(), u"galleryPluginBack"_s);
+    auto* tokenInput = item(window->contentItem(), u"pluginSetting-probe.manifest/token"_s);
+    check(window->property("currentTab").toInt() == 1
+            && gallerySection->property("detailOpen").toBool()
+            && gallerySection->property("detailPluginId").toString() == u"probe.manifest"
+            && backBtn && backBtn->isVisible()
+            && tokenInput && tokenInput->isVisible(),
+        u"clicking 设置 opens manifest-settings PluginCard in-place on 插件库 tab"_s);
+    check(window->grabWindow().save(output.filePath(u"gallery-detail.png"_s)), u"capture in-place PluginCard in 插件库"_s);
+
+    // 2. Titlebar/history Back returns to the 插件库 grid without switching tabs.
+    check(window->property("canNavigateBack").toBool()
+            && window->property("backTargetLabel").toString().contains(u"插件库"_s),
+        u"navigation history points back to 插件库 from opened plugin card"_s);
+    QMetaObject::invokeMethod(window, "navigateBack");
+    settle(window);
+    check(window->property("currentTab").toInt() == 1 && !gallerySection->property("detailOpen").toBool(),
+        u"navigateBack closes in-place detail and returns to 插件库 grid"_s);
+
+    // 3. Clicking 设置 on a disabled settingsWindow plugin opens its PluginCard in-place so the user can enable it.
+    QMetaObject::invokeMethod(disabledBtn, "clicked");
+    settle(window);
+    check(window->property("currentTab").toInt() == 1
+            && gallerySection->property("detailPluginId").toString() == u"probe.disabled",
+        u"disabled settingsWindow plugin opens PluginCard in-place"_s);
+    QMetaObject::invokeMethod(backBtn, "clicked");
+    settle(window);
+    check(!gallerySection->property("detailOpen").toBool(), u"返回插件库 button closes detail card"_s);
+
+    // 4. Clicking 设置 on an enabled settingsWindow plugin calls showSettings directly without leaving the grid.
+    editor->plugins()->clearMessage();
+    QMetaObject::invokeMethod(windowBtn, "clicked");
+    settle(window);
+    check(window->property("currentTab").toInt() == 1
+            && !gallerySection->property("detailOpen").toBool()
+            && !editor->plugins()->message().isEmpty(),
+        u"enabled settingsWindow plugin invokes showSettings directly from 插件库"_s);
+    editor->plugins()->clearMessage();
+
+    // 4b. Clicking the card body of an enabled settingsWindow plugin opens its PluginCard in-place (for toggle/keyword/uninstall).
+    if (QQuickItem* cardBody = windowBtn->parentItem() ? windowBtn->parentItem()->parentItem() : nullptr) {
+        if (QQuickItem* entryItem = cardBody->parentItem()) {
+            const QPointF pt = entryItem->mapToScene(QPointF(entryItem->width() / 2.0, 28.0));
+            QMouseEvent press(QEvent::MouseButtonPress, pt, window->mapToGlobal(pt), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+            QMouseEvent release(QEvent::MouseButtonRelease, pt, window->mapToGlobal(pt), Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+            QCoreApplication::sendEvent(window, &press);
+            QCoreApplication::sendEvent(window, &release);
+            settle(window);
+        }
+    }
+    check(window->property("currentTab").toInt() == 1
+            && gallerySection->property("detailPluginId").toString() == u"probe.window",
+        u"clicking installed settingsWindow card body opens its PluginCard in-place"_s);
+    QMetaObject::invokeMethod(backBtn, "clicked");
+    settle(window);
+
+    // 5. Clicking the compact gear button on an updatable plugin opens its PluginCard in-place.
+    QMetaObject::invokeMethod(updateBtn, "clicked");
+    settle(window);
+    check(window->property("currentTab").toInt() == 1
+            && gallerySection->property("detailPluginId").toString() == u"probe.update",
+        u"updatable plugin gear button opens PluginCard in-place"_s);
+    QMetaObject::invokeMethod(backBtn, "clicked");
+    settle(window);
+
+    // 6. Narrow card (248 px) with 3 links + gear + 更新到 1.2.0 stacks footer cleanly with zero overlap.
+    {
+        auto* model = gallery->list();
+        int updateRow = -1;
+        for (int i = 0; i < model->rowCount(); ++i) {
+            if (model->data(model->index(i), PluginGalleryModel::IdRole).toString() == u"probe.update") {
+                updateRow = i;
+                break;
+            }
+        }
+        check(updateRow >= 0, u"find probe.update row in gallery model"_s);
+        if (updateRow >= 0) {
+            QVariantMap props {{u"gallery"_s, QVariant::fromValue(gallery)}};
+            const auto roles = model->roleNames();
+            for (auto it = roles.begin(); it != roles.end(); ++it)
+                props.insert(QString::fromUtf8(it.value()), model->data(model->index(updateRow), it.key()));
+            QQmlComponent comp(qmlEngine(window), u"WinShun"_s, u"PluginGalleryEntry"_s);
+            std::unique_ptr<QObject> obj(comp.createWithInitialProperties(props));
+            auto* cardItem = qobject_cast<QQuickItem*>(obj.get());
+            check(cardItem != nullptr, u"instantiate narrow PluginGalleryEntry"_s);
+            if (cardItem) {
+                QQuickWindow narrowWin;
+                narrowWin.setColor(window->color());
+                narrowWin.setWidth(288);
+                cardItem->setParentItem(narrowWin.contentItem());
+                cardItem->setPosition({20, 20});
+                cardItem->setWidth(248);
+                narrowWin.setHeight(static_cast<int>(std::ceil(cardItem->implicitHeight())) + 40);
+                showOffscreen(&narrowWin);
+                auto* notes = item(cardItem, u"pluginNotes-probe.update"_s);
+                auto* gear = item(cardItem, u"gallerySettings-probe.update"_s);
+                const QRectF notesRect = notes ? notes->mapRectToScene(QRectF(0, 0, notes->width(), notes->height())) : QRectF();
+                const QRectF gearRect = gear ? gear->mapRectToScene(QRectF(0, 0, gear->width(), gear->height())) : QRectF();
+                check(notes && gear && !notesRect.intersects(gearRect),
+                    u"narrow 248px card stacks footer links and actions without overlap"_s);
+                check(narrowWin.grabWindow().save(output.filePath(u"gallery-narrow.png"_s)), u"capture narrow stacked gallery card"_s);
+                cardItem->setParentItem(nullptr);
+            }
+        }
+    }
+
+    // 7. Removing an open plugin closes the in-place detail card automatically.
+    QMetaObject::invokeMethod(manifestBtn, "clicked");
+    settle(window);
+    check(gallerySection->property("detailPluginId").toString() == u"probe.manifest", u"reopen probe.manifest in 插件库"_s);
+    QDir(QDir(userDir).filePath(u"probe.manifest"_s)).removeRecursively();
+    host.catalog().scan();
+    settle(window);
+    check(!gallerySection->property("detailOpen").toBool(), u"uninstalling open plugin returns 插件库 to grid"_s);
+
+    check(!window->isActive(), u"gallery settings probe leaves desktop focus untouched"_s);
+    QFile report(output.filePath(u"plugin-gallery-settings.json"_s));
+    if (!report.open(QIODevice::WriteOnly)) return false;
+    report.write(QJsonDocument(QJsonObject {{u"passed"_s, check.passed}, {u"checks"_s, check.rows}}).toJson());
+    return check.passed;
+}
+
 bool checkSearchExperience(QQmlEngine* engine, const QDir& output)
 {
     Checks check;

@@ -110,6 +110,9 @@ QVariant PluginGalleryModel::data(const QModelIndex& index, int role) const
     case HasReadmeRole: return r.hasReadme;
     case ReadmeBusyRole: return r.readmeBusy;
     case HasNotesRole: return r.hasNotes;
+    case InstalledRole: return r.installed;
+    case PluginEnabledRole: return r.pluginEnabled;
+    case SettingsWindowRole: return r.settingsWindow;
     }
     return {};
 }
@@ -121,7 +124,9 @@ QHash<int, QByteArray> PluginGalleryModel::roleNames() const
         {IconRole, "icon"}, {KeywordsRole, "keywords"}, {PermissionsRole, "permissions"}, {NeedsRole, "needs"}, {NeedsMissingRole, "needsMissing"},
         {StageRole, "stage"}, {InstalledVersionRole, "installedVersion"}, {MinWinShunRole, "minWinShun"}, {BusyRole, "busy"},
         {ProgressRole, "progress"}, {ProblemRole, "problem"}, {ShownRole, "shown"}, {StagedRole, "staged"},
-        {MorePermissionsRole, "morePermissions"}, {HasReadmeRole, "hasReadme"}, {ReadmeBusyRole, "readmeBusy"}, {HasNotesRole, "hasNotes"}, {ReviewLabelRole, "reviewLabel"}, {UnreviewedRole, "unreviewed"}};
+        {MorePermissionsRole, "morePermissions"}, {HasReadmeRole, "hasReadme"}, {ReadmeBusyRole, "readmeBusy"}, {HasNotesRole, "hasNotes"},
+        {InstalledRole, "installed"}, {PluginEnabledRole, "pluginEnabled"}, {SettingsWindowRole, "settingsWindow"},
+        {ReviewLabelRole, "reviewLabel"}, {UnreviewedRole, "unreviewed"}};
 }
 
 void PluginGalleryModel::setRows(std::vector<Row> rows)
@@ -168,6 +173,9 @@ void PluginGalleryModel::setRows(std::vector<Row> rows)
         differs(old.hasReadme != now.hasReadme, HasReadmeRole);
         differs(old.readmeBusy != now.readmeBusy, ReadmeBusyRole);
         differs(old.hasNotes != now.hasNotes, HasNotesRole);
+        differs(old.installed != now.installed, InstalledRole);
+        differs(old.pluginEnabled != now.pluginEnabled, PluginEnabledRole);
+        differs(old.settingsWindow != now.settingsWindow, SettingsWindowRole);
         old = std::move(now);
         const QModelIndex at = index(static_cast<int>(i));
         if (!roles.isEmpty())
@@ -467,9 +475,12 @@ void PluginGallery::rebuild()
                 // The same set as the badge's number: asked of the service, which also knows what was refused.
                 r.needsYou = m_updates ? m_updates->waiting(item.id) : r.staged.isEmpty();
             }
-            // The icon of the copy here, if any (the list has none).
+            // The icon and state of the copy here, if any (the list has none).
             const PluginListModel::Card* card = m_settings->m_list.card(item.id);
             r.icon = card && !card->icon.isEmpty() ? card->icon : FileIconProvider::pluginIconUrl(item.id, u"glyph:U+EA86"_s, dark);
+            r.installed = card != nullptr;
+            r.pluginEnabled = card && card->enabled;
+            r.settingsWindow = card && card->settingsWindow && !card->webSearch && card->usable && card->enabled;
             // Named as the cards and the permission dialog name them.
             for (const QString& name : item.permissions) {
                 const std::optional<plugin::Permission> p = plugin::permissionFromName(name);
@@ -923,6 +934,13 @@ void PluginGallery::openHomepage(const QString& id)
         shell::openUrl(row->homepage);
 }
 
+void PluginGallery::openSettings(const QString& id)
+{
+    if (m_preview)
+        return;
+    m_settings->showSettings(id);
+}
+
 void PluginGallery::loadPreview()
 {
     m_preview = true;
@@ -949,6 +967,8 @@ void PluginGallery::loadPreview()
     {
         PluginGalleryModel::Row r = row(u"lingcore.translate"_s, tr("翻译"), tr("fy 词：中英互译，Enter 复制译文"), u"1.0.0"_s, u"installed"_s);
         r.icon = glyph(u"U+E8C1"_s);
+        r.installed = true;
+        r.pluginEnabled = true;
         r.installedVersion = u"1.0.0"_s;
         r.keywords = {u"fy"_s};
         r.permissions = {permission(plugin::Permission::Network)};
@@ -958,6 +978,8 @@ void PluginGallery::loadPreview()
     {
         PluginGalleryModel::Row r = row(u"lingcore.kill"_s, tr("结束进程"), tr("kill <进程名或 PID> 列出进程，Enter 结束，Ctrl+Enter 连同子进程"), u"1.2.0"_s, u"update"_s);
         r.icon = glyph(u"U+E711"_s);
+        r.installed = true;
+        r.pluginEnabled = true;
         r.installedVersion = u"1.1.0"_s;
         r.keywords = {u"kill"_s, u"jc"_s};
         r.permissions = {permission(plugin::Permission::Processes)};
@@ -968,6 +990,8 @@ void PluginGallery::loadPreview()
     {
         PluginGalleryModel::Row r = row(u"lingcore.todo"_s, tr("待办"), tr("dbn 事项：记一件事，到点提醒"), u"1.1.0"_s, u"update"_s);
         r.icon = glyph(u"U+E73E"_s);
+        r.installed = true;
+        r.pluginEnabled = true;
         r.installedVersion = u"1.0.0"_s;
         r.keywords = {u"dbn"_s};
         r.updatable = true;
@@ -977,6 +1001,8 @@ void PluginGallery::loadPreview()
     {
         PluginGalleryModel::Row r = row(u"lingcore.clock"_s, tr("世界时钟"), tr("sj 城市：几个城市现在几点"), u"1.0.3"_s, u"update"_s);
         r.icon = glyph(u"U+E916"_s);
+        r.installed = true;
+        r.pluginEnabled = true;
         r.installedVersion = u"1.0.2"_s;
         r.keywords = {u"sj"_s};
         r.updatable = true;

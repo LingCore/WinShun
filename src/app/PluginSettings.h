@@ -212,6 +212,7 @@ public:
 
     PluginListModel* list() { return &m_list; }
     int count() const { return m_list.rowCount(); }
+    Q_INVOKABLE bool hasPlugin(const QString& id) const;
     Q_INVOKABLE QStringList searchTerms(int row) const;
     // Whether the card at `row` fits the words typed over the installed
     // ones, as the library's filter takes them (gallery::fitsFilter): looked

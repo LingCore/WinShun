@@ -71,6 +71,9 @@ public:
         bool hasReadme = false; // the list names its README: 说明 shows it before installing (GitHub #304)
         bool readmeBusy = false; // ... and it is on its way
         bool hasNotes = false; // the list says what changed in its version: 更新内容 (GitHub #337)
+        bool installed = false; // installed locally (user copy or bundled)
+        bool pluginEnabled = false; // the installed copy is currently enabled
+        bool settingsWindow = false; // the installed copy opens its own standalone settings window
         QString words; // what the filter looks in: the id, the names, descriptions and keywords, lower-cased
         friend bool operator==(const Row&, const Row&) = default;
     };
@@ -100,6 +103,9 @@ public:
         HasReadmeRole,
         ReadmeBusyRole,
         HasNotesRole,
+        InstalledRole,
+        PluginEnabledRole,
+        SettingsWindowRole,
     };
 
     using QAbstractListModel::QAbstractListModel;
@@ -181,6 +187,7 @@ public:
     Q_INVOKABLE void openReadme(const QString& id); // the entry's 说明: its README, fetched and shown as the installed ones' is (GitHub #304)
     Q_INVOKABLE void openNotes(const QString& id); // 更新内容: what changed in the list's version (GitHub #337)
     Q_INVOKABLE void openHomepage(const QString& id); // the entry's 主页: the plugin's own page, in the browser (GitHub #248)
+    Q_INVOKABLE void openSettings(const QString& id); // the installed plugin's own standalone settings window (settingsWindow)
     // ws plugin install <id> (PluginCommands): as the row's 安装 or 更新到,
     // on the page, where its progress and its questions show; the list is
     // fetched first when this run has not fetched it lately. `done` once:

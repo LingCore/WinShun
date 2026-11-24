@@ -1769,7 +1769,8 @@ int runSettings(const QStringList& args)
     auto* frame = new WindowFrame(true, editor);
     auto* updater = new Updater(editor); // never setAutomatic() or check(): no network
     editor->plugins()->setLocale(u"zh"_s);
-    editor->plugins()->loadPreview(); // a plugin::Host would start WinShunPluginHost.exe: made-up cards instead
+    if (!args.contains(u"--plugin-gallery-settings"_s))
+        editor->plugins()->loadPreview(); // a plugin::Host would start WinShunPluginHost.exe: made-up cards instead
     editor->setMcpStatus(u"已连接：Claude Desktop（12 次调用）"_s);
     if (!args.contains(u"--no-cli-tally"_s)) // (the row's text before any run)
         editor->setCliTally(u"38 次调用，最近 14:32（search_files）"_s);
@@ -2241,6 +2242,8 @@ int runSettings(const QStringList& args)
         return finish(window, checkNavigationSettings(window, editor, out));
     if (args.contains(u"--plugin-review-settings"_s))
         return finish(window, checkPluginReviewSettings(window, editor, out));
+    if (args.contains(u"--plugin-gallery-settings"_s))
+        return finish(window, checkPluginGallerySettings(window, editor, out));
     if (args.contains(u"--double-tap-settings"_s))
         return finish(window, checkDoubleTapSettings(window, editor, out));
     if (args.contains(u"--search-experience-settings"_s))

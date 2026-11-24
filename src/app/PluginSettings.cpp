@@ -919,6 +919,11 @@ bool PluginSettings::fitsFilter(int row, const QString& filter) const
     return plugin::gallery::fitsFilter(words, filter);
 }
 
+bool PluginSettings::hasPlugin(const QString& id) const
+{
+    return m_list.card(id) != nullptr;
+}
+
 QStringList PluginSettings::searchTerms(int row) const
 {
     const auto* card = m_list.card(m_list.data(m_list.index(row, 0), PluginListModel::IdRole).toString());

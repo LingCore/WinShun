@@ -70,6 +70,7 @@ Window {
             width: parent.width
             visible: !preview.aiPage
             plugins: preview.plugins
+            editor: preview.editor
         }
 
         PluginDevSection {

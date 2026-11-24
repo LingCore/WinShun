@@ -3,16 +3,17 @@ import QtQuick
 import WinShun
 
 // A plugin of the 插件库 (PluginGallery.list), a tile of the section's grid
-// (TileFlow): its icon, name, version and who made it; what it does, three
-// lines at most (the whole of it in the tip of the "i" when cut); what is
-// worth reading before installing (not reviewed, its interpreter missing, a
-// newer Win顺 needed, more permissions asked, why the last try failed); and
-// along the bottom its 主页, 说明 and 更新内容, and on the right what it is
-// here: a button that installs or updates it; 已安装, which leads to its
-// card on the 已安装 tab; 自带 alone (it comes and goes with Win顺); or,
-// when it asks for a newer Win顺, the button off. While it downloads: how
-// far, and 取消 on the button. The grid sizes it (its row as tall as the
-// tallest there); its own content sets `implicitHeight`.
+// (TileFlow): its icon, name, version and who made it (plus its installed
+// state); what it does, three lines at most (the whole of it in the tip of
+// the "i" when cut); what is worth reading before installing (not reviewed,
+// its interpreter missing, a newer Win顺 needed, more permissions asked, why
+// the last try failed); and along the bottom its 主页, 说明 and 更新内容, and
+// on the right its action: 安装 / 更新到 / 立即更新 / 需要更新 Win顺, plus
+// 设置 for any installed plugin (opening its own settings window when active,
+// or its PluginCard right inside the 插件库). Clicking an installed card also
+// opens its PluginCard. While it downloads: how far, and 取消 on the button.
+// The grid sizes it (its row as tall as the tallest there); its own content
+// sets `implicitHeight`.
 Rectangle {
     id: entry
 
@@ -41,10 +42,21 @@ Rectangle {
     required property bool hasReadme // the list names its README: 说明 shows it (GitHub #304)
     required property bool readmeBusy
     required property bool hasNotes // the list says what changed in its version: 更新内容 shows it (GitHub #337)
+    required property bool installed // installed locally (user copy or bundled)
+    required property bool pluginEnabled // the installed copy is currently enabled
+    required property bool settingsWindow // the installed copy opens its own standalone settings window
     required property string morePermissions // what the list's version asks for besides, named
 
-    readonly property real dpr: Screen.devicePixelRatio
+    property real dpr: 0 // the window's, passed by a host that has it (GitHub #111)
+    readonly property real pixelRatio: dpr > 0 ? dpr : Screen.devicePixelRatio
     readonly property bool installable: stage === "install" || stage === "update"
+    readonly property bool hasPrimaryAction: busy || stage === "install" || stage === "update" || stage === "app"
+    readonly property bool hasSettingsAction: installed && !busy
+    readonly property string statusLabel: busy ? ""
+        : installed && !pluginEnabled ? qsTr("已停用")
+        : stage === "bundled" ? qsTr("自带")
+        : stage === "installed" || (stage === "app" && installed) ? qsTr("已安装")
+        : ""
     // Where 主页 leads, for its tip: "github.com" of "https://github.com/…".
     readonly property string homepageHost: homepage.replace(/^https?:\/\/([^\/?#]+).*$/i, "$1")
     readonly property bool waiting: stage === "update" && staged.length > 0 && !busy // put in place at the next start, or now
@@ -62,7 +74,7 @@ Rectangle {
             lines.push(qsTr("关键字：%1").arg(keywords.join("  ")))
         if (needs.length > 0)
             lines.push(needs)
-        if (stage === "update" || stage === "installed")
+        if ((stage === "update" || stage === "installed" || stage === "app") && installedVersion.length > 0)
             lines.push(qsTr("已安装 %1").arg(installedVersion))
         if (permissions.length > 0) {
             lines.push(qsTr("权限："))
@@ -75,10 +87,10 @@ Rectangle {
     }
     readonly property real pad: 14
 
-    signal showInstalled() // 已安装
+    signal showInstalled() // open its PluginCard right in the 插件库
 
     visible: shown
-    implicitHeight: Theme.snapUp(top.y + top.implicitHeight + 12 + footer.height + 12, dpr)
+    implicitHeight: Theme.snapUp(top.y + top.implicitHeight + 12 + footer.height + 12, pixelRatio)
     // One element for UI Automation; one filtered away is skipped whole (see SettingsSection).
     Accessible.role: Accessible.Grouping
     Accessible.name: name
@@ -90,7 +102,22 @@ Rectangle {
         part: Theme.cardPart
         corner: Theme.controlRadius
         extra: ({ inset: true })
-        dpr: entry.dpr
+        dpr: entry.pixelRatio
+    }
+    Rectangle { // under the pointer: an installed card opens its details on a click
+        visible: cardArea.enabled && cardArea.containsMouse
+        anchors.fill: parent
+        anchors.margins: Theme.edge(entry.pixelRatio)
+        radius: Math.max(0, Theme.controlRadius - Theme.edge(entry.pixelRatio))
+        color: Theme.hover
+    }
+    MouseArea { // under the controls: a click anywhere else opens its PluginCard when installed
+        id: cardArea
+        anchors.fill: parent
+        enabled: entry.installed && !entry.busy
+        hoverEnabled: enabled
+        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+        onClicked: entry.showInstalled()
     }
 
     // Offsets, gaps and the heights of the lines of text on whole device
@@ -99,24 +126,24 @@ Rectangle {
     Column {
         id: top
         x: entry.pad
-        y: Theme.snap(14, entry.dpr)
+        y: Theme.snap(14, entry.pixelRatio)
         width: parent.width - 2 * x
-        spacing: Theme.snap(10, entry.dpr)
+        spacing: Theme.snap(10, entry.pixelRatio)
 
         Item { // the icon; the name and the "i"; the version and who made it
             width: parent.width
-            height: Theme.snapUp(Math.max(36, names.implicitHeight), entry.dpr)
+            height: Theme.snapUp(Math.max(36, names.implicitHeight), entry.pixelRatio)
 
             Image { // whole device pixels, unsmoothed (see ResultRow)
-                readonly property int pixels: Math.round(36 * entry.dpr)
+                readonly property int pixels: Math.round(36 * entry.pixelRatio)
 
                 x: 1 / 64
                 y: 1 / 64
-                width: pixels / entry.dpr
-                height: pixels / entry.dpr
+                width: pixels / entry.pixelRatio
+                height: pixels / entry.pixelRatio
                 source: entry.icon
-                sourceSize.width: pixels / entry.dpr
-                sourceSize.height: pixels / entry.dpr
+                sourceSize.width: pixels / entry.pixelRatio
+                sourceSize.height: pixels / entry.pixelRatio
                 smooth: false
                 asynchronous: true
                 fillMode: Image.PreserveAspectFit
@@ -131,7 +158,7 @@ Rectangle {
                 Text {
                     id: nameText
                     width: parent.width
-                    height: Theme.snapUp(implicitHeight, entry.dpr)
+                    height: Theme.snapUp(implicitHeight, entry.pixelRatio)
                     text: entry.name
                     textFormat: Text.PlainText
                     color: Theme.text
@@ -139,22 +166,38 @@ Rectangle {
                     font.weight: Theme.fontStrong
                     elide: Text.ElideRight
                 }
-                Text {
+                Row {
                     width: parent.width
-                    height: Theme.snapUp(implicitHeight, entry.dpr)
-                    text: [entry.version, entry.author].filter(t => t.length > 0).join(" · ")
-                    textFormat: Text.PlainText
-                    color: Theme.faint
-                    font.pixelSize: Theme.fontCaption
-                    elide: Text.ElideRight
+                    height: Theme.snapUp(Math.max(metaText.implicitHeight, statusText.visible ? statusText.implicitHeight : 0), entry.pixelRatio)
+
+                    Text {
+                        id: metaText
+                        width: Math.min(implicitWidth, parent.width - (statusText.visible ? statusText.width : 0))
+                        height: Theme.snapUp(implicitHeight, entry.pixelRatio)
+                        text: [entry.version, entry.author].filter(t => t.length > 0).join(" · ")
+                        textFormat: Text.PlainText
+                        color: Theme.faint
+                        font.pixelSize: Theme.fontCaption
+                        elide: Text.ElideRight
+                    }
+                    Text {
+                        id: statusText
+                        objectName: "pluginStatus-" + entry.pluginId
+                        visible: entry.statusLabel.length > 0
+                        height: Theme.snapUp(implicitHeight, entry.pixelRatio)
+                        text: (metaText.text.length > 0 ? " · " : "") + entry.statusLabel
+                        textFormat: Text.PlainText
+                        color: entry.installed && !entry.pluginEnabled ? Theme.caution : Theme.faint
+                        font.pixelSize: Theme.fontCaption
+                    }
                 }
             }
             InfoDot { // who made it, its keywords, what it may do; the whole description when it is cut
                 id: infoDot
                 objectName: "pluginInfo-" + entry.pluginId
                 anchors.right: parent.right
-                y: Theme.snap((nameText.height - height) / 2, entry.dpr)
-                dpr: entry.dpr
+                y: Theme.snap((nameText.height - height) / 2, entry.pixelRatio)
+                dpr: entry.pixelRatio
                 caution: entry.anyRisky
                 text: entry.infoText
             }
@@ -163,7 +206,7 @@ Rectangle {
         Text { // what it does
             id: descriptionText
             width: parent.width
-            height: Theme.snapUp(implicitHeight, entry.dpr)
+            height: Theme.snapUp(implicitHeight, entry.pixelRatio)
             visible: entry.description.length > 0
             text: entry.description
             textFormat: Text.PlainText
@@ -207,10 +250,10 @@ Rectangle {
         Column { // how far the download is
             visible: entry.busy
             width: parent.width
-            spacing: Theme.snap(6, entry.dpr)
+            spacing: Theme.snap(6, entry.pixelRatio)
 
             Text {
-                height: Theme.snapUp(implicitHeight, entry.dpr)
+                height: Theme.snapUp(implicitHeight, entry.pixelRatio)
                 text: qsTr("正在下载… %1%").arg(Math.round(entry.progress * 100))
                 color: Theme.subtext
                 font.pixelSize: Theme.fontCaption
@@ -222,7 +265,7 @@ Rectangle {
                 color: Theme.track
 
                 Rectangle {
-                    width: Theme.snap(parent.width * entry.progress, entry.dpr)
+                    width: Theme.snap(parent.width * entry.progress, entry.pixelRatio)
                     height: parent.height
                     radius: Theme.progressRadius
                     color: Theme.accent
@@ -235,22 +278,30 @@ Rectangle {
 
     // Along the bottom, whatever the words above: 主页, 说明, 更新内容 on the
     // left (as faint as the version until the pointer or the keyboard is on
-    // one: not to be read before the name), what it is here on the right.
+    // one: not to be read before the name), 设置 and the install/update action
+    // on the right; stacked onto two rows when a narrow tile would crowd them.
     Item {
         id: footer
+
+        readonly property bool hasLinks: entry.homepage.length > 0 || entry.hasReadme || entry.hasNotes
+        readonly property bool hasActions: entry.hasSettingsAction || entry.hasPrimaryAction
+        readonly property bool stacked: hasLinks && hasActions
+            && (linksRow.x + linksRow.implicitWidth + 8 + actionsRow.implicitWidth > width)
+
         x: entry.pad
-        y: Theme.snap(entry.height - 12 - height, entry.dpr)
+        y: Theme.snap(entry.height - 12 - height, entry.pixelRatio)
         width: parent.width - 2 * x
-        height: 32
+        height: stacked ? 64 : 32
 
         Row {
+            id: linksRow
             x: -7 // the first icon under the words above: a flat button's padding left out
-            anchors.verticalCenter: parent.verticalCenter
+            y: footer.stacked ? 0 : Theme.snap((32 - height) / 2, entry.pixelRatio)
             spacing: 2
 
             FlatButton { // 主页 (GitHub #248): its own page, to look at before installing
                 id: homepageButton
-                dpr: entry.dpr
+                dpr: entry.pixelRatio
                 objectName: "pluginHomepage-" + entry.pluginId
                 visible: entry.homepage.length > 0
                 implicitWidth: 28
@@ -263,13 +314,13 @@ Rectangle {
                 HoverHandler { id: homepageHover }
                 HoverTip { // where it leads, before the click: the list's words are not Win顺's own
                     target: homepageHover.hovered ? homepageButton : null
-                    dpr: entry.dpr
+                    dpr: entry.pixelRatio
                     text: qsTr("主页：%1").arg(entry.homepageHost)
                 }
             }
             FlatButton { // 说明 (GitHub #304): its README, read here before installing
                 id: readmeButton
-                dpr: entry.dpr
+                dpr: entry.pixelRatio
                 objectName: "pluginReadme-" + entry.pluginId
                 visible: entry.hasReadme
                 implicitWidth: 28
@@ -283,13 +334,13 @@ Rectangle {
                 HoverHandler { id: readmeHover }
                 HoverTip {
                     target: readmeHover.hovered ? readmeButton : null
-                    dpr: entry.dpr
+                    dpr: entry.pixelRatio
                     text: entry.readmeBusy ? qsTr("正在取说明…") : qsTr("说明")
                 }
             }
             FlatButton { // 更新内容 (GitHub #337): what changed in the list's version, before updating to it
                 id: notesButton
-                dpr: entry.dpr
+                dpr: entry.pixelRatio
                 objectName: "pluginNotes-" + entry.pluginId
                 visible: entry.hasNotes
                 implicitWidth: 28
@@ -302,63 +353,79 @@ Rectangle {
                 HoverHandler { id: notesHover }
                 HoverTip {
                     target: notesHover.hovered ? notesButton : null
-                    dpr: entry.dpr
+                    dpr: entry.pixelRatio
                     text: qsTr("%1 更新内容").arg(entry.version)
                 }
             }
         }
 
-        Text { // it comes and goes with Win顺: nothing to press
+        Row {
+            id: actionsRow
             anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            visible: !entry.busy && entry.stage === "bundled"
-            text: qsTr("自带")
-            textFormat: Text.PlainText
-            color: Theme.subtext
-            font.pixelSize: Theme.fontCaption
-        }
-        FlatButton {
-            id: actionButton
-            dpr: entry.dpr
-            objectName: "installPlugin-" + entry.pluginId
-            anchors.right: parent.right
-            anchors.rightMargin: flat ? -12 : 0 // 已安装's words end where a button's edge would
-            anchors.verticalCenter: parent.verticalCenter
-            visible: entry.busy || entry.stage !== "bundled" // nothing to do with one that comes with Win顺
-            implicitHeight: 32
-            text: entry.busy ? qsTr("取消")
-                : entry.waiting ? qsTr("立即更新")
-                : entry.stage === "install" ? qsTr("安装")
-                : entry.stage === "update" ? qsTr("更新到 %1").arg(entry.version)
-                : entry.stage === "app" ? qsTr("需要更新 Win顺")
-                : qsTr("已安装")
-            flat: !entry.busy && entry.stage === "installed" // done: it only leads to its card
-            highlighted: entry.installable && !entry.busy && !entry.waiting
-            // One download at a time; a newer Win顺 first.
-            enabled: entry.busy || (entry.installable ? !entry.gallery.downloading : entry.stage !== "app")
-            onClicked: {
-                if (entry.busy)
-                    entry.gallery.cancel(entry.pluginId)
-                else if (entry.waiting)
-                    entry.gallery.applyNow(entry.pluginId)
-                else if (entry.stage === "install")
-                    entry.gallery.installAndEnable(entry.pluginId)
-                else if (entry.installable)
-                    entry.gallery.install(entry.pluginId)
-                else
-                    entry.showInstalled()
-            }
+            y: footer.stacked ? 32 : 0
+            spacing: 6
 
-            HoverHandler { id: actionHover }
-            HoverTip {
-                target: actionHover.hovered && text.length > 0 ? actionButton : null
-                dpr: entry.dpr
-                maxWidth: 320
-                text: entry.busy ? ""
-                    : entry.waiting ? qsTr("%1 已经下载好。现在更新会先停一下这个插件；不点的话，下次启动 Win顺 时自动换上").arg(entry.staged)
-                    : entry.stage === "installed" ? qsTr("在“已安装”里查看")
-                    : entry.stage === "update" ? qsTr("现在装的是 %1").arg(entry.installedVersion)
-                    : ""
+            FlatButton { // 设置: opens its own settings window when active, or its PluginCard right here
+                id: settingsButton
+                dpr: entry.pixelRatio
+                objectName: "gallerySettings-" + entry.pluginId
+                visible: entry.hasSettingsAction
+                implicitHeight: 32
+                glyph: "" // Settings (Phosphor gear)
+                text: entry.hasPrimaryAction ? "" : qsTr("设置")
+                Accessible.name: qsTr("%1设置").arg(entry.name)
+                onClicked: {
+                    if (entry.settingsWindow)
+                        entry.gallery.openSettings(entry.pluginId)
+                    else
+                        entry.showInstalled()
+                }
+
+                HoverHandler { id: settingsHover }
+                HoverTip {
+                    target: settingsHover.hovered ? settingsButton : null
+                    dpr: entry.pixelRatio
+                    maxWidth: 320
+                    text: entry.settingsWindow
+                        ? qsTr("打开设置窗口；点卡片可管理插件")
+                        : (entry.hasPrimaryAction ? qsTr("设置") : qsTr("设置与管理"))
+                }
+            }
+            FlatButton {
+                id: actionButton
+                dpr: entry.pixelRatio
+                objectName: "installPlugin-" + entry.pluginId
+                visible: entry.hasPrimaryAction
+                implicitHeight: 32
+                text: entry.busy ? qsTr("取消")
+                    : entry.waiting ? qsTr("立即更新")
+                    : entry.stage === "install" ? qsTr("安装")
+                    : entry.stage === "update" ? qsTr("更新到 %1").arg(entry.version)
+                    : qsTr("需要更新 Win顺")
+                highlighted: entry.installable && !entry.busy && !entry.waiting
+                // One download at a time; a newer Win顺 first.
+                enabled: entry.busy || (entry.installable ? !entry.gallery.downloading : false)
+                onClicked: {
+                    if (entry.busy)
+                        entry.gallery.cancel(entry.pluginId)
+                    else if (entry.waiting)
+                        entry.gallery.applyNow(entry.pluginId)
+                    else if (entry.stage === "install")
+                        entry.gallery.installAndEnable(entry.pluginId)
+                    else if (entry.installable)
+                        entry.gallery.install(entry.pluginId)
+                }
+
+                HoverHandler { id: actionHover }
+                HoverTip {
+                    target: actionHover.hovered && text.length > 0 ? actionButton : null
+                    dpr: entry.pixelRatio
+                    maxWidth: 320
+                    text: entry.busy ? ""
+                        : entry.waiting ? qsTr("%1 已经下载好。现在更新会先停一下这个插件；不点的话，下次启动 Win顺 时自动换上").arg(entry.staged)
+                        : entry.stage === "update" ? qsTr("现在装的是 %1").arg(entry.installedVersion)
+                        : ""
+                }
             }
         }
     }

@@ -432,11 +432,11 @@ Rectangle {
                         text: qsTr("新版本已经下载好。现在更新会先停一下这个插件；不点的话，下次启动 Win顺 时自动换上")
                     }
                 }
-                FlatButton { // the plugin's own settings window
+                FlatButton { // the plugin's own settings window (webSearch's options are already inside the expanded card)
                     objectName: "pluginSettings-" + card.pluginId
                     dpr: card.dpr
                     anchors.verticalCenter: parent.verticalCenter
-                    visible: card.settingsWindow && card.usable && card.pluginEnabled
+                    visible: card.settingsWindow && card.usable && card.pluginEnabled && !(card.webSearch && card.expanded)
                     implicitHeight: 32
                     text: qsTr("设置")
                     onClicked: card.plugins.showSettings(card.pluginId)

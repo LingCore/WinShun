@@ -4565,9 +4565,33 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
         <source>主页：%1</source>
         <translation>Homepage: %1</translation>
     </message>
+    <message>
+        <source>已停用</source>
+        <translation>Disabled</translation>
+    </message>
+    <message>
+        <source>设置</source>
+        <translation>Settings</translation>
+    </message>
+    <message>
+        <source>%1设置</source>
+        <translation>%1 settings</translation>
+    </message>
+    <message>
+        <source>打开设置窗口；点卡片可管理插件</source>
+        <translation>Open settings window; click the card to manage the plugin</translation>
+    </message>
+    <message>
+        <source>设置与管理</source>
+        <translation>Settings and management</translation>
+    </message>
 </context>
 <context>
     <name>PluginGallerySection</name>
+    <message>
+        <source>返回插件库</source>
+        <translation>Back to plugin library</translation>
+    </message>
     <message>
         <source>自己做插件</source>
         <translation>Make your own plugin</translation>
