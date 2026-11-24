@@ -228,6 +228,13 @@ Window {
             event.accepted = true
             return
         }
+        const zoom = input.preeditText.length === 0 ? SearchKeys.uiZoomAction(event.key, event.modifiers) : SearchKeys.zoomNone
+        if (zoom !== SearchKeys.zoomNone) {
+            if (!event.isAutoRepeat)
+                window.bar.adjustUiSize(zoom === SearchKeys.zoomReset ? 0 : zoom)
+            event.accepted = true
+            return
+        }
         const ctrl = (event.modifiers & Qt.ControlModifier) !== 0
         const shift = (event.modifiers & Qt.ShiftModifier) !== 0
         const row = list.count > 0 ? list.currentIndex : -1
@@ -424,9 +431,22 @@ Window {
             spacing: 2
 
             Text {
+                id: flashLabel
+                objectName: "dialogStatusFlash"
+                anchors.verticalCenter: parent.verticalCenter
+                visible: window.bar.statusFlash.length > 0
+                rightPadding: 8
+                text: window.bar.statusFlash
+                textFormat: Text.PlainText
+                color: Theme.accent
+                font.pixelSize: Theme.uiCaption
+                font.weight: Theme.fontStrong
+            }
+
+            Text {
                 id: notFound
                 anchors.verticalCenter: parent.verticalCenter
-                visible: window.bar.nothingFound && window.typed
+                visible: !flashLabel.visible && window.bar.nothingFound && window.typed
                 rightPadding: 8
                 text: qsTr("没有找到")
                 color: Theme.faint
@@ -437,7 +457,7 @@ Window {
                 id: positionLabel
                 objectName: "dialogPositionLabel"
                 anchors.verticalCenter: parent.verticalCenter
-                visible: window.positionText.length > 0 && !notFound.visible
+                visible: !flashLabel.visible && window.positionText.length > 0 && !notFound.visible
                          && (!scopeTag.visible || !chip.visible || window.width >= 560)
                 rightPadding: 8
                 text: window.positionText

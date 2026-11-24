@@ -185,6 +185,11 @@ QMetaObject::Connection SystemTheme::onAppearanceChanged(QObject* context, std::
     return s_instance ? QObject::connect(s_instance, &SystemTheme::changed, context, std::move(slot)) : QMetaObject::Connection{};
 }
 
+QMetaObject::Connection SystemTheme::onUiSizeChanged(QObject* context, std::function<void()> slot)
+{
+    return s_instance ? QObject::connect(s_instance, &SystemTheme::uiSizeChanged, context, std::move(slot)) : QMetaObject::Connection{};
+}
+
 void SystemTheme::setUiStyle(const QString& style)
 {
     const QString known = style == u"brand" || style == u"tactile" || style == u"liquid" ? style : QStringLiteral("fluent");

@@ -162,6 +162,7 @@ set(qml_files
     qml/Theme.qml
     qml/Hook.qml
     qml/UiScale.qml
+    qml/UiSizeToast.qml
     qml/WindowEdge.qml
     qml/SearchBar.qml
     qml/ScopeTabs.qml

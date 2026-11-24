@@ -62,6 +62,7 @@ QtObject {
         { where: "launcher", group: qsTr("窗口"), brief: true, keys: "Ctrl+E", text: qsTr("展开为搜索面板，或收回搜索框") },
         { where: "launcher", group: qsTr("窗口"), keys: "F11", text: qsTr("搜索面板铺满屏幕，再按一次还原") },
         { where: "launcher", group: qsTr("窗口"), brief: true, keys: "Ctrl+T", text: qsTr("钉住：点别处、打开文件后都不收起；再按一次取消") },
+        { where: "launcher", group: qsTr("窗口"), keys: "Ctrl++ / - / 0", text: qsTr("放大、缩小或恢复界面大小"), setting: { page: "appearance", tab: 0, part: "uiSizeRow" } },
         { where: "launcher", group: qsTr("窗口"), keys: "Ctrl+,", text: qsTr("打开 Win顺 设置") },
         { where: "launcher", group: qsTr("窗口"), keys: "Esc", text: qsTr("关闭；选中了多行时先取消选择") },
         // the clipboard
@@ -85,6 +86,7 @@ QtObject {
         { where: "clipboard", group: qsTr("管理"), keys: "Ctrl+E", text: qsTr("编辑图片，或修改文字") },
         { where: "clipboard", group: qsTr("管理"), keys: "F3", text: qsTr("图片或文字贴到屏幕（截图插件）") },
         { where: "clipboard", group: qsTr("管理"), keys: "Ctrl+T", text: qsTr("钉住窗口：一直显示在最上面，粘贴后也不收起") },
+        { where: "clipboard", group: qsTr("管理"), keys: "Ctrl++ / - / 0", text: qsTr("放大、缩小或恢复剪贴板大小（看大图时缩放图片）"), setting: { page: "clipboard", tab: 0, part: "clipboardUiSizeRow" } },
         { where: "clipboard", group: qsTr("管理"), keys: "Shift+F10", text: qsTr("右键菜单") },
         { where: "clipboard", group: qsTr("管理"), keys: "Esc", text: qsTr("关闭；选中了多条时先取消选择") }
     ]

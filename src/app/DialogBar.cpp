@@ -269,6 +269,21 @@ DialogBar::DialogBar(SearchEngine* engine, History* history, Favorites* favorite
         if (m_inFront)
             follow();
     });
+    m_flashTimer.setSingleShot(true);
+    m_flashTimer.setInterval(1800ms);
+    connect(&m_flashTimer, &QTimer::timeout, this, [this] {
+        if (m_statusFlash.isEmpty())
+            return;
+        m_statusFlash.clear();
+        emit statusFlashChanged();
+    });
+}
+
+void DialogBar::flash(const QString& message)
+{
+    m_statusFlash = message;
+    m_flashTimer.start();
+    emit statusFlashChanged();
 }
 
 DialogBar::~DialogBar()

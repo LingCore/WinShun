@@ -27,7 +27,7 @@ Rectangle {
     signal clicked()
 
     implicitWidth: Math.max(32, content.implicitWidth + (text.length > 0 ? 24 : 16))
-    implicitHeight: 36
+    implicitHeight: [32, 36, 40][Theme.step]
     radius: corner >= 0 ? corner : Theme.controlRadius
     opacity: enabled ? 1 : surface.out("disabledOpacity", 0.45)
     activeFocusOnTab: keyboardActivation

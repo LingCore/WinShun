@@ -1,6 +1,7 @@
 #include "Settings.h"
 #include "DoubleTapAction.h"
 #include "TrayAction.h"
+#include "UiSize.h"
 #include "WebSearchConfig.h"
 #include "PreviewShortcut.h"
 #include "platform/HotkeyText.h"
@@ -1107,7 +1108,7 @@ void Settings::load()
         taskbarIcon = d.taskbarIcon;
     uiSize = readOrDefault(s, u"Appearance/UiSize"_s, d.uiSize).trimmed().toLower();
     uiFont = readOrDefault(s, u"Appearance/UiFont"_s, d.uiFont).trimmed();
-    if (uiSize != u"dense" && uiSize != u"compact" && uiSize != u"roomy")
+    if (!uisize::isValid(uiSize))
         uiSize = d.uiSize;
     maxRows = std::clamp(readOrDefault(s, u"Appearance/MaxRows"_s, d.maxRows), 4, 20);
     corners = readOrDefault(s, u"Appearance/Corners"_s, d.corners).trimmed().toLower();
@@ -1233,7 +1234,7 @@ void Settings::load()
     clipboardClickToPaste = readOrDefault(s, u"Clipboard/ClickToPaste"_s, d.clipboardClickToPaste);
     clipboardPlainByDefault = readOrDefault(s, u"Clipboard/PlainByDefault"_s, d.clipboardPlainByDefault);
     clipboardUiSize = readOrDefault(s, u"Clipboard/UiSize"_s, d.clipboardUiSize).trimmed().toLower();
-    if (clipboardUiSize != u"dense" && clipboardUiSize != u"compact" && clipboardUiSize != u"standard" && clipboardUiSize != u"roomy")
+    if (!uisize::isValid(clipboardUiSize))
         clipboardUiSize = d.clipboardUiSize;
     // Clipboard/LargePictures was a switch until 0.28: on is "large".
     clipboardPictureSize = readOrDefault(s, u"Clipboard/PictureSize"_s,

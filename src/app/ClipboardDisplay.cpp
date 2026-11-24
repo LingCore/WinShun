@@ -36,7 +36,8 @@ QVariant call(Clipboard* object, const QString& name, const QVariantList& values
         u"addGroup"_s, u"enterGroup"_s, u"renameGroup"_s, u"toggleSelected"_s, u"selectRange"_s, u"clearSelection"_s,
         u"selectAll"_s, u"cycleCategory"_s, u"cycleSeparator"_s, u"dismiss"_s, u"wantKeys"_s,
         u"turnOn"_s, u"preview"_s, u"menuItems"_s, u"categoryMenuItems"_s, u"trigger"_s,
-        u"triggerCategory"_s, u"groupNameRequested"_s, u"pasteText"_s, u"setNote"_s, u"setText"_s};
+        u"triggerCategory"_s, u"groupNameRequested"_s, u"pasteText"_s, u"setNote"_s, u"setText"_s,
+        u"adjustUiSize"_s};
     ok = false;
     if (!allowed.contains(name) || values.size() > 3)
         return {};
@@ -86,6 +87,7 @@ ClipboardDisplay::ClipboardDisplay(Clipboard* clipboard, QQuickWindow* window, P
     m_update.setSingleShot(true);
     connect(&m_update, &QTimer::timeout, this, &ClipboardDisplay::synchronize);
     SystemTheme::onAppearanceChanged(this, [this] { schedule(); });
+    SystemTheme::onUiSizeChanged(this, [this] { schedule(); });
     connect(&m_server, &QLocalServer::newConnection, this, &ClipboardDisplay::accept);
     const QMetaMethod schedule = metaObject()->method(metaObject()->indexOfSlot("schedule()"));
     const QMetaObject* meta = clipboard->metaObject();

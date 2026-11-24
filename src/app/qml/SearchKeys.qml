@@ -15,6 +15,33 @@ QtObject {
         return event.nativeScanCode >= 2 && event.nativeScanCode <= 6 ? event.nativeScanCode - 1 : 0
     }
 
+    // Ctrl++ / Ctrl+= (with or without Shift / Numpad +), Ctrl+- (or Numpad -),
+    // and Ctrl+0 (or Numpad 0) adjust interface size (or picture zoom in the
+    // clipboard's image viewer). AltGr (Ctrl+Alt), Win, and shifted - / 0 stay free.
+    readonly property int zoomNone: 0
+    readonly property int zoomIn: 1
+    readonly property int zoomOut: -1
+    readonly property int zoomReset: 2
+    // Shared Qt Quick Shortcut sequences (Windows sends Shift+Key_Plus for Ctrl+Shift+=
+    // on US layouts, and strips KeypadModifier for Numpad + / - / 0).
+    readonly property list<string> zoomInSequences: ["Ctrl++", "Ctrl+Shift++", "Ctrl+=", "Ctrl+Shift+="]
+    readonly property list<string> zoomOutSequences: ["Ctrl+-"]
+    readonly property list<string> zoomResetSequences: ["Ctrl+0"]
+
+    function uiZoomAction(key: int, modifiers: int): int {
+        if ((modifiers & Qt.ControlModifier) === 0 || (modifiers & (Qt.AltModifier | Qt.MetaModifier)) !== 0)
+            return zoomNone
+        const shift = (modifiers & Qt.ShiftModifier) !== 0
+        const keypad = (modifiers & Qt.KeypadModifier) !== 0
+        if (key === Qt.Key_Plus || (key === Qt.Key_Equal && !keypad))
+            return zoomIn
+        if (key === Qt.Key_Minus && !shift)
+            return zoomOut
+        if (key === Qt.Key_0 && !shift)
+            return zoomReset
+        return zoomNone
+    }
+
     function navigationKey(key: int, modifiers: int, composing: bool): int {
         if (composing || (modifiers & ~Qt.KeypadModifier) !== Qt.ControlModifier)
             return key

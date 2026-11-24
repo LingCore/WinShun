@@ -17,6 +17,7 @@ Item {
     signal saveRequested(string text)
     signal cancelled()
     signal focusLost()
+    signal uiSizeRequested(int delta)
 
     function begin(text) {
         field.text = text
@@ -74,6 +75,13 @@ Item {
             }
             onActiveFocusChanged: if (!activeFocus) editor.focusLost()
             Keys.onPressed: (event) => {
+                const zoom = field.preeditText.length === 0 ? SearchKeys.uiZoomAction(event.key, event.modifiers) : SearchKeys.zoomNone
+                if (zoom !== SearchKeys.zoomNone) {
+                    if (!event.isAutoRepeat)
+                        editor.uiSizeRequested(zoom === SearchKeys.zoomReset ? 0 : zoom)
+                    event.accepted = true
+                    return
+                }
                 const ctrl = (event.modifiers & Qt.ControlModifier) !== 0
                 if (ctrl && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_S)) {
                     editor.saveRequested(field.text)

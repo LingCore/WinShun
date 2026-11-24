@@ -109,6 +109,7 @@ public:
     static int glassClarity() { return s_glassClarity; }
     static void setGlassAppearance(int transparency, int clarity);
     static QMetaObject::Connection onAppearanceChanged(QObject* context, std::function<void()> slot);
+    static QMetaObject::Connection onUiSizeChanged(QObject* context, std::function<void()> slot);
     static QString uiSize() { return s_uiSize; }
     static int headerHeight();
     static void setUiSize(const QString& size);

@@ -7,7 +7,7 @@ import WinShun
 ComboBox {
     id: control
     property real dpr: Screen.devicePixelRatio
-    implicitHeight: 36
+    implicitHeight: [32, 36, 40][Theme.step]
     flat: true // suppress Basic's second background inside an editable field
     font.pixelSize: Theme.fontBody
     opacity: enabled ? 1 : fieldSurface.out("disabledOpacity", 0.4)

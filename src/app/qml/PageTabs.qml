@@ -41,7 +41,7 @@ Item {
     signal activated(int index)
 
     implicitWidth: row.x + row.width + pad
-    implicitHeight: 40
+    implicitHeight: [36, 40, 44][Theme.step]
     activeFocusOnTab: true
 
     Keys.onLeftPressed: if (current > 0) activated(current - 1)

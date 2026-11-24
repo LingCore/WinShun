@@ -1751,8 +1751,8 @@
         <translation>Loading image…</translation>
     </message>
     <message>
-        <source>滚轮缩放 · 双击看原始大小 · Esc 关闭</source>
-        <translation>Wheel to zoom · Double-click for actual size · Esc to close</translation>
+        <source>滚轮 / Ctrl+± 缩放 · 双击原尺寸 · Esc 关闭</source>
+        <translation>Wheel / Ctrl+± to zoom · Double-click for actual size · Esc to close</translation>
     </message>
     <message>
         <source>关闭</source>
@@ -7259,8 +7259,8 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Size</translation>
     </message>
     <message>
-        <source>缩放;大小;字号;字体大小;行高;密集;紧凑;宽松;一行;小字;scale;size;zoom;font;dense;compact</source>
-        <translation>scale;size;zoom;font;text size;row height;dense;compact;roomy;density;one line</translation>
+        <source>缩放;大小;字号;字体大小;行高;密集;紧凑;宽松;一行;小字;Ctrl++;Ctrl+-;Ctrl+0;scale;size;zoom;font;dense;compact</source>
+        <translation>scale;size;zoom;font;text size;row height;dense;compact;roomy;density;one line;Ctrl++;Ctrl+-;Ctrl+0</translation>
     </message>
     <message>
         <source>紧凑</source>
@@ -8613,8 +8613,8 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Needs the “GPU” drawing method under General</translation>
     </message>
     <message>
-        <source>搜索框、剪贴板和对话框旁搜索框的文字和行高；设置窗口不变。密集是每条结果一行的小字</source>
-        <translation>Text size and line height of the search bar, the clipboard and the search bar by file dialogs; the Settings window is unchanged. Dense is one small line per result</translation>
+        <source>搜索框、搜索面板、设置窗口、剪贴板和对话框旁搜索框的文字与行高；也可按 Ctrl++ / Ctrl+- / Ctrl+0 快速切换。密集是每条结果一行的小字</source>
+        <translation>Text size and row height of the search box, search panel, Settings, clipboard and dialog bar; also switchable with Ctrl++ / Ctrl+- / Ctrl+0. Dense is one small line per result</translation>
     </message>
     <message>
         <source>记住窗口大小</source>
@@ -9036,12 +9036,12 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Clipboard size</translation>
     </message>
     <message>
-        <source>字体;字号;文字大小;行高;密集;紧凑;宽松;ditto;font size;dense</source>
-        <translation>font;font size;text size;line height;dense;compact;comfortable;ditto</translation>
+        <source>字体;字号;文字大小;行高;密集;紧凑;宽松;ditto;Ctrl++;Ctrl+-;Ctrl+0;zoom;font size;dense</source>
+        <translation>font;font size;text size;line height;dense;compact;comfortable;ditto;zoom;Ctrl++;Ctrl+-;Ctrl+0</translation>
     </message>
     <message>
-        <source>剪贴板文字和行高，可以和搜索框不同；密集是每条一行的小字</source>
-        <translation>Text size and line height of the clipboard, which can differ from the search bar; Dense is small text, one row per item</translation>
+        <source>剪贴板文字和行高，可以和搜索框不同；在剪贴板里按 Ctrl++ / Ctrl+- 可快速调整，Ctrl+0 恢复跟随。密集是每条一行的小字</source>
+        <translation>Text size and row height of the clipboard, independent of the search box; press Ctrl++ / Ctrl+- in the clipboard to adjust, Ctrl+0 to follow again. Dense is small text, one row per item</translation>
     </message>
     <message>
         <source>跟随界面大小</source>
@@ -10110,6 +10110,14 @@ Double-click grip: expand/collapse search panel</translation>
 </context>
 <context>
     <name>Shortcuts</name>
+    <message>
+        <source>放大、缩小或恢复界面大小</source>
+        <translation>Enlarge, shrink, or reset interface size</translation>
+    </message>
+    <message>
+        <source>放大、缩小或恢复剪贴板大小（看大图时缩放图片）</source>
+        <translation>Enlarge, shrink, or reset clipboard size (zooms the image while viewing a picture)</translation>
+    </message>
     <message>
         <source>弹出文件夹快捷菜单</source>
         <translation>Open the folder menu</translation>
@@ -17478,6 +17486,65 @@ Content index: %5</translation>
     <message>
         <source>执行电源操作时出错</source>
         <translation>Could not carry out the power action</translation>
+    </message>
+</context>
+<context>
+    <name>UiSize</name>
+    <message>
+        <source>密集</source>
+        <translation>Dense</translation>
+    </message>
+    <message>
+        <source>紧凑</source>
+        <translation>Compact</translation>
+    </message>
+    <message>
+        <source>标准</source>
+        <translation>Standard</translation>
+    </message>
+    <message>
+        <source>宽松</source>
+        <translation>Roomy</translation>
+    </message>
+    <message>
+        <source>界面大小：%1</source>
+        <translation>Interface size: %1</translation>
+    </message>
+    <message>
+        <source>界面大小：%1（已恢复默认）</source>
+        <translation>Interface size: %1 (reset to default)</translation>
+    </message>
+    <message>
+        <source>界面大小：%1（已是默认）</source>
+        <translation>Interface size: %1 (already default)</translation>
+    </message>
+    <message>
+        <source>界面大小：%1（已是最大）</source>
+        <translation>Interface size: %1 (maximum)</translation>
+    </message>
+    <message>
+        <source>界面大小：%1（已是最小）</source>
+        <translation>Interface size: %1 (minimum)</translation>
+    </message>
+    <message>
+        <source>剪贴板大小：%1</source>
+        <translation>Clipboard size: %1</translation>
+    </message>
+    <message>
+        <source>剪贴板大小：跟随界面大小（%1）</source>
+        <translation>Clipboard size: follow interface (%1)</translation>
+    </message>
+    <message>
+        <source>剪贴板大小：已跟随界面大小（%1）</source>
+        <translation>Clipboard size: following interface (%1)</translation>
+    </message>
+    <message>
+        <source>剪贴板大小：%1（已是最大）</source>
+        <translation>Clipboard size: %1 (maximum)</translation>
+    </message>
+    <message>
+        <source>剪贴板大小：%1（已是最小）</source>
+        <translation>Clipboard size: %1 (minimum)</translation>
     </message>
 </context>
 </TS>

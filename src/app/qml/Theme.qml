@@ -152,19 +152,18 @@ QtObject {
         ? ["#FF8F8F", "#FFA855", "#E8CB3C", "#6CCB5F", "#6CB4FF", "#C9A2FF", "#ABABAB"]
         : ["#B8281A", "#A24600", "#7D6200", "#0C730C", "#0062B0", "#7A3EC0", "#5E5E5E"]
     readonly property color closeHover: pick("closeHover") // title bar close button, as in Windows 11
-    readonly property color closePressed: pick("closePressed") // Type scale in pixels. Even sizes land on whole device pixels at 150 %.
-    readonly property int fontDisplay: 28 // settings window title
-    readonly property int fontSearch: 24 // search box
-    readonly property int fontTitle: 18 // result names, section titles, empty state
-    readonly property int fontBody: 16 // most text
-    readonly property int fontCaption: 14 // descriptions, key caps, hints
+    readonly property color closePressed: pick("closePressed")
 
-    // 界面大小 (Settings uiSize): the launcher and the bar by file dialogs
-    // in smaller or larger type, on lower or taller rows (the clipboard has
-    // a step of its own, see UiScale); the settings window keeps the scale
-    // above. 标准 is the scale above.
+    // 界面大小 (Settings uiSize): the launcher, search panel, settings,
+    // menus and dialog bar scale together cleanly (the clipboard has a step of
+    // its own, see UiScale). Even pixel sizes land on whole device pixels at 150 %.
     readonly property UiScale metrics: UiScale { size: SystemTheme.uiSize }
     readonly property int step: metrics.level < 2 ? 0 : metrics.level > 2 ? 2 : 1 // 紧凑 and 密集: 0, 标准: 1, 宽松: 2
+    readonly property int fontDisplay: [24, 28, 32][step] // settings window title
+    readonly property int fontSearch: [20, 24, 28][step] // search box
+    readonly property int fontTitle: [16, 18, 20][step] // section titles, empty state
+    readonly property int fontBody: [14, 16, 18][step] // most text
+    readonly property int fontCaption: [12, 14, 16][step] // descriptions, key caps, hints
     readonly property int uiSearch: metrics.uiSearch
     readonly property int uiTitle: metrics.uiTitle
     readonly property int uiBody: metrics.uiBody

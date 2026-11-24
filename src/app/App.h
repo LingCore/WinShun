@@ -401,6 +401,8 @@ private:
     // Win顺's windows too, and those rows show the chord struck through.
     unsigned ownNumberDigits(const QString& keys) const;
     void applySettings(bool initial);
+    void stepUiSize(int delta, bool fromDialogBar = false);
+    void stepClipboardUiSize(int delta);
     void applyKeyListener(bool force = false);
     // GitHub #243: Win顺's plain hotkeys (F1, PrintScreen alone) as the
     // service's UIAccess listener tells of them over an administrator's

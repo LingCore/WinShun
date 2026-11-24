@@ -70,7 +70,7 @@ Rectangle {
     }
     // keyMode: as narrow as a key's box can be, wider only for a long chord.
     implicitWidth: keyMode ? Math.max(keyMinimumWidth, keycaps.implicitWidth + 24) : Math.max(150, widest.width, widest2.width) + 28
-    implicitHeight: 36
+    implicitHeight: [32, 36, 40][Theme.step]
     radius: Theme.controlRadius
     activeFocusOnTab: true
     // For screen readers and UI Automation: a button that records, named

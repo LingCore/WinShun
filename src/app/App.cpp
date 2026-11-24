@@ -2,6 +2,7 @@
 #include "DoubleTapAction.h"
 #include "TrayAction.h"
 #include "UiFont.h"
+#include "UiSize.h"
 #include "AdminDialogHint.h"
 #include "AdminTapHint.h"
 #include "WebSearchProvider.h"
@@ -802,6 +803,7 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
         [this](const QString& path) { pictureAction(u"edit"_s, 0, path, false); });
     connect(m_launcher.get(), &Launcher::settingsRequested, this, [this] { showSettings(); });
     connect(m_launcher.get(), &Launcher::shortcutSettingsRequested, this, &App::showShortcutSettings);
+    connect(m_launcher.get(), &Launcher::uiSizeStepRequested, this, [this](int delta) { stepUiSize(delta, false); });
     // Only the chosen folders are indexed (GitHub #52): the notes under the results.
     connect(m_launcher.get(), &Launcher::folderSettingsRequested, this, [this] { showSettingsFor(u"Index/Folders"_s); });
     connect(m_launcher.get(), &Launcher::excludedSettingsRequested, this, [this] { showSettingsFor(u"Index/ExcludedPaths"_s); });
@@ -935,6 +937,7 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
         hideClipboard(false);
         showShortcutSettings();
     });
+    connect(m_clipboard.get(), &Clipboard::uiSizeStepRequested, this, &App::stepClipboardUiSize);
     // 打开时显示这里 in a tab's menu (GitHub #404): the same setting as 设置 › 剪贴板 › 打开时显示.
     connect(m_clipboard.get(), &Clipboard::openTabChosen, this, [this](const QString& key) {
         if (m_settings.clipboardOpenTab == key)
@@ -1797,8 +1800,14 @@ void App::applyAppearance()
     if (SystemTheme::uiSize() != m_settings.uiSize) {
         SystemTheme::setUiSize(m_settings.uiSize);
         DialogBar::setUiSize(m_settings.uiSize);
+        if (m_placement)
+            m_placement->resized();
+        if (m_clipboard && m_settings.clipboardUiSize == u"follow")
+            m_clipboard->setRowOptions(m_settings.clipboardClickToPaste, m_settings.clipboardPictureSize, m_settings.uiSize);
         if (m_clipPlacement)
             m_clipPlacement->resized();
+        if (m_dropPieHelper)
+            m_dropPieHelper->update(m_settings);
     }
     SystemTheme::setBackdropOn(m_settings.transparency == u"on"); // Mica stays set up behind, covered when off
     // Unknown follows Windows. Everything else reads the scheme from the style
@@ -1849,6 +1858,61 @@ void App::applyAppearance()
     applyFolderMenuHotkey();
     applyPastePlainHotkey();
     refreshContentIndexStatus();
+}
+
+void App::stepUiSize(int delta, bool fromDialogBar)
+{
+    const uisize::StepResult next = uisize::step(uisize::parse(m_settings.uiSize), delta);
+    if (next.changed) {
+        m_settings.uiSize = uisize::name(next.size).toString();
+        m_settings.save();
+        if (m_settingsEditor)
+            m_settingsEditor->setSettings(m_settings);
+        applyAppearance();
+    }
+    const QString message = uisize::feedback(next, delta);
+    if (fromDialogBar) {
+        if (m_dialogBar)
+            m_dialogBar->flash(message);
+    } else if (m_launcher) {
+        m_launcher->notifyUiSize(message, uisize::index(next.size));
+    }
+}
+
+void App::stepClipboardUiSize(int delta)
+{
+    const bool wasFollowing = m_settings.clipboardUiSize == u"follow";
+    const uisize::Size globalSize = uisize::parse(m_settings.uiSize);
+    const uisize::Size current = wasFollowing ? globalSize : uisize::parse(m_settings.clipboardUiSize);
+    if (delta == 0) {
+        const bool changed = !wasFollowing;
+        if (changed) {
+            m_settings.clipboardUiSize = u"follow"_s;
+            m_settings.save();
+            if (m_settingsEditor)
+                m_settingsEditor->setSettings(m_settings);
+            if (m_clipboard)
+                m_clipboard->setRowOptions(m_settings.clipboardClickToPaste, m_settings.clipboardPictureSize, m_settings.uiSize);
+            if (m_clipPlacement)
+                m_clipPlacement->resized();
+        }
+        if (m_clipboard)
+            m_clipboard->flash(uisize::feedback({globalSize, changed, false}, 0, true, true));
+        return;
+    }
+    const uisize::StepResult next = uisize::step(current, delta);
+    if (next.changed) {
+        m_settings.clipboardUiSize = uisize::name(next.size).toString();
+        m_settings.save();
+        if (m_settingsEditor)
+            m_settingsEditor->setSettings(m_settings);
+        if (m_clipboard)
+            m_clipboard->setRowOptions(m_settings.clipboardClickToPaste, m_settings.clipboardPictureSize, m_settings.clipboardUiSize);
+        if (m_clipPlacement)
+            m_clipPlacement->resized();
+    }
+    if (m_clipboard)
+        m_clipboard->flash(uisize::feedback(next, delta, true, false));
 }
 
 QString App::trayTooltip() const
@@ -5167,6 +5231,7 @@ void App::applyDialogs()
                 m_settingsEditor->setSettings(m_settings);
         });
         connect(m_dialogBar.get(), &DialogBar::settingsRequested, this, [this] { showSettings(); });
+        connect(m_dialogBar.get(), &DialogBar::uiSizeStepRequested, this, [this](int delta) { stepUiSize(delta, true); });
         connect(m_dialogBar.get(), &DialogBar::autoJumpAnswered, this, &App::answerAutoJump);
     } else if (!m_settings.dialogBar && m_dialogBar) {
         delete m_barWindow;
@@ -7710,9 +7775,9 @@ void App::setPanel(bool on, bool opening)
             && !m_prewarming.load();
         if (seen)
             win::setCloaked(m_window, true);
-        m_frame->setResizable(true);
         m_launcher->setPanel(true); // Main.qml lets go of the window's size and lays the panel out
-        applySearchShadow(); // the standard one
+        applySearchShadow(); // the standard one before adding WS_THICKFRAME so style flags settle in one direction
+        m_frame->setResizable(true);
         m_placement->enterPanel(m_window->screen()); // one move and resize: the panel's size at its spot
         if (seen)
             armPanelUncloak();

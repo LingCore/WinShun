@@ -63,6 +63,10 @@ inline int qtKeyOf(UINT vk, bool extended, bool shift)
         return Qt::Key_Delete;
     case VK_APPS:
         return Qt::Key_Menu;
+    case VK_ADD:
+        return Qt::Key_Plus;
+    case VK_SUBTRACT:
+        return Qt::Key_Minus;
     default:
         return 0;
     }

@@ -55,6 +55,9 @@ Window {
                                                            availableArea.y + availableArea.height - gap - height)))
 
     function onPixel(v) { return Math.round(v * dpr) / dpr }
+    function zoomIn() { view.zoomAt(1.25, view.width / 2, view.height / 2) }
+    function zoomOut() { view.zoomAt(1 / 1.25, view.width / 2, view.height / 2) }
+    function resetZoom() { view.zoom = 0; view.contentX = 0; view.contentY = 0 }
 
     Flickable {
         id: view
@@ -186,7 +189,7 @@ Window {
             anchors.rightMargin: 8
             anchors.verticalCenter: parent.verticalCenter
             visible: about.x + about.implicitWidth + 16 + implicitWidth + 8 <= closeButton.x // the caption first
-            text: qsTr("滚轮缩放 · 双击看原始大小 · Esc 关闭")
+            text: qsTr("滚轮 / Ctrl+± 缩放 · 双击原尺寸 · Esc 关闭")
             color: Theme.faint
             font.pixelSize: Theme.uiCaption
         }

@@ -2,6 +2,7 @@
 #include "DoubleTapAction.h"
 #include "TrayAction.h"
 #include "UiFont.h"
+#include "UiSize.h"
 #include "SystemTheme.h"
 
 #include "HealthMonitor.h"
@@ -1320,10 +1321,28 @@ void SettingsEditor::setTaskbarIcon(const QString& style)
 
 void SettingsEditor::setUiSize(const QString& size)
 {
-    if (m_settings.uiSize == size || (size != u"dense" && size != u"compact" && size != u"standard" && size != u"roomy"))
+    if (m_settings.uiSize == size || !uisize::isValid(size))
         return;
     m_settings.uiSize = size;
     commit();
+}
+
+QVariantMap SettingsEditor::stepUiSize(int delta)
+{
+    const uisize::StepResult next = uisize::step(uisize::parse(m_settings.uiSize), delta);
+    const QString sizeName = uisize::name(next.size).toString();
+    if (next.changed) {
+        m_settings.uiSize = sizeName;
+        commit();
+    }
+    return {
+        {u"size"_s, sizeName},
+        {u"level"_s, uisize::index(next.size)},
+        {u"count"_s, uisize::kCount},
+        {u"changed"_s, next.changed},
+        {u"atLimit"_s, next.atLimit},
+        {u"message"_s, uisize::feedback(next, delta)}
+    };
 }
 
 QStringList SettingsEditor::uiFonts() const { return uifont::families(); }
@@ -2431,8 +2450,7 @@ void SettingsEditor::setClipboardOpenTabs(const QVariantList& tabs)
 
 void SettingsEditor::setClipboardUiSize(const QString& size)
 {
-    if (m_settings.clipboardUiSize == size
-        || (size != u"follow" && size != u"dense" && size != u"compact" && size != u"standard" && size != u"roomy"))
+    if (m_settings.clipboardUiSize == size || (size != u"follow" && !uisize::isValid(size)))
         return;
     m_settings.clipboardUiSize = size;
     commit();

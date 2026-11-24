@@ -67,9 +67,9 @@ Rectangle {
 
 
     // In the launcher: as large as 界面大小 says (Theme.tabHeight); in the
-    // settings window, as the rest there.
+    // settings window, follows Theme.step cleanly (28 / 32 / 36).
     property bool scaled: false
-    readonly property int tabHeight: scaled ? Theme.tabHeight : 32
+    readonly property int tabHeight: scaled ? Theme.tabHeight : [28, 32, 36][Theme.step]
     // The tabs' own height: lower when a host holds it lower than it would be
     // (the keys in a style's inset search field). A segmented track fills the
     // height it is given; the margin only belongs to the plain track.

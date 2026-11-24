@@ -31,7 +31,7 @@ Rectangle {
     readonly property real pixelRatio: dpr > 0 ? dpr : Screen.devicePixelRatio
 
     implicitWidth: 220
-    implicitHeight: 36
+    implicitHeight: [32, 36, 40][Theme.step]
     radius: Theme.controlRadius
     color: "transparent"
     opacity: enabled ? 1 : field.out("disabledOpacity", 0.4)

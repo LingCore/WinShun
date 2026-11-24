@@ -260,6 +260,7 @@ Window {
         webEditing = -2
         webReturnFocus = null
         closePopups()
+        uiSizeToast.dismiss()
         editor.plugins.gallery.filter = ""
         editor.plugins.gallery.updatesOnly = false
         editor.forgetMessages()
@@ -1194,6 +1195,29 @@ Window {
         onActivated: window.cycleTab(-1)
     }
 
+    function stepUiSize(delta) {
+        const result = window.editor.stepUiSize(delta)
+        uiSizeToast.present(result.message, result.level, result.count)
+    }
+    Shortcut { // Ctrl++ / Ctrl+=: larger interface size
+        sequences: SearchKeys.zoomInSequences
+        enabled: !window.editor.recordingHotkey && !window.modalOpen
+        autoRepeat: false
+        onActivated: window.stepUiSize(1)
+    }
+    Shortcut { // Ctrl+-: smaller interface size
+        sequences: SearchKeys.zoomOutSequences
+        enabled: !window.editor.recordingHotkey && !window.modalOpen
+        autoRepeat: false
+        onActivated: window.stepUiSize(-1)
+    }
+    Shortcut { // Ctrl+0: restore default interface size
+        sequences: SearchKeys.zoomResetSequences
+        enabled: !window.editor.recordingHotkey && !window.modalOpen
+        autoRepeat: false
+        onActivated: window.stepUiSize(0)
+    }
+
     function showUpdateDialog() { updateDialog.show() } // App::showUpdate
     function showClipboardPage() { showPage(clipboardPage) } // App::showClipboardSettings
     function showWebPage() { showPluginPage("winshun.web") } // App::showWebSettings
@@ -1580,7 +1604,7 @@ Window {
     Item { // category list
         id: nav
         y: titleBar.height
-        width: 248
+        width: [236, 248, 268][Theme.step]
         height: parent.height - y
         // The window's parts each one element for UI Automation, so that a
         // client (screen reader, input method, assistant) finds a handful
@@ -1729,7 +1753,7 @@ Window {
                 anchors.rightMargin: 12
                 anchors.verticalCenter: parent.verticalCenter
                 width: Math.max(height, badgeText.implicitWidth + 10)
-                height: 18
+                height: [18, 18, 22][Theme.step]
                 radius: Theme.pillRadius(height)
                 color: Theme.accentFill
                 Accessible.role: Accessible.Button
@@ -1793,7 +1817,7 @@ Window {
                 Column {
                     id: navList
 
-                    readonly property int itemHeight: 40
+                    readonly property int itemHeight: [36, 40, 44][Theme.step]
 
                     x: 12
                     y: 8
@@ -3060,6 +3084,7 @@ Window {
                 index: window.appearancePage
                 content: Component { SettingsPage {
                     host: settingsContext
+                    parts: ({ uiSizeRow: uiSizeRow })
             // <page appearance>
             SettingsSection {
                 page: window.appearancePage
@@ -3296,9 +3321,10 @@ Window {
                 }
 
                 SettingRow {
+                    id: uiSizeRow
                     title: qsTr("界面大小")
-                    keywords: qsTr("缩放;大小;字号;字体大小;行高;密集;紧凑;宽松;一行;小字;scale;size;zoom;font;dense;compact").split(";")
-                    description: qsTr("搜索框、剪贴板和对话框旁搜索框的文字和行高；设置窗口不变。密集是每条结果一行的小字")
+                    keywords: qsTr("缩放;大小;字号;字体大小;行高;密集;紧凑;宽松;一行;小字;Ctrl++;Ctrl+-;Ctrl+0;scale;size;zoom;font;dense;compact").split(";")
+                    description: qsTr("搜索框、搜索面板、设置窗口、剪贴板和对话框旁搜索框的文字与行高；也可按 Ctrl++ / Ctrl+- / Ctrl+0 快速切换。密集是每条结果一行的小字")
 
                     ScopeTabs {
                         readonly property var sizes: ["dense", "compact", "standard", "roomy"]
@@ -7167,8 +7193,8 @@ Window {
                 SettingRow {
                     id: clipboardUiSizeRow
                     title: qsTr("剪贴板大小")
-                    keywords: qsTr("字体;字号;文字大小;行高;密集;紧凑;宽松;ditto;font size;dense").split(";")
-                    description: qsTr("剪贴板文字和行高，可以和搜索框不同；密集是每条一行的小字")
+                    keywords: qsTr("字体;字号;文字大小;行高;密集;紧凑;宽松;ditto;Ctrl++;Ctrl+-;Ctrl+0;zoom;font size;dense").split(";")
+                    description: qsTr("剪贴板文字和行高，可以和搜索框不同；在剪贴板里按 Ctrl++ / Ctrl+- 可快速调整，Ctrl+0 恢复跟随。密集是每条一行的小字")
 
                     ScopeTabs {
                         readonly property var sizes: ["follow", "dense", "compact", "standard", "roomy"]
@@ -7982,6 +8008,15 @@ Window {
             easing.type: Easing.InOutQuad
             onFinished: snapshot.source = "" // the picture's memory
         }
+    }
+
+    UiSizeToast {
+        id: uiSizeToast
+        objectName: "settingsUiSizeToast"
+        x: Theme.snap(nav.width + (window.width - nav.width - width) / 2, window.dpr)
+        y: Theme.snap(window.height - height - 20, window.dpr)
+        z: 500
+        dpr: window.dpr
     }
 
     WindowEdge {

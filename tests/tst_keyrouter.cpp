@@ -180,6 +180,19 @@ private slots:
         QVERIFY(!KeyRouter::wantsKey(key));
         key = {.key = Qt::Key_F5, .modifiers = Qt::NoModifier, .vk = VK_F5};
         QVERIFY(!KeyRouter::wantsKey(key)); // the program's (refresh)
+
+        // Ctrl++ / Ctrl+= / Ctrl+- / Ctrl+0 (main and numpad) route for UI & picture zoom.
+        for (const UINT vk : {UINT(VK_OEM_PLUS), UINT(VK_ADD), UINT(VK_OEM_MINUS), UINT(VK_SUBTRACT), UINT('0'), UINT(VK_NUMPAD0)}) {
+            key = {.key = Qt::Key_Equal, .modifiers = Qt::ControlModifier, .vk = vk};
+            QVERIFY2(KeyRouter::wantsKey(key), qPrintable(QString::number(vk, 16)));
+            QVERIFY(!KeyRouter::wantsKey(key, Qt::AltModifier, KeyRouter::Policy::Menu));
+            // AltGr / Ctrl+Alt without printable text stays free for other programs.
+            key.modifiers = Qt::ControlModifier | Qt::AltModifier;
+            QVERIFY(!KeyRouter::wantsKey(key));
+            // Shift is only allowed with VK_OEM_PLUS (Ctrl+Shift+= -> Ctrl++).
+            key.modifiers = Qt::ControlModifier | Qt::ShiftModifier;
+            QCOMPARE(KeyRouter::wantsKey(key), vk == UINT(VK_OEM_PLUS));
+        }
     }
 
     // The names of the keys routed, and of those TypeToSearch hands over to
@@ -196,6 +209,9 @@ private slots:
         QCOMPARE(qtKeyOf(VK_BACK, false, false), int(Qt::Key_Backspace));
         QCOMPARE(qtKeyOf(VK_ESCAPE, false, false), int(Qt::Key_Escape));
         QCOMPARE(qtKeyOf(VK_F12, false, false), int(Qt::Key_F12));
+        QCOMPARE(qtKeyOf(VK_ADD, false, false), int(Qt::Key_Plus));
+        QCOMPARE(qtKeyOf(VK_SUBTRACT, false, false), int(Qt::Key_Minus));
+        QCOMPARE(qtKeyOf(VK_NUMPAD0, false, false), int(Qt::Key_0));
         QCOMPARE(qtKeyOf(VK_OEM_1, false, false), 0); // named after its character
         QCOMPARE(qtKeyOf(0xE7, false, false), 0); // VK_PACKET: a character, likewise
     }

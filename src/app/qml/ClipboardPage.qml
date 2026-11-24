@@ -579,6 +579,21 @@ Item {
         const ctrl = (event.modifiers & Qt.ControlModifier) !== 0
         const shift = (event.modifiers & Qt.ShiftModifier) !== 0
         const alt = (event.modifiers & Qt.AltModifier) !== 0
+        const zoom = SearchKeys.uiZoomAction(event.key, event.modifiers)
+        if (zoom !== SearchKeys.zoomNone) {
+            if (pictureViewOpen && pictureViewLoader.item) {
+                if (zoom === SearchKeys.zoomIn)
+                    pictureViewLoader.item.zoomIn()
+                else if (zoom === SearchKeys.zoomOut)
+                    pictureViewLoader.item.zoomOut()
+                else
+                    pictureViewLoader.item.resetZoom()
+            } else if (!event.isAutoRepeat) {
+                page.clipboard.adjustUiSize(zoom === SearchKeys.zoomReset ? 0 : zoom)
+            }
+            event.accepted = true
+            return
+        }
         if (ctrl && !alt && !shift && event.key === Qt.Key_G) {
             findingGroup ? cancelGroupSearch() : beginGroupSearch()
             event.accepted = true
@@ -1425,6 +1440,7 @@ Item {
                 onCancelled: page.endEdit(false)
                 // The list or the search clicked, another window: put by, not lost.
                 onFocusLost: page.endEdit(true)
+                onUiSizeRequested: (delta) => page.clipboard.adjustUiSize(delta)
             }
 
             // The edge between the list and the preview: drag to size the

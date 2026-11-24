@@ -973,6 +973,54 @@ private slots:
         QCOMPARE(ws::uisize::metrics(u"dense").barHeight, ws::uisize::metrics(u"compact").barHeight);
         QCOMPARE(ws::uisize::metrics(u"dense").barRow, ws::uisize::metrics(u"compact").barRow);
         QCOMPARE(ws::uisize::metrics(u"dense").askHeight, ws::uisize::metrics(u"compact").askHeight);
+
+        // Validation, stepping (Ctrl++ / Ctrl+- / Ctrl+0) and feedback messages.
+        QVERIFY(ws::uisize::isValid(u"dense"));
+        QVERIFY(ws::uisize::isValid(u"compact"));
+        QVERIFY(ws::uisize::isValid(u"standard"));
+        QVERIFY(ws::uisize::isValid(u"roomy"));
+        QVERIFY(!ws::uisize::isValid(u"huge"));
+        QVERIFY(!ws::uisize::isValid(u"follow"));
+        QCOMPARE(ws::uisize::fontStep(Size::Dense), 0);
+        QCOMPARE(ws::uisize::fontStep(Size::Compact), 0);
+        QCOMPARE(ws::uisize::fontStep(Size::Standard), 1);
+        QCOMPARE(ws::uisize::fontStep(Size::Roomy), 2);
+
+        const auto upFromStandard = ws::uisize::step(Size::Standard, +1);
+        QCOMPARE(upFromStandard.size, Size::Roomy);
+        QVERIFY(upFromStandard.changed && !upFromStandard.atLimit);
+        QVERIFY(ws::uisize::feedback(upFromStandard, +1).contains(u"宽松"_s));
+
+        const auto upAtMax = ws::uisize::step(Size::Roomy, +1);
+        QCOMPARE(upAtMax.size, Size::Roomy);
+        QVERIFY(!upAtMax.changed && upAtMax.atLimit);
+        QVERIFY(ws::uisize::feedback(upAtMax, +1).contains(u"已是最大"_s));
+
+        const auto downFromStandard = ws::uisize::step(Size::Standard, -1);
+        QCOMPARE(downFromStandard.size, Size::Compact);
+        QVERIFY(downFromStandard.changed && !downFromStandard.atLimit);
+        const auto downToDense = ws::uisize::step(Size::Compact, -1);
+        QCOMPARE(downToDense.size, Size::Dense);
+        QVERIFY(downToDense.changed && !downToDense.atLimit);
+        const auto downAtMin = ws::uisize::step(Size::Dense, -1);
+        QCOMPARE(downAtMin.size, Size::Dense);
+        QVERIFY(!downAtMin.changed && downAtMin.atLimit);
+        QVERIFY(ws::uisize::feedback(downAtMin, -1).contains(u"已是最小"_s));
+
+        const auto resetFromRoomy = ws::uisize::step(Size::Roomy, 0);
+        QCOMPARE(resetFromRoomy.size, Size::Standard);
+        QVERIFY(resetFromRoomy.changed && !resetFromRoomy.atLimit);
+        QVERIFY(ws::uisize::feedback(resetFromRoomy, 0).contains(u"已恢复默认"_s));
+
+        const auto resetAtStandard = ws::uisize::step(Size::Standard, 0);
+        QCOMPARE(resetAtStandard.size, Size::Standard);
+        QVERIFY(!resetAtStandard.changed && !resetAtStandard.atLimit);
+        QVERIFY(ws::uisize::feedback(resetAtStandard, 0).contains(u"已是默认"_s));
+
+        // Clipboard feedback copy.
+        QVERIFY(ws::uisize::feedback({Size::Compact, true, false}, -1, true, false).contains(u"剪贴板大小"_s));
+        QVERIFY(ws::uisize::feedback({Size::Roomy, true, false}, 0, true, true).contains(u"跟随界面大小"_s));
+        QVERIFY(ws::uisize::feedback({Size::Standard, false, false}, 0, true, true).contains(u"已跟随界面大小"_s));
     }
 
     // 剪贴板大小: its own step, kept as written; unknown names fall back to following 界面大小.

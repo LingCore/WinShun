@@ -385,6 +385,9 @@ public:
     Q_INVOKABLE void wantKeys() { emit keysWanted(); } // the search field clicked: acquire or refresh routing
     Q_INVOKABLE void turnOn(); // the history, from the window's button
     Q_INVOKABLE void openShortcutSettings() { emit shortcutSettingsRequested(); } // the shortcut panel's last row
+    // Ctrl++ / Ctrl+- / Ctrl+0: step 剪贴板大小 (+1 larger, -1 smaller, 0 reset to follow).
+    Q_INVOKABLE void adjustUiSize(int delta) { emit uiSizeStepRequested(delta); }
+    void flash(const QString& message);
 
     // The preview of a row: {kind, text, more, files, thumbnail, image,
     // width, height, swatch, colors, source, sourceIcon, time, size,
@@ -403,6 +406,7 @@ signals:
     void lanSendRequested(const QString& text, const QStringList& files);
     void lanSendSetupRequested(bool update);
     void shortcutSettingsRequested(); // the settings' overview of all shortcuts
+    void uiSizeStepRequested(int delta); // Ctrl++ / Ctrl+- / Ctrl+0 (App::stepClipboardUiSize)
     void quickPasteFailed(const QString& message); // no panel to show a failure in: App's notification
     void saveProblem(const QString& message); // saveAsFiles, the panel gone: App's notification
     void numberKeysChanged();
@@ -483,7 +487,6 @@ private:
     int tabIndex(const QString& key) const; // -1: no such tab (a group since removed)
     void refresh();
     void refreshStatus();
-    void flash(const QString& message);
     void failPaste(const QString& message);
     static QString elevatedHint(); // the paste left to the user, into a program run as administrator
     void pasteThroughService(HWND target); // the index service presses the keys there (GitHub #277)

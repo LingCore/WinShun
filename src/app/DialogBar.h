@@ -102,6 +102,7 @@ class DialogBar : public QObject {
     Q_PROPERTY(int barHeight READ barHeight NOTIFY metricsChanged FINAL)
     Q_PROPERTY(int askHeight READ askHeight NOTIFY metricsChanged FINAL)
     Q_PROPERTY(int rowHeight READ rowHeight NOTIFY metricsChanged FINAL)
+    Q_PROPERTY(QString statusFlash READ statusFlash NOTIFY statusFlashChanged FINAL)
     // As the launcher's (Launcher::showModified, numberKeys).
     Q_PROPERTY(bool showModified READ showModified NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(QString numberKeys READ numberKeys NOTIFY resultOptionsChanged FINAL)
@@ -249,6 +250,9 @@ public:
     int askHeight() const { return s_metrics.askHeight; }
     bool asking() const { return m_asking; }
     int rowHeight() const { return s_metrics.barRow; }
+    QString statusFlash() const { return m_statusFlash; }
+    void flash(const QString& message);
+    Q_INVOKABLE void adjustUiSize(int delta) { emit uiSizeStepRequested(delta); }
 
     Q_INVOKABLE void choose(int row, bool open = false); // open: a file, where canOpen; else it goes there
     Q_INVOKABLE void chooseExplorer(); // the folder shown in the file manager (as Ctrl+G)
@@ -270,6 +274,8 @@ protected:
 
 signals:
     void metricsChanged();
+    void statusFlashChanged();
+    void uiSizeStepRequested(int delta); // Ctrl++ / Ctrl+- / Ctrl+0 (App::stepUiSize)
     void queryChanged();
     void explorerChanged();
     void originChanged();
@@ -384,6 +390,8 @@ private:
     bool m_listHeld = false; // just made active: no list until a click is through
     bool m_clickSeen = false;
     QTimer m_listHold; // no click came
+    QString m_statusFlash;
+    QTimer m_flashTimer;
     DialogBarVisibility m_visibility;
     // Peeking out from behind the bar, off the dialog. Where place() put the
     // bar (physical pixels): its window, its box, the work area, the dialog.

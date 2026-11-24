@@ -884,6 +884,13 @@ public:
     // the settings window (settingsRequested).
     Q_INVOKABLE void openSettings() { emit settingsRequested(); }
     Q_INVOKABLE void openShortcutSettings() { emit shortcutSettingsRequested(); } // the shortcut panel's last row
+    // Ctrl++ / Ctrl+- / Ctrl+0: request a step of 界面大小 (+1 larger, -1 smaller, 0 reset).
+    Q_INVOKABLE void adjustUiSize(int delta) { emit uiSizeStepRequested(delta); }
+    void notifyUiSize(const QString& message, int level)
+    {
+        flash(message);
+        emit uiSizeNotified(message, level);
+    }
     int dateChoice() const { return m_dateChoice; }
     QString dateFrom() const { return m_dateFrom; }
     QString dateTo() const { return m_dateTo; }
@@ -993,6 +1000,8 @@ signals:
     void closingChanged();
     void settingsRequested();
     void shortcutSettingsRequested(); // the settings' overview of all shortcuts
+    void uiSizeStepRequested(int delta); // Ctrl++ / Ctrl+- / Ctrl+0 (App::stepUiSize)
+    void uiSizeNotified(const QString& message, int level); // for pureEmpty where Footer is hidden
     void folderSettingsRequested(); // the settings' page of the chosen folders
     void excludedSettingsRequested(); // the settings' section of excluded folders
     void excludedFilesSettingsRequested(); // the settings' section of skipped file types & names

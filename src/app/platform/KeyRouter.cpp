@@ -150,7 +150,14 @@ bool wanted(const KeyRouter::Key& key, Qt::KeyboardModifier numberKeys)
         case 'E': // the menu's keys without the menu (GitHub #379): edit, save as files, the window's own pin
         case 'S':
         case 'T':
+        case '0': // Ctrl+0 / Ctrl+Numpad 0: reset UI or picture zoom
+        case VK_NUMPAD0:
+        case VK_OEM_MINUS: // Ctrl+- / Ctrl+Numpad -: smaller UI or picture zoom out
+        case VK_SUBTRACT:
+        case VK_ADD: // Ctrl+Numpad +: larger UI or picture zoom in
             return !shift; // Ctrl+Shift+V and the like stay free for other programs' hotkeys
+        case VK_OEM_PLUS: // Ctrl+= and Ctrl+Shift+= (Ctrl++): larger UI or picture zoom in
+            return true;
         case 'Z':
             return true; // undo, redo
         case VK_BACK:

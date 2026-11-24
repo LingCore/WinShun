@@ -30,7 +30,7 @@ Rectangle {
     // The window's, for the style's field and the key hint on whole device pixels.
     readonly property real dpr: Screen.devicePixelRatio
 
-    implicitHeight: 36
+    implicitHeight: [32, 36, 40][Theme.step]
     radius: Theme.controlRadius
     color: warm ? WarmPalette.chip : "transparent" // else the style's field draws it (below)
 
@@ -164,7 +164,7 @@ Rectangle {
         x: Theme.snap(parent.width - 7 - width, box.dpr)
         y: Theme.snap((parent.height - height) / 2, box.dpr)
         width: Theme.snapUp(keyText.implicitWidth + 10, box.dpr)
-        height: 22
+        height: [20, 22, 24][Theme.step]
 
         Hook { // the style's key cap (Theme.keyHint): it only tells, never pressed
             id: keyCap

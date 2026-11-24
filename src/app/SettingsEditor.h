@@ -752,6 +752,10 @@ public:
     bool fontRestartRequired() const;
     void setUiFont(const QString& family);
     void setUiSize(const QString& size);
+    // Ctrl++ / Ctrl+- / Ctrl+0 in SettingsWindow: step 界面大小 larger (+1),
+    // smaller (-1), or back to Standard (0). Returns {size, level, count, changed,
+    // atLimit, message} for immediate on-screen confirmation.
+    Q_INVOKABLE QVariantMap stepUiSize(int delta);
     QString corners() const { return m_settings.corners; }
     void setCorners(const QString& corners);
     QString uiStyle() const { return m_settings.uiStyle; }
