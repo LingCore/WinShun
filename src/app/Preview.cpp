@@ -14144,6 +14144,7 @@ int runRuntime(const QStringList& args)
     settings.dialogBarPlace = u"below"_s;
     settings.dialogAutoJump = false;
     settings.explorerMenu = false;
+    settings.explorerPinPicture = false;
     settings.uriProtocol = false;
     settings.explorerTyping = false;
     settings.opusTyping = false;

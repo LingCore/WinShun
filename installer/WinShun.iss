@@ -1763,23 +1763,34 @@ begin
   RemoveDir(Folder);
 end;
 
-// Explorer's right-click "用 Win顺 搜索此处" and "粘贴为文件"
-// (src/app/platform/ShellMenu.cpp), when they run this copy's
-// WinShunSearch.exe: a portable copy's stay.
+// Explorer's right-click verbs (src/app/platform/ShellMenu.cpp), when they
+// run this copy's WinShunSearch.exe: a portable copy's stay.
 procedure RemoveExplorerMenu();
 var
-  Keys: array[0..3] of String;
+  Keys: array[0..5] of String;
+  CascadeKeys: array[0..1] of String;
   Command: String;
+  State: String;
+  Stub: String;
   I: Integer;
 begin
+  Stub := Lowercase(ExpandConstant('{app}\WinShunSearch.exe'));
   Keys[0] := 'Software\Classes\Directory\shell\WinShun.SearchHere';
   Keys[1] := 'Software\Classes\Directory\Background\shell\WinShun.SearchHere';
   Keys[2] := 'Software\Classes\Drive\shell\WinShun.SearchHere';
   Keys[3] := 'Software\Classes\Directory\Background\shell\WinShun.PasteFile';
-  for I := 0 to 3 do
+  Keys[4] := 'Software\Classes\*\shell\WinShun.PinPicture';
+  Keys[5] := 'Software\Classes\SystemFileAssociations\image\shell\WinShun.PinPicture';
+  for I := 0 to 5 do
     if RegQueryStringValue(HKCU, Keys[I] + '\command', '', Command)
-      and (Pos(Lowercase(ExpandConstant('{app}\WinShunSearch.exe')), Lowercase(Command)) > 0) then
+      and (Pos(Stub, Lowercase(Command)) > 0) then
       RegDeleteKeyIncludingSubkeys(HKCU, Keys[I]);
+  CascadeKeys[0] := 'Software\Classes\*\shell\WinShun.Commands';
+  CascadeKeys[1] := 'Software\Classes\Directory\shell\WinShun.Commands';
+  for I := 0 to 1 do
+    if RegQueryStringValue(HKCU, CascadeKeys[I], 'WinShunState', State)
+      and (Pos(Stub, Lowercase(State)) = 1) then
+      RegDeleteKeyIncludingSubkeys(HKCU, CascadeKeys[I]);
 end;
 
 // The winshun:// links (ShellMenu.cpp, applyUriProtocol), when they run this

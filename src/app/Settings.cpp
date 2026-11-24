@@ -929,6 +929,7 @@ void Settings::load()
     fileManagerOpenCommand = readOrDefault(s, u"Launcher/FileManagerOpenCommand"_s, d.fileManagerOpenCommand).trimmed();
     fileManagerRevealCommand = readOrDefault(s, u"Launcher/FileManagerRevealCommand"_s, d.fileManagerRevealCommand).trimmed();
     explorerMenu = readOrDefault(s, u"Launcher/ExplorerMenu"_s, d.explorerMenu);
+    explorerPinPicture = readOrDefault(s, u"Launcher/ExplorerPinPicture"_s, d.explorerPinPicture);
     uriProtocol = readOrDefault(s, u"Launcher/UriProtocol"_s, d.uriProtocol);
     // On for new installs; an ini from before without the key had it off.
     explorerTyping = readOrDefault(s, u"Launcher/ExplorerTyping"_s, firstRun ? d.explorerTyping : false);
@@ -1420,6 +1421,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Launcher/FileManagerOpenCommand"_s, fileManagerOpenCommand);
     s.setValue(u"Launcher/FileManagerRevealCommand"_s, fileManagerRevealCommand);
     s.setValue(u"Launcher/ExplorerMenu"_s, explorerMenu);
+    s.setValue(u"Launcher/ExplorerPinPicture"_s, explorerPinPicture);
     s.setValue(u"Launcher/UriProtocol"_s, uriProtocol);
     s.setValue(u"Launcher/ExplorerTyping"_s, explorerTyping);
     s.setValue(u"Launcher/DesktopTyping"_s, desktopTyping);

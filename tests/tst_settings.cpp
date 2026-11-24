@@ -10,6 +10,7 @@
 #include "Win32Util.h"
 
 #include "ServiceVolumeAccess.h"
+#include "PictureFile.h"
 #include "platform/InputMode.h"
 
 #include <QCoreApplication>
@@ -675,6 +676,62 @@ private slots:
         QVERIFY(secondChanged);
         QCOMPARE(second, (InputMode {.open = false, .conversion = 0}));
         QVERIFY(!opening({.open = false, .conversion = 0}).second); // English already: nothing to put back
+    }
+
+
+    void explorerPinPicture()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.load();
+        QVERIFY(settings.explorerPinPicture);
+        settings.explorerPinPicture = false;
+        settings.save();
+        QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+        QCOMPARE(ini.value(u"Launcher/ExplorerPinPicture"_s).toBool(), false);
+        ws::Settings restored;
+        restored.load();
+        QVERIFY(!restored.explorerPinPicture);
+        settings.explorerPinPicture = true;
+        settings.save();
+        restored.load();
+        QVERIFY(restored.explorerPinPicture);
+
+        // Shared WIC picture list & Explorer AppliesTo AQS expression.
+        for (const QString& ok : {
+                 u"C:\\img\\a.png"_s,
+                 u"C:\\img\\photo.JPG"_s,
+                 u"C:\\Users\\ZHAO\\临时文件\\123\\图 (三方).webp"_s,
+                 u"D:/shots/sample.WEBP"_s,
+                 u"D:\\phone\\IMG_001.heic"_s,
+                 u"D:\\phone\\IMG_002.heif"_s,
+                 u"D:\\web\\banner.avif"_s,
+                 u"D:\\scan\\page.tiff"_s,
+                 u"D:\\app\\app.ico"_s,
+                 u"D:\\photo\\old.jfif"_s,
+             }) {
+            QVERIFY2(ws::isPinnablePicture(ok), qPrintable(ok));
+        }
+        for (const QString& bad : {
+                 u"C:\\img\\vector.svg"_s,
+                 u"C:\\img\\design.psd"_s,
+                 u"C:\\img\\note.txt"_s,
+                 u"C:\\img\\fake.png.txt"_s,
+                 u"C:\\dir.png\\readme"_s,
+                 u"C:\\img\\noext"_s,
+                 u"C:\\img\\trailingdot."_s,
+             }) {
+            QVERIFY2(!ws::isPinnablePicture(bad), qPrintable(bad));
+        }
+        const std::wstring aqs = ws::pinPictureAppliesTo();
+        QVERIFY(aqs.find(L"System.FileExtension:=\".webp\"") != std::wstring::npos);
+        QVERIFY(aqs.find(L"System.FileExtension:=\".png\"") != std::wstring::npos);
+        QVERIFY(aqs.find(L"System.FileExtension:=\".heic\"") != std::wstring::npos);
+        QVERIFY(aqs.find(L"System.FileExtension:=\".avif\"") != std::wstring::npos);
+        QVERIFY(aqs.find(L".svg") == std::wstring::npos);
+        QVERIFY(aqs.find(L".txt") == std::wstring::npos);
     }
 
     void startListOptions()

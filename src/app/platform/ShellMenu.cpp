@@ -1,8 +1,9 @@
 #include "ShellMenu.h"
 
-#include "ScoopInstall.h"
 #include "AutostartRun.h" // runCommandProgram, runCommandStarts: the program a command line starts
 #include "ExplorerLanguage.h"
+#include "PictureFile.h"
+#include "ScoopInstall.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -35,9 +36,18 @@ constexpr const wchar_t* kPasteFileKeys[] {
     L"Software\\Classes\\Directory\\Background\\shell\\WinShun.PasteFile",
 };
 
-// Where 贴到屏幕 goes: the files Windows knows as pictures (their PerceivedType),
-// whatever program they open with.
+// Where 贴到屏幕 goes: *\shell gated by AppliesTo on WIC-readable picture
+// extensions. SystemFileAssociations\image is avoided because Windows only
+// includes it reliably for hardcoded image extensions (.png/.jpg/...) and
+// drops it or fails with ERROR_NO_ASSOCIATION (0x80070483) on soft-coded
+// types such as .webp, .heic and .avif.
 constexpr const wchar_t* kPinPictureKeys[] {
+    L"Software\\Classes\\*\\shell\\WinShun.PinPicture",
+};
+
+// Previous versions (<= 0.44.0) registered 贴到屏幕 here; remove ours on
+// enable or disable so upgraded users never see duplicate entries.
+constexpr const wchar_t* kLegacyPinPictureKeys[] {
     L"Software\\Classes\\SystemFileAssociations\\image\\shell\\WinShun.PinPicture",
 };
 
@@ -88,31 +98,44 @@ struct Stub {
     std::wstring path = folder + L"\\WinShunSearch.exe";
 };
 
+bool removeOwnedVerbs(std::span<const wchar_t* const> keys, const std::wstring& stubPath)
+{
+    bool changed = false;
+    for (const wchar_t* key : keys) {
+        const std::wstring commandKey = std::wstring(key) + L"\\command";
+        // Only ours: a portable copy elsewhere may have set them since.
+        // A copy that is gone (a portable folder deleted) left a verb
+        // that does nothing: that goes too.
+        const std::wstring current = readString(HKEY_CURRENT_USER, commandKey, nullptr);
+        const std::wstring program = autostart::runCommandProgram(current);
+        if (!program.empty()
+            && (scoop::sameCopy(QString::fromStdWString(program), QString::fromStdWString(stubPath))
+                || ::GetFileAttributesW(program.c_str()) == INVALID_FILE_ATTRIBUTES))
+            changed |= ::RegDeleteTreeW(HKEY_CURRENT_USER, key) == ERROR_SUCCESS;
+    }
+    return changed;
+}
+
 // Sets the verb at `keys` to run `arguments` with the stub (`on`), or takes
 // away the verbs there that start this copy's stub or one that is gone.
 // `each`: with several items chosen the verb stays, run once an item.
+// `appliesTo`: optional Windows AQS filter written to AppliesTo.
 void setVerbs(std::span<const wchar_t* const> keys, bool on, std::wstring_view title, std::wstring_view arguments,
-    bool each = false)
+    bool each = false, std::wstring_view appliesTo = {}, std::span<const wchar_t* const> legacyKeys = {})
 {
     const Stub stub;
     if (on && ::GetFileAttributesW(stub.path.c_str()) == INVALID_FILE_ATTRIBUTES)
         return; // a build without it (run from the build folder)
+    bool changed = removeOwnedVerbs(legacyKeys, stub.path);
+    if (!on) {
+        changed |= removeOwnedVerbs(keys, stub.path);
+        if (changed)
+            ::SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, nullptr, nullptr);
+        return;
+    }
     const std::wstring command = L"\"" + stub.path + L"\" " + std::wstring(arguments);
-    bool changed = false;
     for (const wchar_t* key : keys) {
         const std::wstring commandKey = std::wstring(key) + L"\\command";
-        if (!on) {
-            // Only ours: a portable copy elsewhere may have set them since.
-            // A copy that is gone (a portable folder deleted) left a verb
-            // that does nothing: that goes too.
-            const std::wstring current = readString(HKEY_CURRENT_USER, commandKey, nullptr);
-            const std::wstring program = autostart::runCommandProgram(current);
-            if (!program.empty()
-                && (scoop::sameCopy(QString::fromStdWString(program), QString::fromStdWString(stub.path))
-                    || ::GetFileAttributesW(program.c_str()) == INVALID_FILE_ATTRIBUTES))
-                changed |= ::RegDeleteTreeW(HKEY_CURRENT_USER, key) == ERROR_SUCCESS;
-            continue;
-        }
         changed |= writeString(key, L"MUIVerb", std::wstring(title));
         changed |= writeString(key, L"Icon", stub.folder + L"\\WinShun.exe,0");
         // Empty space has nothing selected, so "Single" hides the verb there
@@ -121,6 +144,10 @@ void setVerbs(std::span<const wchar_t* const> keys, bool on, std::wstring_view t
             changed |= writeString(key, L"MultiSelectModel", each ? L"Document" : L"Single");
         else
             changed |= deleteValue(key, L"MultiSelectModel");
+        if (!appliesTo.empty())
+            changed |= writeString(key, L"AppliesTo", std::wstring(appliesTo));
+        else
+            changed |= deleteValue(key, L"AppliesTo");
         changed |= writeString(commandKey, nullptr, command);
     }
     if (changed)
@@ -184,7 +211,7 @@ void applyPasteFile(bool on)
 void applyPinPicture(bool on)
 {
     setVerbs(kPinPictureKeys, on, explorerlang::pinPictureTitle(explorerlang::windowsIsEnglish()),
-        L"--pin-picture \"%1\"", true);
+        L"--pin-picture \"%1\"", true, ws::pinPictureAppliesTo(), kLegacyPinPictureKeys);
 }
 
 void applyCommands(const QList<MenuCommand>& commands)

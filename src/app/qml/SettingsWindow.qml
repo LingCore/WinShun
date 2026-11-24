@@ -6116,6 +6116,21 @@ Window {
                     }
                 }
 
+                SettingRow {
+                    title: qsTr("资源管理器右键“贴到屏幕（Win顺）”")
+                    keywords: qsTr("贴到屏幕;贴图;图片;右键;右键菜单;上下文菜单;资源管理器;截图;pin;picture;context menu").split(";")
+                    description: window.editor.screenshotHistory
+                        ? qsTr("右键图片文件（PNG、JPG、WebP 等）直接贴到屏幕上置顶；Windows 11 在“显示更多选项”里")
+                        : qsTr("右键图片文件直接贴到屏幕上置顶；需先在“插件”里启用“截图”插件才会显示")
+
+                    ToggleSwitch {
+                        objectName: "explorerPinPictureSwitch"
+                        dpr: window.dpr
+                        checked: window.editor.explorerPinPicture
+                        onToggled: (on) => window.editor.explorerPinPicture = on
+                    }
+                }
+
                 SettingRow { // GitHub #358
                     title: qsTr("winshun:// 链接")
                     keywords: qsTr("链接;协议;网址;URL;网页;笔记;Obsidian;scheme;protocol;winshun").split(";")

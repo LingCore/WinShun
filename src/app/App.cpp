@@ -2013,6 +2013,8 @@ void App::applySettings(bool initial)
     if (!initial)
         applyAppearance();
     shellmenu::apply(m_settings.explorerMenu); // in Windows' language, not Win顺's (GitHub #190)
+    if (m_pluginHost || !m_settings.explorerPinPicture)
+        shellmenu::applyPinPicture(m_settings.explorerPinPicture && !picturePlugin(u"pin"_s).isEmpty());
     shellmenu::applyUriProtocol(m_settings.uriProtocol);
     shellmenu::applyPasteFile(m_settings.pasteFileEnabled && m_settings.pasteFileMenu);
     m_updater->setAutomatic(m_settings.autoUpdate);
@@ -2407,7 +2409,7 @@ void App::pluginPicturesChanged()
         m_launcher->setPictureVerbs(pin, edit);
     if (m_clipboard)
         m_clipboard->setPictureVerbs(pin, edit);
-    shellmenu::applyPinPicture(pin); // Explorer's 贴到屏幕 on a picture, while something pins
+    shellmenu::applyPinPicture(pin && m_settings.explorerPinPicture); // Explorer's 贴到屏幕 on a picture, while enabled and something pins
     updateScreenshotPlugin();
 }
 

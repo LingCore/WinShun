@@ -19,6 +19,7 @@
 #include "ZeroCode.h"
 #include "OpenPolicy.h"
 #include "PathText.h"
+#include "PictureFile.h"
 #include "Query.h"
 #include "SearchEngine.h"
 #include "ShareLister.h"
@@ -461,11 +462,10 @@ bool isShotHistory(const QString& pluginId, const QString& commandId)
 }
 
 // 贴到屏幕 on a file's row: the pictures Windows Imaging Component reads
-// (WebP with Windows' codec; a GIF's first frame).
+// (WebP, HEIF, AVIF with Windows' codecs; a GIF's first frame).
 static bool pinnablePicture(const QString& path)
 {
-    static const QStringList kinds {u"png"_s, u"jpg"_s, u"jpeg"_s, u"bmp"_s, u"gif"_s, u"webp"_s};
-    return kinds.contains(QFileInfo(path).suffix().toLower());
+    return isPinnablePicture(path);
 }
 
 // The result model as plugin::Merge writes it: a plugin's whole list goes

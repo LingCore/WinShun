@@ -291,6 +291,9 @@ std::vector<Entry> buildCatalog()
     add(boolean({"Launcher/ExplorerMenu", QT_TRANSLATE_NOOP("AiSettings", "资源管理器右键“用 Win顺 搜索此处”"), "files_and_dialogs", 1,
                     "Adds 用 Win顺 搜索此处 to the right-click menu of folders in File Explorer."},
         &Settings::explorerMenu));
+    add(boolean({"Launcher/ExplorerPinPicture", QT_TRANSLATE_NOOP("AiSettings", "资源管理器右键“贴到屏幕（Win顺）”"), "files_and_dialogs", 1,
+                    "Adds 贴到屏幕（Win顺） to the right-click menu of picture files in File Explorer while the screenshot plugin is on."},
+        &Settings::explorerPinPicture));
     add(boolean({"Launcher/UriProtocol", QT_TRANSLATE_NOOP("AiSettings", "winshun:// 链接"), "files_and_dialogs", 1,
                     "Lets winshun:// links open Win顺: winshun://search/<words> opens the search box with the words typed, "
                     "winshun://settings opens the settings. Links never open or run files."},

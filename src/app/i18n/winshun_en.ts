@@ -631,6 +631,10 @@
         <translation>“Search here with WinShun” in Explorer’s right-click menu</translation>
     </message>
     <message>
+        <source>资源管理器右键“贴到屏幕（Win顺）”</source>
+        <translation>“Pin to screen (WinShun)” in Explorer’s right-click menu</translation>
+    </message>
+    <message>
         <source>winshun:// 链接</source>
         <translation>winshun:// links</translation>
     </message>
@@ -6306,6 +6310,22 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>右键文件夹、文件夹空白处或磁盘，只在那里面搜；Windows 11 在“显示更多选项”里</source>
         <translation>Right-click a folder, a folder’s empty space or a drive to search only in it; on Windows 11 it is under “Show more options”</translation>
+    </message>
+    <message>
+        <source>资源管理器右键“贴到屏幕（Win顺）”</source>
+        <translation>“Pin to screen (WinShun)” in Explorer’s right-click menu</translation>
+    </message>
+    <message>
+        <source>贴到屏幕;贴图;图片;右键;右键菜单;上下文菜单;资源管理器;截图;pin;picture;context menu</source>
+        <translation>pin to screen;pin;picture;image;right-click;context menu;Explorer;screenshot</translation>
+    </message>
+    <message>
+        <source>右键图片文件（PNG、JPG、WebP 等）直接贴到屏幕上置顶；Windows 11 在“显示更多选项”里</source>
+        <translation>Right-click a picture file (PNG, JPG, WebP, etc.) to pin it on top of the screen; on Windows 11 it is under “Show more options”</translation>
+    </message>
+    <message>
+        <source>右键图片文件直接贴到屏幕上置顶；需先在“插件”里启用“截图”插件才会显示</source>
+        <translation>Right-click a picture file to pin it on top of the screen; enable the “Screenshot” plugin in Plugins for it to appear</translation>
     </message>
     <message>
         <source>winshun:// 链接</source>

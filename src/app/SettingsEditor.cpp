@@ -1667,6 +1667,14 @@ void SettingsEditor::setExplorerMenu(bool on)
     commit();
 }
 
+void SettingsEditor::setExplorerPinPicture(bool on)
+{
+    if (m_settings.explorerPinPicture == on)
+        return;
+    m_settings.explorerPinPicture = on;
+    commit();
+}
+
 void SettingsEditor::setUriProtocol(bool on)
 {
     if (m_settings.uriProtocol == on)
