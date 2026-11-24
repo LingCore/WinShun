@@ -17,8 +17,8 @@ QJsonObject translationAnswer(bool ok, const Items& items, const QString& error)
     if (!ok || items.isEmpty())
         return {{u"state"_s, u"failed"_s}, {u"message"_s, error}};
     const Item& first = items.first();
-    if (first.id == u"setup")
-        return {{u"state"_s, u"service"_s}};
+    if (first.id == u"setup") // not set up, or a key the service refused: what to set, in its words
+        return {{u"state"_s, u"service"_s}, {u"message"_s, first.title}};
     if (first.id == u"t" || !first.copy.trimmed().isEmpty())
         return {{u"state"_s, u"ok"_s}, {u"text"_s, first.copy.isEmpty() ? first.title : first.copy}};
     return {{u"state"_s, u"failed"_s},

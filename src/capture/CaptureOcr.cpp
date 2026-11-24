@@ -237,8 +237,9 @@ void CaptureOcr::setTranslation(int ticket, Translated outcome, const QString& t
     case Translated::Failed:
         m_translationNote = text.trimmed().isEmpty() ? tr("翻译失败。") : tr("翻译失败：%1").arg(text.trimmed());
         break;
-    case Translated::NoService:
-        m_translationNote = tr("还没有设置翻译服务，设置好后再点“翻译”。");
+    case Translated::NoService: // `text`: the translate plugin's words on what to set (a key it refused …)
+        m_translationNote = text.trimmed().isEmpty() ? tr("还没有设置翻译服务，设置好后再点“翻译”。")
+                                                     : tr("%1。设置好后再点“翻译”。").arg(text.trimmed());
         m_translationNeeds = u"service"_s;
         break;
     case Translated::NoPlugin:

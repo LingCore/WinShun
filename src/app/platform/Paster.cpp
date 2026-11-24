@@ -1,10 +1,14 @@
 #include "Paster.h"
 
 #include "KeyRouter.h"
+#include "OwnInput.h"
 #include "PasteInput.h"
 
+#include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cwchar>
+#include <memory>
 #include <string_view>
 #include <vector>
 
@@ -15,6 +19,44 @@ namespace {
 bool held(int vk)
 {
     return (::GetAsyncKeyState(vk) & 0x8000) != 0;
+}
+
+// The window reactivate() gives the front to for a moment: 1×1, off every
+// screen, a tool window (no taskbar button). Made on first use, on the
+// thread that pastes (the GUI thread), and kept.
+HWND standIn()
+{
+    static const HWND window = [] {
+        const HINSTANCE instance = ::GetModuleHandleW(nullptr);
+        WNDCLASSEXW type {.cbSize = sizeof(WNDCLASSEXW), .lpfnWndProc = ::DefWindowProcW, .hInstance = instance,
+            .lpszClassName = L"WinShun.PasteStandIn"};
+        ::RegisterClassExW(&type);
+        return ::CreateWindowExW(WS_EX_TOOLWINDOW, type.lpszClassName, L"", WS_POPUP, -32000, -32000, 1, 1,
+            nullptr, nullptr, instance, nullptr);
+    }();
+    return window && ::IsWindow(window) ? window : nullptr;
+}
+
+// The front for a window of this thread, as win::bringToFront gets it:
+// directly when Windows lets this process (it got the latest input), else
+// after an input that does nothing (a mouse event without a move), which
+// makes this process the one that sent the latest input.
+bool takeFront(HWND window)
+{
+    const auto tryIt = [window] {
+        ::SetForegroundWindow(window);
+        return ::GetForegroundWindow() == window;
+    };
+    const auto sendNothing = [] {
+        INPUT nothing {};
+        nothing.type = INPUT_MOUSE;
+        nothing.mi.dwExtraInfo = kOwnInput;
+        ::SendInput(1, &nothing, sizeof nothing);
+    };
+    if (::AllowSetForegroundWindow(::GetCurrentProcessId()) && tryIt())
+        return true;
+    sendNothing();
+    return tryIt();
 }
 
 } // namespace
@@ -54,6 +96,48 @@ bool isForeground(HWND target)
 {
     const HWND foreground = ::GetForegroundWindow();
     return foreground && ::GetAncestor(foreground, GA_ROOT) == target;
+}
+
+bool readsClipboardOnActivation(std::wstring_view program) noexcept
+{
+    static constexpr std::array<std::wstring_view, 2> kPrograms {L"Photoshop.exe", L"Illustrator.exe"};
+    return std::ranges::any_of(kPrograms, [program](std::wstring_view known) {
+        return known.size() == program.size()
+            && ::CompareStringOrdinal(known.data(), static_cast<int>(known.size()), program.data(),
+                   static_cast<int>(program.size()), TRUE)
+            == CSTR_EQUAL;
+    });
+}
+
+bool readsClipboardOnActivation(HWND target)
+{
+    DWORD pid = 0;
+    if (!target || !::GetWindowThreadProcessId(target, &pid) || !pid)
+        return false;
+    const std::unique_ptr<void, decltype(&::CloseHandle)> process(
+        ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid), &::CloseHandle);
+    if (!process)
+        return false;
+    std::array<wchar_t, 1024> path {};
+    auto size = static_cast<DWORD>(path.size());
+    if (!::QueryFullProcessImageNameW(process.get(), 0, path.data(), &size))
+        return false;
+    const std::wstring_view full(path.data(), size);
+    const std::size_t slash = full.find_last_of(L"\\/");
+    return readsClipboardOnActivation(slash == std::wstring_view::npos ? full : full.substr(slash + 1));
+}
+
+bool reactivate(HWND target)
+{
+    const HWND window = standIn();
+    if (!window || !target || !isForeground(target))
+        return false;
+    ::ShowWindow(window, SW_SHOWNOACTIVATE);
+    const bool taken = takeFront(window);
+    if (taken)
+        activate(target); // in front now, Win顺 may give it away
+    ::ShowWindow(window, SW_HIDE);
+    return taken;
 }
 
 Result sendPasteKeys(HWND target, Guard* guard, InputSender send)

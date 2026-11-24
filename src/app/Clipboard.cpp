@@ -54,6 +54,10 @@ constexpr qint64 kFocusWaitMs = 800;
 // In front is not ready yet: the program still has to put its focus back
 // (on its text field), or the paste keys go to its window and are lost.
 constexpr qint64 kSettleMs = 60;
+// Back in front after paste::reactivate: it reads the clipboard as it comes
+// (Photoshop: its Ctrl+V went in with the old picture sent at once, the new
+// one 150 ms after; GitHub #432).
+constexpr qint64 kReactivatedSettleMs = 150;
 constexpr qint64 kClipboardWaitMs = 300; // held open longer than that, the paste goes ahead anyway
 // The search box by a file dialog shows again only once the dialog is back
 // in front.
@@ -184,6 +188,8 @@ Clipboard::Clipboard(ClipStore* store, ClipboardWatcher* watcher, QObject* paren
         const bool front = paste::isForeground(m_pasteWindow);
         if (m_into == Into::CurrentProgram) {
             if (!front) {
+                if (m_reactivated && m_pasteClock.elapsed() < kFocusWaitMs)
+                    return; // given the front back a moment ago: on its way
                 failPaste(tr("内容已复制；窗口已切换，未自动粘贴"));
                 return;
             }
@@ -198,7 +204,7 @@ Clipboard::Clipboard(ClipStore* store, ClipboardWatcher* watcher, QObject* paren
         // In front: a moment more, and while some program has the clipboard
         // open (clipboard history, other managers read each new copy): the
         // target's Ctrl+V finds it held and pastes nothing (pitfalls.md).
-        if (front ? m_frontClock.elapsed() < kSettleMs
+        if (front ? m_frontClock.elapsed() < (m_reactivated ? kReactivatedSettleMs : kSettleMs)
                         || (::GetOpenClipboardWindow() && m_frontClock.elapsed() < kClipboardWaitMs)
                   : m_pasteClock.elapsed() < kFocusWaitMs)
             return;
@@ -245,7 +251,7 @@ Clipboard::Clipboard(ClipStore* store, ClipboardWatcher* watcher, QObject* paren
             const auto result = paste::sendPasteKeys(m_pasteWindow, guard.get());
             diagnostics::record(u"clipboard-paste"_s,
                 {{u"sent"_s, int(result.sent)}, {u"requested"_s, int(result.requested)},
-                 {u"error"_s, qint64(result.error)},
+                 {u"error"_s, qint64(result.error)}, {u"reactivated"_s, m_reactivated},
                  {u"method"_s, result.method == paste::Result::Method::EditMessage ? u"edit-message"_s
                      : result.method == paste::Result::Method::Keys ? u"keys"_s : u"failed"_s}});
             if (!result)
@@ -1085,6 +1091,7 @@ ClipWrite Clipboard::writeFor(
 void Clipboard::startPaste(ClipWrite write, Into into, std::vector<qint64> touched, QString done)
 {
     m_pasting = true;
+    m_reactivated = false;
     m_write = std::move(write);
     m_into = into;
     m_pasteGuard = into == Into::Program ? std::move(m_nextGuard) : nullptr;
@@ -1147,6 +1154,7 @@ void Clipboard::onWritten(bool ok)
         }
         m_pasteClock.restart();
         m_frontClock.start();
+        reactivateTarget();
         m_focusTimer.start();
         return;
     }
@@ -1162,12 +1170,28 @@ void Clipboard::onWritten(bool ok)
     if ((m_keysRouted || m_pinned) && paste::isForeground(m_pasteWindow)) {
         emit dismissRequested();
         m_frontClock.start();
+        reactivateTarget(); // the keys are its own again (App, as the window went)
         m_focusTimer.start();
         return;
     }
     paste::activate(m_pasteWindow); // the clipboard window loses the focus and goes (App)
     m_frontClock.invalidate();
     m_focusTimer.start();
+}
+
+void Clipboard::reactivateTarget()
+{
+    // Never left the front, it would paste what it read as it came there,
+    // not what was just put on the clipboard (Photoshop, GitHub #432).
+    if (!paste::readsClipboardOnActivation(m_pasteWindow))
+        return;
+    m_reactivated = paste::reactivate(m_pasteWindow);
+    if (m_reactivated) {
+        m_frontClock.invalidate(); // started again once it is back
+        qInfo("Clipboard: the target reads the clipboard as it comes to the front: given the front again");
+    } else {
+        qInfo("Clipboard: could not make the target read the clipboard again (the front was refused)");
+    }
 }
 
 void Clipboard::returnToField(QString text)

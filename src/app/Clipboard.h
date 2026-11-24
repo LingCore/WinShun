@@ -478,6 +478,7 @@ private:
     void storeImage(const QByteArray& png, const QByteArray& hash, QSize size, bool remember, bool screenshot,
         const QByteArray& project, bool toClipboard, const QString& imageOrigin);
     void onWritten(bool ok);
+    void reactivateTarget(); // m_pasteWindow, in front all along, if it reads the clipboard only as it comes
     void returnToField(QString text); // `text` typed into it; none: Esc
     void fillField(); // it has the keyboard again (or waited long enough)
     void dropUndo();
@@ -589,6 +590,9 @@ private:
     std::unique_ptr<paste::Guard> m_pasteGuard; // the hook its keys go past (a hold's paste)
     QElapsedTimer m_pasteClock;
     QElapsedTimer m_frontClock; // since the target came to the front
+    // The target, in front all along, was made to leave it and come back
+    // (paste::reactivate): it reads the clipboard only as it comes (#432).
+    bool m_reactivated = false;
     QTimer m_keysTimer; // waits for the modifier keys to be let go
     QTimer m_focusTimer; // waits for the target to be in front
     // Going back to a field: it, and the text that goes in.

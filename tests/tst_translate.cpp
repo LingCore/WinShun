@@ -538,19 +538,46 @@ private slots:
     void statusRowCutsTheServicesWords()
     {
         std::string said(500, 'x');
-        const winshun::Item a = tr::statusRow(401, "{\"error\":{\"message\":\"" + said + "\"}}", false);
-        QCOMPARE(QString::fromStdString(a.title), QString::fromUtf8("The service answered 401"));
+        const winshun::Item a = tr::statusRow(404, "{\"error\":{\"message\":\"" + said + "\"}}", false);
+        QCOMPARE(QString::fromStdString(a.title), QString::fromUtf8("The service answered 404"));
         QCOMPARE(a.subtitle.size(), std::size_t(200));
         QVERIFY(!a.valid);
         std::string han;
         for (int i = 0; i < 250; ++i)
             han += "\xE6\xB5\x8B";
         const winshun::Item b = tr::statusRow(500, han, true);
-        QCOMPARE(QString::fromStdString(b.title), QString::fromUtf8("接口返回 500"));
+        QCOMPARE(QString::fromStdString(b.title), QString::fromUtf8("翻译服务暂时出错（接口返回 500），稍后再试"));
         QVERIFY(validUtf8(b.subtitle));
         QCOMPARE(b.subtitle.size(), std::size_t(600));
         // The body of a failing answer that is not JSON.
         QCOMPARE(QString::fromStdString(tr::statusRow(502, "Bad Gateway", true).subtitle), QString::fromUtf8("Bad Gateway"));
+    }
+
+    // GitHub #444: a key the service refused is a setting to fix, not a
+    // failure: a "setup" row (translate_text tries the next translate plugin
+    // and the screenshot's Translate offers the settings), Enter opens them.
+    void statusRowSaysWhatToDo()
+    {
+        const std::string body = "{\"error\":{\"message\":\"Incorrect API key provided: sk-u***. You can find your API key at https://console.cloud.tencent.com/hunyuan/start.\"}}";
+        for (const long status : {401L, 403L}) {
+            const winshun::Item key = tr::statusRow(status, body, true);
+            QCOMPARE(QString::fromStdString(key.id), QString::fromUtf8("setup"));
+            QCOMPARE(QString::fromStdString(key.title), QString::fromUtf8("翻译服务的密钥不对或没有权限（接口返回 %1）").arg(status));
+            QVERIFY(QString::fromStdString(key.subtitle).startsWith(QString::fromUtf8("Enter 打开设置 → 插件 → 翻译，重新填密钥 · Incorrect API key provided")));
+            QCOMPARE(key.open["url"].toString(), std::string("winshun:settings"));
+            QVERIFY(key.valid);
+        }
+        const winshun::Item english = tr::statusRow(401, "", false);
+        QCOMPARE(QString::fromStdString(english.title), QString::fromUtf8("The translation service refused the key (401)"));
+        QCOMPARE(QString::fromStdString(english.subtitle), QString::fromUtf8("Enter opens Settings → Plugins → Translate to enter the key again"));
+
+        QCOMPARE(QString::fromStdString(tr::statusRow(402, "", true).title), QString::fromUtf8("翻译服务的余额不足（接口返回 402）"));
+        QCOMPARE(QString::fromStdString(tr::statusRow(429, "", true).title), QString::fromUtf8("请求太多或额度用完了（接口返回 429），稍后再试"));
+        QCOMPARE(QString::fromStdString(tr::statusRow(503, "", false).title), QString::fromUtf8("The translation service failed (503): try again later"));
+        for (const long status : {402L, 429L, 503L}) {
+            QCOMPARE(QString::fromStdString(tr::statusRow(status, "", true).id), QString::fromUtf8("error"));
+            QVERIFY(!tr::statusRow(status, "", true).valid);
+        }
     }
 
     void subtitlesByLocale()

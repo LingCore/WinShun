@@ -929,8 +929,8 @@ capture::CaptureOcr& CaptureApp::captureOcr()
                 const QString state = answer.value(u"state"_s).toString();
                 if (state == u"ok")
                     self->m_captureOcr->setTranslation(ticket, Translated::Done, answer.value(u"text"_s).toString());
-                else if (state == u"service")
-                    self->m_captureOcr->setTranslation(ticket, Translated::NoService, {});
+                else if (state == u"service") // with why from a newer Win顺: a key the service refused (GitHub #444)
+                    self->m_captureOcr->setTranslation(ticket, Translated::NoService, answer.value(u"message"_s).toString());
                 else if (state == u"plugin")
                     self->m_captureOcr->setTranslation(ticket, answer.value(u"off"_s).toBool() ? Translated::PluginOff : Translated::NoPlugin, {});
                 else

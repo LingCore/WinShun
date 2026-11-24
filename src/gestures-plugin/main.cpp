@@ -420,6 +420,7 @@ private:
             t.text = winshun::wide(answer["text"].toString());
         } else if (state == "service") {
             t.state = gestures::Translation::State::NoService;
+            t.text = winshun::wide(answer["message"].toString()); // what to set, from a newer Win顺 (GitHub #444)
         } else if (state == "plugin") {
             t.state = gestures::Translation::State::NoPlugin;
         } else {

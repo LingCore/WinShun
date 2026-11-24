@@ -2384,6 +2384,10 @@ The unfinished recording is kept at: %1</translation>
         <translation>No translation service is set up yet. Set one up, then choose Translate again.</translation>
     </message>
     <message>
+        <source>%1。设置好后再点“翻译”。</source>
+        <translation>%1. Set it up, then choose Translate again.</translation>
+    </message>
+    <message>
         <source>需要插件库里的“翻译”插件，装好后再点“翻译”。</source>
         <translation>This needs the Translate plugin from the plugin library. Install it, then choose Translate again.</translation>
     </message>

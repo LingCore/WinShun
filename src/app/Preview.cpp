@@ -14294,7 +14294,20 @@ int runRuntime(const QStringList& args)
         }
         settings.pastePlainHotkey = QString(kPastePlainProbeChord);
     }
+    const bool activationPaste = args.contains(u"--activation-paste-check"_s);
+    if (activationPaste) { // GitHub #432: the clipboard's own chord, nobody else's
+        if (!activationPasteChordFree()) {
+            qWarning("activation paste: %s is someone else's already", qPrintable(QString(kActivationPasteProbeChord)));
+            return 4;
+        }
+        settings.clipboard = true;
+        settings.clipboardHotkey = QString(kActivationPasteProbeChord);
+    }
     settings.save(); // prepared profiles normally skip onboarding
+    if (activationPaste
+        && !seedActivationPastePicture(Settings::dataDir() + u"/clipboard"_s,
+            std::clamp(valueAfter(args, u"--picture-width", u"240"_s).toInt(), 16, 6000)))
+        return 4;
     if (!scopeLeft.isEmpty()) {
         QSettings state(Settings::dataDir() + u"/state.ini"_s, QSettings::IniFormat);
         state.setValue(u"Search/Scope"_s, scopeLeft);
@@ -14389,6 +14402,7 @@ int runRuntime(const QStringList& args)
             if ((args.contains(u"--idle-open-check"_s) || args.contains(u"--foreground-use-check"_s) || args.contains(u"--live"_s)
                     || args.contains(u"--clipboard-animation-check"_s) || args.contains(u"--settings-motion-check"_s)
                     || args.contains(u"--search-shadow-check"_s) || args.contains(u"--paste-plain-check"_s)
+                    || args.contains(u"--activation-paste-check"_s)
                     || args.contains(u"--launcher-settings-check"_s) || args.contains(u"--launcher-open-check"_s))
                 && profile.fileName().startsWith(u"WinShun-preview-")
                 && QDir::cleanPath(profile.absolutePath()).compare(QDir::cleanPath(QDir::tempPath()), Qt::CaseInsensitive) == 0)
@@ -14459,6 +14473,8 @@ int runRuntime(const QStringList& args)
             return checkSearchShadow(app, args, out) ? 0 : 4; // its profile likewise
         if (args.contains(u"--paste-plain-check"_s))
             return checkPastePlain(app, args, out) ? 0 : 4; // its profile likewise
+        if (args.contains(u"--activation-paste-check"_s))
+            return checkActivationPaste(app, args, out) ? 0 : 4; // its profile likewise
         if (args.contains(u"--settings-reopen-check"_s))
             return probeSettingsReopen(app, args, out, report) ? 0 : 4;
         if (args.contains(u"--settings-motion-check"_s))

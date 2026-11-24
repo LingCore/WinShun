@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <span>
+#include <string_view>
 
 // Pasting into another program the way the user would: bring its window back
 // to the front and press its paste keys there (SendInput). Elevated programs
@@ -23,6 +24,23 @@ HWND usableTarget(HWND window);
 // Makes `target` the foreground window. Works while Win顺 is in front.
 void activate(HWND target);
 bool isForeground(HWND target);
+
+// Programs that read the clipboard only as they come to the front, and
+// paste what they read then: a copy put on the clipboard while one stays
+// in front (the clipboard opened over it, its keys routed) is not what its
+// Ctrl+V pastes (Photoshop, measured: GitHub #432; Windows' own Win+V
+// history has the same trouble there). Illustrator imports the same way.
+// By the name of the program's file, in any case.
+bool readsClipboardOnActivation(std::wstring_view program) noexcept;
+bool readsClipboardOnActivation(HWND target);
+
+// For those: `target`, in front, loses the front to a window of Win顺's own
+// that is never seen (1×1, off every screen, no taskbar button) and is given
+// it straight back, as a click elsewhere and back would, so that it reads
+// the clipboard again. It is in front again a moment later (asynchronously):
+// wait for that before its paste keys. False when the front could not be
+// taken (nothing changed then): `target` not in front, or Windows refused.
+bool reactivate(HWND target);
 
 // A low-level hook of Win顺's own that the paste keys pass, in order with the
 // user's keys (HoldWatch, the paste a hold ends with): the modifiers stay as

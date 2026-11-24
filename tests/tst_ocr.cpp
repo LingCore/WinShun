@@ -159,6 +159,10 @@ private slots:
         answer(CaptureOcr::Translated::NoService, {});
         QCOMPARE(reader.translationNeeds(), u"service"_s);
         QVERIFY(reader.translationShown() && !reader.translationNote().isEmpty());
+        // The translate plugin said what to set (a key the service refused: #444).
+        answer(CaptureOcr::Translated::NoService, u"翻译服务的密钥不对或没有权限（接口返回 401）"_s);
+        QCOMPARE(reader.translationNeeds(), u"service"_s);
+        QVERIFY2(reader.translationNote().startsWith(u"翻译服务的密钥不对或没有权限（接口返回 401）"_s), qPrintable(reader.translationNote()));
         answer(CaptureOcr::Translated::NoPlugin, {});
         QCOMPARE(reader.translationNeeds(), u"plugin"_s);
         answer(CaptureOcr::Translated::PluginOff, {}); // installed but off (#340): turn it on, not install it again
