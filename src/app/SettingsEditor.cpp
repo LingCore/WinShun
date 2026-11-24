@@ -1368,6 +1368,38 @@ void SettingsEditor::setDialogBarSuggestions(bool on)
     commit();
 }
 
+void SettingsEditor::setDialogBarSuggestOpen(bool on)
+{
+    if (m_settings.dialogBarSuggestOpen == on)
+        return;
+    m_settings.dialogBarSuggestOpen = on;
+    commit();
+}
+
+void SettingsEditor::setDialogBarSuggestClipboard(bool on)
+{
+    if (m_settings.dialogBarSuggestClipboard == on)
+        return;
+    m_settings.dialogBarSuggestClipboard = on;
+    commit();
+}
+
+void SettingsEditor::setDialogBarSuggestFavorites(bool on)
+{
+    if (m_settings.dialogBarSuggestFavorites == on)
+        return;
+    m_settings.dialogBarSuggestFavorites = on;
+    commit();
+}
+
+void SettingsEditor::setDialogBarSuggestRecent(bool on)
+{
+    if (m_settings.dialogBarSuggestRecent == on)
+        return;
+    m_settings.dialogBarSuggestRecent = on;
+    commit();
+}
+
 void SettingsEditor::setDialogJump(bool on)
 {
     if (m_settings.dialogJump == on)

@@ -996,6 +996,22 @@ private slots:
         const Plan bad = makePlan(state, one(u"Appearance/SettingsEdgeScroll"_s, u"turbo"_s), {});
         QVERIFY(!bad.problems.isEmpty());
     }
+
+    void dialogBarSuggestionSources()
+    {
+        const State state = defaultState();
+        // #438: all four dialog suggestion sources can be turned off together.
+        QJsonArray allDialogOff;
+        for (const QString& key : {u"Launcher/DialogBarSuggestOpen"_s, u"Launcher/DialogBarSuggestClipboard"_s,
+                 u"Launcher/DialogBarSuggestFavorites"_s, u"Launcher/DialogBarSuggestRecent"_s}) {
+            allDialogOff.append(QJsonObject {{u"key"_s, key}, {u"value"_s, false}});
+        }
+        const Plan dialogPlan = makePlan(state, allDialogOff, {});
+        QVERIFY2(dialogPlan.problems.isEmpty(), qPrintable(problemText(dialogPlan)));
+        QVERIFY(!dialogPlan.result.settings.dialogBarSuggestOpen && !dialogPlan.result.settings.dialogBarSuggestClipboard
+            && !dialogPlan.result.settings.dialogBarSuggestFavorites && !dialogPlan.result.settings.dialogBarSuggestRecent);
+    }
+
 };
 
 QTEST_GUILESS_MAIN(AiSettingsTest)

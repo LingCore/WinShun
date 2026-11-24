@@ -2,6 +2,7 @@
 
 #include "DialogBarVisibility.h"
 #include "DialogBarPlacement.h"
+#include "DialogBarSuggestions.h"
 #include "Favorites.h"
 #include "History.h"
 #include "PathText.h"
@@ -146,6 +147,7 @@ public:
     // none does. A side set: the dialog is made smaller (or moved) for room
     // there.
     using Place = dialogbar::Side;
+    using SuggestionSources = dialogbar::SuggestionSources;
 
     // Takes a dialog to a folder or a file (DialogJump::go).
     using Mover = std::function<void(HWND dialog, std::wstring path, bool isFile, bool open)>;
@@ -171,9 +173,13 @@ public:
     // Settings::dialogBarSuggestions (GitHub #417). Off: with nothing typed,
     // no list until asked for (askSuggestions).
     void setSuggestOnFocus(bool on);
+    // Which sources populate the empty-query suggestion list (GitHub #438).
+    // Disabled sources never appear, even on ↓, without affecting search.
+    void setSuggestionSources(SuggestionSources sources);
+    SuggestionSources suggestionSources() const noexcept { return m_suggestSources; }
     // ↓ with nothing typed and no list: the suggestions after all, until the
-    // bar loses the focus. False when they are up already (or something is
-    // typed): ↓ moves in the list.
+    // bar loses the focus. False when they are up already, no source is
+    // enabled, or something is typed: ↓ moves in the list.
     Q_INVOKABLE bool askSuggestions();
     void setResultOptions(bool showModified, bool thumbnails, const QString& numberKeys); // Settings: "ctrl", "alt", "off"
     // Settings::numberHints, letterJump, letterJumpKey, letterJumpKeys.
@@ -297,7 +303,7 @@ private:
     void search();
     void browse(const pathtext::TypedPath& typed); // in the background
     void showSuggestions(bool refresh = false); // nothing typed; `refresh`: the list was already up
-    bool suggesting() const { return m_suggestOnFocus || m_suggestionsAsked; }
+    bool suggesting() const { return dialogbar::shouldSuggest(m_suggestSources, m_suggestOnFocus, m_suggestionsAsked); }
     // The rows to show and the tag of each; `refresh`: keep the selection if nothing changed.
     void setRows(SearchResults rows, QStringList tags, const QStringList& highlights, bool refresh = false);
     void lookAround(); // the file managers' folders, the recent ones and the rest, in the background
@@ -371,6 +377,7 @@ private:
     std::atomic<int> m_lookups {0}; // the newest lookAround() wins
 
     bool m_suggestOnFocus = true; // see setSuggestOnFocus
+    SuggestionSources m_suggestSources; // see setSuggestionSources
     bool m_suggestionsAsked = false; // ... and askSuggestions
     int m_rows = 0;
     bool m_listAbove = false;

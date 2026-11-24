@@ -6688,7 +6688,7 @@ Window {
                     id: dialogBarRow
                     title: qsTr("对话框旁的搜索框")
                     keywords: qsTr("对话框;另存为;打开文件;保存").split(";")
-                    unlocks: [dialogBarPlaceRow, dialogBarSuggestionsRow]
+                    unlocks: [dialogBarPlaceRow, dialogBarSuggestionsRow, dialogBarSuggestionSourcesRow]
                     description: qsTr("在“打开”“另存为”旁搜文件夹和文件，选中后直接转过去")
 
                     ToggleSwitch {
@@ -6707,6 +6707,7 @@ Window {
                     description: qsTr("“自动”时放在下方，放不下就换到旁边")
 
                     ScopeTabs {
+                        dpr: window.dpr
                         labels: [qsTr("自动"), qsTr("下方"), qsTr("左边"), qsTr("右边")]
                         current: Math.max(0, window.dialogBarPlaces.indexOf(window.editor.dialogBarPlace))
                         onActivated: (index) => window.editor.dialogBarPlace = window.dialogBarPlaces[index]
@@ -6717,14 +6718,53 @@ Window {
                     id: dialogBarSuggestionsRow
                     sub: true
                     shown: window.editor.dialogBar
+                    readonly property bool anySource: window.editor.dialogBarSuggestOpen
+                                                   || window.editor.dialogBarSuggestClipboard
+                                                   || window.editor.dialogBarSuggestFavorites
+                                                   || window.editor.dialogBarSuggestRecent
                     title: qsTr("点进来就列出常用位置")
                     keywords: qsTr("最近;常用;隐私;建议;列表;对话框").split(";")
-                    description: qsTr("文件管理器开着的、收藏的和最近用过的文件夹。关掉后打字才列出，按 ↓ 也能列出")
+                    description: anySource
+                                 ? qsTr("点进空白搜索框立即列出下方勾选的位置；关掉后打字才出结果，按 ↓ 仍可展开")
+                                 : qsTr("下方未勾选任何常用位置来源；勾选后生效")
 
                     ToggleSwitch {
+                        objectName: "dialogBarSuggestionsToggle"
                         dpr: window.dpr
                         checked: window.editor.dialogBarSuggestions
+                        Accessible.name: qsTr("点进来就列出常用位置")
                         onToggled: (on) => window.editor.dialogBarSuggestions = on
+                    }
+                }
+
+                SettingRow {
+                    id: dialogBarSuggestionSourcesRow
+                    sub: true
+                    shown: window.editor.dialogBar
+                    stackControl: true
+                    title: qsTr("常用位置里列出的内容")
+                    keywords: qsTr("常用位置;弹出;已打开;目录;文件夹;剪贴板;收藏夹;最近;隐私;对话框;open;clipboard;favorites;recent;privacy").split(";")
+                    description: qsTr("未勾选的不会列出，按 ↓ 也不会显示，不影响搜索；全部取消则只保留搜索")
+
+                    ScopeTabs {
+                        objectName: "dialogBarSuggestionSourcesTabs"
+                        multiSelect: true
+                        dpr: window.dpr
+                        labels: [qsTr("已打开文件夹"), qsTr("剪贴板"), qsTr("收藏夹"), qsTr("最近使用")]
+                        checkedIndices: {
+                            const list = []
+                            if (window.editor.dialogBarSuggestOpen) list.push(0)
+                            if (window.editor.dialogBarSuggestClipboard) list.push(1)
+                            if (window.editor.dialogBarSuggestFavorites) list.push(2)
+                            if (window.editor.dialogBarSuggestRecent) list.push(3)
+                            return list
+                        }
+                        onToggled: (index, on) => {
+                            if (index === 0) window.editor.dialogBarSuggestOpen = on
+                            else if (index === 1) window.editor.dialogBarSuggestClipboard = on
+                            else if (index === 2) window.editor.dialogBarSuggestFavorites = on
+                            else if (index === 3) window.editor.dialogBarSuggestRecent = on
+                        }
                     }
                 }
 

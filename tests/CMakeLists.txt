@@ -1863,3 +1863,13 @@ add_test(NAME tst_picturewrite COMMAND tst_picturewrite -o -,txt)
 set_tests_properties(tst_picturewrite PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
+# Dialog search bar suggestion sources (#438): selective source filtering,
+# deduplication, folder-picker gating, and all-off blocking focus and Down.
+qt_add_executable(tst_dialogbarsuggestions tst_dialogbarsuggestions.cpp)
+target_include_directories(tst_dialogbarsuggestions PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_link_libraries(tst_dialogbarsuggestions PRIVATE wscore Qt6::Test)
+set_target_properties(tst_dialogbarsuggestions PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_dialogbarsuggestions COMMAND tst_dialogbarsuggestions -o -,txt)
+set_tests_properties(tst_dialogbarsuggestions PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")

@@ -5179,6 +5179,8 @@ void App::applyDialogs()
         m_dialogBar->setPlace(m_settings.dialogBarPlace);
         m_dialogBar->setFolderOnly(m_settings.dialogBarFolderOnly);
         m_dialogBar->setSuggestOnFocus(m_settings.dialogBarSuggestions);
+        m_dialogBar->setSuggestionSources({m_settings.dialogBarSuggestOpen, m_settings.dialogBarSuggestClipboard,
+            m_settings.dialogBarSuggestFavorites, m_settings.dialogBarSuggestRecent});
         m_dialogBar->setResultOptions(m_settings.showModified, m_settings.thumbnails, m_settings.numberKeys);
         m_dialogBar->setNumberHints(m_settings.numberHints);
         m_dialogBar->setLetterJump(m_settings.letterJump, m_settings.letterJumpKey, m_settings.letterJumpKeys);

@@ -140,6 +140,13 @@ Rectangle {
                 height: tabs.shownTabHeight
                 radius: Theme.largeControlRadius
                 clip: true
+                Accessible.role: tabs.multiSelect ? Accessible.CheckBox : Accessible.RadioButton
+                Accessible.name: tab.modelData
+                Accessible.checked: tab.active
+                Accessible.onPressAction: if (!tab.off) {
+                    if (tabs.multiSelect) tabs.toggled(tab.index, !tab.isChecked)
+                    else tabs.activated(tab.index)
+                }
                 // One choice: the segmented part draws the chip under the words.
                 color: tabs.segmentedPart ? "transparent" : active ? Theme.chipActive : area.containsMouse ? Theme.chipHover : "transparent"
                 border.width: active && !tabs.segmentedPart ? Theme.edge(tabs.dpr) : 0

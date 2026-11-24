@@ -2306,6 +2306,57 @@ private slots:
         fallback.load();
         QCOMPARE(fallback.settingsEdgeScroll, u"standard"_s);
     }
+
+    // GitHub #438: dialog bar empty-query sources default all on, persist
+    // selectively (including all off), and default on when upgrading old INIs.
+    void dialogBarSuggestionSourcesPreference()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+
+        ws::Settings fresh;
+        fresh.load();
+        QVERIFY(fresh.dialogBarSuggestOpen);
+        QVERIFY(fresh.dialogBarSuggestClipboard);
+        QVERIFY(fresh.dialogBarSuggestFavorites);
+        QVERIFY(fresh.dialogBarSuggestRecent);
+
+        fresh.dialogBarSuggestClipboard = false;
+        fresh.dialogBarSuggestRecent = false;
+        QVERIFY(fresh.saveChecked());
+        ws::Settings partial;
+        partial.load();
+        QVERIFY(partial.dialogBarSuggestOpen);
+        QVERIFY(!partial.dialogBarSuggestClipboard);
+        QVERIFY(partial.dialogBarSuggestFavorites);
+        QVERIFY(!partial.dialogBarSuggestRecent);
+
+        // All four off is valid (search-only dialog bar).
+        partial.dialogBarSuggestOpen = false;
+        partial.dialogBarSuggestFavorites = false;
+        QVERIFY(partial.saveChecked());
+        ws::Settings none;
+        none.load();
+        QVERIFY(!none.dialogBarSuggestOpen);
+        QVERIFY(!none.dialogBarSuggestClipboard);
+        QVERIFY(!none.dialogBarSuggestFavorites);
+        QVERIFY(!none.dialogBarSuggestRecent);
+
+        QTemporaryDir older;
+        QVERIFY(older.isValid());
+        ws::Settings::useProfile(older.path());
+        {
+            QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+            ini.setValue(u"Launcher/DialogBarSuggestions"_s, true);
+            ini.sync();
+        }
+        ws::Settings upgraded;
+        upgraded.load();
+        QVERIFY(upgraded.dialogBarSuggestOpen && upgraded.dialogBarSuggestClipboard
+            && upgraded.dialogBarSuggestFavorites && upgraded.dialogBarSuggestRecent);
+    }
+
 };
 
 QTEST_GUILESS_MAIN(SettingsTest)

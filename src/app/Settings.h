@@ -126,6 +126,12 @@ struct Settings {
     // abrupt, and seen by whoever looks on), the list waits for typing; ↓
     // brings it. Also turned on and off in the bar's own menu.
     bool dialogBarSuggestions = true;
+    // Which sources populate the dialog bar's empty-query list (GitHub #438).
+    // Unchecked sources never appear, even on ↓, without affecting search.
+    bool dialogBarSuggestOpen = true;
+    bool dialogBarSuggestClipboard = true;
+    bool dialogBarSuggestFavorites = true;
+    bool dialogBarSuggestRecent = true;
     bool dialogAutoJump = false; // file dialogs go to the folder open in a file manager by themselves
     // open | back: as a dialog comes up, or only when the user comes back to
     // it from the file manager (GitHub #14: it opens where Windows left it).

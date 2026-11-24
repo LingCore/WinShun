@@ -67,6 +67,10 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool dialogBar READ dialogBar WRITE setDialogBar NOTIFY changed FINAL)
     Q_PROPERTY(QString dialogBarPlace READ dialogBarPlace WRITE setDialogBarPlace NOTIFY changed FINAL)
     Q_PROPERTY(bool dialogBarSuggestions READ dialogBarSuggestions WRITE setDialogBarSuggestions NOTIFY changed FINAL)
+    Q_PROPERTY(bool dialogBarSuggestOpen READ dialogBarSuggestOpen WRITE setDialogBarSuggestOpen NOTIFY changed FINAL)
+    Q_PROPERTY(bool dialogBarSuggestClipboard READ dialogBarSuggestClipboard WRITE setDialogBarSuggestClipboard NOTIFY changed FINAL)
+    Q_PROPERTY(bool dialogBarSuggestFavorites READ dialogBarSuggestFavorites WRITE setDialogBarSuggestFavorites NOTIFY changed FINAL)
+    Q_PROPERTY(bool dialogBarSuggestRecent READ dialogBarSuggestRecent WRITE setDialogBarSuggestRecent NOTIFY changed FINAL)
     Q_PROPERTY(bool dialogAutoJump READ dialogAutoJump WRITE setDialogAutoJump NOTIFY changed FINAL)
     Q_PROPERTY(QString dialogAutoJumpWhen READ dialogAutoJumpWhen WRITE setDialogAutoJumpWhen NOTIFY changed FINAL)
     Q_PROPERTY(QStringList dialogBarExcludedApps READ dialogBarExcludedApps NOTIFY changed FINAL)
@@ -474,6 +478,14 @@ public:
     void setDialogBarPlace(const QString& place);
     bool dialogBarSuggestions() const { return m_settings.dialogBarSuggestions; }
     void setDialogBarSuggestions(bool on);
+    bool dialogBarSuggestOpen() const { return m_settings.dialogBarSuggestOpen; }
+    void setDialogBarSuggestOpen(bool on);
+    bool dialogBarSuggestClipboard() const { return m_settings.dialogBarSuggestClipboard; }
+    void setDialogBarSuggestClipboard(bool on);
+    bool dialogBarSuggestFavorites() const { return m_settings.dialogBarSuggestFavorites; }
+    void setDialogBarSuggestFavorites(bool on);
+    bool dialogBarSuggestRecent() const { return m_settings.dialogBarSuggestRecent; }
+    void setDialogBarSuggestRecent(bool on);
     bool dialogAutoJump() const { return m_settings.dialogAutoJump; }
     void setDialogAutoJump(bool on);
     QString dialogAutoJumpWhen() const { return m_settings.dialogAutoJumpWhen; }

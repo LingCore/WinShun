@@ -891,6 +891,26 @@
         <translation>List common places on click</translation>
     </message>
     <message>
+        <source>对话框常用位置列出已打开的文件夹</source>
+        <translation>Dialog bar suggestions: open folders</translation>
+    </message>
+    <message>
+        <source>对话框常用位置列出剪贴板路径</source>
+        <translation>Dialog bar suggestions: clipboard path</translation>
+    </message>
+    <message>
+        <source>对话框常用位置列出收藏夹</source>
+        <translation>Dialog bar suggestions: favorites</translation>
+    </message>
+    <message>
+        <source>对话框常用位置列出最近使用的文件夹</source>
+        <translation>Dialog bar suggestions: recent folders</translation>
+    </message>
+    <message>
+        <source>常用位置里列出的内容</source>
+        <translation>What common places to list</translation>
+    </message>
+    <message>
         <source>宽松</source>
         <translation>Roomy</translation>
     </message>
@@ -8944,8 +8964,32 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>recent;common;privacy;suggestions;list;dialog</translation>
     </message>
     <message>
-        <source>文件管理器开着的、收藏的和最近用过的文件夹。关掉后打字才列出，按 ↓ 也能列出</source>
-        <translation>Folders open in file managers, favorites and recently used ones. Off: listed once you type, or with ↓</translation>
+        <source>点进空白搜索框立即列出下方勾选的位置；关掉后打字才出结果，按 ↓ 仍可展开</source>
+        <translation>Lists the sources checked below as soon as you click into the empty bar. Off: results appear once you type, or on ↓</translation>
+    </message>
+    <message>
+        <source>下方未勾选任何常用位置来源；勾选后生效</source>
+        <translation>No suggestion source is checked below; check one to enable</translation>
+    </message>
+    <message>
+        <source>常用位置里列出的内容</source>
+        <translation>What common places to list</translation>
+    </message>
+    <message>
+        <source>常用位置;弹出;已打开;目录;文件夹;剪贴板;收藏夹;最近;隐私;对话框;open;clipboard;favorites;recent;privacy</source>
+        <translation>common places;popup;open;folders;clipboard;favorites;recent;privacy;dialog</translation>
+    </message>
+    <message>
+        <source>未勾选的不会列出，按 ↓ 也不会显示，不影响搜索；全部取消则只保留搜索</source>
+        <translation>Unchecked sources never appear, even on ↓, without affecting search; uncheck all for search only</translation>
+    </message>
+    <message>
+        <source>已打开文件夹</source>
+        <translation>Open folders</translation>
+    </message>
+    <message>
+        <source>最近使用</source>
+        <translation>Recent</translation>
     </message>
     <message>
         <source>剪贴板大小</source>

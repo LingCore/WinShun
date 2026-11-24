@@ -442,9 +442,33 @@ std::vector<Entry> buildCatalog()
     }
     {
         Entry& e = add(boolean({"Launcher/DialogBarSuggestions", QT_TRANSLATE_NOOP("AiSettings", "点进对话框旁的搜索框就列出常用位置"), "files_and_dialogs", 3,
-                                   "Clicked into with nothing typed, the dialog search bar lists the folders open in file managers, favorites and recent folders. Off: nothing until typing (or the Down key)."},
+                                   "Clicked into with nothing typed, the dialog search bar lists the enabled suggestion sources. Off: nothing until typing (or the Down key)."},
             &Settings::dialogBarSuggestions));
         e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "点进来就列出常用位置");
+    }
+    {
+        Entry& e = add(boolean({"Launcher/DialogBarSuggestOpen", QT_TRANSLATE_NOOP("AiSettings", "对话框常用位置列出已打开的文件夹"), "files_and_dialogs", 3,
+                                   "Include folders currently open in file managers in the dialog search bar's empty-query list. Off: never listed there, even on Down."},
+            &Settings::dialogBarSuggestOpen));
+        e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "常用位置里列出的内容");
+    }
+    {
+        Entry& e = add(boolean({"Launcher/DialogBarSuggestClipboard", QT_TRANSLATE_NOOP("AiSettings", "对话框常用位置列出剪贴板路径"), "files_and_dialogs", 3,
+                                   "Include a file or folder path from the clipboard in the dialog search bar's empty-query list. Off: never listed there, even on Down."},
+            &Settings::dialogBarSuggestClipboard));
+        e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "常用位置里列出的内容");
+    }
+    {
+        Entry& e = add(boolean({"Launcher/DialogBarSuggestFavorites", QT_TRANSLATE_NOOP("AiSettings", "对话框常用位置列出收藏夹"), "files_and_dialogs", 3,
+                                   "Include favorites in the dialog search bar's empty-query list. Off: never listed there, even on Down."},
+            &Settings::dialogBarSuggestFavorites));
+        e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "常用位置里列出的内容");
+    }
+    {
+        Entry& e = add(boolean({"Launcher/DialogBarSuggestRecent", QT_TRANSLATE_NOOP("AiSettings", "对话框常用位置列出最近使用的文件夹"), "files_and_dialogs", 3,
+                                   "Include recently used folders in the dialog search bar's empty-query list. Off: never listed there, even on Down."},
+            &Settings::dialogBarSuggestRecent));
+        e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "常用位置里列出的内容");
     }
     {
         Entry& e = add(boolean({"Launcher/DialogAutoJump", QT_TRANSLATE_NOOP("AiSettings", "对话框自动转到文件管理器的文件夹"), "files_and_dialogs", 3,
