@@ -143,7 +143,7 @@
 
 ### 下载安装
 
-到[官网下载页](https://lcstp.com/projects/winshun#downloads)（走国内加速线路）、[CNB 镜像](https://cnb.cool/lcstp/WinShun/-/releases)（腾讯云，国内快）或 [GitHub Releases]（三处是同一份文件）(https://github.com/LingCore/WinShun/releases/latest) 下载。系统要求：Windows 10 或 11，64 位。
+到[官网下载页](https://lcstp.com/projects/winshun#downloads)（走国内加速线路）、[CNB 镜像](https://cnb.cool/lcstp/WinShun/-/releases)（腾讯云，国内快）或 [GitHub Releases](https://github.com/LingCore/WinShun/releases/latest)（三处是同一份文件）下载。系统要求：Windows 10 或 11，64 位。
 
 | 下载哪个 | 适合谁 |
 |---|---|
@@ -440,7 +440,7 @@ No installer, or Scoop and WinGet? See [Download and install](#download-and-inst
 | ⭐ | [Favorites](docs/features.en.md#favorites) | Give files, folders and apps a keyword to open them; sort them by name, date, type or size with a click; your own commands too, also in the right-click menu of files |
 | 🔎 | [Taskbar search box](docs/features.en.md#taskbar-search-box) ² | A WinShun search box on the Windows 11 taskbar |
 | 🤖 | [AI assistants and the command line](docs/features.en.md#ai-assistants-mcp) ² | Let Claude, Cursor and others search your files (read-only by default); `ws` searches from a terminal |
-| 🎨 | [Looks and backup](docs/features.en.md#looks-and-settings) | Three interface styles, your font and interface size; settings backups and migration, to WebDAV or a private GitHub repository with the Cloud Backup plugin |
+| 🎨 | [Looks and backup](docs/features.en.md#looks-and-settings) | Four interface styles (including Liquid Glass), your font and interface size; settings backups and migration, to WebDAV or a private GitHub repository with the Cloud Backup plugin |
 
 ¹ Chosen during the first-start setup, or turned on later in the settings.　² Off by default; turn it on in the settings.
 

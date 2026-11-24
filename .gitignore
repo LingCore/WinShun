@@ -5,6 +5,7 @@
 /.vs/
 /.vscode/
 /.qtcreator/
+/.claude/
 CMakeUserPresets.json
 *.user
 __pycache__/

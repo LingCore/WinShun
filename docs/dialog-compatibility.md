@@ -71,17 +71,7 @@ Blender 的独立文件窗口是自绘 `GHOST_WindowClass`，不能套用 Win32 
 
 通信回归可用 Blender 自带 Python 运行 `tests/blender/test_transport.py -v`，覆盖连续 Unicode 请求、延迟读取及非法帧后继续服务；不需要 Blender 界面或用户文件。
 
-### 2026-10-30 本地结果
-
-- Release 构建成功。相关 CTest 共 8 个通过，含 CAD 进程隔离正/反例、对话框导航、Shell 启动、命令图标，以及 GPU/软件两种搜索栏可见性。Blender、真实 Inno 和文件粘贴实窗用例需要显式夹具；普通回归不冒用用户窗口。
-- 真实 Windows 命名管道 3 项回归通过，含 30 次连续中文请求与延迟读取。
-- Blender 5.2 英文实例通过扩展启停、中文路径、原名保留、文件选择与打开、另存为不自动确认；完整 `App` 搜索/选择流程也通过。中文实例实际显示深色搜索栏和结果列表，独立观察器确认选择变化，QML 运行告警为 0。快捷键路由沿用现有实现，此轮未把模拟 Ctrl+G 按键当成实测证据。
-- ZIP 通过 Blender 官方构建及校验，并在私有配置、离线后台实例中通过官方安装器安装、启用、建立通信端点和干净停用。
-- AutoCAD 未安装，尚无实机通过结论；没有关闭 #143 或发布新版本。
-
-本地证据保存在未提交的 `build/issue143`：`ctest-final.txt`、`visibility-final.txt`、`transport-tests.txt`、`acceptance-en`、`final-ui-zh/runtime/runtime.json` 与 `dialog-with-search.png`、`package-verification/stdout.txt`。
-
-单独的 `tst_filedialog` 默认跳过 Blender 和真实 Inno 窗口用例；只有提供隔离实例 PID 和观察器文件才执行。未通过的探索记录保留在忽略目录 `build/issue143`，不计为当前实现的通过证据。
+单独的 `tst_filedialog` 默认跳过 Blender 和真实 Inno 窗口用例，仅在提供隔离实例 PID 和观察器文件时执行。
 
 ## 程序自己画的选文件窗口：用户规则（#272，2026-11-12）
 

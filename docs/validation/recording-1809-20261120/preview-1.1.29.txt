@@ -1,4 +1,0 @@
-WARNING: Recording: retrying with software encoding after 录屏失败：不支持此接口（0x80004002）
-Recording finished: encoder Media Foundation / software (no D3D11 video: NV12 on the CPU) hardware false frames 0 elapsed ms 0 stage screen capture startup
-WARNING: 录屏失败：不支持此接口（0x80004002）
-recording: 录屏未完成; 00:00; 0 字节; 录屏失败：不支持此接口（0x80004002）

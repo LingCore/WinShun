@@ -91,7 +91,7 @@ Hook {
 - **造一个部件比画它贵得多**（Hook 里 `createObject` 加绑定，约是直接写一个同样部件的 5–10 倍）。列表行里的 Hook
   （行的按钮、悬停底、提示框、只有一行有的分隔线）写 `lazy: true`：第一次显示时才造，之后只隐藏不销毁，造出来之前
   `out()`/`call()` 给宿主自己的值。要随状态出现/消失的部件用 Hook 的 `visible`，**不要**放进 `Loader { active: … }`：
-  滚动时鼠标不动，行从它下面经过，每过一行就造一次、毁一次（剪贴板 brand 滚动 12 s 造了 142 次，最长一次 4.6 ms，240 Hz 下一帧只有 4.2 ms；见 docs/pitfalls.md）。
+  滚动时鼠标不动，行从它下面经过，每过一行就造一次、毁一次（剪贴板 brand 滚动 12 s 造了 142 次，最长一次 4.6 ms，240 Hz 下一帧只有 4.2 ms；见 `docs/pitfalls/ui-qml-and-windows.md`）。
 - Hook 造部件时把当时的状态和 `extra` 作为初始属性传进去：部件的 Behavior 只对建成之后的变化起作用，所以晚造的部件
   （lazy、复用的行、换风格时重建的）一出来就是最终状态，不会从默认值渐变过来；之后的变化照常有动画。
 - 部件的状态用**带默认值的普通属性**，不要用 `required`（Loader / createObject 后赋值会报 “Required property … was not initialized”）。
@@ -180,5 +180,3 @@ Hook {
 `liquid` 沿用相同的主题与钩子契约。`GlassSurface` 只绘制单层平面和按需细边，不采样桌面、复制文字或添加持续动画；玻璃感由窗口原生 Acrylic 背景承担。主搜索栏不套边框，页签用短强调色标记，列表选中保持中性底色与左侧标记。`Look` 复用 fluent 的提示键、分隔线和滚动条，同时注入 liquid token。
 
 Windows 11 22H2 及以上、显卡加速且允许透明时，窗口背景使用 DWM Desktop Acrylic；切回其他风格即时恢复 Mica。`WindowEffects` 只更新已明确注册背景的本进程窗口，不给实色菜单增加透明。系统关闭透明或不支持原生背景、软件渲染、应用透明设置关闭时，仍有实色表面和清晰的边缘。外框、阴影和窗口圆角仍归 DWM。
-
-设计取舍与资料见 [液态玻璃设计](../../../../docs/design-liquid-glass.md)，初版验证见 `docs/validation/issue235-20261107/`，视觉修订验证见 `docs/validation/liquid-refine-20261107/`。

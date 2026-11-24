@@ -35,9 +35,9 @@
 
 脚本构建（传了 `-Tests` 就跑这几个测试），再生成标准安装包、便携包、完整离线安装包、独立增强 OCR 组件 ZIP、增量更新包及 `SHA256SUMS.txt`。输出目录内运行着 Win顺，或部署目录含 `data` 时应换一个新目录。不要删除用户数据以绕过保护。
 
-增量更新包（见 [architecture.md](architecture.md) “增量更新”）：脚本从 GitHub 下最近 `-DeltaCount`（默认 3）个能用增量的已发布版本的便携包，各生成一个 `WinShun-<版本>-x64-delta-from-<旧版本>.zip`（`build\…\WinShunDelta.exe make`，带增量安装程序 `WinShun-<版本>-x64-delta-setup.exe`），再用同一个工具按 Win顺 的代码还原一遍，和这次部署逐个文件比对，不一致就停下。比安装包的 60% 还大的不发。生成的隐藏行写进 `<输出目录>\delta-notes-line.txt`，`-Publish` 时加在发布说明末尾（`docs/release-notes` 里的原文不改）一起上传；这些包也是 Release 附件，也写进 `SHA256SUMS.txt`。发布后查 lcstp.com 的回答时，`body` 末尾应有这行 `<!-- winshun-delta 1 … -->`。只有源码里有 `src/app/UpdateDelta.cpp` 的已发布版本才会用增量，所以第一个带增量更新的版本发布时一个包也不生成（脚本打印 “cannot apply one”），属正常；从下一个版本起才有。
+增量更新包（见 [diagnostics-and-updates.md](architecture/diagnostics-and-updates.md)）：脚本从 GitHub 下最近 `-DeltaCount`（默认 3）个能用增量的已发布版本的便携包，各生成一个 `WinShun-<版本>-x64-delta-from-<旧版本>.zip`（`build\…\WinShunDelta.exe make`，带增量安装程序 `WinShun-<版本>-x64-delta-setup.exe`），再用同一个工具按 Win顺 的代码还原一遍，和这次部署逐个文件比对，不一致就停下。比安装包的 60% 还大的不发。生成的隐藏行写进 `<输出目录>\delta-notes-line.txt`，`-Publish` 时加在发布说明末尾（`docs/release-notes` 里的原文不改）一起上传；这些包也是 Release 附件，也写进 `SHA256SUMS.txt`。发布后查 lcstp.com 的回答时，`body` 末尾应有这行 `<!-- winshun-delta 1 … -->`。
 
-构建依赖与应用内公开 GitHub 文件的默认镜像统一维护在 `resources/downloads/github-mirrors.txt`；修改后重新配置并构建。`cmake/Download.cmake` 优先镜像、再原站，每个响应都按固定 SHA256 检查，失败不使用半个文件；下载回归包含本地故障注入，公网验证需显式开启 `WINSHUN_UPDATE_LIVE=1`，不会运行安装程序。见 [镜像审计记录](download-mirrors-audit.md)。
+构建依赖与应用内公开 GitHub 文件的默认镜像统一维护在 `resources/downloads/github-mirrors.txt`；修改后重新配置并构建。`cmake/Download.cmake` 优先镜像、再原站，每个响应都按固定 SHA256 检查，失败不使用半个文件；下载回归包含本地故障注入，公网验证需显式开启 `WINSHUN_UPDATE_LIVE=1`，不会运行安装程序。
 
 标准包只带完整常规字体，不带独立粗体、ONNX Runtime 和 OCR 模型。`tools/package_ocr.py` 依据 `resources/ocr/package.json` 校验每个原文件的大小与 SHA256，再生成 `WinShun-ocr-ppocr-v6-ort1.30.0-x64.zip`；完整离线安装包由标准目录加同一份已校验组件构成，文件名为 `WinShun-<版本>-x64-offline-setup.exe`。组件 ZIP 必须随同一版本 Release 一起上传，应用内下载地址使用该版本标签；只上传主安装包会使首次安装增强识别失败。组件换版本或原文件时，同步更新清单、`OcrFiles::kVersion` 和下载大小，再验证取消、损坏包、离线安装、截图续识别及旧文件兼容。
 
@@ -108,7 +108,7 @@ curl.exe -s 'https://lcstp.com/updates/winshun/stable.json?platform=windows&arch
 
 发布后改主意：正常推送改成立即推送，就把公开 Release 的说明下载下来（`gh release view vX.Y.Z --repo LingCore/WinShun --json body --jq .body > notes.md`），在末尾加上这行，再 `gh release edit vX.Y.Z --repo LingCore/WinShun --notes-file notes.md`。lcstp.com 10 分钟内同步，各客户端在下一次检查时按立即推送提示。去掉这行就回到正常推送，已经弹出的提示不会撤回。
 
-客户端从启动时起每 10 分钟查一次 lcstp.com（第二次起带上一次回答的 ETag，没变时服务器只回 304，没有正文）。只有带这套逻辑的版本才认这行（源码里 `src/core/Release.cpp` 有 `release::push`）；之前的版本仍是启动时和每 12 小时检查，不分推送方式。所以第一个带这功能的版本自己仍按旧版本的节奏到达用户；用户装上它之后，再往后的发布才能立即推到他们那里。实现见 [architecture.md](architecture.md) “检查更新和发布”，测试 `tst_updater` 的 `pushNowOrInTurn`；本机假服务 `tools/update-feed.py` 加 `--push-now` 模拟立即推送。
+客户端从启动时起每 10 分钟查一次 lcstp.com（第二次起带上一次回答的 ETag，没变时服务器只回 304，没有正文）。实现见 [diagnostics-and-updates.md](architecture/diagnostics-and-updates.md)，测试 `tst_updater` 的 `pushNowOrInTurn`；本机假服务 `tools/update-feed.py` 加 `--push-now` 模拟立即推送。
 
 Scoop：`scripts/release.ps1 -Publish` 在 Release 创建成功之后，把 `bucket/winshun.json` 的 `version`、`url`、`hash` 改成这次的便携包（只改这三处，保持 4 空格缩进和无 BOM 的 UTF-8），只提交这一个文件（`git commit --only`，工作区里可能有别人的修改）为 “Scoop: winshun <版本>” 并推送。用户用 `scoop bucket add winshun https://github.com/LingCore/WinShun` 加入的就是主仓库，所以推送要在 Release 之后，清单不能比 zip 先到。`checkver` / `autoupdate` 写好了（`$sha256\s+$basename` 只匹配便携包那一行），发布后可以用 Scoop 自带的 `bin\checkver.ps1 -App winshun -Dir bucket -Update`（先复制一份目录）核对：它会用公开的 SHA256SUMS.txt 算出同样的值。`tests/tst_scoopinstall.cpp` 检查清单是合法 JSON、正则能在样例校验文件里只匹配便携包。
 

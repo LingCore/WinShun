@@ -51,13 +51,15 @@ WinShun is single-instance: a second start, and `--quit`, `--toggle` or `--setti
 
 | Task | Read |
 |---|---|
-| where code lives and why it is built so | `docs/architecture.md` |
-| before touching QML, DPI, windows, builds, live tests | `docs/pitfalls.md` (search it for the area you edit) |
+| system topology and architecture router | `docs/architecture.md` (routes to 6 focused topic guides under `docs/architecture/`) |
+| universal traps and domain pitfalls | `docs/pitfalls.md` (routes to 6 domain guides under `docs/pitfalls/`) |
 | colours, styles | `docs/colors.md`, `src/app/qml/themes/README.md` |
 | plugins, protocol, SDK | `docs/plugins.md`, `src/plugins-sdk/DEVELOPMENT.md` |
-| command line, AI tools | `docs/design-cli.md` |
+| command line, gestures, file dialog compat | `docs/design-cli.md`, `docs/design-gestures.md`, `docs/dialog-compatibility.md` |
 | releasing | `docs/releasing.md` |
 | what users are told | `README.md`, `docs/使用说明.md`, `docs/features.en.md` |
+
+Keep `docs/architecture/` and `docs/pitfalls/` current-state (update in place; put validation records only under `docs/validation/<task>/`). Historical drafts and past release validations live in Git history.
 
 ## Conventions
 
