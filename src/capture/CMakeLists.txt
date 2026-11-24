@@ -60,6 +60,7 @@ add_library(wscapture STATIC
     TranslateOverlay.cpp TranslateOverlay.h
     ScrollStitcher.cpp ScrollStitcher.h
     ScrollInput.cpp ScrollInput.h
+    ScrollAutoEngine.cpp ScrollAutoEngine.h
     ScrollGrabber.cpp ScrollGrabber.h
     ScrollDiagnostics.cpp ScrollDiagnostics.h
     QrCode.cpp QrCode.h

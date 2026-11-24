@@ -7,6 +7,7 @@
 
 #include <array>
 #include <memory>
+#include <vector>
 
 // The long screenshot's scroll ladder (docs/design-capture-roadmap.md, 4.2):
 // each step scrolls the program under the region one of these ways. What a
@@ -45,12 +46,12 @@ QString codeName(int code);
 
 // Which way the next step scrolls, from what the steps before came to;
 // no windows, so the tests drive it. The ways in their order: the posted
-// wheel, SendInput's wheel, UI Automation. A way that has never moved
-// anything is given up after two steps that did not move (a posted wheel
-// "works" in Chromium and nothing moves); one that has moved stays, but
-// while it does not, the others get a turn (Explorer moves for the first
-// posted wheel only, stage 6 probe). The end: every way left did not move
-// twice in a row, or UI Automation says it is at the end.
+// wheel, SendInput's wheel, UI Automation (or SendWheel first when the target
+// window is a known WinUI/InputSite surface where posted wheel messages never
+// scroll). A way that has never moved anything is given up after two steps
+// that did not move; one that has moved stays, but while it does not, the
+// others get a turn. The end: every way left did not move twice in a row,
+// or UI Automation says it is at the end.
 class ScrollLadder {
 public:
     enum class Hint {
@@ -60,7 +61,7 @@ public:
         NothingWorks, // no way moved anything: the user scrolls
     };
 
-    explicit ScrollLadder(bool elevated = false);
+    explicit ScrollLadder(bool elevated = false, bool preferSendWheel = false);
 
     // The way to try now; Manual when none is left.
     ScrollMethod method() const;
@@ -78,6 +79,7 @@ public:
     bool atEnd() const { return m_atEnd; }
     Hint hint() const { return m_hint; }
     bool worked(ScrollMethod method) const;
+    bool anyWorked() const;
 
 private:
     struct Way {
@@ -105,7 +107,7 @@ private:
 class ScrollInput {
 public:
     // `region`: physical pixels, virtual desktop. `horizontal`: the steps
-    // go right (the horizontal wheel, UI Automation's horizontal scrolling).
+    // go right (or left when direction < 0).
     explicit ScrollInput(const QRect& region, bool horizontal = false);
     ~ScrollInput();
 
@@ -118,19 +120,42 @@ public:
     HWND window() const { return m_window; }
     HWND content() const { return m_content; }
     QString program() const { return m_program; }
+    // True for WinUI / UWP / DirectComposition input-sink surfaces where
+    // PostMessage(WM_MOUSEWHEEL) is ignored and SendInput should be used first.
+    bool prefersSendWheel() const { return m_prefersSendWheel; }
+    // True when Windows is configured to scroll a full screen per wheel notch.
+    static bool pageScrollWheel();
 
-    // One step down (horizontal: right). PostWheel and SendWheel: `amount` wheel notches (a
-    // fraction is a smaller delta); Uia: the part of the view to move
-    // (0.5 is half of what the program shows), by SetScrollPercent where it
-    // has it, else by its small steps.
-    ScrollResult scroll(ScrollMethod method, double amount);
+    // Update the screen rectangles of our own floating windows (panel, preview)
+    // so cursor checks and cursor parking never land on our own UI.
+    void setOwnRects(std::vector<QRect> rects);
+
+    // One step along `direction` (+1: down / right; -1: up / left).
+    // PostWheel and SendWheel: `amount` wheel notches (fractional down to 0.25);
+    // Uia: the part of the view to move, by SetScrollPercent or small steps.
+    ScrollResult scroll(ScrollMethod method, double amount, int direction = 1);
     // UI Automation's position (vertical, or horizontal), 0..100; -1 when not known.
     double uiaPercent();
+    // True when the pointer is inside the region and not over our own panel/preview.
     bool cursorInRegion() const;
+
+    // Temporarily park the cursor at an unobstructed point inside the region
+    // for SendInput wheel scrolling, saving the user's previous cursor position.
+    // Returns ScrollOk on success, ScrollKeysHeld while a key/button is still
+    // settling, ScrollCursorOutside if no unobstructed point exists, or ScrollFailed.
+    ScrollCode parkCursor(int userMoveThresholdPx);
+    bool cursorParked() const { return m_cursorParked; }
+    // True if the user physically moved the mouse beyond the threshold after we parked it.
+    bool userMovedCursor() const;
+    // Release ownership of the parked cursor, optionally restoring its prior
+    // position (only when the user has not moved it away).
+    void releaseParkedCursor(bool restore);
 
 private:
     struct Uia;
-    HWND windowUnderMiddle() const;
+    HWND windowUnderPoint(POINT at) const;
+    POINT safePoint() const;
+    bool coveredByOwn(POINT at) const;
     // Ctrl, Shift, Alt or Win (and with `buttons` a mouse button) down, or
     // all up for less than a moment yet.
     bool keysHeld(bool buttons);
@@ -141,8 +166,14 @@ private:
     HWND m_window = nullptr;
     HWND m_content = nullptr;
     QString m_program;
+    bool m_prefersSendWheel = false;
+    std::vector<QRect> m_ownRects;
     std::unique_ptr<Uia> m_uia;
     ULONGLONG m_keysUpAt = 0; // when they were seen all up; 0 not yet
+    bool m_cursorParked = false;
+    POINT m_savedCursor {};
+    POINT m_parkedCursor {};
+    int m_moveThreshold = 24;
 };
 
 } // namespace ws::capture

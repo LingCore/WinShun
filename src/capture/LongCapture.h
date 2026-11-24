@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ScrollAutoEngine.h"
+
 #include <QImage>
 #include <QObject>
 #include <QPointer>
@@ -23,9 +25,9 @@ namespace ws::capture {
 
 class Grabber;
 
-// The long screenshot (docs/design-capture-roadmap.md, 4.2): the region
+// The long screenshot (docs/architecture/capture-and-recording.md): the region
 // chosen in the overlay, captured while what is in it scrolls, the frames
-// stitched into one tall picture that goes to the editing window.
+// stitched into one tall (or wide) picture that goes to the editing window.
 //
 // While it runs the overlay is gone and the program under the region keeps
 // the focus, the wheel and the keyboard. Ours on the screen: a selection
@@ -39,12 +41,14 @@ class Grabber;
 // given back; the capture hotkey finishes too (Capture::trigger).
 //
 // The work is on a thread of its own (COM's multithreaded apartment, for UI
-// Automation): frames (ScrollGrabber), the steps (ScrollInput, ScrollLadder),
-// the stitching (ScrollStitcher), what happened (ScrollDiagnostics). Auto-
-// scrolling: a step, then the frames until the picture moved and settled,
-// then the stitcher; it ends at the page's end or the limit. Scrolling by
-// hand (or auto-scroll off): every frame that changed is stitched. Nothing
-// of it exists before the first long screenshot; the big buffers go at the end.
+// Automation): frames (ScrollGrabber), the scrolling (ScrollInput,
+// ScrollAutoEngine), the stitching (ScrollStitcher), what happened
+// (ScrollDiagnostics). Auto-scrolling runs a continuous closed-loop stream
+// of rhythmic scroll ticks while draining and stitching frames as they arrive
+// (adapting cadence to speed mode, measured displacement and backpressure),
+// ending cleanly at the page's end or the limit. Scrolling by hand stitches
+// every frame that changed. Nothing of it exists before the first long
+// screenshot; the big buffers go at the end.
 // For us: WINSHUN_SCROLL_DUMP=<folder> keeps every frame stitched and what came
 // of it in a folder a run (wsbench --scroll-replay).
 class LongCapture : public QObject {
@@ -56,6 +60,7 @@ class LongCapture : public QObject {
     Q_PROPERTY(int pictureHeight READ pictureHeight NOTIFY changed FINAL)
     Q_PROPERTY(bool autoScroll READ autoScroll WRITE setAutoScroll NOTIFY changed FINAL)
     Q_PROPERTY(bool canAutoScroll READ canAutoScroll NOTIFY changed FINAL)
+    Q_PROPERTY(Speed autoScrollSpeed READ autoScrollSpeed WRITE setAutoScrollSpeed NOTIFY changed FINAL)
     // Sideways (feedback 2026-11-16): the panel's 横向, or seen in how it was
     // scrolled; pictureHeight is then the picture's width.
     Q_PROPERTY(bool horizontal READ horizontal WRITE setHorizontal NOTIFY changed FINAL)
@@ -64,7 +69,7 @@ class LongCapture : public QObject {
     Q_PROPERTY(QImage preview READ preview NOTIFY previewChanged FINAL)
     Q_PROPERTY(bool hasPreview READ hasPreview NOTIFY previewChanged FINAL)
     Q_PROPERTY(QSize previewSize READ previewSize NOTIFY previewChanged FINAL) // device px
-    Q_PROPERTY(QSize previewBox READ previewBox CONSTANT FINAL) // the panel's room for it, device px at 100 %
+    Q_PROPERTY(QSize previewBox READ previewBox NOTIFY changed FINAL) // logical px: portrait for vertical, landscape for horizontal
 
 public:
     enum class Status {
@@ -75,6 +80,13 @@ public:
         Full, // at the limit
     };
     Q_ENUM(Status)
+
+    enum class Speed {
+        Slow = 0,
+        Normal = 1,
+        Fast = 2,
+    };
+    Q_ENUM(Speed)
 
     enum class Output { Edit, Copy, Save, Pin };
     Q_ENUM(Output)
@@ -97,6 +109,9 @@ public:
     bool autoScroll() const { return m_autoScroll; }
     void setAutoScroll(bool on);
     bool canAutoScroll() const { return m_canAuto; }
+    Speed autoScrollSpeed() const { return m_speed; }
+    void setAutoScrollSpeed(Speed speed);
+    Q_INVOKABLE void cycleAutoScrollSpeed();
     bool horizontal() const { return m_horizontal; }
     // Turned while it runs: what was stitched goes, it starts again from what is in the region now.
     void setHorizontal(bool on);
@@ -105,7 +120,7 @@ public:
     QImage preview() const { return m_preview; }
     bool hasPreview() const { return !m_preview.isNull(); }
     QSize previewSize() const { return m_preview.size(); }
-    QSize previewBox() const { return {kPreviewWidth, kPreviewHeight}; }
+    QSize previewBox() const;
 
     Q_INVOKABLE void finish(); // 完成, Enter, the capture hotkey
     Q_INVOKABLE void exportTo(Output output); // the toolbar's copy, save and pin
@@ -116,8 +131,10 @@ public:
     enum class Hint { None, Auto, Manual, MouseOutside, Elevated, NothingWorks, Reconnect, NoFrames, AtLimit, Copied };
     Q_ENUM(Hint)
 
-    static constexpr int kPreviewWidth = 300; // logical px: the panel's width less its padding
-    static constexpr int kPreviewHeight = 200;
+    static constexpr int kPreviewWidth = 260; // vertical mode logical px
+    static constexpr int kPreviewHeight = 340;
+    static constexpr int kPreviewWideWidth = 340; // horizontal mode logical px
+    static constexpr int kPreviewWideHeight = 220;
 
 signals:
     void changed();
@@ -153,6 +170,7 @@ private:
     bool m_autoScroll = false;
     bool m_autoScrollChosen = false; // the switch as the user left it: the engine's "lost, by hand" is one run's
     bool m_canAuto = true;
+    Speed m_speed = Speed::Normal;
     bool m_horizontal = false;
     bool m_horizontalChosen = false; // the panel's, for the next run; a turn the engine saw is that run's
     Hint m_hint = Hint::None;

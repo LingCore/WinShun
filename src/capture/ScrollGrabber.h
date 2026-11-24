@@ -20,7 +20,10 @@ namespace ws::capture {
 class ScrollGrabber {
 public:
     // `region`: physical pixels, virtual desktop, inside one monitor.
-    ScrollGrabber(Grabber& grabber, const QRect& region);
+    // `ignoreRight`: strip on the right (or bottom when horizontal) excluded
+    // from change detection so fading overlay scrollbars do not look like
+    // ongoing scrolling.
+    ScrollGrabber(Grabber& grabber, const QRect& region, int ignoreRight = 0, bool horizontal = false);
     ~ScrollGrabber();
 
     ScrollGrabber(const ScrollGrabber&) = delete;
@@ -28,9 +31,10 @@ public:
 
     bool wgc() const { return m_stream != nullptr; }
     bool hdr() const { return m_stream && m_stream->hdr(); }
-    // The next frame whose pixels differ from the last one given, waiting
-    // up to `timeoutMs`; a null image when none came. The first call gives
-    // the first frame.
+    void setOrientation(bool horizontal);
+    // The next frame whose compared pixels differ from the last one given,
+    // waiting up to `timeoutMs`; a null image when none came. The first call
+    // gives the first frame.
     QImage changed(int timeoutMs);
     // The last frame given.
     const QImage& last() const { return m_last; }
@@ -40,10 +44,15 @@ public:
     qint64 elapsed() const { return m_clock.elapsed(); }
 
 private:
-    QImage bitblt() const;
+    struct GdiBuffer;
+    QImage bitblt();
+    QRect compareRect() const;
 
     QRect m_region;
+    int m_ignoreRight = 0;
+    bool m_horizontal = false;
     std::unique_ptr<Grabber::Stream> m_stream;
+    std::unique_ptr<GdiBuffer> m_gdi;
     quint64 m_number = 0;
     QImage m_last;
     QElapsedTimer m_clock;
@@ -51,7 +60,8 @@ private:
     qint64 m_nextPollMs = 0;
 };
 
-// Whether two frames have the same pixels (same size, 32 bits a pixel).
-bool samePixels(const QImage& a, const QImage& b);
+// Whether two frames have the same pixels (same size, 32 bits a pixel),
+// optionally restricted to `area` (empty: the whole frame).
+bool samePixels(const QImage& a, const QImage& b, const QRect& area = {});
 
 } // namespace ws::capture

@@ -118,7 +118,12 @@ private:
     // allocates blocks at the front without moving any captured pixels.
     std::deque<uint32_t*> m_blocks;
     int m_firstBlock = 0;
-    std::unique_ptr<Analysis> m_prev; // the last frame that matched
+    // Keyframe anchor: small continuous scroll steps match directly against
+    // m_anchor to prevent cumulative subpixel drift and shrug off transient
+    // mid-scroll frame glitches; m_prev always tracks the newest matched frame.
+    std::shared_ptr<const Analysis> m_anchor;
+    int m_anchorOffset = 0;
+    std::shared_ptr<const Analysis> m_prev;
     int m_prevOffset = 0;
     int m_nearOffset = 0; // topmost row of the result, possibly negative
     bool m_previewTop = false;
@@ -128,6 +133,10 @@ private:
     int m_farFrom = 0; // m_far's first row in the result; the canvas has the rows above
     int m_top = 0;
     int m_bottom = 0;
+    int m_topCandidate = 0;
+    int m_topStable = 0;
+    int m_bottomCandidate = 0;
+    int m_bottomStable = 0;
     bool m_bandsKnown = false;
     int m_velocity = 0; // the last dy that moved
     int m_lost = 0; // frames lost in a row

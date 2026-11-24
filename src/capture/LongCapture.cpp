@@ -2,14 +2,15 @@
 #include "IdleGraphics.h"
 
 #include "CaptureExclusion.h"
+#include "CaptureSession.h" // kLongMinimum
 #include "DiagnosticLog.h"
 #include "Geometry.h" // placeBeside
 #include "Grabber.h"
+#include "ScrollAutoEngine.h"
 #include "ScrollDiagnostics.h"
 #include "ScrollGrabber.h"
 #include "ScrollInput.h"
 #include "ScrollStitcher.h"
-#include "CaptureSession.h" // kLongMinimum
 #include "platform/Integrity.h"
 #include "platform/WindowEffects.h"
 
@@ -33,8 +34,10 @@
 
 #include <algorithm>
 #include <atomic>
+#include <exception>
 #include <mutex>
 #include <optional>
+#include <vector>
 
 using namespace Qt::StringLiterals;
 using namespace std::chrono_literals;
@@ -43,16 +46,14 @@ namespace ws::capture {
 
 namespace {
 
-constexpr int kQuietMs = 100; // at rest: nothing in the region changed for this long
-constexpr int kSettleMs = 2500; // at most this long for a step to come to rest
-constexpr int kMoveWaitFirstMs = 1000; // after a step, for the picture to change, before any way moved it
-constexpr int kMoveWaitMs = 600; // once one has
-constexpr int kRetryMs = 300; // a step's frame did not fit: once more, a moment later
-constexpr int kLostShownMs = 300; // by hand: "lost" only when it lasts (a fling's frames come apart)
+constexpr int kManualWaitMs = 40; // responsive manual polling / stop checks
+constexpr int kFinishDrainMs = 220; // drain any final compositor frame on Finish
+constexpr int kFinishQuietMs = 60;
+constexpr int kLostShownMs = 350; // by hand: "lost" only when it lasts (a fling's frames come apart)
 constexpr int kWatchdogMs = 5000;
-constexpr int kPreviewEveryMs = 100;
-constexpr double kAim = 0.5; // a step aims at half the part that scrolls
+constexpr int kPreviewEveryMs = 60; // ~16 fps live preview while actively growing
 constexpr double kOverlayLogical = 16; // the overlay scroll bar's strip on the right, left out of the comparing
+constexpr double kUserCursorMoveLogical = 24; // cursor travel indicating the user took back the mouse
 constexpr int kHotkeyEsc = 0x5701;
 constexpr int kHotkeyEnter = 0x5702;
 constexpr int kChunk = 3000; // characters of the diagnostics a log entry (entries are cut at 8 KB)
@@ -74,22 +75,32 @@ QScreen* screenOf(HMONITOR monitor)
     return nullptr;
 }
 
-// After a step: the first change within `waitMs`, then the frames until
-// none changed for kQuietMs (kSettleMs at most): the picture at rest. Null
-// when nothing changed.
-QImage settle(ScrollGrabber& grabber, int waitMs, const std::atomic<int>& stop)
+ScrollSpeed toScrollSpeed(LongCapture::Speed s)
 {
-    const qint64 start = grabber.elapsed();
-    QImage frame;
-    while (frame.isNull() && !stop && grabber.elapsed() - start < waitMs)
-        frame = grabber.changed(int(std::clamp<qint64>(waitMs - (grabber.elapsed() - start), 1, 100)));
-    while (!frame.isNull() && !stop && grabber.elapsed() - start < kSettleMs) {
-        const QImage next = grabber.changed(kQuietMs);
-        if (next.isNull())
-            break;
-        frame = next;
+    switch (s) {
+    case LongCapture::Speed::Slow:
+        return ScrollSpeed::Slow;
+    case LongCapture::Speed::Fast:
+        return ScrollSpeed::Fast;
+    case LongCapture::Speed::Normal:
+        break;
     }
-    return frame;
+    return ScrollSpeed::Normal;
+}
+
+LongCapture::Hint hintFromLadder(ScrollLadder::Hint h, bool fallbackAuto)
+{
+    switch (h) {
+    case ScrollLadder::Hint::Elevated:
+        return LongCapture::Hint::Elevated;
+    case ScrollLadder::Hint::NothingWorks:
+        return LongCapture::Hint::NothingWorks;
+    case ScrollLadder::Hint::MouseOutside:
+        return LongCapture::Hint::MouseOutside;
+    case ScrollLadder::Hint::None:
+        break;
+    }
+    return fallbackAuto ? LongCapture::Hint::Auto : LongCapture::Hint::Manual;
 }
 
 } // namespace
@@ -223,14 +234,16 @@ private:
 struct LongCapture::Run {
     QRect region; // physical px, virtual desktop
     double dpr = 1;
-    QSize previewBox; // device px
     QString dump; // WINSHUN_SCROLL_DUMP: every frame stitched and what came of it, there
     std::atomic<int> stop {0}; // 1 finish, 2 cancel
-    std::atomic<bool> autoScroll {false}; // the panel's switch; the engine turns it off when lost
+    std::atomic<bool> autoScroll {false}; // the panel's switch; the engine turns it off on manual fallback
+    std::atomic<int> speed {int(Speed::Normal)};
     std::atomic<bool> horizontal {false}; // the panel's 横向
     std::atomic<bool> turned {false}; // the panel turned it: the engine starts again
-    std::mutex mutex; // the diagnostics
+    std::mutex mutex; // guards diag, ownRects, ownRectsSeq
     ScrollDiagnostics diag;
+    std::vector<QRect> ownRects; // visible screen rects of panel & preview
+    quint64 ownRectsSeq = 0;
     Output output = Output::Edit; // GUI thread only, used once the worker has finished
 };
 
@@ -272,6 +285,12 @@ LongCapture::~LongCapture()
     delete m_panel.data();
 }
 
+QSize LongCapture::previewBox() const
+{
+    return m_horizontal ? QSize(kPreviewWideWidth, kPreviewWideHeight)
+                        : QSize(kPreviewWidth, kPreviewHeight);
+}
+
 void LongCapture::setAutoScroll(bool on)
 {
     m_autoScrollChosen = on;
@@ -281,6 +300,31 @@ void LongCapture::setAutoScroll(bool on)
     if (m_run)
         m_run->autoScroll = on;
     emit changed();
+}
+
+void LongCapture::setAutoScrollSpeed(Speed speed)
+{
+    if (speed == m_speed)
+        return;
+    m_speed = speed;
+    if (m_run)
+        m_run->speed = int(speed);
+    emit changed();
+}
+
+void LongCapture::cycleAutoScrollSpeed()
+{
+    switch (m_speed) {
+    case Speed::Normal:
+        setAutoScrollSpeed(Speed::Fast);
+        break;
+    case Speed::Fast:
+        setAutoScrollSpeed(Speed::Slow);
+        break;
+    case Speed::Slow:
+        setAutoScrollSpeed(Speed::Normal);
+        break;
+    }
 }
 
 void LongCapture::setHorizontal(bool on)
@@ -301,12 +345,12 @@ QString LongCapture::hint() const
 {
     switch (m_hint) {
     case Hint::Auto:
-        return tr("正在自动滚动。Enter 完成，Esc 取消");
+        return tr("正在自动滚动，移动鼠标可暂停。Enter 完成，Esc 取消");
     case Hint::Manual:
         return m_horizontal ? tr("在区域内向左或向右滚动（Shift+滚轮），滚完按 Enter 或点“完成”")
                             : tr("在区域内向上或向下滚动，滚完按 Enter 或点“完成”");
     case Hint::MouseOutside:
-        return tr("把鼠标放到要滚动的区域上");
+        return tr("已暂停：把鼠标移回要滚动的区域继续，或点“完成”");
     case Hint::Elevated:
         // Not Enter: with an administrator's window in front, Windows gives
         // our hotkeys only with Ctrl, Alt, Shift or Win (tested 2026-10-22),
@@ -319,7 +363,7 @@ QString LongCapture::hint() const
     case Hint::NoFrames:
         return tr("5 秒没有新画面");
     case Hint::AtLimit:
-        return tr("到上限了（3 万像素高）");
+        return tr("到上限了（3 万像素）");
     case Hint::Copied:
         return tr("诊断信息已复制");
     case Hint::None:
@@ -370,7 +414,7 @@ QQuickWindow* LongCapture::panel()
 // The panel, the preview and the border are left out of the frames while the
 // capture runs and they lie over its region; otherwise they show in a
 // screenshot. Running until ended(): after 完成 the engine still takes frames
-// (up to kMoveWaitMs), so a window hidden meanwhile keeps its setting until then.
+// briefly, so a window hidden meanwhile keeps its setting until then.
 // After that the panel and the preview keep theirs, hidden: cleared on both
 // once both were hidden (the panel owns the preview), DWM left the preview's
 // edge and shadow on the screen, an empty frame over whatever lay below
@@ -380,10 +424,21 @@ void LongCapture::updateExclusion()
 {
     const bool running = m_run != nullptr;
     const QRect region = running ? m_run->region : QRect();
-    if (running)
-        for (QQuickWindow* window : {m_panel.data(), m_previewWindow.data()})
-            if (window)
-                excludeFromCapture(reinterpret_cast<HWND>(window->winId()), region, true);
+    std::vector<QRect> rects;
+    if (running) {
+        for (QQuickWindow* window : {m_panel.data(), m_previewWindow.data()}) {
+            if (!window)
+                continue;
+            const HWND hwnd = reinterpret_cast<HWND>(window->winId());
+            excludeFromCapture(hwnd, region, true);
+            RECT r {};
+            if (window->isVisible() && ::GetWindowRect(hwnd, &r))
+                rects.push_back(toRect(r));
+        }
+        const std::lock_guard lock(m_run->mutex);
+        m_run->ownRects = std::move(rects);
+        ++m_run->ownRectsSeq;
+    }
     if (m_border)
         m_border->exclude(region, running);
 }
@@ -460,11 +515,11 @@ void LongCapture::start(const QRect& wanted, HMONITOR monitor, double dpr)
     m_run = std::make_unique<Run>();
     m_run->region = region;
     m_run->dpr = dpr;
-    m_run->previewBox = QSize(qRound(kPreviewWidth * dpr), qRound(kPreviewHeight * dpr));
     if (const QString dump = qEnvironmentVariable("WINSHUN_SCROLL_DUMP"); !dump.isEmpty())
         m_run->dump = QDir(dump).filePath(QDateTime::currentDateTime().toString(u"yyyyMMdd-HHmmss"_s)); // a folder a run
     m_autoScroll = m_autoScrollChosen;
     m_run->autoScroll = m_autoScroll;
+    m_run->speed = int(m_speed);
     m_horizontal = m_horizontalChosen;
     m_run->horizontal = m_horizontal;
     m_status = Status::Waiting;
@@ -493,7 +548,17 @@ void LongCapture::start(const QRect& wanted, HMONITOR monitor, double dpr)
                              .arg(m_autoScroll ? u"on"_s : u"off"_s)
                          + (m_horizontal ? u", sideways"_s : QString());
     Run* run = m_run.get();
-    m_thread = std::jthread([this, run] { engine(*run); });
+    m_thread = std::jthread([this, run] {
+        try {
+            engine(*run);
+        } catch (const std::exception& e) {
+            qWarning().noquote() << "Long screenshot: worker exception:" << e.what();
+            QMetaObject::invokeMethod(this, [this] { ended(QImage(), u"failed"_s); }, Qt::QueuedConnection);
+        } catch (...) {
+            qWarning().noquote() << "Long screenshot: unknown worker exception";
+            QMetaObject::invokeMethod(this, [this] { ended(QImage(), u"failed"_s); }, Qt::QueuedConnection);
+        }
+    });
 }
 
 // WINSHUN_SCROLL_DUMP: the panel as it was at the end (no screenshot shows it).
@@ -566,7 +631,7 @@ void LongCapture::apply(const Update& u)
     m_partial = u.partial;
     m_canAuto = u.canAuto;
     m_horizontal = u.horizontal; // as the engine has it: turned by the panel, or by how it was scrolled
-    m_autoScroll = m_run->autoScroll; // the engine turns it off when lost
+    m_autoScroll = m_run->autoScroll; // the engine turns it off when lost or yielded
     if (u.hint != (m_hint == Hint::Copied ? m_hintBefore : m_hint))
         qInfo().noquote() << "Long screenshot:" << QMetaEnum::fromType<Hint>().valueToKey(int(u.hint));
     if (m_hint == Hint::Copied)
@@ -640,15 +705,34 @@ void LongCapture::engine(Run& r)
         };
         const auto pause = [&](int ms) {
             for (const qint64 from = clock.elapsed(); !r.stop && clock.elapsed() - from < ms;)
-                ::Sleep(20);
+                ::Sleep(15);
         };
         // The overlays are hidden: one more composition and they are out of what WGC gives.
         ::DwmFlush();
-        ScrollGrabber grabber(m_grabber, r.region);
+        const int ignoreRight = qRound(kOverlayLogical * r.dpr);
+        const int cursorMoveThreshold = std::max(16, qRound(kUserCursorMoveLogical * r.dpr));
         bool sideways = r.horizontal;
+        ScrollGrabber grabber(m_grabber, r.region, ignoreRight, sideways);
         auto input = std::make_unique<ScrollInput>(r.region, sideways);
         const bool elevated = input->content() && integrity::higherThanOurs(input->content());
-        const int ignoreRight = qRound(kOverlayLogical * r.dpr);
+        const bool pageScrollWheel = ScrollInput::pageScrollWheel();
+        quint64 ownRectsSeq = 0;
+        const auto syncOwnRects = [&] {
+            std::vector<QRect> rects;
+            bool changed = false;
+            {
+                const std::lock_guard lock(r.mutex);
+                if (r.ownRectsSeq != ownRectsSeq) {
+                    ownRectsSeq = r.ownRectsSeq;
+                    rects = r.ownRects;
+                    changed = true;
+                }
+            }
+            if (changed)
+                input->setOwnRects(std::move(rects));
+        };
+        syncOwnRects();
+
         {
             ScrollDiagnostics::Facts facts;
             facts.windows = QSysInfo::kernelVersion();
@@ -664,11 +748,25 @@ void LongCapture::engine(Run& r)
             r.diag.begin(facts);
         }
         log(grabber.wgc() ? u"frames: Windows.Graphics.Capture"_s : u"frames: BitBlt (Windows.Graphics.Capture not available)"_s);
+        if (input->prefersSendWheel())
+            log(u"target prefers SendInput wheel (WinUI/InputSite)"_s);
+
         const auto makeStitcher = [&](bool turned) {
             return std::make_unique<ScrollStitcher>(r.region.size(), ScrollStitcher::Limits {}, ScrollStitcher::Options {ignoreRight, turned});
         };
         auto stitcher = makeStitcher(sideways);
-        ScrollLadder ladder;
+
+        const auto makeAutoConfig = [&](bool turned) {
+            ScrollAutoEngine::Config cfg;
+            cfg.elevated = elevated;
+            cfg.prefersSendWheel = input->prefersSendWheel();
+            cfg.pageScrollWheel = pageScrollWheel;
+            cfg.horizontal = turned;
+            cfg.speed = toScrollSpeed(Speed(r.speed.load()));
+            return cfg;
+        };
+        ScrollAutoEngine autoEngine(makeAutoConfig(sideways));
+
         if (elevated) {
             // UIPI: the posted wheel is refused (the diagnostics keep the
             // error) and SendInput's dropped; the user scrolls.
@@ -682,27 +780,30 @@ void LongCapture::engine(Run& r)
                 r.diag.scrolled(clock.elapsed(), tried, 1);
             }
             log(u"the program runs as administrator: scrolling by hand"_s);
-            ladder = ScrollLadder(true);
         }
 
         Status shown = Status::Waiting;
-        Hint told = r.autoScroll ? Hint::Auto : Hint::Manual;
-        bool matched = false; // the last frame stitched fitted on (a guess needs it)
+        Hint told = elevated ? Hint::Elevated : (r.autoScroll ? Hint::Auto : Hint::Manual);
         qint64 lastPreview = -kPreviewEveryMs;
-        int previewFrames = -1; // the stitcher's frames when the preview was made
+        int previewFrames = -1;
         Update posted;
         bool everPosted = false;
+        const auto currentPreviewBox = [&] {
+            const QSize logical = sideways ? QSize(kPreviewWideWidth, kPreviewWideHeight)
+                                           : QSize(kPreviewWidth, kPreviewHeight);
+            return QSize(qRound(logical.width() * r.dpr), qRound(logical.height() * r.dpr));
+        };
         const auto publish = [&] {
             Update u;
             u.status = shown;
             u.height = stitcher->height();
             u.partial = stitcher->partial();
-            u.canAuto = ladder.method() != ScrollMethod::Manual;
+            u.canAuto = !elevated && autoEngine.canAutoScroll();
             u.horizontal = sideways;
             u.hint = told;
             const qint64 now = clock.elapsed();
             if (stitcher->frames() != previewFrames && now - lastPreview >= kPreviewEveryMs) {
-                u.preview = stitcher->preview(r.previewBox);
+                u.preview = stitcher->preview(currentPreviewBox());
                 previewFrames = stitcher->frames();
                 lastPreview = now;
             }
@@ -715,10 +816,10 @@ void LongCapture::engine(Run& r)
             everPosted = true;
             QMetaObject::invokeMethod(this, [this, u] { apply(u); }, Qt::QueuedConnection);
         };
+
         int dumped = 0;
         QDir dumpDir;
         if (!r.dump.isEmpty() && QDir().mkpath(r.dump)) {
-            // For wsbench --scroll-replay.
             dumpDir = QDir(r.dump);
             QFile steps(dumpDir.filePath(u"steps.txt"_s));
             if (steps.open(QIODevice::WriteOnly | QIODevice::Text)) {
@@ -732,6 +833,7 @@ void LongCapture::engine(Run& r)
         } else {
             r.dump.clear();
         }
+
         QImage base; // the last frame that fitted on
         const auto stitch = [&](const QImage& frame, std::optional<int> expect, bool guess) {
             QElapsedTimer took;
@@ -759,8 +861,7 @@ void LongCapture::engine(Run& r)
                                     .toUtf8());
                 }
             }
-            matched = step.state != ScrollStitcher::State::Lost && !step.predicted; // never a guess on a guess
-            if (matched)
+            if (step.state != ScrollStitcher::State::Lost && !step.predicted)
                 base = frame;
             switch (step.state) {
             case ScrollStitcher::State::Appended:
@@ -773,7 +874,7 @@ void LongCapture::engine(Run& r)
             case ScrollStitcher::State::Full:
                 shown = Status::Full;
                 break;
-            case ScrollStitcher::State::Lost: // the caller decides what to show
+            case ScrollStitcher::State::Lost:
             case ScrollStitcher::State::Waiting:
                 break;
             case ScrollStitcher::State::Unchanged:
@@ -783,24 +884,12 @@ void LongCapture::engine(Run& r)
             }
             return step;
         };
-        // The other way (the panel's 横向, or how it was scrolled): what was
-        // stitched goes, and it starts again from `from`.
-        const auto turn = [&](bool turned, QImage from) {
-            sideways = turned;
-            r.horizontal = turned;
-            stitcher = makeStitcher(turned);
-            input = std::make_unique<ScrollInput>(r.region, turned);
-            ladder = ScrollLadder(elevated);
-            base = QImage();
-            matched = false;
-            shown = Status::Waiting;
-            log(turned ? u"direction: sideways"_s : u"direction: up and down"_s);
-            if (!from.isNull())
-                stitch(from, std::nullopt, false);
-        };
+
         const auto extended = [&] { return stitcher->height() > stitcher->frameSize().height(); };
-        // By hand, nothing added yet, and a frame that fits on neither up nor
-        // down: whether it does the other way (Shift+wheel, a touchpad).
+        const auto currentZone = [&] {
+            const int h = stitcher->frameSize().height();
+            return std::max(32, stitcher->frames() > 1 ? h - stitcher->fixedTop() - stitcher->fixedBottom() : h * 4 / 5);
+        };
         const auto otherWay = [&](const QImage& frame) {
             if (base.isNull() || extended())
                 return false;
@@ -808,41 +897,48 @@ void LongCapture::engine(Run& r)
             trial.add(base);
             return trial.add(frame).state == ScrollStitcher::State::Appended;
         };
-        // Auto-scrolling came to the end, or no way of it moved anything,
-        // with nothing added: up and down goes nowhere here, so sideways, once.
-        bool triedSideways = false;
-        const auto trySideways = [&] {
-            if (triedSideways || sideways || elevated || extended())
-                return false;
-            triedSideways = true;
-            log(u"nothing moved up or down"_s);
-            turn(true, grabber.last());
-            return true;
+
+        int manualDirection = 1;
+        const auto turn = [&](bool turned, QImage from, bool resetTriedSideways) {
+            input->releaseParkedCursor(true);
+            sideways = turned;
+            r.horizontal = turned;
+            grabber.setOrientation(turned);
+            stitcher = makeStitcher(turned);
+            input = std::make_unique<ScrollInput>(r.region, turned);
+            ownRectsSeq = 0;
+            syncOwnRects();
+            autoEngine.reconfigure(makeAutoConfig(turned), resetTriedSideways);
+            manualDirection = 1;
+            base = QImage();
+            shown = Status::Waiting;
+            previewFrames = -1;
+            log(turned ? u"direction: sideways"_s : u"direction: up and down"_s);
+            if (!from.isNull())
+                stitch(from, std::nullopt, false);
         };
 
-        // Manual capture keeps the first viewport immediately: replacing it
-        // during a settling delay loses the start when the user scrolls at
-        // once. Subsequent stationary changes can refresh it in the stitcher.
-        // Auto-scroll still waits for a quiet initial viewport before moving.
+        // Take the first viewport right away so neither manual nor auto loses
+        // the start or stalls behind animations/caret blinking.
         QImage first;
         while (r.stop != 2 && first.isNull() && clock.elapsed() < 3000)
-            first = grabber.changed(100);
-        const qint64 firstAt = clock.elapsed();
-        while (!first.isNull() && !r.stop && r.autoScroll && ladder.method() != ScrollMethod::Manual
-            && clock.elapsed() - firstAt < kSettleMs) {
-            const QImage next = grabber.changed(kQuietMs);
-            if (next.isNull())
-                break;
-            first = next;
-        }
+            first = grabber.changed(40);
+
         if (first.isNull()) {
             how = r.stop == 2 ? u"cancelled"_s : r.stop == 1 ? u"finished"_s : u"no frame came"_s;
             log(u"no first frame"_s);
         } else {
             stitch(first, std::nullopt, false);
+            bool autoActive = false;
+            if (r.autoScroll && !elevated) {
+                autoEngine.begin(clock.elapsed(), manualDirection);
+                autoActive = autoEngine.active();
+            }
             publish();
+
             qint64 lostSince = -1;
             bool watchdog = false;
+            std::optional<std::pair<ScrollMethod, int>> lastTransientScroll;
             for (;;) {
                 if (r.stop) {
                     how = r.stop == 1 ? u"finished"_s : u"cancelled"_s;
@@ -852,23 +948,46 @@ void LongCapture::engine(Run& r)
                     how = u"at the limit"_s;
                     break;
                 }
+
+                syncOwnRects();
+                autoEngine.setSpeed(toScrollSpeed(Speed(r.speed.load())));
+
                 if (r.turned.exchange(false) && r.horizontal != sideways) {
-                    turn(r.horizontal, grabber.last());
+                    turn(r.horizontal, grabber.last(), true);
                     lostSince = -1;
                     watchdog = false;
-                    told = r.autoScroll ? Hint::Auto : Hint::Manual;
+                    if (r.autoScroll && !elevated) {
+                        autoEngine.begin(clock.elapsed(), 1);
+                        autoActive = autoEngine.active();
+                    } else {
+                        autoActive = false;
+                    }
+                    told = elevated ? Hint::Elevated : (autoActive ? Hint::Auto : Hint::Manual);
                     publish();
                     continue;
                 }
-                if (r.autoScroll && ladder.hint() == ScrollLadder::Hint::NothingWorks && trySideways()) {
-                    told = Hint::Auto;
+
+                const bool wantAuto = r.autoScroll.load();
+                if (wantAuto && !autoActive && !elevated) {
+                    autoEngine.begin(clock.elapsed(), manualDirection);
+                    autoActive = autoEngine.active();
+                    lostSince = -1;
+                    watchdog = false;
+                    told = autoActive ? Hint::Auto : hintFromLadder(autoEngine.hint(), false);
+                    log(u"auto-scroll started (direction %1)"_s.arg(manualDirection < 0 ? u"reverse"_s : u"forward"_s));
                     publish();
-                    continue;
+                } else if (!wantAuto && autoActive) {
+                    autoEngine.stop();
+                    autoActive = false;
+                    input->releaseParkedCursor(true);
+                    told = elevated ? Hint::Elevated : Hint::Manual;
+                    log(u"auto-scroll paused by user"_s);
+                    publish();
                 }
-                const bool automatic = r.autoScroll && ladder.method() != ScrollMethod::Manual;
-                if (!automatic) {
-                    // By hand: every frame that changed.
-                    const QImage frame = grabber.changed(100);
+
+                if (!autoActive) {
+                    input->releaseParkedCursor(true);
+                    const QImage frame = grabber.changed(kManualWaitMs);
                     if (frame.isNull()) {
                         const qint64 quiet = grabber.elapsed() - std::max<qint64>(0, grabber.lastFrameMs());
                         if (!watchdog && quiet >= kWatchdogMs) {
@@ -880,8 +999,12 @@ void LongCapture::engine(Run& r)
                         ScrollStitcher::Step step = stitch(frame, std::nullopt, false);
                         if (step.state == ScrollStitcher::State::Lost && otherWay(frame)) {
                             log(u"scrolled the other way"_s);
-                            turn(!sideways, base);
+                            turn(!sideways, base, false);
                             step = stitch(frame, std::nullopt, false);
+                        }
+                        if (step.state == ScrollStitcher::State::Appended || step.state == ScrollStitcher::State::Behind) {
+                            if (std::abs(step.dy) >= 8)
+                                manualDirection = step.dy < 0 ? -1 : 1;
                         }
                         if (step.state != ScrollStitcher::State::Lost)
                             lostSince = -1;
@@ -891,128 +1014,146 @@ void LongCapture::engine(Run& r)
                     const bool lost = lostSince >= 0 && clock.elapsed() - lostSince >= kLostShownMs;
                     if (lost)
                         shown = Status::Lost;
-                    told = lost                                                ? Hint::Reconnect
-                        : ladder.hint() == ScrollLadder::Hint::Elevated     ? Hint::Elevated
-                        : ladder.hint() == ScrollLadder::Hint::NothingWorks ? Hint::NothingWorks
-                                                                            : Hint::Manual;
+                    told = lost                                                   ? Hint::Reconnect
+                        : elevated || autoEngine.hint() == ScrollLadder::Hint::Elevated ? Hint::Elevated
+                        : autoEngine.hint() == ScrollLadder::Hint::NothingWorks   ? Hint::NothingWorks
+                                                                                  : Hint::Manual;
                     publish();
                     continue;
                 }
 
-                // Auto-scroll: one step, the picture at rest, stitched.
-                told = watchdog ? Hint::NoFrames : Hint::Auto;
-                const int h = stitcher->frameSize().height(); // the region's width, sideways
-                const int zone = stitcher->frames() > 1 ? h - stitcher->fixedTop() - stitcher->fixedBottom() : h * 4 / 5;
-                const ScrollMethod method = ladder.method();
-                const double amount = ladder.amount(std::max(16, int(zone * kAim)));
-                const int expect = ladder.expected(amount);
-                const bool anyWorked = ladder.worked(ScrollMethod::PostWheel) || ladder.worked(ScrollMethod::SendWheel)
-                    || ladder.worked(ScrollMethod::Uia);
-                const bool matchedBefore = matched;
-                const ScrollResult sent = input->scroll(method, amount);
-                {
-                    const std::lock_guard lock(r.mutex);
-                    r.diag.scrolled(clock.elapsed(), sent, amount);
+                // Continuous closed-loop auto-scrolling.
+                const qint64 now = clock.elapsed();
+                if (input->cursorParked() && input->userMovedCursor()) {
+                    input->releaseParkedCursor(false); // yield immediately; never fight the user's hand
+                    const bool inside = input->cursorInRegion();
+                    autoEngine.onUserMovedCursor(now, inside);
+                    log(inside ? u"user moved mouse inside region: cursor yielded"_s : u"user moved mouse outside region: pausing"_s);
                 }
-                if (sent.code != ScrollOk) {
-                    ladder.refused(sent.code);
-                    if (ladder.hint() == ScrollLadder::Hint::MouseOutside)
+
+                const int zone = currentZone();
+                const ScrollAutoEngine::Command cmd = autoEngine.next(now, zone, extended());
+                switch (cmd.kind) {
+                case ScrollAutoEngine::CommandKind::WaitFrame: {
+                    if (cmd.hint == ScrollLadder::Hint::MouseOutside)
                         told = Hint::MouseOutside;
-                    if (ladder.atEnd() && !trySideways()) {
-                        how = u"at the end"_s;
-                        break;
+                    else if (!watchdog)
+                        told = Hint::Auto;
+                    const QImage frame = grabber.changed(cmd.timeoutMs);
+                    if (frame.isNull()) {
+                        const qint64 quiet = grabber.elapsed() - std::max<qint64>(0, grabber.lastFrameMs());
+                        if (!watchdog && quiet >= kWatchdogMs) {
+                            log(u"watchdog: no frame for 5 s"_s);
+                            watchdog = true;
+                            told = Hint::NoFrames;
+                        }
+                    } else {
+                        watchdog = false;
+                        const int exp = autoEngine.expectedStepPx();
+                        const std::optional<int> expect = exp != 0 ? std::optional<int>(exp) : std::nullopt;
+                        ScrollStitcher::Step step = stitch(frame, expect, false);
+                        if (step.state == ScrollStitcher::State::Lost && otherWay(frame)) {
+                            log(u"it moved the other way"_s);
+                            turn(!sideways, base, false);
+                            step = stitch(frame, std::nullopt, false);
+                            autoEngine.begin(clock.elapsed(), step.dy < 0 ? -1 : 1);
+                            autoActive = autoEngine.active();
+                        } else {
+                            autoEngine.onFrame(clock.elapsed(), step, extended(), currentZone());
+                            if (!autoEngine.active() && autoEngine.phase() == ScrollAutoEngine::Phase::Idle) {
+                                // User scrolled backwards manually to take over.
+                                r.autoScroll = false;
+                                autoActive = false;
+                                input->releaseParkedCursor(true);
+                                told = Hint::Manual;
+                                log(u"auto-scroll yielded after reverse scroll"_s);
+                            }
+                        }
                     }
                     publish();
-                    if (sent.code == ScrollKeysHeld || ladder.hint() == ScrollLadder::Hint::MouseOutside)
-                        pause(150);
-                    continue;
+                    break;
                 }
-                const QImage still = settle(grabber, anyWorked ? kMoveWaitMs : kMoveWaitFirstMs, r.stop);
-                if (r.stop)
-                    continue;
-                if (still.isNull()) {
-                    ladder.moved(0, amount);
-                    {
-                        const std::lock_guard lock(r.mutex);
-                        r.diag.moved(clock.elapsed(), method, 0);
+
+                case ScrollAutoEngine::CommandKind::SendScroll: {
+                    ScrollResult sent;
+                    sent.method = cmd.method;
+                    bool handledBeforeSend = false;
+                    if (cmd.method == ScrollMethod::SendWheel && !input->cursorInRegion() && cmd.allowParkCursor) {
+                        const ScrollCode parked = input->parkCursor(cursorMoveThreshold);
+                        if (parked == ScrollOk) {
+                            log(u"cursor parked in region for send wheel"_s);
+                            pause(15);
+                        } else if (parked == ScrollKeysHeld) {
+                            sent.code = ScrollKeysHeld;
+                            handledBeforeSend = true;
+                        }
                     }
-                    const qint64 quiet = grabber.elapsed() - std::max<qint64>(0, grabber.lastFrameMs());
-                    if (!watchdog && quiet >= kWatchdogMs) {
-                        log(u"watchdog: no frame for 5 s"_s);
-                        watchdog = true;
-                        told = Hint::NoFrames;
-                    }
-                    if (ladder.atEnd() && !trySideways()) {
-                        how = u"at the end"_s;
+                    if (r.stop)
                         break;
+                    if (!handledBeforeSend)
+                        sent = input->scroll(cmd.method, cmd.amount, cmd.direction);
+                    const qint64 sentAt = clock.elapsed();
+                    const bool transient = sent.code == ScrollCursorOutside || sent.code == ScrollKeysHeld;
+                    const auto key = std::make_pair(sent.method, sent.code);
+                    if (!transient || lastTransientScroll != key) {
+                        const std::lock_guard lock(r.mutex);
+                        r.diag.scrolled(sentAt, sent, cmd.amount);
+                        lastTransientScroll = transient ? std::optional(key) : std::nullopt;
                     }
+                    autoEngine.onScrollSent(sentAt, sent, cmd.amount, zone);
+                    if (autoEngine.hint() == ScrollLadder::Hint::MouseOutside)
+                        told = Hint::MouseOutside;
+                    else if (!watchdog)
+                        told = Hint::Auto;
                     publish();
-                    continue;
-                }
-                watchdog = false;
-                told = Hint::Auto;
-                const std::optional<int> expected = expect > 0 ? std::optional<int>(expect) : std::nullopt;
-                ScrollStitcher::Step step = stitch(still, expected, false);
-                if (step.state == ScrollStitcher::State::Lost) {
-                    // Once more a moment later; then, where the frame before
-                    // fitted and a step's rows are known, the guess (the
-                    // result is then partly guessed).
-                    const QImage again = grabber.changed(kRetryMs);
-                    if (!again.isNull())
-                        step = stitch(again, expected, false);
-                    // Nothing added yet: the step may have moved it the
-                    // other way (a list that only goes sideways takes the
-                    // wheel for that). That way, then.
-                    if (step.state == ScrollStitcher::State::Lost && otherWay(grabber.last())) {
-                        log(u"it moved the other way"_s);
-                        turn(!sideways, base);
-                        step = stitch(grabber.last(), std::nullopt, false);
-                    }
-                    if (step.state == ScrollStitcher::State::Lost && expected && matchedBefore)
-                        step = stitch(grabber.last(), expected, true);
-                }
-                switch (step.state) {
-                case ScrollStitcher::State::Appended:
-                case ScrollStitcher::State::Behind:
-                case ScrollStitcher::State::Full:
-                    ladder.moved(step.dy, amount);
-                    {
-                        const std::lock_guard lock(r.mutex);
-                        r.diag.moved(clock.elapsed(), method, step.dy);
-                    }
-                    break;
-                case ScrollStitcher::State::Unchanged:
-                    ladder.moved(0, amount);
-                    {
-                        const std::lock_guard lock(r.mutex);
-                        r.diag.moved(clock.elapsed(), method, 0);
-                    }
-                    break;
-                case ScrollStitcher::State::Lost:
-                    // No overlap and nothing to guess with: by hand from here.
-                    r.autoScroll = false;
-                    shown = Status::Lost;
-                    told = Hint::Reconnect;
-                    lostSince = clock.elapsed() - kLostShownMs;
-                    log(u"lost: auto-scroll off"_s);
-                    break;
-                case ScrollStitcher::State::Waiting:
                     break;
                 }
-                if (ladder.atEnd() && !trySideways()) {
+
+                case ScrollAutoEngine::CommandKind::SwitchSideways: {
+                    log(u"nothing moved up or down: trying sideways"_s);
+                    turn(true, grabber.last(), false);
+                    autoEngine.begin(clock.elapsed(), 1);
+                    autoActive = autoEngine.active();
+                    told = Hint::Auto;
+                    publish();
+                    break;
+                }
+
+                case ScrollAutoEngine::CommandKind::FinishAtEnd: {
+                    input->releaseParkedCursor(true);
                     how = u"at the end"_s;
+                    goto finishedLoop;
+                }
+
+                case ScrollAutoEngine::CommandKind::YieldToManual: {
+                    input->releaseParkedCursor(true);
+                    r.autoScroll = false;
+                    autoActive = false;
+                    if (cmd.lost) {
+                        shown = Status::Lost;
+                        told = Hint::Reconnect;
+                        lostSince = clock.elapsed() - kLostShownMs;
+                        log(u"lost after recovery: auto-scroll off"_s);
+                    } else {
+                        told = hintFromLadder(cmd.hint, false);
+                    }
+                    publish();
                     break;
                 }
-                publish();
+                }
             }
+        finishedLoop:;
         }
+
+        input->releaseParkedCursor(true);
+
         // Finish can arrive while WGC or a smooth scroll still has the final
         // changed frame in flight. Drain it before exporting; cancellation
         // never waits for or exports these frames.
         if (r.stop == 1 && stitcher->frames() > 0 && !stitcher->full()) {
             const qint64 finishAt = clock.elapsed();
-            while (r.stop != 2 && clock.elapsed() - finishAt < kMoveWaitMs) {
-                const QImage last = grabber.changed(kQuietMs);
+            while (r.stop != 2 && clock.elapsed() - finishAt < kFinishDrainMs) {
+                const QImage last = grabber.changed(kFinishQuietMs);
                 if (last.isNull())
                     break;
                 stitch(last, std::nullopt, false);

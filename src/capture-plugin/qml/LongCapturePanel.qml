@@ -11,7 +11,17 @@ Window {
     readonly property int padding: 12
     readonly property real dpr: Screen.devicePixelRatio
     readonly property var statusWords: [qsTr("等待滚动"), qsTr("拼接中"), qsTr("已截取的内容"), qsTr("需要接回"), qsTr("到上限")]
-    readonly property real statusWidth: statusWords.reduce((width, word) => Math.max(width, captionMetrics.advanceWidth(word)), 0)
+    readonly property var speedWords: [qsTr("慢速"), qsTr("标准"), qsTr("快速")]
+    readonly property real statusWidth: Math.ceil(statusWords.reduce((width, word) => Math.max(width, captionMetrics.advanceWidth(word)), 0))
+    readonly property real dimensionWidth: Math.ceil(Math.max(
+        captionMetrics.advanceWidth(qsTr("高 %1 像素").arg(30000)),
+        captionMetrics.advanceWidth(qsTr("宽 %1 像素").arg(30000))))
+    readonly property real directionWidth: Math.ceil(Math.max(
+        bodyMetrics.advanceWidth(qsTr("竖向")),
+        bodyMetrics.advanceWidth(qsTr("横向")))) + 44
+    readonly property real speedWidth: Math.ceil(speedWords.reduce((width, word) => Math.max(width, bodyMetrics.advanceWidth(word)), 0)) + 44
+    readonly property bool liveAuto: panel.capture.autoScroll && panel.capture.canAutoScroll
+        && panel.capture.status !== LongCapture.Lost && panel.capture.status !== LongCapture.Full
     property bool previewVisible: true
 
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus
@@ -22,6 +32,8 @@ Window {
     onClosing: (event) => { event.accepted = false; capture.cancel() }
 
     FontMetrics { id: captionMetrics; font.pixelSize: Theme.fontCaption }
+    FontMetrics { id: bodyMetrics; font.pixelSize: Theme.fontBody }
+
     Column {
         id: column
         x: panel.padding; y: panel.padding
@@ -36,7 +48,26 @@ Window {
             }
             Row {
                 id: heading
-                spacing: 10
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 8
+                Rectangle {
+                    id: statusDot
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 8; height: 8; radius: 4
+                    color: panel.capture.status === LongCapture.Lost
+                           ? Theme.danger
+                           : (panel.liveAuto || panel.capture.status === LongCapture.Stitching || panel.capture.status === LongCapture.Full)
+                             ? Theme.accent
+                             : Theme.subtext
+                    opacity: panel.liveAuto ? 1.0
+                           : (panel.capture.status === LongCapture.Waiting || panel.capture.status === LongCapture.Behind) ? 0.55 : 1.0
+                    SequentialAnimation on opacity {
+                        running: panel.visible && panel.liveAuto
+                        loops: Animation.Infinite
+                        NumberAnimation { from: 1.0; to: 0.35; duration: 650; easing.type: Easing.InOutSine }
+                        NumberAnimation { from: 0.35; to: 1.0; duration: 650; easing.type: Easing.InOutSine }
+                    }
+                }
                 Text { text: qsTr("长截图"); color: Theme.text; font.pixelSize: Theme.uiTitle; font.weight: Theme.fontStrong }
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
@@ -47,7 +78,7 @@ Window {
                 }
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    width: captionMetrics.advanceWidth(qsTr("高 %1 像素").arg(30000))
+                    width: panel.dimensionWidth
                     text: (panel.capture.horizontal ? qsTr("宽 %1 像素") : qsTr("高 %1 像素")).arg(panel.capture.pictureHeight)
                     color: Theme.subtext; font.pixelSize: Theme.fontCaption
                 }
@@ -55,13 +86,15 @@ Window {
             Row {
                 id: automatic
                 anchors.right: parent.right
-                spacing: 8
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 6
                 // Up and down, or sideways (feedback 2026-11-16). Scrolled
                 // sideways by hand at the start, it turns by itself.
                 FlatButton {
                     dpr: panel.dpr
                     objectName: "longCaptureDirection"
                     anchors.verticalCenter: parent.verticalCenter
+                    width: panel.directionWidth
                     implicitHeight: 28
                     flat: true; keyboardActivation: false
                     text: panel.capture.horizontal ? qsTr("横向") : qsTr("竖向")
@@ -70,6 +103,21 @@ Window {
                     Accessible.name: panel.capture.horizontal ? qsTr("横向长截图，点一下改成竖向") : qsTr("竖向长截图，点一下改成横向")
                     onClicked: panel.capture.horizontal = !panel.capture.horizontal
                 }
+                FlatButton {
+                    dpr: panel.dpr
+                    objectName: "longCaptureSpeed"
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: panel.speedWidth
+                    implicitHeight: 28
+                    flat: true; keyboardActivation: false
+                    enabled: panel.capture.canAutoScroll
+                    opacity: !enabled ? 0.4 : (panel.capture.autoScroll ? 1.0 : 0.72)
+                    text: panel.speedWords[panel.capture.autoScrollSpeed] ?? qsTr("标准")
+                    glyph: "ph:gauge"
+                    Accessible.role: Accessible.Button
+                    Accessible.name: qsTr("自动滚动速度：%1，点一下切换").arg(text)
+                    onClicked: panel.capture.cycleAutoScrollSpeed()
+                }
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     text: qsTr("自动滚动"); color: Theme.subtext; font.pixelSize: Theme.fontCaption
@@ -77,6 +125,7 @@ Window {
                 ToggleSwitch {
                     dpr: panel.dpr
                     objectName: "longCaptureAutoScroll"
+                    anchors.verticalCenter: parent.verticalCenter
                     word: false
                     enabled: panel.capture.canAutoScroll
                     checked: panel.capture.autoScroll && panel.capture.canAutoScroll
@@ -99,7 +148,7 @@ Window {
             FlatButton {
                 dpr: panel.dpr
                 objectName: "longCapturePreviewToggle"
-                text: qsTr("预览"); glyph: String.fromCharCode(0xE890)
+                text: qsTr("预览"); glyph: panel.previewVisible ? "ph:eye" : "ph:eye-slash"
                 flat: !panel.previewVisible; keyboardActivation: false
                 Accessible.role: Accessible.Button; Accessible.name: text
                 onClicked: panel.previewVisible = !panel.previewVisible
@@ -113,14 +162,14 @@ Window {
             FlatButton {
                 dpr: panel.dpr
                 objectName: "longCapturePin"
-                text: qsTr("贴图"); glyph: String.fromCharCode(0xE718); keyboardActivation: false
+                text: qsTr("贴图"); glyph: "ph:push-pin"; keyboardActivation: false
                 Accessible.role: Accessible.Button; Accessible.name: text
                 onClicked: panel.capture.exportTo(LongCapture.Pin)
             }
             FlatButton {
                 dpr: panel.dpr
                 objectName: "longCaptureSave"
-                text: qsTr("保存"); glyph: String.fromCharCode(0xE74E); keyboardActivation: false
+                text: qsTr("保存"); glyph: "ph:floppy-disk"; keyboardActivation: false
                 Accessible.role: Accessible.Button; Accessible.name: text
                 onClicked: panel.capture.exportTo(LongCapture.Save)
             }
@@ -141,7 +190,7 @@ Window {
             FlatButton {
                 dpr: panel.dpr
                 objectName: "longCaptureCopy"
-                text: qsTr("复制"); glyph: String.fromCharCode(0xE73E); highlighted: true; keyboardActivation: false
+                text: qsTr("复制"); glyph: "ph:check"; highlighted: true; keyboardActivation: false
                 Accessible.role: Accessible.Button; Accessible.name: text
                 onClicked: panel.capture.exportTo(LongCapture.Copy)
             }
@@ -157,20 +206,33 @@ Window {
         color: Theme.background
         title: qsTr("长图预览")
         width: panel.capture.previewBox.width + 2 * panel.padding
-        height: previewHeading.implicitHeight + panel.capture.previewBox.height + 3 * panel.padding
+        height: previewHeader.implicitHeight + panel.capture.previewBox.height + 3 * panel.padding
         onClosing: (event) => { event.accepted = false; panel.previewVisible = false }
         // Dragged anywhere, as the panel by its heading: off the region when it covers it (GitHub #378).
         DragHandler {
             target: null
             onActiveChanged: if (active) previewWindow.startSystemMove()
         }
-        Text {
-            id: previewHeading
+        Item {
+            id: previewHeader
             x: panel.padding; y: panel.padding
-            text: qsTr("长图预览"); color: Theme.text; font.pixelSize: Theme.fontBody
+            width: previewWindow.width - 2 * panel.padding
+            implicitHeight: Math.max(previewHeading.implicitHeight, previewMeta.implicitHeight)
+            height: implicitHeight
+            Text {
+                id: previewHeading
+                anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
+                text: qsTr("长图预览"); color: Theme.text; font.pixelSize: Theme.fontBody
+            }
+            Text {
+                id: previewMeta
+                anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                text: (panel.capture.horizontal ? qsTr("宽 %1 像素") : qsTr("高 %1 像素")).arg(panel.capture.pictureHeight)
+                color: Theme.subtext; font.pixelSize: Theme.fontCaption
+            }
         }
         Item {
-            x: panel.padding; y: previewHeading.y + previewHeading.implicitHeight + panel.padding
+            x: panel.padding; y: previewHeader.y + previewHeader.height + panel.padding
             width: panel.capture.previewBox.width; height: panel.capture.previewBox.height
             CaptureImage {
                 id: shot
@@ -181,8 +243,9 @@ Window {
             }
             Rectangle {
                 visible: panel.capture.hasPreview
-                x: shot.x - 1; y: -1; width: shot.width + 2; height: shot.height + 2
-                color: "transparent"; border.width: 1; border.color: Theme.windowEdge
+                readonly property real edge: Theme.edge(panel.dpr)
+                x: shot.x - edge; y: -edge; width: shot.width + 2 * edge; height: shot.height + 2 * edge
+                color: "transparent"; border.width: edge; border.color: Theme.windowEdge
             }
             Text {
                 anchors.centerIn: parent

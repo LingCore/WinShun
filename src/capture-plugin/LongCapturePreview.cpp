@@ -295,9 +295,19 @@ int runLongCapture(const QStringList& args)
     check(!controller->horizontal(), "up and down must be the default");
     // --turn: 横向 chosen on the panel; without it, sideways is for the engine to see.
     const QSize controlSize = panel->size();
-    for (const auto* name : {"longCapturePin", "longCaptureSave", "longCaptureDone", "longCaptureCancel", "longCaptureCopy"}) {
+    for (const auto* name : {"longCaptureDirection", "longCaptureSpeed", "longCapturePin", "longCaptureSave", "longCaptureDone", "longCaptureCancel", "longCaptureCopy"}) {
         auto* button = panel->findChild<QQuickItem*>(QString::fromLatin1(name));
-        check(button && button->isVisible() && button->isEnabled(), "output buttons must remain visible during capture");
+        check(button && button->isVisible() && button->isEnabled(), "output and mode buttons must remain visible during capture");
+    }
+    // Cycling auto-scroll speed must keep the action strip's geometry fixed.
+    if (!args.contains(u"--interactive"_s)) {
+        const auto initialSpeed = controller->autoScrollSpeed();
+        controller->cycleAutoScrollSpeed();
+        pump(30);
+        check(controller->autoScrollSpeed() != initialSpeed, "speed button must cycle speed modes");
+        check(panel->size() == controlSize, "speed changes must not resize the action strip");
+        controller->setAutoScrollSpeed(initialSpeed);
+        pump(30);
     }
     auto* preview = panel->findChild<QQuickWindow*>(u"longCapturePreview"_s);
     check(preview, "preview must have its own window");

@@ -7,7 +7,9 @@
 // again a little differently (WinUI), lines closer than a step, a side bar
 // that stays, frames that do not overlap, the limits; and the diagnostics'
 // text (ScrollDiagnostics).
+#include "ScrollAutoEngine.h"
 #include "ScrollDiagnostics.h"
+#include "ScrollGrabber.h"
 #include "ScrollStitcher.h"
 
 #include <QElapsedTimer>
@@ -1019,6 +1021,427 @@ private slots:
         QVERIFY(!text.contains(u"access denied (5)"_s)); // gone from the ring
         QVERIFY(d.lines().last().contains(u"end: finished, 1802 px high"_s));
         QVERIFY(text.contains(u"scroll: send wheel by 3.00: mouse outside"_s));
+    }
+
+    void samePixelsIgnoresExcludedStrip()
+    {
+        QImage a(200, 120, QImage::Format_RGB32);
+        a.fill(kPaper);
+        QImage b = a.copy();
+        // Overlay scrollbar changes only in the right 20 px strip.
+        for (int y = 10; y < 80; ++y)
+            for (int x = 184; x < 196; ++x)
+                b.setPixel(x, y, qRgb(110, 110, 110));
+        QVERIFY(!samePixels(a, b));
+        QVERIFY(samePixels(a, b, QRect(0, 0, 180, 120)));
+        // Any 1 px change inside the compared area is still caught.
+        b.setPixel(50, 50, qRgb(10, 20, 30));
+        QVERIFY(!samePixels(a, b, QRect(0, 0, 180, 120)));
+    }
+
+    // Smooth scrolling at fractional DPI produces frames sampled at non-integer
+    // vertical scroll positions. Anchor keyframes + subpixel vertical-envelope
+    // matching must track continuously without losing lock or accumulating drift.
+    void smoothScrollSubpixelFractional()
+    {
+        const Page& p = page();
+        auto sampleFractional = [&](double pos) {
+            const int y0 = int(std::floor(pos));
+            const double frac = pos - y0;
+            const QImage f0 = p.frame(y0);
+            if (frac < 1e-4)
+                return f0;
+            const QImage f1 = p.frame(y0 + 1);
+            QImage out(kWidth, kFrame, QImage::Format_RGB32);
+            const int weight = int(std::lround(frac * 255.0));
+            for (int y = 0; y < kFrame; ++y) {
+                const auto* r0 = reinterpret_cast<const QRgb*>(f0.constScanLine(y));
+                const auto* r1 = reinterpret_cast<const QRgb*>(f1.constScanLine(y));
+                auto* dst = reinterpret_cast<QRgb*>(out.scanLine(y));
+                for (int x = 0; x < kWidth; ++x)
+                    dst[x] = mix(r0[x], r1[x], weight);
+            }
+            return out;
+        };
+        ScrollStitcher stitcher(QSize(kWidth, kFrame), {}, {kIgnoreRight});
+        double pos = 0.0;
+        QCOMPARE(stitcher.add(sampleFractional(pos)).state, ScrollStitcher::State::Appended);
+        for (int i = 0; i < 65; ++i) {
+            pos += 17.37; // non-integer smooth scroll cadence across 1129 px
+            const ScrollStitcher::Step step = stitcher.add(sampleFractional(pos));
+            QVERIFY2(step.state != ScrollStitcher::State::Lost,
+                qPrintable(u"lost on fractional frame %1 at pos %2"_s.arg(i).arg(pos)));
+            QVERIFY(!step.predicted);
+        }
+        const int expectedHeight = int(std::lround(pos)) + kFrame;
+        QVERIFY2(std::abs(stitcher.height() - expectedHeight) <= 3,
+            qPrintable(u"height %1 vs expected %2"_s.arg(stitcher.height()).arg(expectedHeight)));
+    }
+
+    // Dark-mode apps with sparse short text in wide segments have low segment-wide
+    // mean gradient, yet crisp local edges that must still stitch accurately.
+    void darkModeSparseLines()
+    {
+        constexpr int w = 1280;
+        constexpr int h = 520;
+        const QRgb bg = qRgb(24, 24, 27);
+        const QRgb fg = qRgb(92, 96, 108); // subtle dark-mode muted text (~68 luma contrast)
+        QImage doc(w, 2200, QImage::Format_RGB32);
+        fill(doc, 0, doc.height(), bg);
+        std::mt19937 rng(77);
+        for (int y = 18, row = 0; y < doc.height() - 24; y += 34, ++row) {
+            const int x0 = 40 + (row % 3) * 16; // short indented bullet lines
+            for (int c = 0; c < 6; ++c) {
+                const auto& g = font().glyphs[rng() % 48];
+                for (int gy = 0; gy < 12; ++gy) {
+                    auto* line = reinterpret_cast<QRgb*>(doc.scanLine(y + gy));
+                    for (int gx = 0; gx < 7; ++gx)
+                        if (const int ink = g[size_t(gy * 7 + gx)])
+                            line[x0 + c * 9 + gx] = mix(bg, fg, ink);
+                }
+            }
+        }
+        ScrollStitcher stitcher(QSize(w, h), {}, {24});
+        QCOMPARE(stitcher.add(doc.copy(0, 0, w, h)).state, ScrollStitcher::State::Appended);
+        int s = 0;
+        for (int dy : {80, 95, 110, 88, 120, 105, 92, 130, 115, 90}) {
+            s += dy;
+            const auto step = stitcher.add(doc.copy(0, s, w, h));
+            QCOMPARE(step.state, ScrollStitcher::State::Appended);
+            QCOMPARE(step.dy, dy);
+        }
+        QCOMPARE(stitcher.result(), doc.copy(0, 0, w, s + h));
+    }
+
+    // A sticky bar that pins only after the page scrolls down (taller than h/6)
+    // must be recognized once stable so it does not stamp duplicates.
+    void lateAppearingStickyHeader()
+    {
+        QImage doc(kWidth, 2400, QImage::Format_RGB32);
+        fill(doc, 0, doc.height(), kPaper);
+        for (int y = 12, i = 0; y < doc.height() - 24; y += 22, ++i)
+            text(doc, y, 24, kWidth - 48, uint32_t(31000 + i));
+        constexpr int kLateBar = 96; // > kFrame / 6 (80)
+        QImage lateBar(kWidth, kLateBar, QImage::Format_RGB32);
+        fill(lateBar, 0, kLateBar, qRgb(36, 70, 124));
+        text(lateBar, 38, 24, kWidth - 48, 4242);
+
+        const auto frameAt = [&](int s, bool pinned) {
+            QImage f = doc.copy(0, s, kWidth, kFrame);
+            if (pinned) {
+                for (int y = 0; y < kLateBar; ++y)
+                    std::memcpy(f.scanLine(y), lateBar.constScanLine(y), size_t(kWidth) * 4);
+            }
+            return f;
+        };
+        ScrollStitcher stitcher(QSize(kWidth, kFrame), {}, {kIgnoreRight});
+        QCOMPARE(stitcher.add(frameAt(0, false)).state, ScrollStitcher::State::Appended);
+        int s = 0;
+        for (int i = 0; i < 10; ++i) {
+            s += 120;
+            const auto step = stitcher.add(frameAt(s, i >= 1));
+            QCOMPARE(step.state, ScrollStitcher::State::Appended);
+            QCOMPARE(step.dy, 120);
+        }
+        QCOMPARE(stitcher.fixedTop(), kLateBar);
+        QCOMPARE(stitcher.height(), s + kFrame);
+        // Content below the initial top area must stay clean (no repeated dark bar bands).
+        const QImage result = stitcher.result();
+        for (int y = kLateBar + 20; y < result.height() - 20; ++y) {
+            const QRgb px = result.pixel(8, y);
+            QVERIFY2(qRed(px) > 200 && qGreen(px) > 200,
+                qPrintable(u"late sticky bar leaked onto canvas row %1"_s.arg(y)));
+        }
+    }
+
+    // Continuous closed-loop auto-scroll: smooth streaming ticks, multi-frame
+    // ease-out calibration, backpressure, no cursor parking once PostWheel works,
+    // and crisp end-of-page verification (< 1.2 s after last movement).
+    void autoEngineContinuousStreaming()
+    {
+        ScrollAutoEngine::Config cfg;
+        cfg.speed = ScrollSpeed::Normal;
+        ScrollAutoEngine engine(cfg);
+        constexpr int zone = 600;
+        qint64 now = 0;
+        engine.begin(now, 1);
+
+        int sentTicks = 0;
+        double targetPos = 0.0;
+        double shownPos = 0.0;
+        constexpr double maxScroll = 2400.0;
+        qint64 lastMovedAt = 0;
+        qint64 finishedAt = -1;
+        bool everParkedCursor = false;
+
+        for (int iter = 0; iter < 1500 && now < 15'000; ++iter) {
+            const auto cmd = engine.next(now, zone, shownPos > 0);
+            if (cmd.kind == ScrollAutoEngine::CommandKind::FinishAtEnd) {
+                finishedAt = now;
+                break;
+            }
+            if (cmd.kind == ScrollAutoEngine::CommandKind::SendScroll) {
+                if (cmd.allowParkCursor)
+                    everParkedCursor = true;
+                if (cmd.method == ScrollMethod::PostWheel) {
+                    ++sentTicks;
+                    targetPos = std::min(maxScroll, targetPos + 120.0 * cmd.amount);
+                    engine.onScrollSent(now, {ScrollMethod::PostWheel, ScrollOk, 0}, cmd.amount, zone);
+                } else if (cmd.method == ScrollMethod::SendWheel) {
+                    engine.onScrollSent(now, {ScrollMethod::SendWheel, ScrollCursorOutside, 0}, cmd.amount, zone);
+                } else {
+                    engine.onScrollSent(now, {ScrollMethod::Uia, ScrollNoPattern, 0}, cmd.amount, zone);
+                }
+            } else if (cmd.kind == ScrollAutoEngine::CommandKind::WaitFrame) {
+                const int dt = std::min(cmd.timeoutMs, 16);
+                now += dt;
+                // Smooth-scroll easing: moves 35% of remaining distance each 16ms frame.
+                const double remaining = targetPos - shownPos;
+                if (remaining >= 1.0) {
+                    const int dy = std::max(1, int(std::round(remaining * 0.35)));
+                    shownPos = std::min(targetPos, shownPos + dy);
+                    lastMovedAt = now;
+                    ScrollStitcher::Step step;
+                    step.state = ScrollStitcher::State::Appended;
+                    step.dy = dy;
+                    engine.onFrame(now, step, shownPos > 0, zone);
+                }
+            } else {
+                QFAIL("unexpected manual fallback during smooth PostWheel stream");
+            }
+        }
+        QVERIFY2(finishedAt > 0, "auto-scroll must detect page end");
+        QCOMPARE(int(std::lround(shownPos)), int(maxScroll));
+        QVERIFY2(sentTicks >= 18, qPrintable(u"expected smooth multi-tick stream, got %1"_s.arg(sentTicks)));
+        QVERIFY2(!everParkedCursor, "cursor must not be parked when PostWheel works");
+        QVERIFY2(finishedAt - lastMovedAt <= 1200,
+            qPrintable(u"end-of-page verification took %1 ms (too slow)"_s.arg(finishedAt - lastMovedAt)));
+    }
+
+    // WinUI/InputSite targets start directly on SendWheel with one polite cursor
+    // park, yield immediately if the user moves the mouse away, and resume once
+    // the user places the mouse back in the region.
+    void autoEngineWinUiPrefersSendWheelAndYields()
+    {
+        ScrollAutoEngine::Config cfg;
+        cfg.prefersSendWheel = true;
+        ScrollAutoEngine engine(cfg);
+        constexpr int zone = 500;
+        qint64 now = 0;
+        engine.begin(now, 1);
+
+        auto cmd = engine.next(now, zone, false);
+        QCOMPARE(cmd.kind, ScrollAutoEngine::CommandKind::SendScroll);
+        QCOMPARE(cmd.method, ScrollMethod::SendWheel);
+        QVERIFY(cmd.allowParkCursor);
+        engine.onScrollSent(now, {ScrollMethod::SendWheel, ScrollOk, 0}, cmd.amount, zone);
+
+        now += 32;
+        ScrollStitcher::Step moved;
+        moved.state = ScrollStitcher::State::Appended;
+        moved.dy = 110;
+        engine.onFrame(now, moved, true, zone);
+        QCOMPARE(engine.phase(), ScrollAutoEngine::Phase::Streaming);
+
+        // User grabs the mouse and moves it outside the region.
+        now += 20;
+        engine.onUserMovedCursor(now, false);
+        // Must NEVER ask to park the cursor again after the user took it.
+        now += 200;
+        cmd = engine.next(now, zone, true);
+        if (cmd.kind == ScrollAutoEngine::CommandKind::SendScroll && cmd.method == ScrollMethod::SendWheel)
+            QVERIFY(!cmd.allowParkCursor);
+
+        // Fresh run where left mouse button was just clicked on the Auto-Scroll
+        // toggle (ScrollKeysHeld): must wait briefly, then retry SendWheel with
+        // allowParkCursor still enabled rather than falling into MouseOutside.
+        ScrollAutoEngine afterClick(cfg);
+        now = 0;
+        afterClick.begin(now, 1);
+        cmd = afterClick.next(now, zone, false);
+        QCOMPARE(cmd.method, ScrollMethod::SendWheel);
+        QVERIFY(cmd.allowParkCursor);
+        afterClick.onScrollSent(now, {ScrollMethod::SendWheel, ScrollKeysHeld, 0}, cmd.amount, zone);
+        QCOMPARE(afterClick.hint(), ScrollLadder::Hint::None);
+        cmd = afterClick.next(now + 20, zone, false);
+        QCOMPARE(cmd.kind, ScrollAutoEngine::CommandKind::WaitFrame);
+        now += 150;
+        cmd = afterClick.next(now, zone, false);
+        QCOMPARE(cmd.kind, ScrollAutoEngine::CommandKind::SendScroll);
+        QCOMPARE(cmd.method, ScrollMethod::SendWheel);
+        QVERIFY(cmd.allowParkCursor);
+    }
+
+    // Speed modes change pacing cleanly; reverse direction supports upward
+    // auto-scroll; user manually scrolling opposite yields gracefully.
+    void autoEngineSpeedDirectionAndReverseYield()
+    {
+        auto measureTickInterval = [](ScrollSpeed speed) {
+            ScrollAutoEngine::Config cfg;
+            cfg.speed = speed;
+            ScrollAutoEngine engine(cfg);
+            qint64 now = 0;
+            engine.begin(now, 1);
+            auto cmd = engine.next(now, 800, false);
+            engine.onScrollSent(now, {ScrollMethod::PostWheel, ScrollOk, 0}, cmd.amount, 800);
+            now += 16;
+            ScrollStitcher::Step step;
+            step.state = ScrollStitcher::State::Appended;
+            step.dy = 120;
+            engine.onFrame(now, step, true, 800);
+            // Advance through several steady-state ticks and measure average interval.
+            qint64 firstTick = -1;
+            qint64 lastTick = -1;
+            int ticks = 0;
+            for (int i = 0; i < 400 && ticks < 8; ++i) {
+                cmd = engine.next(now, 800, true);
+                if (cmd.kind == ScrollAutoEngine::CommandKind::SendScroll) {
+                    if (firstTick < 0)
+                        firstTick = now;
+                    lastTick = now;
+                    ++ticks;
+                    engine.onScrollSent(now, {ScrollMethod::PostWheel, ScrollOk, 0}, cmd.amount, 800);
+                    now += 16;
+                    step.dy = int(std::lround(120.0 * cmd.amount));
+                    engine.onFrame(now, step, true, 800);
+                } else {
+                    now += cmd.timeoutMs;
+                }
+            }
+            return ticks > 1 ? double(lastTick - firstTick) / (ticks - 1) : 0.0;
+        };
+        const double slowMs = measureTickInterval(ScrollSpeed::Slow);
+        const double normalMs = measureTickInterval(ScrollSpeed::Normal);
+        const double fastMs = measureTickInterval(ScrollSpeed::Fast);
+        QVERIFY2(slowMs > normalMs && normalMs > fastMs,
+            qPrintable(u"expected slow > normal > fast intervals, got %1 / %2 / %3"_s.arg(slowMs).arg(normalMs).arg(fastMs)));
+
+        // Upward auto-scroll (direction = -1) sends direction = -1 ticks and yields if user scrolls down.
+        ScrollAutoEngine up;
+        qint64 now = 0;
+        up.begin(now, -1);
+        auto cmd = up.next(now, 600, false);
+        QCOMPARE(cmd.kind, ScrollAutoEngine::CommandKind::SendScroll);
+        QCOMPARE(cmd.direction, -1);
+        up.onScrollSent(now, {ScrollMethod::PostWheel, ScrollOk, 0}, cmd.amount, 600);
+        now += 20;
+        ScrollStitcher::Step step;
+        step.state = ScrollStitcher::State::Appended;
+        step.dy = -90;
+        up.onFrame(now, step, true, 600);
+        QCOMPARE(up.phase(), ScrollAutoEngine::Phase::Streaming);
+        // Two consecutive user reverse scrolls (+60 px) gracefully yield auto-scroll.
+        step.dy = 60;
+        up.onFrame(now + 30, step, true, 600);
+        QCOMPARE(up.phase(), ScrollAutoEngine::Phase::Streaming);
+        up.onFrame(now + 60, step, true, 600);
+        QCOMPARE(up.phase(), ScrollAutoEngine::Phase::Idle);
+    }
+
+    // Transient Lost frame pauses, tries a gentle reverse reconnect tick, and
+    // resumes smoothly instead of immediately abandoning auto-scroll.
+    void autoEngineLostRecovery()
+    {
+        ScrollAutoEngine engine;
+        qint64 now = 0;
+        engine.begin(now, 1);
+        auto cmd = engine.next(now, 600, false);
+        engine.onScrollSent(now, {ScrollMethod::PostWheel, ScrollOk, 0}, cmd.amount, 600);
+        now += 20;
+        ScrollStitcher::Step ok;
+        ok.state = ScrollStitcher::State::Appended;
+        ok.dy = 100;
+        engine.onFrame(now, ok, true, 600);
+        QCOMPARE(engine.phase(), ScrollAutoEngine::Phase::Streaming);
+
+        // One Lost frame enters Recovering (does NOT abort immediately).
+        ScrollStitcher::Step lost;
+        lost.state = ScrollStitcher::State::Lost;
+        engine.onFrame(now + 30, lost, true, 600);
+        QCOMPARE(engine.phase(), ScrollAutoEngine::Phase::Recovering);
+
+        // Wait past the settle pause: engine emits one gentle reverse tick (-1).
+        now += 400;
+        cmd = engine.next(now, 600, true);
+        QCOMPARE(cmd.kind, ScrollAutoEngine::CommandKind::SendScroll);
+        QCOMPARE(cmd.direction, -1);
+        engine.onScrollSent(now, {ScrollMethod::PostWheel, ScrollOk, 0}, cmd.amount, 600);
+
+        // Matching frame arrives -> resumes Streaming cleanly!
+        ScrollStitcher::Step reconnected;
+        reconnected.state = ScrollStitcher::State::Behind;
+        reconnected.dy = -80;
+        engine.onFrame(now + 40, reconnected, true, 600);
+        QCOMPARE(engine.phase(), ScrollAutoEngine::Phase::Streaming);
+
+        // If recovery fails completely, it yields with lost = true.
+        engine.onFrame(now + 80, lost, true, 600);
+        now += 450;
+        cmd = engine.next(now, 600, true);
+        QCOMPARE(cmd.kind, ScrollAutoEngine::CommandKind::SendScroll);
+        engine.onScrollSent(now, {ScrollMethod::PostWheel, ScrollOk, 0}, cmd.amount, 600);
+        now += 400;
+        cmd = engine.next(now, 600, true);
+        QCOMPARE(cmd.kind, ScrollAutoEngine::CommandKind::YieldToManual);
+        QVERIFY(cmd.lost);
+    }
+
+    // Explorer-like target (PostWheel moves once then stops) escalates smoothly
+    // to SendWheel without ending early; vertical dead-end switches sideways.
+    void autoEngineExplorerAndSideways()
+    {
+        ScrollAutoEngine explorer;
+        qint64 now = 0;
+        explorer.begin(now, 1);
+        auto cmd = explorer.next(now, 600, false);
+        QCOMPARE(cmd.method, ScrollMethod::PostWheel);
+        explorer.onScrollSent(now, {ScrollMethod::PostWheel, ScrollOk, 0}, cmd.amount, 600);
+        now += 20;
+        ScrollStitcher::Step step;
+        step.state = ScrollStitcher::State::Appended;
+        step.dy = 95;
+        explorer.onFrame(now, step, true, 600);
+
+        // PostWheel stops responding; SendWheel takes over and rescues it!
+        bool sendWheelRescued = false;
+        for (int i = 0; i < 120 && !sendWheelRescued; ++i) {
+            cmd = explorer.next(now, 600, true);
+            if (cmd.kind == ScrollAutoEngine::CommandKind::SendScroll) {
+                explorer.onScrollSent(now, {cmd.method, ScrollOk, 0}, cmd.amount, 600);
+                if (cmd.method == ScrollMethod::SendWheel) {
+                    QVERIFY(cmd.allowParkCursor); // PostWheel only ran 1 tick, so rescue may park
+                    now += 20;
+                    step.dy = 120;
+                    explorer.onFrame(now, step, true, 600);
+                    sendWheelRescued = explorer.phase() == ScrollAutoEngine::Phase::Streaming;
+                }
+            } else if (cmd.kind == ScrollAutoEngine::CommandKind::WaitFrame) {
+                now += cmd.timeoutMs;
+            } else {
+                break;
+            }
+        }
+        QVERIFY2(sendWheelRescued, "SendWheel must rescue when PostWheel stops after one tick");
+
+        // Nothing moves vertically before any growth -> SwitchSideways once.
+        ScrollAutoEngine sideways;
+        now = 0;
+        sideways.begin(now, 1);
+        bool switched = false;
+        for (int i = 0; i < 80; ++i) {
+            cmd = sideways.next(now, 600, false);
+            if (cmd.kind == ScrollAutoEngine::CommandKind::SwitchSideways) {
+                switched = true;
+                break;
+            }
+            if (cmd.kind == ScrollAutoEngine::CommandKind::SendScroll) {
+                const int code = cmd.method == ScrollMethod::Uia ? ScrollNoPattern : ScrollOk;
+                sideways.onScrollSent(now, {cmd.method, code, 0}, cmd.amount, 600);
+            } else if (cmd.kind == ScrollAutoEngine::CommandKind::WaitFrame) {
+                now += cmd.timeoutMs;
+            }
+        }
+        QVERIFY2(switched, "vertical dead-end with no growth must try sideways once");
     }
 };
 

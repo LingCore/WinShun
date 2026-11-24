@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <string_view>
 
 using Microsoft::WRL::ComPtr;
 using namespace Qt::StringLiterals;
@@ -34,6 +35,13 @@ QString exeName(HWND window)
     return full.mid(full.lastIndexOf(u'\\') + 1);
 }
 
+std::wstring classNameOf(HWND hwnd)
+{
+    wchar_t name[96] {};
+    const int n = ::GetClassNameW(hwnd, name, int(std::size(name)));
+    return n > 0 ? std::wstring(name, size_t(n)) : std::wstring();
+}
+
 // The deepest visible, enabled, not transparent child of `top` under `at`.
 HWND deepestChild(HWND top, POINT at)
 {
@@ -47,6 +55,53 @@ HWND deepestChild(HWND top, POINT at)
         window = child;
     }
     return window;
+}
+
+// Chromium / Electron / WebView2 often place "Intermediate D3D Window" above
+// "Chrome_RenderWidgetHostHWND". Posting WM_MOUSEWHEEL to the D3D wrapper is
+// silently dropped; prefer the render host or the owning Chromium top window.
+HWND wheelTarget(HWND top, POINT at)
+{
+    const HWND deep = deepestChild(top, at);
+    const std::wstring cls = classNameOf(deep);
+    if (cls != L"Intermediate D3D Window" && cls != L"D3DProxyWindow")
+        return deep;
+    struct Search {
+        POINT at;
+        HWND found = nullptr;
+    } search {at, nullptr};
+    ::EnumChildWindows(top,
+        [](HWND child, LPARAM param) -> BOOL {
+            auto* s = reinterpret_cast<Search*>(param);
+            if (!::IsWindowVisible(child) || !::IsWindowEnabled(child))
+                return TRUE;
+            RECT r {};
+            if (!::GetWindowRect(child, &r) || !::PtInRect(&r, s->at))
+                return TRUE;
+            if (classNameOf(child) == L"Chrome_RenderWidgetHostHWND") {
+                s->found = child;
+                return FALSE;
+            }
+            return TRUE;
+        },
+        reinterpret_cast<LPARAM>(&search));
+    if (search.found)
+        return search.found;
+    const HWND parent = ::GetParent(deep);
+    return parent ? parent : top;
+}
+
+bool isWinUiInputSink(HWND top, HWND content)
+{
+    for (HWND w = content; w; w = (w == top ? nullptr : ::GetParent(w))) {
+        const std::wstring cls = classNameOf(w);
+        if (cls == L"Windows.UI.Input.InputSite.WindowClass"
+            || cls == L"Windows.UI.Core.CoreWindow"
+            || cls == L"Microsoft.UI.Content.DesktopChildSiteBridge"
+            || cls == L"ApplicationFrameInputSinkWindow")
+            return true;
+    }
+    return false;
 }
 
 // Whether `content`, or a window it sits in up to `top`, is one of Chromium's. UI Automation must not
@@ -134,11 +189,17 @@ bool wheel(ScrollMethod method)
 
 } // namespace
 
-ScrollLadder::ScrollLadder(bool elevated)
+ScrollLadder::ScrollLadder(bool elevated, bool preferSendWheel)
 {
-    m_ways[0].method = ScrollMethod::PostWheel;
-    m_ways[1].method = ScrollMethod::SendWheel;
-    m_ways[2].method = ScrollMethod::Uia;
+    if (preferSendWheel) {
+        m_ways[0].method = ScrollMethod::SendWheel;
+        m_ways[1].method = ScrollMethod::PostWheel;
+        m_ways[2].method = ScrollMethod::Uia;
+    } else {
+        m_ways[0].method = ScrollMethod::PostWheel;
+        m_ways[1].method = ScrollMethod::SendWheel;
+        m_ways[2].method = ScrollMethod::Uia;
+    }
     if (elevated) {
         for (Way& way : m_ways)
             way.alive = false;
@@ -169,6 +230,14 @@ bool ScrollLadder::worked(ScrollMethod method) const
     for (const Way& way : m_ways)
         if (way.method == method)
             return way.worked;
+    return false;
+}
+
+bool ScrollLadder::anyWorked() const
+{
+    for (const Way& way : m_ways)
+        if (way.worked)
+            return true;
     return false;
 }
 
@@ -308,26 +377,70 @@ ScrollInput::ScrollInput(const QRect& region, bool horizontal)
     : m_region(region)
     , m_horizontal(horizontal)
     , m_middle {region.x() + region.width() / 2, region.y() + region.height() / 2}
+    , m_keysUpAt(modifiersDown() ? 0 : ::GetTickCount64())
 {
-    m_window = windowUnderMiddle();
+    m_window = windowUnderPoint(m_middle);
     if (m_window) {
         // The content's program: a UWP program's frame is ApplicationFrameHost's.
         m_content = deepestChild(m_window, m_middle);
         m_program = exeName(m_content);
+        m_prefersSendWheel = isWinUiInputSink(m_window, m_content);
     }
 }
 
-ScrollInput::~ScrollInput() = default;
-
-HWND ScrollInput::windowUnderMiddle() const
+ScrollInput::~ScrollInput()
 {
-    // From the top of the Z order: the first window over the middle that is
+    releaseParkedCursor(true);
+}
+
+bool ScrollInput::pageScrollWheel()
+{
+    UINT lines = 3;
+    return ::SystemParametersInfoW(SPI_GETWHEELSCROLLLINES, 0, &lines, 0) && lines == WHEEL_PAGESCROLL;
+}
+
+void ScrollInput::setOwnRects(std::vector<QRect> rects)
+{
+    m_ownRects = std::move(rects);
+}
+
+bool ScrollInput::coveredByOwn(POINT at) const
+{
+    for (const QRect& r : m_ownRects)
+        if (!r.isEmpty() && r.contains(at.x, at.y))
+            return true;
+    return false;
+}
+
+POINT ScrollInput::safePoint() const
+{
+    if (!coveredByOwn(m_middle))
+        return m_middle;
+    // Probe a clean inset grid so SendInput never lands on our own panel/preview.
+    static constexpr std::array<std::pair<double, double>, 8> kProbes {{
+        {0.50, 0.35}, {0.50, 0.65}, {0.35, 0.50}, {0.65, 0.50},
+        {0.25, 0.25}, {0.75, 0.25}, {0.25, 0.75}, {0.75, 0.75},
+    }};
+    for (const auto& [fx, fy] : kProbes) {
+        const POINT pt {
+            m_region.x() + std::clamp(int(std::lround(m_region.width() * fx)), 4, std::max(4, m_region.width() - 5)),
+            m_region.y() + std::clamp(int(std::lround(m_region.height() * fy)), 4, std::max(4, m_region.height() - 5)),
+        };
+        if (!coveredByOwn(pt) && windowUnderPoint(pt) != nullptr)
+            return pt;
+    }
+    return m_middle;
+}
+
+HWND ScrollInput::windowUnderPoint(POINT at) const
+{
+    // From the top of the Z order: the first window over `at` that is
     // not ours (the panel, the border) and not a click-through layer.
     for (HWND w = ::GetTopWindow(nullptr); w; w = ::GetWindow(w, GW_HWNDNEXT)) {
         if (!::IsWindowVisible(w) || ::IsIconic(w))
             continue;
         RECT r {};
-        if (!::GetWindowRect(w, &r) || !::PtInRect(&r, m_middle))
+        if (!::GetWindowRect(w, &r) || !::PtInRect(&r, at))
             continue;
         const LONG_PTR ex = ::GetWindowLongPtrW(w, GWL_EXSTYLE);
         if ((ex & WS_EX_LAYERED) && (ex & WS_EX_TRANSPARENT))
@@ -347,7 +460,48 @@ HWND ScrollInput::windowUnderMiddle() const
 bool ScrollInput::cursorInRegion() const
 {
     POINT at {};
-    return ::GetCursorPos(&at) && m_region.contains(at.x, at.y);
+    return ::GetCursorPos(&at) && m_region.contains(at.x, at.y) && !coveredByOwn(at);
+}
+
+ScrollCode ScrollInput::parkCursor(int userMoveThresholdPx)
+{
+    if (keysHeld(true))
+        return ScrollKeysHeld;
+    const POINT target = safePoint();
+    if (coveredByOwn(target) || !windowUnderPoint(target))
+        return ScrollCursorOutside;
+    POINT current {};
+    if (!::GetCursorPos(&current))
+        return ScrollFailed;
+    if (!m_cursorParked)
+        m_savedCursor = current;
+    if (!::SetCursorPos(target.x, target.y))
+        return ScrollFailed;
+    m_parkedCursor = target;
+    m_moveThreshold = std::max(8, userMoveThresholdPx);
+    m_cursorParked = true;
+    return ScrollOk;
+}
+
+bool ScrollInput::userMovedCursor() const
+{
+    if (!m_cursorParked)
+        return false;
+    POINT now {};
+    if (!::GetCursorPos(&now))
+        return false;
+    return std::abs(now.x - m_parkedCursor.x) > m_moveThreshold
+        || std::abs(now.y - m_parkedCursor.y) > m_moveThreshold;
+}
+
+void ScrollInput::releaseParkedCursor(bool restore)
+{
+    if (!m_cursorParked)
+        return;
+    const bool untouched = restore && !userMovedCursor();
+    m_cursorParked = false;
+    if (untouched)
+        ::SetCursorPos(m_savedCursor.x, m_savedCursor.y);
 }
 
 bool ScrollInput::keysHeld(bool buttons)
@@ -362,45 +516,47 @@ bool ScrollInput::keysHeld(bool buttons)
     return now - m_keysUpAt < kKeysUpMs;
 }
 
-ScrollResult ScrollInput::scroll(ScrollMethod method, double amount)
+ScrollResult ScrollInput::scroll(ScrollMethod method, double amount, int direction)
 {
     ScrollResult result;
     result.method = method;
+    const int dir = direction < 0 ? -1 : 1;
     switch (method) {
     case ScrollMethod::PostWheel: {
         if (keysHeld(false)) {
             result.code = ScrollKeysHeld;
             return result;
         }
-        const HWND top = windowUnderMiddle();
+        const POINT at = safePoint();
+        const HWND top = windowUnderPoint(at);
         if (!top) {
             result.code = ScrollNoWindow;
             return result;
         }
-        const HWND target = deepestChild(top, m_middle);
-        // Down is a negative delta; right a positive one.
-        const long notches = std::clamp(std::lround(120.0 * amount), 1L, 1200L);
-        const short delta = short(m_horizontal ? notches : -notches);
-        if (!::PostMessageW(target, m_horizontal ? WM_MOUSEHWHEEL : WM_MOUSEWHEEL, MAKEWPARAM(0, WORD(delta)), MAKELPARAM(WORD(short(m_middle.x)), WORD(short(m_middle.y))))) {
+        const HWND target = wheelTarget(top, at);
+        // Down is a negative delta; right a positive one; flipped when dir < 0.
+        const long notches = std::clamp(std::lround(120.0 * amount), 30L, 1200L);
+        const short delta = short((m_horizontal ? notches : -notches) * dir);
+        if (!::PostMessageW(target, m_horizontal ? WM_MOUSEHWHEEL : WM_MOUSEWHEEL, MAKEWPARAM(0, WORD(delta)), MAKELPARAM(WORD(short(at.x)), WORD(short(at.y))))) {
             result.detail = ::GetLastError();
             result.code = result.detail == ERROR_ACCESS_DENIED ? ScrollAccessDenied : ScrollFailed;
         }
         return result;
     }
     case ScrollMethod::SendWheel: {
-        if (!cursorInRegion()) {
-            result.code = ScrollCursorOutside;
-            return result;
-        }
         if (keysHeld(true)) {
             result.code = ScrollKeysHeld;
+            return result;
+        }
+        if (!cursorInRegion()) {
+            result.code = ScrollCursorOutside;
             return result;
         }
         INPUT input {};
         input.type = INPUT_MOUSE;
         input.mi.dwFlags = m_horizontal ? MOUSEEVENTF_HWHEEL : MOUSEEVENTF_WHEEL;
-        const long notches = std::clamp(std::lround(120.0 * amount), 1L, 1200L);
-        input.mi.mouseData = DWORD(m_horizontal ? notches : -notches);
+        const long notches = std::clamp(std::lround(120.0 * amount), 30L, 1200L);
+        input.mi.mouseData = DWORD((m_horizontal ? notches : -notches) * dir);
         if (::SendInput(1, &input, sizeof input) != 1) {
             result.detail = ::GetLastError();
             result.code = ScrollFailed;
@@ -431,12 +587,13 @@ ScrollResult ScrollInput::scroll(ScrollMethod method, double amount)
             // (a UWP program's content is not its frame's process).
             ComPtr<IUIAutomationElement> element;
             ComPtr<IUIAutomationTreeWalker> walker;
-            const HWND top = windowUnderMiddle();
+            const POINT at = safePoint();
+            const HWND top = windowUnderPoint(at);
             DWORD owner = 0;
             if (top)
-                ::GetWindowThreadProcessId(deepestChild(top, m_middle), &owner);
+                ::GetWindowThreadProcessId(deepestChild(top, at), &owner);
             int pid = 0;
-            if (owner && SUCCEEDED(u.automation->ElementFromPoint(m_middle, &element)) && element
+            if (owner && SUCCEEDED(u.automation->ElementFromPoint(at, &element)) && element
                 && SUCCEEDED(element->get_CurrentProcessId(&pid)) && DWORD(pid) == owner
                 && SUCCEEDED(u.automation->get_ControlViewWalker(&walker))) {
                 // Up to the nearest that scrolls up and down (or sideways).
@@ -470,22 +627,24 @@ ScrollResult ScrollInput::scroll(ScrollMethod method, double amount)
             result.detail = quint32(hr);
             return result;
         }
-        if (at != UIA_ScrollPatternNoScroll && at >= 99.95) {
+        if (at != UIA_ScrollPatternNoScroll && ((dir > 0 && at >= 99.95) || (dir < 0 && at <= 0.05))) {
             result.code = ScrollAtEnd;
             return result;
         }
         // Where to is known (stage 6 probe: 602 px each time in Edge, 605 in
         // Settings), where a small step is 9 to 247 px depending on the program.
         if (u.percent && at != UIA_ScrollPatternNoScroll && view > 0 && view < 100) {
-            const double to = std::min(100.0, at + view * std::max(0.01, amount));
+            const double delta = view * std::max(0.01, amount) * dir;
+            const double to = std::clamp(at + delta, 0.0, 100.0);
             hr = m_horizontal ? u.pattern->SetScrollPercent(to, UIA_ScrollPatternNoScroll) : u.pattern->SetScrollPercent(UIA_ScrollPatternNoScroll, to);
             if (SUCCEEDED(hr))
                 return result;
             u.percent = false;
         }
         const int steps = std::max(1, int(std::lround(amount * 8)));
+        const ScrollAmount stepAmount = dir > 0 ? ScrollAmount_SmallIncrement : ScrollAmount_SmallDecrement;
         for (int i = 0; i < steps; ++i) {
-            hr = m_horizontal ? u.pattern->Scroll(ScrollAmount_SmallIncrement, ScrollAmount_NoAmount) : u.pattern->Scroll(ScrollAmount_NoAmount, ScrollAmount_SmallIncrement);
+            hr = m_horizontal ? u.pattern->Scroll(stepAmount, ScrollAmount_NoAmount) : u.pattern->Scroll(ScrollAmount_NoAmount, stepAmount);
             if (FAILED(hr)) {
                 result.code = ScrollFailed;
                 result.detail = quint32(hr);

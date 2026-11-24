@@ -1642,6 +1642,22 @@
         <translation>Auto-scroll</translation>
     </message>
     <message>
+        <source>慢速</source>
+        <translation>Slow</translation>
+    </message>
+    <message>
+        <source>标准</source>
+        <translation>Normal</translation>
+    </message>
+    <message>
+        <source>快速</source>
+        <translation>Fast</translation>
+    </message>
+    <message>
+        <source>自动滚动速度：%1，点一下切换</source>
+        <translation>Auto-scroll speed: %1, click to cycle</translation>
+    </message>
+    <message>
         <source>复制诊断信息</source>
         <translation>Copy diagnostics</translation>
     </message>
@@ -2515,8 +2531,8 @@ click here to cancel</translation>
 <context>
     <name>ws::capture::LongCapture</name>
     <message>
-        <source>正在自动滚动。Enter 完成，Esc 取消</source>
-        <translation>Scrolling by itself. Enter finishes, Esc cancels</translation>
+        <source>正在自动滚动，移动鼠标可暂停。Enter 完成，Esc 取消</source>
+        <translation>Auto-scrolling (move mouse to pause). Enter finishes, Esc cancels</translation>
     </message>
     <message>
         <source>在区域内向左或向右滚动（Shift+滚轮），滚完按 Enter 或点“完成”</source>
@@ -2527,8 +2543,8 @@ click here to cancel</translation>
         <translation>Scroll up or down in the region. Enter or “Done” finishes</translation>
     </message>
     <message>
-        <source>把鼠标放到要滚动的区域上</source>
-        <translation>Put the mouse over the region to scroll</translation>
+        <source>已暂停：把鼠标移回要滚动的区域继续，或点“完成”</source>
+        <translation>Paused: move the mouse back over the region to resume, or click “Done”</translation>
     </message>
     <message>
         <source>这个程序以管理员身份运行，请手动滚动，滚完点“完成”</source>
@@ -2547,8 +2563,8 @@ click here to cancel</translation>
         <translation>No new frame for 5 seconds</translation>
     </message>
     <message>
-        <source>到上限了（3 万像素高）</source>
-        <translation>At the limit (30,000 px high)</translation>
+        <source>到上限了（3 万像素）</source>
+        <translation>At the limit (30,000 px)</translation>
     </message>
     <message>
         <source>诊断信息已复制</source>
