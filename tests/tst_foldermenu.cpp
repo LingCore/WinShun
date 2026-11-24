@@ -80,6 +80,18 @@ public:
 using namespace ws;
 using namespace Qt::StringLiterals;
 
+// A long folder name of `length` characters that reads as a real name. The
+// menus of this test are shown on the screen: one character repeated ("长长长…")
+// looks like garbled text to whoever watches the run.
+static QString longFolderName(int length)
+{
+    const QString name = u"二〇二六年度华东区域重点客户合同归档与项目验收资料汇总以及各部门季度工作总结"
+                         u"和下一年度预算规划讨论会议纪要含全部附件扫描件与签字盖章版本最终定稿"
+                         u"请勿随意修改或删除如需更新请先联系档案管理员登记备案"_s;
+    Q_ASSERT(length <= name.size());
+    return name.left(length);
+}
+
 class FolderMenuTest : public QObject {
     Q_OBJECT
 
@@ -790,7 +802,7 @@ private slots:
     {
         QFETCH(QPoint, position);
         FolderMenu menu(nullptr, nullptr);
-        const QString path = u"C:\\项目资料\\"_s + QString(90, u'长') + u"\\outputs"_s;
+        const QString path = u"C:\\项目资料\\"_s + longFolderName(90) + u"\\outputs"_s;
         menu.previewEntries({QVariantMap {{u"text"_s, u"outputs"_s}, {u"tooltip"_s, path}}});
         QQmlEngine engine;
         QSignalSpy warnings(&engine, &QQmlEngine::warnings);
@@ -840,7 +852,7 @@ private slots:
         SystemTheme::setHoverTips(false);
         FolderMenu menu(nullptr, nullptr);
         const QString shortPath = u"C:\\资料\\outputs"_s;
-        const QString longName = QString(80, u'长');
+        const QString longName = longFolderName(80);
         const QString longPath = u"C:\\资料\\"_s + longName;
         menu.previewEntries({QVariantMap {{u"text"_s, u"outputs"_s}, {u"tooltip"_s, shortPath}},
             QVariantMap {{u"text"_s, longName}, {u"tooltip"_s, longPath}}});
@@ -1313,7 +1325,7 @@ private slots:
         QTemporaryDir temporary;
         QVERIFY(temporary.isValid());
         const QDir root(temporary.path());
-        const QString longName = u"c 一个名字很长很长很长很长很长很长很长很长很长很长很长的文件夹"_s;
+        const QString longName = u"c 二〇二六年度华东区域重点客户合同归档与项目验收资料汇总"_s;
         for (const QString& name : {u"资料/b 子文件夹"_s, u"资料/a 子文件夹"_s, u"资料/"_s + longName, u"资料/a 子文件夹/空的"_s})
             QVERIFY(root.mkpath(name));
         for (const QString& name : {u"资料/说明.txt"_s, u"资料/10.txt"_s, u"资料/2.txt"_s}) {

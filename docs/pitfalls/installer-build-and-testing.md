@@ -7,6 +7,7 @@
 - **Win32 字符集与代码页调用白名单**：`A` 后缀 Win32 调用或随意转本地代码页在非中文区域下会静默损坏路径 → 代码内文字一律走 `QString` 与 `W` 后缀 Win32 API，禁止任何 `A` 后缀调用；仅当外部数据确属系统代码页（旧剪贴板格式、旧 zip、给 `cmd` 的 `.bat`、Everything ANSI 协议等）才允许 `fromLocal8Bit`/`CP_ACP`/`CP_OEMCP`，并须在 `tests/tst_encoding.cpp` 的 `kCodePageUsers` 登记理由，停用时及时移出。
 - **子进程与命令行输出编码**：设 `QT_FORCE_STDERR_LOGGING=1` 时 Qt 默认消息处理器按 ANSI 写 stderr；`cmd /c mklink` 按控制台代码页输出，且 `VsDevCmd` 找不到 `vswhere` 时在 GBK 控制台输出乱码 → 插件进程须装 UTF-8 消息处理器，运行器对非 UTF-8 stderr 回退 ANSI 转换且控制行绝不放非法 UTF-8；测试建联接用 `tests/TestJunction.h` 的 `makeJunction()`；进 MSVC 环境统一用 `scripts/devshell.ps1`。
 - **向 Qt 子进程/探针写入 Unicode 环境变量**：`qputenv` 经字节接口受 ANSI 代码页影响（CP1252 下中文路径变乱码），而 `SetEnvironmentVariableW` 不更新 Qt 读取的 CRT 环境表 → 统一用 `_wputenv_s` 设置与清理环境变量，并在探针中断言 Qt 能读回相同路径。
+- **会上屏的测试与预览文字不能像乱码**：`tst_foldermenu`、`tst_pinwindow` 等测试和 `--preview-*` 会在用户屏幕上真实弹窗，`QString(90, u'长')` 这类单字重复或无意义填充（「长长长长…」「很长很长很长…」）编码没错，但看上去就是乱码 → 凡是会显示出来的测试数据都用读得通的真实名称（长名用 `tests/tst_foldermenu.cpp` 的 `longFolderName(n)` 这类按长度截取的自然文本）；改完看一眼实际弹出的画面，不只看断言通过。
 
 ## 安装程序（Inno Setup）、升级、卸载与 Scoop
 
