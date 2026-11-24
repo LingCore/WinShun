@@ -354,7 +354,6 @@ Item {
                     readonly property bool whole: !strip.scrolls
                         || (x >= strip.restX - 0.5 && x + body.width <= strip.restX + view.width + 0.5)
                     opacity: whole ? 1 : 0
-                    enabled: whole
                     // Its share of strip.spreadGap; while the chips scroll, on its
                     // way there from where it was, with them. Whole device pixels.
                     readonly property real targetShift: strip.scrolls && index > strip.firstChip
@@ -421,7 +420,12 @@ Item {
 
                         MouseArea {
                             id: area
+                            objectName: "searchTypeChipArea"
                             anchors.fill: parent
+                            // A chip cut off (hidden) takes no clicks. Only the area: the
+                            // chip's own `enabled` changes a style's key, its width with it
+                            // (tactile's checked key goes bold), which `whole` reads.
+                            enabled: chip.whole
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {

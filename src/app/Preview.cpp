@@ -9087,6 +9087,127 @@ bool checkContentKinds(QQmlEngine* qml, const QDir& output)
     return ok;
 }
 
+// --type-strip-scroll: more kinds than the strip has room for, all chosen,
+// in the 界面风格 --style names. A chip cut off at either end is hidden and
+// takes no clicks through its MouseArea alone: the chip itself stays enabled,
+// since a style's key may change with that (tactile's chosen key turns bold,
+// wider), and `whole` reads the chip's width (a binding loop, 2026-11-24).
+bool checkTypeStripScroll(QQmlEngine* qml, const QDir& output)
+{
+    static QtMessageHandler counted = nullptr;
+    static int loops = 0;
+    loops = 0;
+    counted = qInstallMessageHandler([](QtMsgType type, const QMessageLogContext& context, const QString& message) {
+        if (message.contains(u"Binding loop detected"_s))
+            ++loops;
+        // The launcher's line on rows that came late: said, not counted (see checkContentKinds).
+        counted(type == QtWarningMsg && message.startsWith(u"WinShun: new rows "_s) ? QtInfoMsg : type, context, message);
+    });
+    const auto restore = qScopeGuard([] { qInstallMessageHandler(counted); });
+    QTemporaryDir temporary;
+    IndexService index(temporary.filePath(u"index"_s), IndexService::Options{});
+    AppCatalog apps;
+    SystemCatalog places;
+    apps.setApps(std::make_shared<const AppList>());
+    places.setPlaces(std::make_shared<const PlaceList>());
+    History history(temporary.filePath(u"history.tsv"_s));
+    SearchEngine search(&index, &apps, &places);
+    Launcher launcher(&index, &apps, &places, &search, &history);
+    FileTypes types;
+    for (const auto& [name, extension] : {std::pair {u"图片"_s, u"jpg"_s}, {u"文档"_s, u"docx"_s}, {u"表格"_s, u"xlsx"_s},
+             {u"演示"_s, u"pptx"_s}, {u"PDF"_s, u"pdf"_s}, {u"音乐"_s, u"mp3"_s}, {u"视频"_s, u"mp4"_s},
+             {u"压缩包"_s, u"zip"_s}, {u"程序"_s, u"exe"_s}, {u"代码"_s, u"cpp"_s}, {u"文本"_s, u"txt"_s},
+             {u"电子书"_s, u"epub"_s}, {u"设计稿"_s, u"psd"_s}, {u"字体"_s, u"ttf"_s}})
+        types.append(FileType {name, {extension}});
+    launcher.setFileTypes(types);
+    ClipStore store(temporary.filePath(u"clipboard"_s));
+    if (!store.open(QDateTime::currentMSecsSinceEpoch())) return false;
+    ClipboardWatcher watcher({}, {});
+    Clipboard clipboard(&store, &watcher);
+    Placement placement(temporary.filePath(u"state.ini"_s), u"Launcher"_s);
+    WindowFrame frame(false);
+    QQmlComponent component(qml, u"WinShun"_s, u"Main"_s);
+    std::unique_ptr<QObject> object(component.createWithInitialProperties({
+        {u"launcher"_s, QVariant::fromValue(&launcher)}, {u"clipboard"_s, QVariant::fromValue(&clipboard)},
+        {u"frame"_s, QVariant::fromValue(&frame)}, {u"placement"_s, QVariant::fromValue(&placement)}}));
+    auto* window = qobject_cast<QQuickWindow*>(object.get());
+    if (!window) { say(component.errorString()); return false; }
+    window->create();
+    launcher.setWindow(window);
+    frame.setWindow(window);
+    placement.setWindow(window);
+    showOffScreen(window);
+    bool ok = true;
+    const auto check = [&](bool condition, const char* reason) {
+        ok = condition && ok;
+        if (!condition) qWarning("type strip scroll regression: %s", reason);
+    };
+    launcher.setScope(Launcher::Files);
+    for (int i = 0; i < types.size(); ++i)
+        launcher.toggleFileType(i);
+    settle(window);
+    auto* strip = visualNamed(window->contentItem(), u"searchTypeStrip"_s);
+    check(strip && strip->property("shown").toBool() && strip->property("scrolls").toBool()
+            && launcher.selectedFileTypes().size() == types.size(),
+        "the strip does not scroll with every kind chosen");
+    if (!strip) return false;
+    const auto chipOf = [&](int type) { return visualNamed(window->contentItem(), u"searchTypeChip%1"_s.arg(type)); };
+    const auto areaOf = [](QQuickItem* chip) { return visualNamed(chip, u"searchTypeChipArea"_s); };
+    // Each kind's chip: shown whole and clickable, or cut off, hidden and
+    // not; enabled either way, as wide wherever it is.
+    QList<qreal> widths;
+    const auto agree = [&](const char* where) {
+        int shown = 0;
+        int cut = 0;
+        QList<qreal> now;
+        for (int type = 0; type < types.size(); ++type) {
+            QQuickItem* chip = chipOf(type);
+            QQuickItem* area = chip ? areaOf(chip) : nullptr;
+            if (!chip || !area) { check(false, "a kind's chip or its MouseArea is missing"); return; }
+            const bool whole = chip->property("whole").toBool();
+            (whole ? shown : cut) += 1;
+            now.append(chip->width());
+            // MouseArea.enabled is its own (mouse events only), not Item's isEnabled().
+            const bool clickable = area->property("enabled").toBool();
+            if (!chip->isEnabled() || clickable != whole || (chip->opacity() > 0.5) != whole) {
+                qWarning("type strip scroll regression: %s: chip %d whole %d enabled %d clickable %d opacity %.2f", where, type,
+                    whole, chip->isEnabled(), clickable, chip->opacity());
+                ok = false;
+            }
+        }
+        check(shown > 1 && cut > 0, "the strip does not show some chips whole and cut others off");
+        check(widths.isEmpty() || widths == now, "a chip's width changed with where it is");
+        widths = now;
+    };
+    agree("at the start");
+    check(saveGrab(window, output.filePath(u"type-strip-start.png"_s)), "the window did not render");
+    // Scrolled to the end, as Ctrl+Tab past the last chip shows it: the first ones cut off now.
+    QQmlExpression toEnd(qmlContext(strip), strip, u"scrollTo(lastFirst(), false)"_s);
+    toEnd.evaluate();
+    check(!toEnd.hasError(), "the strip could not be scrolled");
+    settle(window);
+    check(strip->property("firstChip").toInt() > 0 && !chipOf(0)->property("whole").toBool()
+            && chipOf(types.size() - 1)->property("whole").toBool(),
+        "the strip did not scroll to its last chip");
+    agree("at the end");
+    check(saveGrab(window, output.filePath(u"type-strip-end.png"_s)), "the window did not render");
+    // A whole chip still takes its click: the last kind off.
+    QQuickItem* last = chipOf(types.size() - 1);
+    const QPointF at = last->mapToScene(QPointF(last->width() / 2, last->height() / 2));
+    for (const auto& [type, buttons] : {std::pair {QEvent::MouseButtonPress, Qt::MouseButtons(Qt::LeftButton)},
+             {QEvent::MouseButtonRelease, Qt::MouseButtons()}}) {
+        QMouseEvent event(type, at, window->mapToGlobal(at), Qt::LeftButton, buttons, {});
+        QCoreApplication::sendEvent(window, &event);
+    }
+    settle(window);
+    check(!launcher.selectedFileTypes().contains(int(types.size() - 1)) && launcher.selectedFileTypes().size() == types.size() - 1,
+        "a click on a whole chip did not take its kind off");
+    check(loops == 0, "a binding loop while the chips scroll");
+    window->hide();
+    say(u"type strip scroll: cut-off chips hidden and not clickable, enabled and as wide (%1)"_s.arg(SystemTheme::uiStyle()));
+    return ok;
+}
+
 // --apps-grid (GitHub #296): 应用 as the settings bring it, with this PC's own
 // apps: the tab last among the scopes and gone with the setting, the grid in
 // place of the rows, the strip's three choices, words typed matched as 全部
@@ -10708,6 +10829,8 @@ int runResults(const QStringList& args)
         return checkClipboardHoverCopy(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--content-kinds"_s))
         return checkContentKinds(&engine, out) ? std::min(g_warnings, 100) : 4;
+    if (args.contains(u"--type-strip-scroll"_s))
+        return checkTypeStripScroll(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-crashed-reading"_s)) // its warning when it gives up is expected
         return checkClipboardCrashedReading() ? 0 : 4;
     if (const qsizetype at = args.indexOf(u"--terminal-launch"_s); at >= 0 && at + 2 < args.size()) {
