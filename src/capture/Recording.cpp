@@ -784,6 +784,9 @@ public:
     virtual ~Source() = default;
     // The newest picture of the region; null until the first one.
     virtual ID3D11Texture2D* next() = 0;
+    // The pointer is in the pictures. With the trail on it is left out,
+    // where the capture can, and drawn over the trail (PointerTrail).
+    bool pointerInFrames = true;
 };
 
 // Windows.Graphics.Capture: on the GPU, HDR included.
@@ -804,8 +807,10 @@ public:
         m_session = m_pool.CreateCaptureSession(m_item);
         // From Windows 10 2004 (19041) on; before, the pointer is always in
         // the frames, and asking for it threw: no recording at all on 1903–1909.
-        if (auto pointer = m_session.try_as<wgc::IGraphicsCaptureSession2>())
-            pointer.IsCursorCaptureEnabled(options.cursor);
+        if (auto pointer = m_session.try_as<wgc::IGraphicsCaptureSession2>()) {
+            pointerInFrames = options.cursor && !options.cursorTrail;
+            pointer.IsCursorCaptureEnabled(pointerInFrames);
+        }
         // Borderless capture is optional. An unpackaged desktop program
         // must not wait for a consent operation just to start recording.
         try {
@@ -923,8 +928,9 @@ private:
 class ScreenDcSource final : public Source {
 public:
     ScreenDcSource(Graphics& graphics, const Options& options)
-        : m_graphics(graphics), m_region(options.region), m_pointer(options.cursor)
+        : m_graphics(graphics), m_region(options.region), m_pointer(options.cursor && !options.cursorTrail)
     {
+        pointerInFrames = m_pointer;
         m_screen = ::GetDC(nullptr);
         if (!m_screen)
             throw Failure {u"screen device context"_s, E_FAIL};
@@ -1154,8 +1160,16 @@ Result run(const Options& options, Control& control, const std::function<void(co
         const QImage sampleBase = generated ? sampleBackdrop(options.region.size()) : QImage();
         std::unique_ptr<PointerOverlay> pointer;
         const bool showKeys = options.keys.mode != keycaps::Mode::Off || options.keys.mouse;
-        if ((options.clickHighlights || showKeys) && image && !control.stop)
+        const bool showTrail = options.cursorTrail && options.cursor;
+        if ((options.clickHighlights || showKeys || showTrail) && image && !control.stop)
             pointer = std::make_unique<PointerOverlay>(graphics.device.get(), graphics.context.get(), options.region.size(), options.pointerScale);
+        std::unique_ptr<PointerTrail> trail;
+        if (pointer && showTrail) {
+            trail = std::make_unique<PointerTrail>(options.region, options.pointerScale, source && !source->pointerInFrames, syntheticMs >= 0);
+            if (source && source->pointerInFrames) // 1903 and 1909: still a trail, but over the pointer
+                qWarning("Recording: cursor trail over the captured pointer: Windows.Graphics.Capture leaves it out "
+                         "only from Windows 10 2004 on (IGraphicsCaptureSession2)");
+        }
         const qint64 start = nowTicks();
         Timeline clock(start);
         ClickPulses pulses;
@@ -1219,6 +1233,7 @@ Result run(const Options& options, Control& control, const std::function<void(co
                     clock.resume(wall);
                 }
                 pulses.clear();
+                if (trail) trail->clear();
                 if (options.clickInput) options.clickInput->discardBefore(wall);
                 keys.clear(); // nothing pressed before a pause shows after it
                 if (options.keyInput) options.keyInput->discardBefore(wall);
@@ -1244,6 +1259,7 @@ Result run(const Options& options, Control& control, const std::function<void(co
                         keys.feed(key);
                     }
             }
+            if (trail && !paused) trail->look(elapsed);
             if (syntheticKey >= 0 && elapsed >= syntheticKey && !paused) {
                 keycaps::Key key;
                 key.time = elapsed;
@@ -1291,7 +1307,9 @@ Result run(const Options& options, Control& control, const std::function<void(co
                         keyDraws.push_back({keyPicture.rows[i], keyPlaces[i], keycaps::Model::opacity(rows[first + i], elapsed)});
                 }
                 ID3D11Texture2D* input = image;
-                if (pointer) input = pointer->draw(image, pulses.active(elapsed), elapsed, keyDraws);
+                if (pointer)
+                    input = pointer->draw(image, pulses.active(elapsed), elapsed, keyDraws,
+                        trail ? trail->line(elapsed) : TrailDraw {}, trail ? trail->pointer(elapsed) : CursorDraw {});
                 const qint64 encoding = nowTicks();
                 const auto encoded = qScopeGuard([&] { encodeTicks += nowTicks() - encoding; });
                 try {
@@ -1335,6 +1353,7 @@ Result run(const Options& options, Control& control, const std::function<void(co
         }
         stage(u"capture shutdown"_s);
         source.reset();
+        trail.reset();
         pointer.reset();
         audio.clear();
         stage(u"finalize MP4"_s);

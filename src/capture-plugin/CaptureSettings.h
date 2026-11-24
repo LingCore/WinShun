@@ -81,6 +81,7 @@ struct CaptureOptions {
     int recordingFormat = 0; // 0: MP4, 1: GIF
     QString recordingKeys = QStringLiteral("off");
     bool recordingMouseButtons = false;
+    bool recordingCursorTrail = false; // a line behind the pointer (Recorder::cursorTrail)
     QString pinDoubleClick = QStringLiteral("reset");
     // Quietly OCR pinned pictures in the background so text can be drag-selected directly.
     bool pinAutoOcr = true;

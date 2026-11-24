@@ -239,7 +239,8 @@ Result recordIsolated(const WorkerProgram& program, const Options& options, Cont
         {u"region"_s, QJsonArray {options.region.x(), options.region.y(), options.region.width(), options.region.height()}},
         {u"fps"_s, options.fps}, {u"quality"_s, options.quality}, {u"scale"_s, options.scale}, {u"cursor"_s, options.cursor},
         {u"systemAudio"_s, options.systemAudio}, {u"microphone"_s, options.microphone},
-        {u"clickHighlights"_s, options.clickHighlights}, {u"pointerScale"_s, options.pointerScale},
+        {u"clickHighlights"_s, options.clickHighlights}, {u"cursorTrail"_s, options.cursorTrail},
+        {u"pointerScale"_s, options.pointerScale},
         {u"outputScale"_s, options.outputScale}, {u"font"_s, options.keyFont.toString()},
         {u"keys"_s, int(options.keys.mode)}, {u"mouse"_s, options.keys.mouse},
         {u"doubleTap"_s, options.keys.doubleTap}, {u"hotkeys"_s, hotkeys},
@@ -310,6 +311,7 @@ static int runWorker()
     options.microphone = request.value(u"microphone"_s).toBool();
     options.software = request.value(u"software"_s).toBool();
     options.clickHighlights = request.value(u"clickHighlights"_s).toBool();
+    options.cursorTrail = request.value(u"cursorTrail"_s).toBool();
     options.pointerScale = request.value(u"pointerScale"_s).toDouble(1);
     options.outputScale = request.value(u"outputScale"_s).toDouble(1);
     options.keyFont.fromString(request.value(u"font"_s).toString());

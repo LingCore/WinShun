@@ -134,6 +134,19 @@ Item {
                         onClicked: options.recorder.clickHighlights = !options.recorder.clickHighlights
                     }
                     OptionToggle {
+                        objectName: "recordingTrail"
+                        iconName: "path"
+                        Accessible.name: qsTr("鼠标拖尾")
+                        // Only with the pointer: off while it is, and turning it on records the pointer too.
+                        checked: options.recorder.cursor && options.recorder.cursorTrail
+                        onClicked: {
+                            const on = !(options.recorder.cursor && options.recorder.cursorTrail)
+                            if (on)
+                                options.recorder.cursor = true
+                            options.recorder.cursorTrail = on
+                        }
+                    }
+                    OptionToggle {
                         objectName: "recordingMouseButtons"
                         glyph: "\uE962"
                         Accessible.name: qsTr("鼠标按键")

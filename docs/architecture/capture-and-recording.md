@@ -116,9 +116,10 @@
 - **GIF（`GifExport`）**：录制阶段共用 MP4 时间轴（不采音频）；停止后 MF 解码（处理负步幅/填充行/显示孔径）+ WIC 量化写帧（最多保留两帧及变化矩形，四档 10/15/20/20 fps、最长边 960/1280/1920/原尺寸，不放大），成功即删中间 MP4。GIF 不缩小时（输出尺寸等于选区）中间 MP4 同样按 2 倍尺寸录，导出时按 `GifOptions::sourceScale` 缩回选区尺寸，颜色取自每个像素自己（彩色小字还原度约 27 → 39 dB）；中间 MP4 一律用最高编码质量。
 - **WASAPI 共享音频**：系统回环与麦克风默认关闭，开启后重采样至 48 kHz 双声道 PCM 按 QPC 对齐混音编 AAC 128 kbps；设备不可用时明确报错而非静默无声。
 
-### 5.3 点击高亮与按键提示
+### 5.3 点击高亮、鼠标拖尾与按键提示
 
-- **点击高亮（`RecordingPointer` / `RawClicks`）**：录制期间订阅鼠标 Raw Input，按物理坐标与消息时钟送 `ClickStream`（≤16 待处理、≤8 个 0.5 s 脉冲，滤除选区外与控制条），Direct2D 合成至独立 BGRA 纹理。
+- **点击高亮（`RecordingPointer` / `RawClicks`）**：录制期间订阅鼠标 Raw Input，按物理坐标与消息时钟送 `ClickStream`（≤16 待处理、≤8 个 0.5 s 脉冲，滤除选区外与控制条），Direct2D 合成至独立 BGRA 纹理。`PointerOverlay` 自下而上合成：拖尾 → 点击脉冲 → 自绘指针 → 键帽。
+- **鼠标拖尾（`CursorTrail` / `CursorArt` / `PointerTrail`）**：仅在同时录指针时生效（面板里指针关着时拖尾显示为关，点开拖尾会一并打开录指针，不做置灰的死按钮）。工作进程每轮主循环（≥60 次/秒）取 `GetCursorInfo` + `GetPhysicalCursorPos`，移动 ≥0.5 px 才记采样，采样存活 0.5 s；以相邻采样中点为端点、采样为控制点的二次曲线平滑成折线，每点带 life（指针处 1）与 place（尾 0），宽度 = 指针尺寸 × 6/32 × life、不透明度 = life，停下后尾部先到期、整条线缩回指针。拖尾先以 `D2D1_PRIMITIVE_BLEND_COPY` 画进按需增长的透明中间位图（新段覆盖旧段，自交处不叠色，指针端平头），再叠到帧上。拖尾必须在指针之下：WGC 关 `IsCursorCaptureEnabled`（1903–1909 无该接口时指针仍在帧里，拖尾只能盖在其上：不再自绘，记一条日志）、GDI 源不画指针，由 `CursorShapes` 按 Windows 实际显示重画——标准指针（与 `LoadCursorW(IDC_*)` 句柄比对）按 `CursorBaseSize`（缺省 32）× 显示器缩放取尺寸（`GetIconInfo` 只给系统 DPI 的默认尺寸，放大指针时会小一截），自行解析 `HKCU\Control Panel\Cursors` 方案文件（`cursorFileFrames`）：.cur 取恰为该尺寸的那一帧原样（经 `CreateIconFromResourceEx` 按原尺寸解码，与 DWM 所画逐像素一致；`LoadImageW` 按尺寸加载会改从更大帧重采样，轮廓差约 1 px），无此尺寸取次大帧平滑缩小；.ani 按 `anih`/`rate`/`seq ` 步进各帧；解析失败才退回 `LoadImageW`，无文件则平滑缩放句柄图；程序自带指针保持原尺寸，动画经 user32 导出的 `GetCursorFrameInfo` 按帧时长步进；读不出的指针该帧不画，每个句柄记一条日志（每次录制至多 8 条）；单色/无 Alpha 指针按 AND/XOR 拆成覆盖图与反色掩码，反色部分用 `D2D1_COMPOSITE_MODE_MASK_INVERT`。颜色取自箭头指针的饱和色（按色相分桶，取最多的 ≤4 种，亮的在尾、指针端亮度夹在 0.11–0.29），黑白指针用中性灰。暂停时清空。
 - **按键提示（`KeyHook` / `keycaps::Model` / `KeycapRender`）**：仅于录制中、未暂停、前台非本进程窗口时在独立高优先级线程挂载 `WH_KEYBOARD_LL`/`WH_MOUSE_LL`（先 `CallNextHookEx`），避免与自身 Raw Input 冲突；250 ms 定时器对比 `GetLastInputInfo` 与回调时间戳超过 500 ms 时自动重装防 `LowLevelHooksTimeout` 静默卸载；`KeyBook` 用 `GetAsyncKeyState` 纠偏遗漏松开的修饰键。
 - **隐私硬约束**：按键只渲染进视频帧，绝不写入日志、诊断或磁盘；内存仅存屏幕上最多 3 行；录制一结束立刻清空队列（早于 GIF 导出）。
 

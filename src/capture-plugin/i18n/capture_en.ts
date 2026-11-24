@@ -2098,6 +2098,10 @@ The unfinished recording is kept at: %1</translation>
         <translation>Click highlight</translation>
     </message>
     <message>
+        <source>鼠标拖尾</source>
+        <translation>Cursor trail</translation>
+    </message>
+    <message>
         <source>文件最小，细节略有损失，适合简单操作。</source>
         <translation>Smallest file with slightly less detail. For simple actions.</translation>
     </message>

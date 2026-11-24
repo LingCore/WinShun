@@ -631,7 +631,7 @@ void CaptureApp::apply()
                 static_cast<capture::Recorder::Quality>(p.recordingQuality), p.recordingCursor, p.recordingCountdown,
                 p.recordingClicks, static_cast<capture::Recorder::Format>(p.recordingFormat),
                 static_cast<capture::Recorder::KeyDisplay>(capture::keycaps::modeFromName(p.recordingKeys)),
-                p.recordingMouseButtons, p.recordingFrameRate};
+                p.recordingMouseButtons, p.recordingFrameRate, p.recordingCursorTrail};
         };
         callbacks.recording.remember = [this](const capture::Recorder::Preferences& prefs) {
             m_settings.update([&](CaptureOptions& next) {
@@ -646,6 +646,7 @@ void CaptureApp::apply()
                 next.recordingFormat = prefs.format;
                 next.recordingKeys = capture::keycaps::modeName(static_cast<capture::keycaps::Mode>(prefs.keys));
                 next.recordingMouseButtons = prefs.mouseButtons;
+                next.recordingCursorTrail = prefs.cursorTrail;
             });
         };
         callbacks.recording.finished = [this] { m_idleTrim->poke(); };

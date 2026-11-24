@@ -222,6 +222,7 @@ CaptureOptions CaptureOptions::load(const QString& file)
     if (o.recordingKeys != u"shortcuts" && o.recordingKeys != u"all")
         o.recordingKeys = d.recordingKeys;
     o.recordingMouseButtons = readOrDefault(s, u"Capture/RecordingMouseButtons"_s, d.recordingMouseButtons);
+    o.recordingCursorTrail = readOrDefault(s, u"Capture/RecordingCursorTrail"_s, d.recordingCursorTrail);
     const QString action = readOrDefault(s, u"Capture/PinDoubleClick"_s, d.pinDoubleClick).trimmed().toLower();
     o.pinDoubleClick = action == u"close" || action == u"collapse" || action == u"none" ? action : u"reset"_s;
     o.pinAutoOcr = readOrDefault(s, u"Capture/PinAutoOcr"_s, d.pinAutoOcr);
@@ -299,6 +300,7 @@ void CaptureOptions::save(const QString& file) const
     s.setValue(u"Capture/RecordingFormat"_s, recordingFormat);
     s.setValue(u"Capture/RecordingKeys"_s, recordingKeys);
     s.setValue(u"Capture/RecordingMouseButtons"_s, recordingMouseButtons);
+    s.setValue(u"Capture/RecordingCursorTrail"_s, recordingCursorTrail);
     s.setValue(u"Capture/PinDoubleClick"_s, pinDoubleClick);
     s.setValue(u"Capture/PinAutoOcr"_s, pinAutoOcr);
     s.setValue(u"Capture/PinHistoryCount"_s, pinHistoryCount);

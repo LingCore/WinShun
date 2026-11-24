@@ -174,7 +174,7 @@ int main(int argc, char** argv)
     const QStringList args = app.arguments();
     if (args.size() < 4) {
         QTextStream(stderr) << "recording-probe sample|screen|fixture file.mp4 milliseconds [x y width height] [--software] [--fps 15|30|60] [--quality 0-100] [--scale 2] [--bitrate-only]\n"
-                              "    [--system-audio] [--microphone] [--pause] [--clicks] [--backdrop sample.png]\n"
+                              "    [--system-audio] [--microphone] [--pause] [--clicks] [--trail] [--backdrop sample.png]\n"
                               "recording-probe inspect file.mp4 frame.png [--find-click]\n";
         return 2;
     }
@@ -202,6 +202,7 @@ int main(int argc, char** argv)
     options.quality = valueAfter(u"--quality", options.quality);
     options.scale = valueAfter(u"--scale", 1);
     options.bitrateOnly = args.contains(u"--bitrate-only");
+    options.cursorTrail = args.contains(u"--trail");
     const int duration = args[3].toInt();
     // What sample's frames are made from, to hold a decoded frame against.
     if (const qsizetype at = args.indexOf(u"--backdrop"); at > 0 && at + 1 < args.size())

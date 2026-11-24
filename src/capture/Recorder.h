@@ -46,6 +46,7 @@ class Recorder : public QObject {
     Q_PROPERTY(bool cursor READ cursor WRITE setCursor NOTIFY changed FINAL)
     Q_PROPERTY(bool countdown READ countdown WRITE setCountdown NOTIFY changed FINAL)
     Q_PROPERTY(bool clickHighlights READ clickHighlights WRITE setClickHighlights NOTIFY changed FINAL)
+    Q_PROPERTY(bool cursorTrail READ cursorTrail WRITE setCursorTrail NOTIFY changed FINAL)
     Q_PROPERTY(KeyDisplay keys READ keys WRITE setKeys NOTIFY changed FINAL)
     Q_PROPERTY(bool mouseButtons READ mouseButtons WRITE setMouseButtons NOTIFY changed FINAL)
 
@@ -74,6 +75,7 @@ public:
         KeyDisplay keys = KeysOff;
         bool mouseButtons = false;
         int frameRate = 30; // an MP4's: 15, 30 or 60; a GIF's goes with its quality
+        bool cursorTrail = false; // recorded only with the pointer
     };
     struct Hooks {
         std::function<Preferences()> preferences;
@@ -113,6 +115,7 @@ public:
     bool cursor() const { return m_preferences.cursor; }
     bool countdown() const { return m_preferences.countdown; }
     bool clickHighlights() const { return m_preferences.clickHighlights; }
+    bool cursorTrail() const { return m_preferences.cursorTrail; }
     KeyDisplay keys() const { return m_preferences.keys; }
     bool mouseButtons() const { return m_preferences.mouseButtons; }
     void setSystemAudio(bool on);
@@ -123,6 +126,7 @@ public:
     void setCursor(bool on);
     void setCountdown(bool on);
     void setClickHighlights(bool on);
+    void setCursorTrail(bool on);
     void setKeys(KeyDisplay value);
     void setMouseButtons(bool on);
     void setFullScreen(bool on);

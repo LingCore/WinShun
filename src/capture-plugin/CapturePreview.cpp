@@ -2595,6 +2595,7 @@ int runRecording(const QStringList& args)
     Recorder::Preferences preferences {out.absolutePath(), args.contains(u"--system-audio"_s), false, quality,
         !args.contains(u"--no-cursor"_s), !args.contains(u"--no-countdown"_s), args.contains(u"--clicks"_s)};
     preferences.frameRate = valueAfter(args, u"--fps", u"30"_s).toInt();
+    preferences.cursorTrail = args.contains(u"--trail"_s);
     std::unique_ptr<RawClicks> clicks;
     Capture::Callbacks callbacks;
     callbacks.recording.preferences = [&] { return preferences; };
@@ -2823,6 +2824,25 @@ int runRecording(const QStringList& args)
     saved = recorder->countdown() != originalCountdown && saved;
     click("recordingCountdown");
     click("recordingClicks");
+    const bool originalTrail = recorder->cursorTrail();
+    click("recordingTrail");
+    saved = recorder->cursorTrail() != originalTrail && saved;
+    click("recordingTrail");
+    saved = recorder->cursorTrail() == originalTrail && saved;
+    // With the pointer off the trail shows off, and turning it on records the pointer too.
+    const auto* trailToggle = panel->findChild<QQuickItem*>(u"recordingTrail"_s);
+    if (recorder->cursor())
+        click("recordingCursor");
+    const bool trailOffWithoutPointer = trailToggle && !trailToggle->property("checked").toBool();
+    click("recordingTrail");
+    const bool trailBringsPointer = trailToggle && recorder->cursor() && recorder->cursorTrail() && trailToggle->property("checked").toBool();
+    say(u"trail off without the pointer: %1, turning it on records the pointer: %2"_s.arg(trailOffWithoutPointer).arg(trailBringsPointer));
+    saved = trailOffWithoutPointer && trailBringsPointer && saved;
+    if (!originalTrail)
+        click("recordingTrail");
+    if (!originalCursor)
+        click("recordingCursor");
+    saved = recorder->cursorTrail() == originalTrail && recorder->cursor() == originalCursor && saved;
     const bool originalMouse = recorder->mouseButtons();
     click("recordingMouseButtons");
     saved = recorder->mouseButtons() != originalMouse && saved;

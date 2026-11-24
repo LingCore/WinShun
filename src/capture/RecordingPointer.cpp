@@ -3,13 +3,17 @@
 
 #include "RecordingPointer.h"
 
+#include "CursorArt.h"
+
 #include <QImage>
 
 #include <d2d1_1.h>
+#include <d2d1_1helper.h>
 #include <d3d11.h>
 #include <dxgi.h>
 
 #include <algorithm>
+#include <cfloat>
 #include <cmath>
 
 namespace ws::capture::recording {
@@ -89,10 +93,22 @@ struct PointerOverlay::Impl {
     winrt::com_ptr<ID2D1Bitmap1> target;
     winrt::com_ptr<ID2D1SolidColorBrush> brush;
     winrt::com_ptr<ID2D1Bitmap1> keycaps;
+    winrt::com_ptr<ID2D1StrokeStyle1> round; // the trail's pieces
+    winrt::com_ptr<ID2D1StrokeStyle1> pointerEnd; // its last: flat at the hot spot
+    // The trail is drawn alone first, each piece replacing what is under
+    // it (newer over older: no doubled alpha where it crosses itself), then
+    // laid over the frame. As large as a trail has been, at most the frame.
+    winrt::com_ptr<ID2D1Bitmap1> trailLayer;
+    D2D1_SIZE_U trailSize {};
+    QSize frame;
+    // The pointer's picture on the GPU, made again when it changes.
+    quint64 cursorId = 0;
+    winrt::com_ptr<ID2D1Bitmap1> cursorImage;
+    winrt::com_ptr<ID2D1Bitmap1> cursorInvert;
     float scale;
 
     Impl(ID3D11Device* device, ID3D11DeviceContext* context, QSize size, double dpr)
-        : scale(float(std::clamp(dpr, 0.75, 4.0)))
+        : frame(size), scale(float(std::clamp(dpr, 0.75, 4.0)))
     {
         graphics.copy_from(context);
         D3D11_TEXTURE2D_DESC desc {};
@@ -119,6 +135,93 @@ struct PointerOverlay::Impl {
         painter->SetUnitMode(D2D1_UNIT_MODE_PIXELS);
         const D2D1_COLOR_F color {1, 0.68f, 0.15f, 1};
         winrt::check_hresult(painter->CreateSolidColorBrush(color, brush.put()));
+        D2D1_STROKE_STYLE_PROPERTIES1 stroke {D2D1_CAP_STYLE_ROUND, D2D1_CAP_STYLE_ROUND, D2D1_CAP_STYLE_ROUND,
+            D2D1_LINE_JOIN_ROUND, 10, D2D1_DASH_STYLE_SOLID, 0, D2D1_STROKE_TRANSFORM_TYPE_NORMAL};
+        winrt::check_hresult(factory->CreateStrokeStyle(stroke, nullptr, 0, round.put()));
+        stroke.endCap = D2D1_CAP_STYLE_FLAT;
+        winrt::check_hresult(factory->CreateStrokeStyle(stroke, nullptr, 0, pointerEnd.put()));
+    }
+
+    // The trail into trailLayer; where it goes in the frame (empty for none).
+    D2D1_RECT_F drawTrail(const TrailDraw& trail)
+    {
+        if (trail.line.size() < 2 || trail.width <= 0)
+            return {};
+        float left = FLT_MAX, top = FLT_MAX, right = -FLT_MAX, bottom = -FLT_MAX;
+        for (const auto& point : trail.line) {
+            left = std::min(left, float(point.at.x()));
+            top = std::min(top, float(point.at.y()));
+            right = std::max(right, float(point.at.x()));
+            bottom = std::max(bottom, float(point.at.y()));
+        }
+        const float margin = trail.width / 2 + 2;
+        const float x0 = std::max(0.0f, std::floor(left - margin)), y0 = std::max(0.0f, std::floor(top - margin));
+        const float x1 = std::min(float(frame.width()), std::ceil(right + margin));
+        const float y1 = std::min(float(frame.height()), std::ceil(bottom + margin));
+        if (x1 <= x0 || y1 <= y0)
+            return {};
+        const auto width = UINT32(x1 - x0), height = UINT32(y1 - y0);
+        if (!trailLayer || width > trailSize.width || height > trailSize.height) {
+            const auto grow = [](UINT32 need, UINT32 had, int most) {
+                return std::min<UINT32>(UINT32(std::max(most, 1)), std::max(had, (need + 255) / 256 * 256));
+            };
+            trailSize = {grow(width, trailSize.width, frame.width()), grow(height, trailSize.height, frame.height())};
+            trailLayer = nullptr;
+            const D2D1_BITMAP_PROPERTIES1 properties {{DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED}, 96, 96,
+                D2D1_BITMAP_OPTIONS_TARGET, nullptr};
+            winrt::check_hresult(painter->CreateBitmap(trailSize, nullptr, 0, properties, trailLayer.put()));
+        }
+        painter->SetTarget(trailLayer.get());
+        painter->BeginDraw();
+        painter->Clear(D2D1_COLOR_F {0, 0, 0, 0});
+        painter->SetTransform(D2D1::Matrix3x2F::Translation(-x0, -y0));
+        painter->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_COPY);
+        const size_t last = trail.line.size() - 1;
+        for (size_t i = 1; i <= last; ++i) {
+            const auto& from = trail.line[i - 1];
+            const auto& to = trail.line[i];
+            const float life = (from.life + to.life) / 2;
+            const float stroke = trail.width * life;
+            if (stroke < 0.3f || life < 0.01f)
+                continue;
+            const QRgb rgb = trailColorAt(trail.colors, (from.place + to.place) / 2);
+            brush->SetColor(D2D1_COLOR_F {qRed(rgb) / 255.0f, qGreen(rgb) / 255.0f, qBlue(rgb) / 255.0f, life});
+            painter->DrawLine({float(from.at.x()), float(from.at.y())}, {float(to.at.x()), float(to.at.y())}, brush.get(), stroke,
+                i == last ? pointerEnd.get() : round.get());
+        }
+        painter->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_SOURCE_OVER);
+        painter->SetTransform(D2D1::Matrix3x2F::Identity());
+        winrt::check_hresult(painter->EndDraw());
+        painter->SetTarget(target.get());
+        return {x0, y0, x1, y1};
+    }
+
+    void loadCursor(const CursorPicture& picture)
+    {
+        if (picture.id == cursorId)
+            return;
+        cursorId = picture.id;
+        cursorImage = nullptr;
+        cursorInvert = nullptr;
+        const D2D1_BITMAP_PROPERTIES1 colors {{DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED}, 96, 96,
+            D2D1_BITMAP_OPTIONS_NONE, nullptr};
+        const QImage& image = picture.image;
+        winrt::check_hresult(painter->CreateBitmap(D2D1::SizeU(UINT32(image.width()), UINT32(image.height())),
+            image.constBits(), UINT32(image.bytesPerLine()), colors, cursorImage.put()));
+        if (!picture.invert.isNull()) {
+            // White, premultiplied: MASK_INVERT makes source × (1 − screen)
+            // + screen × (1 − alpha). An A8 bitmap is refused here
+            // (WINCODEC_ERR_UNSUPPORTEDPIXELFORMAT).
+            QImage mask(picture.invert.size(), QImage::Format_ARGB32_Premultiplied);
+            for (int y = 0; y < mask.height(); ++y) {
+                const uchar* from = picture.invert.constScanLine(y);
+                auto* to = reinterpret_cast<QRgb*>(mask.scanLine(y));
+                for (int x = 0; x < mask.width(); ++x)
+                    to[x] = qRgba(from[x], from[x], from[x], from[x]);
+            }
+            winrt::check_hresult(painter->CreateBitmap(D2D1::SizeU(UINT32(mask.width()), UINT32(mask.height())),
+                mask.constBits(), UINT32(mask.bytesPerLine()), colors, cursorInvert.put()));
+        }
     }
 };
 
@@ -140,13 +243,20 @@ void PointerOverlay::setKeycaps(const QImage& picture)
 }
 
 ID3D11Texture2D* PointerOverlay::draw(ID3D11Texture2D* source, std::span<const Click> clicks, qint64 time,
-    std::span<const KeycapDraw> keycaps)
+    std::span<const KeycapDraw> keycaps, const TrailDraw& trail, const CursorDraw& cursor)
 {
     const bool rows = m_impl->keycaps && std::any_of(keycaps.begin(), keycaps.end(), [](const KeycapDraw& row) { return row.opacity > 0; });
-    if (clicks.empty() && !rows) return source;
+    const bool pointer = cursor.picture && !cursor.picture->image.isNull();
+    if (clicks.empty() && !rows && trail.line.size() < 2 && !pointer) return source;
     auto& draw = *m_impl;
     draw.graphics->CopyResource(draw.texture.get(), source); // never paint into the retained WGC frame
+    const D2D1_RECT_F trailArea = draw.drawTrail(trail);
+    if (pointer) draw.loadCursor(*cursor.picture);
     draw.painter->BeginDraw();
+    if (trailArea.right > trailArea.left) {
+        const D2D1_RECT_F from {0, 0, trailArea.right - trailArea.left, trailArea.bottom - trailArea.top};
+        draw.painter->DrawBitmap(draw.trailLayer.get(), &trailArea, 1, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, &from, nullptr);
+    }
     for (const auto& click : clicks) {
         if (time < click.time) continue;
         const float age = std::clamp(float(time - click.time) / ClickPulses::duration, 0.0f, 1.0f);
@@ -160,6 +270,17 @@ ID3D11Texture2D* PointerOverlay::draw(ID3D11Texture2D* source, std::span<const C
         draw.brush->SetOpacity(opacity * 0.95f);
         draw.painter->DrawEllipse(circle, draw.brush.get(), 2.5f * draw.scale);
     }
+    if (pointer) {
+        // As Windows draws it: its picture over the screen, then the pixels
+        // it inverts (the default I-beam's) inverted.
+        const auto& picture = *cursor.picture;
+        const D2D1_POINT_2F at {float(cursor.at.x() - picture.hotSpot.x()), float(cursor.at.y() - picture.hotSpot.y())};
+        const D2D1_RECT_F to {at.x, at.y, at.x + float(picture.image.width()), at.y + float(picture.image.height())};
+        draw.painter->DrawBitmap(draw.cursorImage.get(), &to, 1, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, nullptr, nullptr);
+        if (draw.cursorInvert)
+            draw.painter->DrawImage(draw.cursorInvert.get(), &at, nullptr, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
+                D2D1_COMPOSITE_MODE_MASK_INVERT);
+    }
     if (rows) {
         for (const auto& row : keycaps) {
             if (row.opacity <= 0) continue;
@@ -171,6 +292,71 @@ ID3D11Texture2D* PointerOverlay::draw(ID3D11Texture2D* source, std::span<const C
     winrt::check_hresult(draw.painter->EndDraw());
     draw.graphics->OMSetRenderTargets(0, nullptr, nullptr);
     return draw.texture.get();
+}
+
+PointerTrail::PointerTrail(QRect region, double scale, bool drawPointer, bool synthetic)
+    : m_region(region), m_drawPointer(drawPointer && !synthetic), m_synthetic(synthetic),
+      m_shapes(std::make_unique<CursorShapes>(scale))
+{
+    if (synthetic) {
+        m_colors = {qRgb(220, 40, 220)}; // apart from the sample's inks and blocks
+        m_width = 10;
+        return;
+    }
+    const CursorPicture* arrow = m_shapes->arrow();
+    m_colors = arrow ? trailColors(arrow->image) : neutralTrailColors();
+    // 6 px for Windows' usual 32 px pointer; a larger pointer, a wider line.
+    m_width = std::max(2.0f, float(m_shapes->systemSize()) * 6 / 32);
+}
+
+PointerTrail::~PointerTrail() = default;
+
+void PointerTrail::look(qint64 time)
+{
+    QPointF at;
+    if (m_synthetic) {
+        constexpr qint64 moving = 2'500'000; // 250 ms
+        const double f = double(std::min(time, moving)) / moving;
+        at = QPointF(m_region.width() * (0.2 + 0.6 * f), m_region.height() * (0.25 + 0.08 * std::sin(f * 2 * 3.141592653589793)));
+    } else {
+        CURSORINFO info {};
+        info.cbSize = sizeof info;
+        POINT physical {};
+        // Hidden (typing, a video full screen) or left to touch and pen:
+        // no pointer, and the line ages away.
+        if (!::GetCursorInfo(&info) || !(info.flags & CURSOR_SHOWING) || !info.hCursor || !::GetPhysicalCursorPos(&physical)) {
+            m_cursor = nullptr;
+            return;
+        }
+        m_cursor = info.hCursor;
+        at = QPointF(physical.x - m_region.x(), physical.y - m_region.y());
+    }
+    m_at = QPoint(int(std::lround(at.x())), int(std::lround(at.y())));
+    m_trail.move(at, time);
+}
+
+void PointerTrail::clear()
+{
+    m_trail.clear();
+    m_line.clear();
+}
+
+TrailDraw PointerTrail::line(qint64 time)
+{
+    m_line = m_trail.line(time);
+    return {m_line, m_width, m_colors};
+}
+
+CursorDraw PointerTrail::pointer(qint64 time)
+{
+    if (!m_drawPointer || !m_cursor)
+        return {};
+    const CursorPicture* picture = m_shapes->picture(m_cursor, time);
+    if (!picture && m_unreadable.size() < 8 && std::ranges::find(m_unreadable, m_cursor) == m_unreadable.end()) {
+        m_unreadable.push_back(m_cursor);
+        qWarning("Recording: pointer %p could not be read (GetIconInfo); it is left out of the frames while it shows", m_cursor);
+    }
+    return {picture, m_at};
 }
 
 } // namespace ws::capture::recording
