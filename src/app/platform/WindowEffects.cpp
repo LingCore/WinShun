@@ -71,12 +71,49 @@ WindowShadow shadowOf(HWND window)
                                                      : WindowShadow::Standard;
 }
 
+constexpr UINT kNcUahDrawCaption = 0x00AE;
+constexpr UINT kNcUahDrawFrame = 0x00AF;
+
+// Disable uxtheme's visual-style non-client hook on a frameless HWND. When a
+// layered D3D11 window (WS_EX_LAYERED + SetLayeredWindowAttributes from fade
+// animations) carries WS_CAPTION, DWMWA_NCRENDERING_ENABLED is FALSE, so
+// uxtheme's ThemeDefWindowProc intercepts DefWindowProcW(WM_NCACTIVATE, ...,
+// -1), ignores lParam == -1, and paints the legacy Windows 7 Aero Basic title
+// bar and borders directly into the GDI redirection bitmap, bleeding through
+// Mica/Acrylic surfaces. Clearing the HWND theme lets user32's DefWindowProcW
+// honour lParam == -1 without painting any non-client chrome while preserving
+// DWM corners, shadow, dark frame and Mica/Acrylic backdrop.
+void disableLegacyFrameTheme(HWND hwnd)
+{
+    using SetWindowThemeFn = HRESULT(WINAPI*)(HWND, LPCWSTR, LPCWSTR);
+    static const HMODULE uxtheme = ::LoadLibraryExW(L"uxtheme.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    static const auto setTheme = uxtheme
+        ? reinterpret_cast<SetWindowThemeFn>(::GetProcAddress(uxtheme, "SetWindowTheme"))
+        : nullptr;
+    if (setTheme)
+        setTheme(hwnd, L"", L"");
+}
+
 LRESULT CALLBACK nativeFrameProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR id, DWORD_PTR)
 {
     switch (message) {
     case WM_NCCALCSIZE:
         if (!::IsZoomed(window))
             return 0; // Keep the native frame entirely in the client area.
+        break;
+    case WM_NCPAINT:
+    case kNcUahDrawCaption:
+    case kNcUahDrawFrame:
+        // The entire window is client area (WM_NCCALCSIZE returns 0); DWM
+        // renders the outer rounded border, shadow and backdrop itself.
+        return 0;
+    case WM_NCACTIVATE:
+        // Pass -1 so user32's DefWindowProcW updates DWM's active frame state
+        // without drawing a classic border even on windows without WindowFrame.
+        return ::DefSubclassProc(window, message, wParam, static_cast<LPARAM>(-1));
+    case WM_PRINT:
+        if (lParam & PRF_NONCLIENT)
+            lParam &= ~static_cast<LPARAM>(PRF_NONCLIENT);
         break;
     case WM_STYLECHANGING:
         if (static_cast<int>(wParam) == GWL_STYLE) {
@@ -258,6 +295,9 @@ void applyFramelessToHwnd(HWND hwnd, bool backdrop, WindowShadow shadow)
         else
             ::SetPropW(hwnd, kShadow, reinterpret_cast<HANDLE>(static_cast<INT_PTR>(shadow) + 1));
     }
+    // Prevent uxtheme from painting an Aero Basic non-client frame into the
+    // GDI redirection surface of layered D3D11 windows when WS_CAPTION is set.
+    disableLegacyFrameTheme(hwnd);
     // Retain a fixed native frame for DWM's border and shadow, while
     // Qt/WindowFrame still own hit testing and resizing.
     if (::SetWindowSubclass(hwnd, nativeFrameProc, 0, 0)) {

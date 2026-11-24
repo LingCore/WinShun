@@ -218,6 +218,7 @@ Item {
             elide: Text.ElideRight
             color: Theme.subtext
             font.pixelSize: Theme.uiBody
+            font.features: columnId === "size" || columnId === "modified" || columnId === "created" ? ({ "tnum": 1 }) : ({})
         }
     }
 

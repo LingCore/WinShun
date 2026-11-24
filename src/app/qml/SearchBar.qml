@@ -673,7 +673,7 @@ Item {
         y: bar.onPixel((bar.height - height) / 2)
         height: bar.keyHeight
         dpr: bar.dpr
-        glyph: bar.placement.panelFilled ? "ph:arrows-in" : "ph:arrows-out"
+        glyph: bar.placement.panelFilled ? "ph:arrows-in-simple" : "ph:arrows-out-simple"
         tip: bar.placement.panelFilled ? qsTr("还原大小") : qsTr("铺满屏幕")
         shortcut: "F11"
         onClicked: {

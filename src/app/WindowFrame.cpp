@@ -107,6 +107,16 @@ struct WindowFrame::Hook {
                     ::IntersectRect(&rect, &window, &info.rcWork);
             }
             return 0;
+        case WM_NCPAINT:
+        case 0x00AE: // WM_NCUAHDRAWCAPTION
+        case 0x00AF: // WM_NCUAHDRAWFRAME
+            if (self->m_ownFrame || self->m_resizable)
+                return 0; // No GDI non-client chrome on frameless/layered windows (DWM owns outer border & shadow).
+            break;
+        case WM_PRINT:
+            if ((self->m_ownFrame || self->m_resizable) && (lParam & PRF_NONCLIENT))
+                lParam &= ~static_cast<LPARAM>(PRF_NONCLIENT);
+            break;
         case WM_NCACTIVATE: {
             // DWM learns from the default handling whether the frame is
             // active, which the Mica backdrop depends on; Qt keeps the
@@ -114,7 +124,7 @@ struct WindowFrame::Hook {
             // The frame's dark mode too, in case Qt has set it back (see
             // win::setDarkFrame). Acrylic and non-activating windows keep the
             // visual frame state only; Qt and WM_ACTIVATE retain real focus.
-            ::DefSubclassProc(hwnd, message, wParam, lParam);
+            ::DefSubclassProc(hwnd, message, wParam, static_cast<LPARAM>(-1));
             win::setDarkFrame(self->m_window, QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark);
             const LRESULT result = ::DefWindowProcW(hwnd, message, win::backdropFrameActive(hwnd, self->m_noActivate || wParam), -1);
             return wParam ? result : TRUE; // always let another window receive activation

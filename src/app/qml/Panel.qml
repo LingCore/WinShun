@@ -758,14 +758,14 @@ Item {
                 Column {
                     id: filterColumn
                     width: filters.width
-                    topPadding: 6
 
                     Item { // "筛选", the link that clears them all, and the key that moves them to the top
                         width: parent.width
-                        height: Theme.labelRowHeight + 4
+                        height: Theme.labelRowHeight + 8 // matches the table header's height and baseline
 
                         Text {
                             x: 20
+                            y: panel.onPixel((parent.height - height) / 2)
                             height: Theme.labelRowHeight
                             verticalAlignment: Text.AlignVCenter
                             text: qsTr("筛选")
@@ -776,12 +776,19 @@ Item {
                         ClearLink {
                             anchors.right: sideLayoutKey.left
                             anchors.rightMargin: 4
+                            y: panel.onPixel((parent.height - height) / 2)
                         }
                         LayoutKey {
                             id: sideLayoutKey
                             anchors.right: parent.right
                             anchors.rightMargin: 10
+                            y: panel.onPixel((parent.height - height) / 2)
                         }
+                    }
+
+                    Item { // aligns the first filter row with the result list's topMargin
+                        width: parent.width
+                        height: 4
                     }
 
                     Repeater { // the kinds of file: one click each, several at once
@@ -983,6 +990,7 @@ Item {
         property int columnIndex
         property int minimumWidth: 72
         property bool alignRight: false
+        property bool showSeparator: true
         readonly property bool active: panel.launcher.panelSortKey === key
 
         height: parent.height
@@ -1039,7 +1047,7 @@ Item {
             y: panel.onPixel((header.height - height) / 2)
             glyph: panel.launcher.panelSortDescending ? "" : "" // ChevronDown, ChevronUp
             size: 8
-            color: Theme.subtext
+            color: Theme.accent
         }
         MouseArea {
             id: headerArea
@@ -1118,11 +1126,13 @@ Item {
             onCanceled: panel.resizingColumn = ""
 
             Rectangle {
+                readonly property bool highlighted: resizeArea.containsMouse || resizeArea.pressed
+                visible: highlighted || header.showSeparator
                 anchors.centerIn: parent
-                width: resizeArea.containsMouse || resizeArea.pressed ? 2 : Theme.edge(panel.dpr)
-                height: parent.height - 12
+                width: highlighted ? 2 : Theme.edge(panel.dpr)
+                height: parent.height - 16
                 radius: Theme.pillRadius(width)
-                color: resizeArea.containsMouse || resizeArea.pressed ? Theme.accent : Theme.faint
+                color: highlighted ? Theme.accent : Theme.divider
                 Accessible.ignored: true
             }
             HoverTip {
@@ -1156,13 +1166,14 @@ Item {
                 columnIndex: index
                 minimumWidth: modelData.minimum
                 alignRight: modelData.id === "size"
+                showSeparator: index < panel.columnSpecs.length - 1 || horizontalScroll.visible
             }
         }
 
         Rectangle {
             anchors.bottom: parent.bottom
-            x: 8
-            width: parent.width - 16
+            x: 0
+            width: parent.width
             height: Theme.edge(panel.dpr)
             color: Theme.divider
         }

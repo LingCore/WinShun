@@ -19,8 +19,8 @@ struct Definition {
 };
 constexpr std::array kColumns {
     Definition {"name", QT_TRANSLATE_NOOP("ws::PanelColumns", "名称"), 280, 120, 1},
-    Definition {"path", QT_TRANSLATE_NOOP("ws::PanelColumns", "路径"), 320, 120, 2},
-    Definition {"size", QT_TRANSLATE_NOOP("ws::PanelColumns", "大小"), 100, 72, 3},
+    Definition {"path", QT_TRANSLATE_NOOP("ws::PanelColumns", "路径"), 288, 120, 2},
+    Definition {"size", QT_TRANSLATE_NOOP("ws::PanelColumns", "大小"), 96, 72, 3},
     Definition {"modified", QT_TRANSLATE_NOOP("ws::PanelColumns", "修改时间"), 168, 128, 4},
     Definition {"type", QT_TRANSLATE_NOOP("ws::PanelColumns", "类型"), 100, 72, 5},
     Definition {"created", QT_TRANSLATE_NOOP("ws::PanelColumns", "创建时间"), 168, 128, 6},

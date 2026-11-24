@@ -367,6 +367,124 @@ private slots:
         QCOMPARE(userObjectsAfter, userObjectsBefore);
         verifyDpiMatchedAppIcon(appHwnd);
     }
+
+    // Adding WS_CAPTION / WS_THICKFRAME on a visible WS_EX_LAYERED frameless
+    // window (such as expanding the launcher from Light/None shadow into the
+    // panel with Mica/Acrylic transparency on) must never let DefWindowProcW
+    // paint the legacy Aero Basic non-client frame into the GDI redirection
+    // bitmap.
+    void layeredFramelessTransitionsStayFreeOfBasicFrame()
+    {
+        auto captureWindow = [](HWND hwnd) -> QImage {
+            RECT rc {};
+            if (!::GetWindowRect(hwnd, &rc))
+                return {};
+            const int w = rc.right - rc.left;
+            const int h = rc.bottom - rc.top;
+            if (w <= 60 || h <= 80)
+                return {};
+            const HDC screen = ::GetDC(nullptr);
+            const HDC mem = ::CreateCompatibleDC(screen);
+            BITMAPINFO bi {};
+            bi.bmiHeader = {sizeof(BITMAPINFOHEADER), w, -h, 1, 32, BI_RGB};
+            void* bits = nullptr;
+            const HBITMAP bmp = ::CreateDIBSection(mem, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
+            const HGDIOBJ old = ::SelectObject(mem, bmp);
+            const BOOL ok = ::PrintWindow(hwnd, mem, PW_RENDERFULLCONTENT);
+            QImage out;
+            if (ok && bits)
+                out = QImage(static_cast<const uchar*>(bits), w, h, w * 4, QImage::Format_ARGB32).copy();
+            ::SelectObject(mem, old);
+            ::DeleteObject(bmp);
+            ::DeleteDC(mem);
+            ::ReleaseDC(nullptr, screen);
+            return out;
+        };
+        auto maxDiff = [](QRgb a, QRgb b) {
+            return std::max({std::abs(qRed(a) - qRed(b)), std::abs(qGreen(a) - qGreen(b)), std::abs(qBlue(a) - qBlue(b))});
+        };
+        auto verifyNoBasicFrame = [&](HWND hwnd, const char* step) {
+            ::DwmFlush();
+            const QImage shot = captureWindow(hwnd);
+            QVERIFY2(!shot.isNull(), step);
+            const int w = shot.width();
+            const int h = shot.height();
+            const int ym = h / 2;
+            const int xm = w / 2;
+            const int topDiff = maxDiff(shot.pixel(xm, 10), shot.pixel(xm, 60));
+            const int leftDiff = maxDiff(shot.pixel(4, ym), shot.pixel(28, ym));
+            const int rightDiff = maxDiff(shot.pixel(w - 5, ym), shot.pixel(w - 29, ym));
+            const int bottomDiff = maxDiff(shot.pixel(xm, h - 5), shot.pixel(xm, h - 29));
+            QVERIFY2(topDiff <= 20 && leftDiff <= 20 && rightDiff <= 20 && bottomDiff <= 20,
+                qPrintable(QStringLiteral("%1: non-client frame bled into layered surface (diffs top=%2 left=%3 right=%4 bottom=%5)")
+                    .arg(QLatin1StringView(step)).arg(topDiff).arg(leftDiff).arg(rightDiff).arg(bottomDiff)));
+        };
+
+        QWindow window;
+        window.setFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
+        window.setTitle(QStringLiteral("WinShun layered frame test"));
+        window.setGeometry(120, 120, 480, 320);
+        window.create();
+        const HWND hwnd = reinterpret_cast<HWND>(window.winId());
+        // Match D3D11 transparent QQuickWindow + Placement::slideIn opacity animation:
+        // WS_EX_LAYERED with LWA_ALPHA drives DWMWA_NCRENDERING_ENABLED to FALSE.
+        ::SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ::GetWindowLongPtrW(hwnd, GWL_EXSTYLE) | WS_EX_LAYERED);
+        ::SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA);
+        ws::win::styleFramelessWindow(&window, true);
+        ws::win::setWindowShadow(&window, ws::win::WindowShadow::Light);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        QTest::qWait(40);
+        verifyNoBasicFrame(hwnd, "initial light box");
+
+        // Expand into panel: add WS_CAPTION (Standard) + WS_THICKFRAME + resize.
+        ws::win::setWindowShadow(&window, ws::win::WindowShadow::Standard);
+        ::SetWindowLongPtrW(hwnd, GWL_STYLE, ::GetWindowLongPtrW(hwnd, GWL_STYLE) | WS_THICKFRAME);
+        ::SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
+            SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE);
+        window.resize(680, 440);
+        QTest::qWait(40);
+        verifyNoBasicFrame(hwnd, "expanded panel");
+
+        // Explicit WM_NCPAINT, WM_NCACTIVATE (both routed and direct DefWindowProcW
+        // as WindowFrame calls it), WM_SETTEXT, WM_SETICON, and PrintWindow(0) must stay clean.
+        ::SendMessageW(hwnd, WM_NCPAINT, 1, 0);
+        ::SendMessageW(hwnd, WM_NCACTIVATE, TRUE, 0);
+        ::DefWindowProcW(hwnd, WM_NCACTIVATE, TRUE, -1);
+        ::DefWindowProcW(hwnd, WM_NCACTIVATE, FALSE, -1);
+        ::DefWindowProcW(hwnd, WM_NCACTIVATE, TRUE, -1);
+        ::SendMessageW(hwnd, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(L"WinShun Renamed"));
+        ::SendMessageW(hwnd, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(::LoadIconW(nullptr, IDI_APPLICATION)));
+        {
+            const HDC screen = ::GetDC(nullptr);
+            const HDC mem = ::CreateCompatibleDC(screen);
+            const HBITMAP bmp = ::CreateCompatibleBitmap(screen, 32, 32);
+            const HGDIOBJ old = ::SelectObject(mem, bmp);
+            ::PrintWindow(hwnd, mem, 0);
+            ::SelectObject(mem, old);
+            ::DeleteObject(bmp);
+            ::DeleteDC(mem);
+            ::ReleaseDC(nullptr, screen);
+        }
+        verifyNoBasicFrame(hwnd, "after WM_NCPAINT/WM_NCACTIVATE/WM_SETTEXT/PrintWindow");
+
+        // Collapse back to Light shadow box and shrink.
+        ::SetWindowLongPtrW(hwnd, GWL_STYLE, ::GetWindowLongPtrW(hwnd, GWL_STYLE) & ~WS_THICKFRAME);
+        ::SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
+            SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE);
+        ws::win::setWindowShadow(&window, ws::win::WindowShadow::Light);
+        window.resize(480, 320);
+        QTest::qWait(40);
+        verifyNoBasicFrame(hwnd, "collapsed light box");
+
+        // None -> Standard shadow toggle while visible.
+        ws::win::setWindowShadow(&window, ws::win::WindowShadow::None);
+        QTest::qWait(20);
+        ws::win::setWindowShadow(&window, ws::win::WindowShadow::Standard);
+        QTest::qWait(40);
+        verifyNoBasicFrame(hwnd, "none to standard shadow");
+        window.hide();
+    }
 };
 
 int main(int argc, char** argv)
