@@ -113,8 +113,8 @@
         <translation>Cell %1</translation>
     </message>
     <message>
-        <source>起始</source>
-        <translation>Start</translation>
+        <source>当前组起始值（滚轮或点两侧增减）</source>
+        <translation>Starting number for this group (scroll or click +/-)</translation>
     </message>
     <message>
         <source>起始值减 1</source>
@@ -125,12 +125,12 @@
         <translation>Start one higher</translation>
     </message>
     <message>
-        <source>另起一组</source>
-        <translation>New group</translation>
+        <source>新组</source>
+        <translation>New</translation>
     </message>
     <message>
-        <source>之后的序号从 1 重新数</source>
-        <translation>The next numbers count from 1 again</translation>
+        <source>另起一组：之后的序号从 1 重新数</source>
+        <translation>New group: the next numbers count from 1 again</translation>
     </message>
     <message>
         <source>上移一层</source>
@@ -1884,6 +1884,22 @@
         <source>安装增强文字识别…</source>
         <translation>Install enhanced text recognition…</translation>
     </message>
+    <message>
+        <source>已复制</source>
+        <translation>Copied</translation>
+    </message>
+    <message>
+        <source>合并换行</source>
+        <translation>Merge lines</translation>
+    </message>
+    <message>
+        <source>还原原始换行</source>
+        <translation>Restore original line breaks</translation>
+    </message>
+    <message>
+        <source>合并段落内的换行</source>
+        <translation>Merge line breaks within paragraphs</translation>
+    </message>
 </context>
 <context>
     <name>PinGroupPrompt</name>
@@ -2211,6 +2227,10 @@ The unfinished recording is kept at: %1</translation>
     <message>
         <source>暂停</source>
         <translation>Pause</translation>
+    </message>
+    <message>
+        <source>放弃本次录制（不保存）</source>
+        <translation>Discard this recording without saving</translation>
     </message>
     <message>
         <source>开始录制</source>

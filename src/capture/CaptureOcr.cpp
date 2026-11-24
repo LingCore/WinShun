@@ -205,6 +205,35 @@ QString CaptureOcr::oneLine(const QString& text)
     return ocrOneLine(text, kMaxQuery); // lines as words: the search box is one line
 }
 
+QString CaptureOcr::mergeLines(const QString& text)
+{
+    const QStringList rawLines = text.split(u'\n');
+    QString out;
+    QString prevLine;
+    bool pendingBlank = false;
+    for (const QString& raw : rawLines) {
+        const QString line = raw.simplified();
+        if (line.isEmpty()) {
+            if (!out.isEmpty())
+                pendingBlank = true;
+            prevLine.clear();
+            continue;
+        }
+        if (out.isEmpty()) {
+            out = line;
+        } else if (pendingBlank) {
+            out += u"\n\n"_s + line;
+            pendingBlank = false;
+        } else if (!prevLine.isEmpty() && ocrGoesOn(prevLine, line)) {
+            ocrGlue(out, line);
+        } else {
+            out += u'\n' + line;
+        }
+        prevLine = line;
+    }
+    return out;
+}
+
 void CaptureOcr::search(const QString& text)
 {
     const QString query = oneLine(text);

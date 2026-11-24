@@ -135,6 +135,9 @@ public:
     bool translationShown() const { return m_translating || !m_translation.isEmpty() || !m_translationNote.isEmpty(); }
     // Lines as words, trimmed, cut at what a search box takes; empty when no words.
     static QString oneLine(const QString& text);
+    // Joins soft-wrapped OCR lines into readable paragraphs while preserving
+    // sentence-ending breaks, blank-line paragraph gaps, and list items.
+    Q_INVOKABLE static QString mergeLines(const QString& text);
     Q_INVOKABLE void close() { emit closeRequested(); }
     Q_INVOKABLE void openLink(const QString& url) { emit openLinkRequested(url); }
 

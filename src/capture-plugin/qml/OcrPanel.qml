@@ -29,11 +29,62 @@ Window {
     height: ocr.translationShown ? 360 + translationHeight : 360
 
     readonly property int translationHeight: 200
+    property bool linesMerged: false
+    property string textBeforeMerge: ""
+    property bool copiedShown: false
+    readonly property bool canMergeLines: words.text.indexOf("\n") >= 0
+                                          && window.ocr.mergeLines(words.text) !== words.text
+
+    function flashCopied() {
+        copiedShown = true
+        copiedTimer.restart()
+    }
+
+    function copyAndClose() {
+        if (window.ocr.busy)
+            return
+        if (translation.activeFocus && translation.selectedText.length > 0) {
+            window.ocr.copyAll(translation.selectedText)
+            window.ocr.close()
+            return
+        }
+        const chosen = words.selectedText.length > 0 ? words.selectedText : words.text
+        if (chosen.length === 0)
+            return
+        window.ocr.copyAll(chosen)
+        window.ocr.close()
+    }
+
+    function toggleMergeLines() {
+        if (linesMerged) {
+            words.text = textBeforeMerge
+            linesMerged = false
+        } else {
+            const merged = window.ocr.mergeLines(words.text)
+            if (merged === words.text)
+                return
+            textBeforeMerge = words.text
+            words.text = merged
+            linesMerged = true
+        }
+        words.cursorPosition = 0
+        words.forceActiveFocus()
+    }
+
+    Timer {
+        id: copiedTimer
+        interval: 1500
+        onTriggered: window.copiedShown = false
+    }
 
     // A new picture: its text replaces whatever was edited before.
     Connections {
         target: window.ocr
         function onChanged() {
+            window.linesMerged = false
+            window.textBeforeMerge = ""
+            window.copiedShown = false
+            copiedTimer.stop()
             if (!window.ocr.busy) {
                 words.text = window.ocr.text
                 words.cursorPosition = 0
@@ -48,6 +99,13 @@ Window {
         anchors.fill: parent
         focus: true
         Keys.onEscapePressed: window.ocr.close()
+        Keys.onPressed: (event) => {
+            if ((event.modifiers & Qt.ControlModifier)
+                && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)) {
+                window.copyAndClose()
+                event.accepted = true
+            }
+        }
     }
 
     // ---- the header: what this is, close -------------------------------------------
@@ -58,13 +116,54 @@ Window {
         height: Theme.headerHeight
         Component.onCompleted: window.frame.addDragArea(header)
 
-        Text {
+        Row {
             x: window.padding
-            y: window.onPixel((header.height - height) / 2)
-            text: window.ocr.title.length > 0 ? window.ocr.title : qsTr("识别文字")
-            color: Theme.text
-            font.pixelSize: Theme.uiTitle
-            font.weight: Theme.fontStrong
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 10
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: window.ocr.title.length > 0 ? window.ocr.title : qsTr("识别文字")
+                color: Theme.text
+                font.pixelSize: Theme.uiTitle
+                font.weight: Theme.fontStrong
+            }
+            Row {
+                visible: window.copiedShown
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 4
+                Glyph {
+                    anchors.verticalCenter: parent.verticalCenter
+                    iconName: "check"
+                    size: 13
+                    color: Theme.success
+                }
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: qsTr("已复制")
+                    color: Theme.success
+                    font.pixelSize: Theme.uiCaption
+                }
+            }
+        }
+        FlatButton {
+            id: mergeButton
+            objectName: "ocrMergeLines"
+            dpr: window.dpr
+            anchors.right: closeButton.left
+            anchors.rightMargin: 4
+            anchors.verticalCenter: parent.verticalCenter
+            height: 28
+            flat: !window.linesMerged
+            fontSize: Theme.uiCaption
+            glyphSize: 13
+            glyph: "ph:paragraph"
+            text: qsTr("合并换行")
+            visible: !window.ocr.busy && window.ocr.link.length === 0
+                     && (window.linesMerged || window.canMergeLines)
+            Accessible.role: Accessible.Button
+            Accessible.name: window.linesMerged ? qsTr("还原原始换行") : qsTr("合并段落内的换行")
+            onClicked: window.toggleMergeLines()
+            Component.onCompleted: window.frame.addControl(mergeButton)
         }
         FlatButton {
             dpr: window.dpr
@@ -148,6 +247,14 @@ Window {
                     else
                         window.ocr.close()
                 }
+                Keys.onPressed: (event) => {
+                    if (!words.inputMethodComposing
+                        && (event.modifiers & Qt.ControlModifier)
+                        && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)) {
+                        window.copyAndClose()
+                        event.accepted = true
+                    }
+                }
             }
         }
 
@@ -219,7 +326,10 @@ Window {
                 glyph: "\uE8C8" // Copy
                 visible: window.ocr.translation.length > 0
                 Accessible.name: qsTr("复制译文")
-                onClicked: window.ocr.copyAll(translation.selectedText.length > 0 ? translation.selectedText : translation.text)
+                onClicked: {
+                    window.ocr.copyAll(translation.selectedText.length > 0 ? translation.selectedText : translation.text)
+                    window.flashCopied()
+                }
             }
         }
 
@@ -265,6 +375,13 @@ Window {
                     selectedTextColor: Theme.text
                     font.pixelSize: Theme.uiBody
                     Keys.onEscapePressed: window.ocr.close()
+                    Keys.onPressed: (event) => {
+                        if ((event.modifiers & Qt.ControlModifier)
+                            && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)) {
+                            window.copyAndClose()
+                            event.accepted = true
+                        }
+                    }
                 }
             }
 
@@ -349,14 +466,21 @@ Window {
             visible: window.ocr.table.length > 0
             text: qsTr("复制为表格")
             enabled: !window.ocr.busy
-            onClicked: window.ocr.copyTable()
+            onClicked: {
+                window.ocr.copyTable()
+                window.flashCopied()
+            }
         }
         FlatButton {
             dpr: window.dpr
+            objectName: "copyAllWords"
             highlighted: window.ocr.link.length === 0
             text: qsTr("复制全部")
             enabled: !window.ocr.busy && words.text.length > 0
-            onClicked: window.ocr.copyAll(words.text)
+            onClicked: {
+                window.ocr.copyAll(words.text)
+                window.flashCopied()
+            }
         }
         FlatButton {
             dpr: window.dpr

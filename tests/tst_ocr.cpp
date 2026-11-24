@@ -719,6 +719,22 @@ private slots:
         QCOMPARE(lines.size(), cells.size());
         QCOMPARE(table, cells);
     }
+
+    // 合并换行: joins soft-wrapped lines inside paragraphs while preserving
+    // blank-line paragraph breaks, sentence boundaries, and list items.
+    void mergeLines()
+    {
+        using ws::capture::CaptureOcr;
+        QCOMPARE(CaptureOcr::mergeLines(u"这是一段中文\n被截断了。\n第二段还没\n说完。"_s),
+            u"这是一段中文被截断了。\n第二段还没说完。"_s);
+        QCOMPARE(CaptureOcr::mergeLines(u"The quick brown fox\njumps over the lazy dog.\n\nNext para\ncontinues."_s),
+            u"The quick brown fox jumps over the lazy dog.\n\nNext para continues."_s);
+        QCOMPARE(CaptureOcr::mergeLines(u"The trans-\nlation works."_s), u"The translation works."_s);
+        QCOMPARE(CaptureOcr::mergeLines(u"先用 Win\nShun 处理"_s), u"先用 Win Shun 处理"_s);
+        QCOMPARE(CaptureOcr::mergeLines(u"清单：\n- 第一项\n1. 第二项\n2、第三项"_s),
+            u"清单：\n- 第一项\n1. 第二项\n2、第三项"_s);
+        QVERIFY(CaptureOcr::mergeLines(u" \n\t "_s).isEmpty());
+    }
 };
 
 QTEST_MAIN(TestOcr)
