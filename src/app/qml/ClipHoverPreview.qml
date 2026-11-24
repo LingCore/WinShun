@@ -17,6 +17,7 @@ Window {
     readonly property string selectedText: body.selectedText
     function copySelection(): bool { return body.copySelection() }
     property bool wordsShown: true // a picture's words (Clipboard.pictureWords)
+    property bool plainByDefault: false // Clipboard.pastePlain
     signal wordsToggled()
     readonly property real rightRoom: availableArea.x + availableArea.width - anchorRect.x - anchorRect.width - 16
     readonly property real leftRoom: anchorRect.x - availableArea.x - 16
@@ -57,6 +58,7 @@ Window {
         anchors.margins: 1
         metrics: window.metrics
         info: window.info
+        plainByDefault: window.plainByDefault
         compact: true
         parentTop: 1
         onCopyRequested: (text, remember) => window.copyRequested(text, remember)

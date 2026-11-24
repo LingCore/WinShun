@@ -2315,6 +2315,14 @@ void SettingsEditor::setClipboardClickToPaste(bool on)
     commit();
 }
 
+void SettingsEditor::setClipboardPlainByDefault(bool on)
+{
+    if (m_settings.clipboardPlainByDefault == on)
+        return;
+    m_settings.clipboardPlainByDefault = on;
+    commit();
+}
+
 void SettingsEditor::setClipboardKeepPlace(bool on)
 {
     if (m_settings.clipboardKeepPlace == on)

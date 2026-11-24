@@ -1221,6 +1221,7 @@ void Settings::load()
     if (clipboardScreenshots != u"all" && clipboardScreenshots != u"copied" && clipboardScreenshots != u"off")
         clipboardScreenshots = screenshotDefault;
     clipboardClickToPaste = readOrDefault(s, u"Clipboard/ClickToPaste"_s, d.clipboardClickToPaste);
+    clipboardPlainByDefault = readOrDefault(s, u"Clipboard/PlainByDefault"_s, d.clipboardPlainByDefault);
     clipboardUiSize = readOrDefault(s, u"Clipboard/UiSize"_s, d.clipboardUiSize).trimmed().toLower();
     if (clipboardUiSize != u"dense" && clipboardUiSize != u"compact" && clipboardUiSize != u"standard" && clipboardUiSize != u"roomy")
         clipboardUiSize = d.clipboardUiSize;
@@ -1565,6 +1566,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Clipboard/Images"_s, clipboardImages);
     s.setValue(u"Clipboard/Screenshots"_s, clipboardScreenshots);
     s.setValue(u"Clipboard/ClickToPaste"_s, clipboardClickToPaste);
+    s.setValue(u"Clipboard/PlainByDefault"_s, clipboardPlainByDefault);
     s.setValue(u"Clipboard/UiSize"_s, clipboardUiSize);
     s.setValue(u"Clipboard/PictureSize"_s, clipboardPictureSize);
     s.remove(u"Clipboard/LargePictures"_s); // said by PictureSize now

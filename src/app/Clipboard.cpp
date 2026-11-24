@@ -412,6 +412,15 @@ void Clipboard::setRowOptions(bool clickToPaste, const QString& pictureSize, con
     refreshStatus(); // pinned, it says how to paste
 }
 
+void Clipboard::setPastePlain(bool plain)
+{
+    if (plain == m_pastePlain)
+        return;
+    m_pastePlain = plain;
+    emit rowOptionsChanged();
+    refreshStatus();
+}
+
 void Clipboard::setLayoutOptions(bool flipAbove, bool searchFar, bool searchBox)
 {
     if (flipAbove == m_flipAbove && searchFar == m_searchFar && searchBox == m_searchBox)
@@ -797,7 +806,8 @@ void Clipboard::refreshStatus()
         status = !m_query.trimmed().isEmpty() || m_category != 0 ? tr("%Ln 条", nullptr, m_model.count()) : tr("共 %Ln 条", nullptr, total());
         // Pinned and the keys not coming here: a click is how an entry gets pasted.
         if (m_pinned && !m_keysRouted)
-            status = (m_clickToPaste ? tr("%1 · 单击粘贴") : tr("%1 · 双击粘贴")).arg(status);
+            status = (m_pastePlain ? (m_clickToPaste ? tr("%1 · 单击粘贴纯文本") : tr("%1 · 双击粘贴纯文本"))
+                                   : (m_clickToPaste ? tr("%1 · 单击粘贴") : tr("%1 · 双击粘贴"))).arg(status);
     }
     if (status != m_status) {
         m_status = status;
@@ -1313,7 +1323,15 @@ void Clipboard::aimAtFrontProgram()
         m_target = foreground;
 }
 
-void Clipboard::paste(int row, bool plainText)
+bool Clipboard::pastesPlain(const std::vector<const Clip*>& clips, bool usuallyPlain, bool other)
+{
+    const bool words = !clips.empty() && std::ranges::none_of(clips, [](const Clip* c) {
+        return c->kind == ClipKind::Files || c->kind == ClipKind::Image;
+    });
+    return words ? usuallyPlain != other : other;
+}
+
+void Clipboard::paste(int row, bool other)
 {
     if (m_pasting)
         return;
@@ -1321,6 +1339,7 @@ void Clipboard::paste(int row, bool plainText)
     const std::vector<const Clip*> clips = targets(row);
     if (clips.empty())
         return;
+    const bool plainText = pastesPlain(clips, m_pastePlain, other);
     std::vector<qint64> touched;
     if (clips.size() > 1) {
         for (const Clip* c : clips)
@@ -1368,12 +1387,12 @@ void Clipboard::pasteText(const QString& text)
     startPaste(std::move(write), Into::Program, {}, {});
 }
 
-void Clipboard::quickPaste(int row, bool plainText)
+void Clipboard::quickPaste(int row, bool other)
 {
     if (row < 0 || row >= m_model.count())
         return;
     m_model.clearSelection();
-    paste(row, plainText);
+    paste(row, other);
 }
 
 void Clipboard::copy(int row)
@@ -1657,7 +1676,7 @@ void Clipboard::pasteDirect(qint64 id, HWND target)
     if (!window || !paste::isForeground(window))
         return;
     QString problem;
-    ClipWrite write = writeFor({clip}, false, &problem, window);
+    ClipWrite write = writeFor({clip}, pastesPlain({clip}, m_pastePlain, false), &problem, window);
     if (write.empty()) {
         emit quickPasteFailed(problem);
         return;
@@ -1692,13 +1711,16 @@ bool Clipboard::pasteEntry(qint64 id, HWND target)
         return false;
     if (m_pasting)
         return true; // one under way: this key is late, not wrong
+    // A paste goes as the clipboard window's own would (pastePlain); a copy
+    // keeps every format the entry has.
+    const HWND window = paste::usableTarget(target);
     QString problem;
-    ClipWrite write = writeFor({clip}, false, &problem, paste::usableTarget(target));
+    ClipWrite write = writeFor({clip}, window && pastesPlain({clip}, m_pastePlain, false), &problem, window);
     if (write.empty()) {
         flash(problem);
         return true;
     }
-    if (!paste::usableTarget(target)) { // nothing to paste into: on the clipboard, as 复制
+    if (!window) { // nothing to paste into: on the clipboard, as 复制
         startPaste(std::move(write), Into::Clipboard, {}, tr("已复制"));
         return true;
     }
@@ -2088,8 +2110,15 @@ QVariantList Clipboard::menuItems(int row) const
     const QString field = fieldName();
     items.append(entry(Paste, many ? tr("粘贴 %Ln 条", nullptr, n) : field.isEmpty() ? tr("粘贴") : tr("粘贴到%1").arg(field),
         u"Enter"_s, u""_s));
-    if (!onlyImages && field.isEmpty())
-        items.append(entry(PastePlain, tr("粘贴为纯文本"), u"Shift+Enter"_s, u""_s));
+    // Shift+Enter, the other paste: words pasted as plain text the usual way
+    // (pastePlain) with their formatting, when they have one (several go
+    // as their joined words either way); anything else as plain text.
+    if (field.isEmpty() && pastesPlain(clips, m_pastePlain, false)) {
+        if (const Clip* c = clips.front(); !many && (c->html || c->rtf || c->formats))
+            items.append(entry(PasteOther, tr("保留格式粘贴"), u"Shift+Enter"_s, u"\uE771"_s));
+    } else if (!onlyImages && field.isEmpty()) {
+        items.append(entry(PasteOther, tr("粘贴为纯文本"), u"Shift+Enter"_s, u""_s));
+    }
     items.append(entry(Copy, many ? tr("复制 %Ln 条", nullptr, n) : tr("复制"), u"Ctrl+C"_s, u""_s));
     // Pictures, its own or picture files a 文件 entry names (copied in 微信, QQ or
     // Explorer: listed under 图片 too, GitHub #369), on the screen (several at once, each a
@@ -2208,8 +2237,8 @@ void Clipboard::trigger(int row, int action)
     case Paste:
         paste(row, false);
         break;
-    case PastePlain:
-        paste(row, true);
+    case PasteOther:
+        paste(row, true); // `other`
         break;
     case Copy:
         copy(row);

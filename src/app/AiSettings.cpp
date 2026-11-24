@@ -860,6 +860,10 @@ std::vector<Entry> buildCatalog()
     add(boolean({"Clipboard/ClickToPaste", QT_TRANSLATE_NOOP("AiSettings", "单击粘贴"), "clipboard", 0,
                     "A click pastes the row (Windows' way); off: a click picks it and a double click pastes."},
         &Settings::clipboardClickToPaste));
+    add(boolean({"Clipboard/PlainByDefault", QT_TRANSLATE_NOOP("AiSettings", "默认粘贴为纯文本"), "clipboard", 0,
+                    "Pasting words from the history (a click, Enter, Alt+1-9, the quick paste keys) drops their formatting; "
+                    "Shift+Enter or the menu's keep-formatting entry keeps it. Files and pictures paste as they are."},
+        &Settings::clipboardPlainByDefault));
     add(boolean({"Clipboard/KeepPlace", QT_TRANSLATE_NOOP("AiSettings", "粘贴后保持位置"), "clipboard", 0,
                     "Pasting an entry from the history leaves it where it is in the list; off: it moves to the top."},
         &Settings::clipboardKeepPlace));

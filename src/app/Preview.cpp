@@ -146,6 +146,19 @@ using namespace Qt::StringLiterals;
 
 namespace ws::preview {
 
+// Clipboard's paste as far as what it would put on the clipboard
+// (Clipboard::startPaste), let go before its timer could write it or press
+// a key: the native clipboard untouched.
+struct PasteWriteProbe {
+    static ClipWrite takeWrite(Clipboard& clipboard)
+    {
+        clipboard.m_keysTimer.stop();
+        clipboard.m_pasting = false;
+        clipboard.m_pasteGuard.reset();
+        return std::exchange(clipboard.m_write, {});
+    }
+};
+
 namespace {
 
 constexpr auto kFlag = u"--preview-plugins";
@@ -8717,6 +8730,195 @@ bool checkClipboardPinFiles(QQmlEngine* engine, const QDir& output)
     return ok;
 }
 
+// --clipboard-paste-plain: 默认粘贴为纯文本 (Settings::clipboardPlainByDefault).
+// Off, as ever: a paste keeps the words' formatting, Shift drops it. On: the
+// usual paste (Enter, a click, Alt+1…9) drops it, Shift+Enter and the menu's
+// 保留格式粘贴 keep it; files and pictures paste as they are either way, a
+// copy keeps every format. The status line, the shortcut list and the
+// preview's hint say which. A temporary history; what each paste would
+// write is caught before the native clipboard (PasteWriteProbe).
+bool checkClipboardPastePlain(QQmlEngine* engine, const QDir& output)
+{
+    QTemporaryDir temporary;
+    ClipStore store(temporary.filePath(u"history"_s));
+    bool ok = true;
+    const auto check = [&](bool condition, const char* reason) {
+        ok = condition && ok;
+        if (!condition) qWarning("clipboard paste plain regression: %s", reason);
+    };
+    if (!store.open(QDateTime::currentMSecsSinceEpoch())) { check(false, "temporary history could not open"); return false; }
+    const QString notes = QDir::toNativeSeparators(temporary.filePath(u"会议纪要.docx"_s));
+    {
+        QFile file(notes);
+        check(file.open(QIODevice::WriteOnly) && file.write("notes") > 0, "the file could not be written");
+    }
+    QByteArray png;
+    {
+        QBuffer buffer(&png);
+        QImage picture(200, 140, QImage::Format_RGB32);
+        picture.fill(QColor(0x2f, 0x7d, 0xd8));
+        check(buffer.open(QIODevice::WriteOnly) && picture.save(&buffer, "PNG"), "the picture could not be made");
+    }
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    // Newest first: rows 0 (words from Word, formatted) to 3 (a picture).
+    const qint64 pictureId = store.add(ClipCapture {.kind = ClipKind::Image, .imageData = png, .hash = "paste-plain",
+        .width = 200, .height = 140, .source = u"QQ"_s}, now - 3000);
+    const qint64 fileId = store.add(ClipCapture {.kind = ClipKind::Files, .text = notes, .source = u"资源管理器"_s}, now - 2000);
+    const qint64 plainId = store.add(ClipCapture {.kind = ClipKind::Text, .text = u"记事本里的一行字"_s, .source = u"记事本"_s}, now - 1000);
+    const QString words = u"季度总结：收入增长 12%"_s;
+    const qint64 wordId = store.add(ClipCapture {.kind = ClipKind::Text, .text = words,
+        .html = "Version:0.9 <html><body><!--StartFragment--><b>季度总结</b>：收入增长 <span style=\"color:red\">12%</span><!--EndFragment--></body></html>",
+        .rtf = "{\\rtf1\\ansi {\\b Q}}", .source = u"Microsoft Word"_s}, now);
+    const Clip* word = store.clip(wordId);
+    const Clip* plain = store.clip(plainId);
+    const Clip* file = store.clip(fileId);
+    const Clip* image = store.clip(pictureId);
+    if (!word || !plain || !file || !image) { check(false, "the entries were not kept"); return false; }
+    check(word->html && word->rtf && !plain->html && !plain->rtf, "the fixture's formatting is not as meant");
+
+    // Which paste drops the formatting: words by the setting, Shift the other; the rest only by Shift.
+    using Clips = std::vector<const Clip*>;
+    check(!Clipboard::pastesPlain(Clips {word}, false, false) && Clipboard::pastesPlain(Clips {word}, false, true),
+        "off: the usual paste of words is not the formatted one");
+    check(Clipboard::pastesPlain(Clips {word}, true, false) && !Clipboard::pastesPlain(Clips {word}, true, true),
+        "on: the usual paste of words kept the formatting");
+    check(!Clipboard::pastesPlain(Clips {file}, true, false) && Clipboard::pastesPlain(Clips {file}, true, true)
+            && !Clipboard::pastesPlain(Clips {image}, true, false) && !Clipboard::pastesPlain(Clips {word, file}, true, false)
+            && !Clipboard::pastesPlain({}, true, false),
+        "on: files or a picture went as plain text the usual way");
+
+    ClipboardWatcher watcher({}, {});
+    Clipboard clipboard(&store, &watcher);
+    engine->addImageProvider(u"clippreview"_s, clipboard.filePreview()->imageProvider());
+    clipboard.setRowOptions(false, u"standard"_s, SystemTheme::uiSize());
+    clipboard.setActive(true);
+    clipboard.handleShown();
+    Placement placement(temporary.filePath(u"state.ini"_s), u"Clipboard"_s);
+    WindowFrame frame(false);
+    QQmlComponent component(engine, u"WinShun"_s, u"ClipboardWindow"_s);
+    std::unique_ptr<QObject> object(component.createWithInitialProperties({{u"clipboard"_s, QVariant::fromValue(&clipboard)},
+        {u"placement"_s, QVariant::fromValue(&placement)}, {u"frame"_s, QVariant::fromValue(&frame)}}));
+    auto* window = qobject_cast<QQuickWindow*>(object.get());
+    if (!window) { qWarning().noquote() << "clipboard paste plain regression:" << component.errorString(); return false; }
+    window->create();
+    frame.setWindow(window);
+    placement.setWindow(window);
+    placement.enableWindowSizing();
+    showOffScreen(window);
+    clipboard.handlePlaced();
+    clipboard.setSeen(true);
+    settle(window);
+    auto* page = visualNamed(window->contentItem(), u"clipboardPage"_s);
+    auto* entries = visualNamed(window->contentItem(), u"clipboardEntries"_s);
+    if (!page || !entries) { check(false, "production clipboard page missing"); return false; }
+
+    const auto pasted = [&](int row, bool shift, bool quick = false) {
+        if (quick)
+            clipboard.quickPaste(row, shift);
+        else
+            clipboard.paste(row, shift);
+        return PasteWriteProbe::takeWrite(clipboard);
+    };
+    const auto formatted = [](const ClipWrite& w) { return !w.html.isEmpty() && !w.rtf.isEmpty(); };
+    const auto bare = [&](const ClipWrite& w) { return w.html.isEmpty() && w.rtf.isEmpty() && w.text == words; };
+    const auto item = [&](int row, int action) {
+        for (const QVariant& entry : clipboard.menuItems(row)) {
+            const QVariantMap map = entry.toMap();
+            if (map.contains(u"action"_s) && map.value(u"action"_s).toInt() == action)
+                return map;
+        }
+        return QVariantMap();
+    };
+    const auto title = [&](int row, int action) { return item(row, action).value(u"text"_s).toString(); };
+    const auto shortcut = [&](int row, int action) { return item(row, action).value(u"shortcut"_s).toString(); };
+    const QString asPlain = Clipboard::tr("粘贴为纯文本");
+    const QString keepFormat = Clipboard::tr("保留格式粘贴");
+    // The shortcut list as the footer's info button gives it this window.
+    const auto shortcutTexts = [&] {
+        QQmlExpression list(qmlContext(page), page,
+            u"Shortcuts.entries('clipboard', {numberModifier: 'Alt', intoField: false, holdKey: '', "
+            u"plainByDefault: clipboard.pastePlain}, false).map(e => e.text).join('|')"_s);
+        return list.evaluate().toString().split(u'|');
+    };
+    entries->setProperty("currentIndex", 0);
+    QMetaObject::invokeMethod(page, "togglePreview", Q_ARG(QVariant, QVariant(0)));
+    settle(window);
+    auto* hint = visualNamed(window->contentItem(), u"clipboardPreviewHint"_s);
+    check(hint && hint->isVisible(), "the preview of formatted words has no hint");
+    const auto hintText = [&] {
+        settle(window);
+        return hint ? hint->property("text").toString() : QString();
+    };
+
+    // Off, as ever.
+    check(!clipboard.pastePlain(), "默认粘贴为纯文本 is on before it was asked for");
+    check(formatted(pasted(0, false)) && bare(pasted(0, true)), "off: Enter dropped or Shift+Enter kept the formatting");
+    check(title(0, Clipboard::PasteOther) == asPlain && shortcut(0, Clipboard::PasteOther) == u"Shift+Enter"_s,
+        "off: the menu lost 粘贴为纯文本 (Shift+Enter)");
+    check(item(1, Clipboard::PasteOther).value(u"text"_s) == asPlain, "off: words without formatting lost 粘贴为纯文本");
+    QStringList texts = shortcutTexts();
+    check(texts.contains(u"粘贴为纯文本"_s) && texts.contains(u"第几条粘贴为纯文本"_s) && !texts.contains(u"保留格式粘贴"_s),
+        "off: the shortcut list changed");
+    check(hintText().contains(u"Shift+Enter 粘贴为纯文本"_s), "off: the preview's hint changed");
+
+    // On.
+    int optionsChanged = 0;
+    QObject::connect(&clipboard, &Clipboard::rowOptionsChanged, &clipboard, [&] { ++optionsChanged; });
+    clipboard.setPastePlain(true);
+    check(clipboard.pastePlain() && optionsChanged == 1, "默认粘贴为纯文本 was not taken");
+    clipboard.setPastePlain(true);
+    check(optionsChanged == 1, "the same setting again was said as a change");
+    check(bare(pasted(0, false)) && bare(pasted(0, false, true)), "on: Enter or Alt+1 kept the formatting");
+    check(formatted(pasted(0, true)) && formatted(pasted(0, true, true)), "on: Shift+Enter or Alt+Shift+1 dropped the formatting");
+    check(title(0, Clipboard::PasteOther) == keepFormat && shortcut(0, Clipboard::PasteOther) == u"Shift+Enter"_s,
+        "on: formatted words have no 保留格式粘贴 (Shift+Enter)");
+    check(item(1, Clipboard::PasteOther).isEmpty(), "on: words without formatting offer a second paste that is the same");
+    check(pasted(1, false).text == u"记事本里的一行字"_s, "on: words without formatting did not paste");
+    // Files as files, their paths by Shift; the picture as itself.
+    const ClipWrite files = pasted(2, false);
+    check(files.files == QStringList {notes} && files.text.isEmpty() && pasted(2, true).text == notes,
+        "on: a copied file went as its path, or Shift+Enter lost the path");
+    check(title(2, Clipboard::PasteOther) == asPlain, "on: a copied file lost 粘贴为纯文本");
+    check(!pasted(3, false).imagePath.isEmpty() && item(3, Clipboard::PasteOther).isEmpty(),
+        "on: the picture did not paste as a picture");
+    // Several picked go as their joined words either way: nothing to keep.
+    clipboard.toggleSelected(0);
+    clipboard.toggleSelected(1);
+    check(item(0, Clipboard::PasteOther).isEmpty(), "on: several picked offer 保留格式粘贴, which keeps nothing");
+    clipboard.clearSelection();
+    // A copy keeps every format.
+    check(clipboard.pasteEntry(wordId, nullptr) && formatted(PasteWriteProbe::takeWrite(clipboard)),
+        "on: 复制 dropped the formatting");
+    // What the window says.
+    clipboard.setPinned(true);
+    check(clipboard.statusText().endsWith(u"双击粘贴纯文本"_s), "on: the pinned status line does not say a double click pastes plain text");
+    clipboard.setRowOptions(true, u"standard"_s, SystemTheme::uiSize());
+    check(clipboard.statusText().endsWith(u"单击粘贴纯文本"_s), "on: the pinned status line does not say a click pastes plain text");
+    clipboard.setRowOptions(false, u"standard"_s, SystemTheme::uiSize());
+    clipboard.setPinned(false);
+    texts = shortcutTexts();
+    check(texts.contains(u"保留格式粘贴"_s) && texts.contains(u"第几条保留格式粘贴"_s) && !texts.contains(u"粘贴为纯文本"_s),
+        "on: the shortcut list still says Shift pastes plain text");
+    check(hintText().contains(u"Shift+Enter 保留格式粘贴"_s), "on: the preview's hint still says Shift+Enter pastes plain text");
+
+    // The menu as shown.
+    check(QMetaObject::invokeMethod(page, "openContextMenu", Q_ARG(QVariant, QVariant(0)), Q_ARG(QVariant, QVariant())),
+        "clipboard context menu did not open");
+    if (auto* menu = qobject_cast<QQuickWindow*>(page->property("contextMenu").value<QObject*>())) {
+        settle(menu);
+        check(saveGrab(menu, output.filePath(u"clipboard-paste-plain-menu.png"_s)), "the menu did not render");
+        QMetaObject::invokeMethod(menu, "dismiss");
+        settle(window);
+    } else {
+        check(false, "production clipboard menu is missing");
+    }
+    check(saveGrab(window, output.filePath(u"clipboard-paste-plain.png"_s)), "the clipboard window did not render");
+    check(!watcher.running(), "fixture must never start the native clipboard writer");
+    window->hide();
+    say(u"clipboard paste plain: 默认粘贴为纯文本 drops the words' formatting on Enter/click/Alt+1, Shift+Enter keeps it; files, pictures and copies as ever; native clipboard untouched"_s);
+    return ok;
+}
+
 // --clipboard-picture-view (GitHub #414): a copied picture's words folded
 // under their heading until asked for (remembered); a click on the picture,
 // or Space with nothing typed, shows it large beside the window
@@ -11122,6 +11324,8 @@ int runResults(const QStringList& args)
         return checkClipboardFilePreview(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-pin-files"_s))
         return checkClipboardPinFiles(&engine, out) ? std::min(g_warnings, 100) : 4;
+    if (args.contains(u"--clipboard-paste-plain"_s))
+        return checkClipboardPastePlain(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-picture-view"_s))
         return checkClipboardPictureView(&engine, out, valueAfter(args, u"--gallery-image")) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-select"_s))

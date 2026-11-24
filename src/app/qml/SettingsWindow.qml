@@ -91,7 +91,8 @@ Window {
             holdKey: window.editor.clipboardHotkey,
             captureKeys: window.editor.screenshotHotkeys.join(" / "),
             folderTyping: true,
-            intoField: false
+            intoField: false,
+            plainByDefault: window.editor.clipboardPlainByDefault
         }
         const sections = []
         for (const where of ["global", "launcher", "clipboard"]) {
@@ -7004,6 +7005,19 @@ Window {
                 }
 
                 SettingRow {
+                    title: qsTr("默认粘贴为纯文本")
+                    keywords: qsTr("纯文本;格式;去格式;无格式;去掉格式;富文本;样式;字体;保留格式;Word;WPS").split(";")
+                    description: qsTr("粘贴文字时去掉字体、颜色、链接等格式，贴进 Word、WPS 也和打字一样。要保留格式时按 Shift+Enter，或在右键菜单里选“保留格式粘贴”")
+                    tip: qsTr("单击、双击、Enter、Alt+数字和快速粘贴快捷键都按纯文本粘贴；文件和图片照常粘贴")
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        checked: window.editor.clipboardPlainByDefault
+                        onToggled: (on) => window.editor.clipboardPlainByDefault = on
+                    }
+                }
+
+                SettingRow {
                     title: qsTr("粘贴后保持位置")
                     keywords: qsTr("位置;顺序;排序;跳到最前;置顶;不动;固定顺序;粘贴后").split(";")
                     description: qsTr("从列表里粘贴一条后留在原来的位置，不跳到最前面")
@@ -7366,7 +7380,9 @@ Window {
                     title: qsTr("面板内数字键粘贴")
                     unlocks: [clipNumberHintsRow]
                     keywords: qsTr("快捷键;数字键;序号;Alt+1;Ctrl+1;冲突;hotkey").split(";")
-                    description: qsTr("打开剪贴板面板后，按 %1+1 粘贴当前可见的第 1 条，依此类推到第 9 条（随列表滚动更新）；加按 Shift 粘贴为纯文本")
+                    description: (window.editor.clipboardPlainByDefault
+                                  ? qsTr("打开剪贴板面板后，按 %1+1 粘贴当前可见的第 1 条，依此类推到第 9 条（随列表滚动更新）；加按 Shift 保留格式粘贴")
+                                  : qsTr("打开剪贴板面板后，按 %1+1 粘贴当前可见的第 1 条，依此类推到第 9 条（随列表滚动更新）；加按 Shift 粘贴为纯文本"))
                                  .arg(window.editor.clipboardNumberKeys === "ctrl" ? "Ctrl" : "Alt")
 
                     ScopeTabs {

@@ -32,6 +32,7 @@
 namespace ws {
 
 class ComWorker;
+namespace preview { struct PasteWriteProbe; }
 
 // The view-model of the clipboard window (Win+V, ClipboardWindow.qml): the
 // history listed by category or group and searched, a preview of an entry,
@@ -56,6 +57,7 @@ class Clipboard : public QObject {
     Q_OBJECT
     QML_ELEMENT
     QML_UNCREATABLE("Provided by the application")
+    friend struct preview::PasteWriteProbe; // what a paste would write, the native clipboard untouched
     // The clipboard window is shown (App).
     Q_PROPERTY(bool active READ active NOTIFY activeChanged FINAL)
     // Shown over another program that keeps the focus: the keys come from
@@ -101,6 +103,10 @@ class Clipboard : public QObject {
     // PC driven from a phone, where a double click is hard to hit); off, it
     // picks the row and a double click pastes (Settings::clipboardClickToPaste).
     Q_PROPERTY(bool clickToPaste READ clickToPaste NOTIFY rowOptionsChanged FINAL)
+    // The usual paste (Enter, a click, the number keys) drops the words'
+    // formatting and Shift+Enter keeps it; off, the other way round
+    // (Settings::clipboardPlainByDefault). Files and pictures go as they are.
+    Q_PROPERTY(bool pastePlain READ pastePlain NOTIFY rowOptionsChanged FINAL)
     // The type and row heights the window is drawn in: dense | compact |
     // standard | roomy (Settings::clipboardUiSize, else the interface size).
     Q_PROPERTY(QString uiSize READ uiSize NOTIFY rowOptionsChanged FINAL)
@@ -149,7 +155,7 @@ class Clipboard : public QObject {
 public:
     enum Action {
         Paste,
-        PastePlain,
+        PasteOther, // Shift+Enter: as plain text, or with its formatting when that is not the usual (pastePlain)
         Copy,
         Pin, // in or out of "固定"
         NewGroup, // asks for the name (groupNameRequested), then moves the row there
@@ -202,6 +208,13 @@ public:
     QString pictureSize() const { return m_pictureSize; }
     QString uiSize() const { return m_uiSize; }
     void setRowOptions(bool clickToPaste, const QString& pictureSize, const QString& uiSize);
+    bool pastePlain() const { return m_pastePlain; }
+    void setPastePlain(bool plain);
+    // Whether a paste of `clips` is of their words alone: the usual one as
+    // `usuallyPlain` says, `other` (Shift) the other one. Only words have a
+    // formatting to drop: files and pictures go as they are the usual way,
+    // their paths or an equation's words only by Shift.
+    static bool pastesPlain(const std::vector<const Clip*>& clips, bool usuallyPlain, bool other);
     bool flipAbove() const { return m_flipAbove; }
     bool searchFar() const { return m_searchFar; }
     bool searchBox() const { return m_searchBox; }
@@ -291,8 +304,9 @@ public:
     void retranslate();
 
     // On a row; on all of them, when it is one of several picked.
-    Q_INVOKABLE void paste(int row, bool plainText);
-    Q_INVOKABLE void quickPaste(int row, bool plainText); // Alt+1 ... Alt+9: that row alone, as shown numbered (ShownRows.qml)
+    // `other` (Shift) pastes the other way than the usual (pastesPlain).
+    Q_INVOKABLE void paste(int row, bool other);
+    Q_INVOKABLE void quickPaste(int row, bool other); // Alt+1 ... Alt+9: that row alone, as shown numbered (ShownRows.qml)
     // Part of an entry, selected in the preview (GitHub #375): pasted where
     // the entry would be, as plain text; the history keeps the entry whole.
     Q_INVOKABLE void pasteText(const QString& text);
@@ -571,6 +585,7 @@ private:
     QString m_letterJumpKeys = QStringLiteral("ASDFGHJKLQWERTYUIOPZXCVBNM");
     unsigned m_numberKeysLeft = 0;
     bool m_clickToPaste = false;
+    bool m_pastePlain = false;
     QString m_pictureSize = QStringLiteral("standard");
     QString m_uiSize = QStringLiteral("standard");
     bool m_flipAbove = true;
