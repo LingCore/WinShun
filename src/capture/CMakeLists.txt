@@ -13,7 +13,8 @@
 # UI Automation probe (UiaProbe), the delayed capture's countdown
 # (CountdownWindow) and a pin's key card (GitHub #343: PinKeyCard), and the keys a recording shows (GitHub #98: Keycaps, which
 # keys and rows; KeycapRender, their picture; KeyStream, the hooks while
-# recording). What the
+# recording), and the recording's pointer trail (CursorTrail, its line;
+# CursorArt, the pointer drawn over it as Windows shows it). What the
 # overlays bind to (CaptureSession, CaptureImage) and the controller
 # (Capture) are in this folder too, but built into WinShun's QML module
 # (src/app/CMakeLists.txt), which registers their types.
@@ -44,6 +45,8 @@ add_library(wscapture STATIC
     RecordingWorker.cpp RecordingWorker.h
     GifExport.cpp GifExport.h
     RecordingPointer.cpp RecordingPointer.h
+    CursorTrail.cpp CursorTrail.h
+    CursorArt.cpp CursorArt.h
     Keycaps.cpp Keycaps.h
     KeycapRender.cpp KeycapRender.h
     KeyStream.cpp KeyStream.h

@@ -173,7 +173,7 @@ int main(int argc, char** argv)
     QGuiApplication app(argc, argv);
     const QStringList args = app.arguments();
     if (args.size() < 4) {
-        QTextStream(stderr) << "recording-probe sample|screen|fixture file.mp4 milliseconds [x y width height] [--software] [--system-audio] [--microphone] [--pause] [--clicks]\n"
+        QTextStream(stderr) << "recording-probe sample|screen|fixture file.mp4 milliseconds [x y width height] [--software] [--system-audio] [--microphone] [--pause] [--clicks] [--trail]\n"
                               "recording-probe inspect file.mp4 frame.png [--find-click]\n";
         return 2;
     }
@@ -193,6 +193,7 @@ int main(int argc, char** argv)
     options.systemAudio = args.contains(u"--system-audio");
     options.microphone = args.contains(u"--microphone");
     options.clickHighlights = args.contains(u"--clicks");
+    options.cursorTrail = args.contains(u"--trail");
     options.fps = args.contains(u"--small-file") ? 15 : 30;
     options.quality = args.contains(u"--small-file") ? 70 : args.contains(u"--high-quality") ? 88 : 75;
     const int duration = args[3].toInt();

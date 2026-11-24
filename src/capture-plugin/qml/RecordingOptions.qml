@@ -67,6 +67,14 @@ Item {
                     onClicked: options.recorder.clickHighlights = !options.recorder.clickHighlights
                 }
                 OptionToggle {
+                    objectName: "recordingTrail"
+                    iconName: "path"
+                    Accessible.name: qsTr("鼠标拖尾")
+                    enabled: options.recorder.cursor
+                    checked: options.recorder.cursorTrail
+                    onClicked: options.recorder.cursorTrail = !options.recorder.cursorTrail
+                }
+                OptionToggle {
                     objectName: "recordingMouseButtons"
                     glyph: "\uE962"
                     Accessible.name: qsTr("鼠标按键")

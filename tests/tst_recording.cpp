@@ -1,4 +1,6 @@
 #include "Recording.h"
+#include "CursorArt.h"
+#include "CursorTrail.h"
 #include "GifExport.h"
 #include "KeyStream.h"
 #include "RecordingPointer.h"
@@ -12,10 +14,12 @@
 #include <QJsonObject>
 #include <QImage>
 #include <QImageReader>
+#include <QPainter>
 #include <QScopeGuard>
 #include <QTemporaryDir>
 #include <QTest>
 
+#include <d3d11.h>
 #include <mfapi.h>
 #include <mfidl.h>
 #include <mfreadwrite.h>
@@ -782,6 +786,406 @@ private slots:
         }
         QVERIFY2(shown >= (pause ? 1 : 60), qPrintable(seen));
         QVERIFY2(gone >= (pause ? 20 : 8), qPrintable(seen));
+    }
+
+    // The trail's line: smoothed through the pointer's places, young (wide,
+    // opaque) at the pointer, and drawn back into it, the tail first, when
+    // the pointer stops.
+    void trailLine()
+    {
+        CursorTrail trail;
+        trail.move({10, 10}, 0);
+        QVERIFY(trail.line(0).empty()); // one place: no line
+        trail.move({10.2, 10.2}, 100'000); // under half a pixel: not a move
+        QVERIFY(trail.line(100'000).empty());
+        for (int i = 1; i <= 10; ++i)
+            trail.move({10.0 + 10 * i, 10}, i * 100'000); // 10 px every 10 ms
+        const qint64 now = 1'000'000;
+        const auto line = trail.line(now);
+        QVERIFY(line.size() >= 11);
+        QCOMPARE(line.front().at, QPointF(10, 10));
+        QCOMPARE(line.back().at, QPointF(110, 10));
+        QCOMPARE(line.front().place, 0.0f);
+        QCOMPARE(line.back().place, 1.0f);
+        QCOMPARE(line.back().life, 1.0f);
+        QVERIFY(std::abs(line.front().life - 0.8f) < 1e-4f);
+        for (size_t i = 1; i < line.size(); ++i) {
+            QVERIFY(line[i].at.x() > line[i - 1].at.x());
+            QVERIFY(line[i].place >= line[i - 1].place && line[i].life >= line[i - 1].life);
+        }
+        const auto later = trail.line(now + 4'500'000); // the first 60 ms of it gone
+        QVERIFY(!later.empty());
+        QCOMPARE(later.front().at, QPointF(70, 10));
+        QCOMPARE(later.back().at, QPointF(110, 10));
+        QVERIFY(std::abs(later.back().life - 0.1f) < 1e-4f);
+        QVERIFY(trail.line(now + CursorTrail::lifetime).empty());
+        trail.clear();
+        QVERIFY(trail.line(now).empty());
+
+        // A turn: rounded, through the midpoints, never through the corner.
+        trail.move({0, 0}, 0);
+        trail.move({100, 0}, 10'000);
+        trail.move({100, 100}, 20'000);
+        const auto turn = trail.line(20'000);
+        QVERIFY(std::none_of(turn.begin(), turn.end(), [](const auto& point) { return point.at == QPointF(100, 0); }));
+        QVERIFY(std::any_of(turn.begin(), turn.end(), [](const auto& point) {
+            return std::abs(point.at.x() - 87.5) < 1e-6 && std::abs(point.at.y() - 12.5) < 1e-6;
+        }));
+        QCOMPARE(turn.back().at, QPointF(100, 100));
+    }
+
+    void trailColorsFromPointer()
+    {
+        const std::array<QRgb, 2> stops {qRgb(200, 0, 0), qRgb(0, 0, 200)};
+        QCOMPARE(trailColorAt(stops, 0), stops[0]);
+        QCOMPARE(trailColorAt(stops, 1), stops[1]);
+        QCOMPARE(trailColorAt(stops, 0.5f), qRgb(100, 0, 100));
+        QCOMPARE(trailColorAt({}, 0.5f), neutralTrailColors()[1]);
+
+        // Windows' black and white arrows: the grey.
+        QImage plain(32, 32, QImage::Format_ARGB32_Premultiplied);
+        plain.fill(Qt::transparent);
+        QPainter painter(&plain);
+        painter.fillRect(4, 4, 10, 20, Qt::white);
+        painter.fillRect(14, 4, 4, 20, Qt::black);
+        painter.end();
+        QCOMPARE(trailColors(plain), neutralTrailColors());
+
+        // A lime pointer (Settings › Mouse pointer › custom colour): its own
+        // hue, kept to the middle lightness at the pointer.
+        QImage lime = plain;
+        painter.begin(&lime);
+        painter.fillRect(4, 4, 10, 20, QColor(0x8C, 0xE0, 0x1E));
+        painter.end();
+        const auto own = trailColors(lime);
+        QCOMPARE(own.size(), size_t(1));
+        const QColor tip = QColor::fromRgb(own.back());
+        QVERIFY2(tip.hsvHue() >= 75 && tip.hsvHue() <= 100, qPrintable(tip.name()));
+        const auto linear = [](int channel) {
+            const double value = channel / 255.0;
+            return value <= 0.04045 ? value / 12.92 : std::pow((value + 0.055) / 1.055, 2.4);
+        };
+        const double light = 0.2126 * linear(tip.red()) + 0.7152 * linear(tip.green()) + 0.0722 * linear(tip.blue());
+        QVERIFY2(light > 0.27 && light < 0.31, qPrintable(QString::number(light)));
+    }
+
+    // A pointer's bitmaps as Windows draws them: monochrome by AND and XOR,
+    // colour without alpha by its mask, colour with alpha by the alpha.
+    void cursorPictureFromBits()
+    {
+        constexpr QRgb black = 0xff000000u, white = 0xffffffffu;
+        const auto row = [](QImage& image, int y, std::initializer_list<QRgb> pixels) {
+            int x = 0;
+            for (QRgb pixel : pixels) image.setPixel(x++, y, pixel);
+        };
+        QImage mask(4, 2, QImage::Format_ARGB32);
+        row(mask, 0, {black, black, white, white}); // AND
+        row(mask, 1, {black, white, black, white}); // XOR
+        const auto mono = cursorPicture(QImage(), mask, QPoint(1, 0));
+        QCOMPARE(mono.image.size(), QSize(4, 1));
+        QCOMPARE(mono.hotSpot, QPoint(1, 0));
+        QCOMPARE(mono.image.pixel(0, 0), black);
+        QCOMPARE(mono.image.pixel(1, 0), white);
+        QCOMPARE(qAlpha(mono.image.pixel(2, 0)), 0); // the screen as it is
+        QCOMPARE(qAlpha(mono.image.pixel(3, 0)), 0);
+        QVERIFY(!mono.invert.isNull());
+        QCOMPARE(QByteArray(reinterpret_cast<const char*>(mono.invert.constScanLine(0)), 4), QByteArray("\0\0\0\xff", 4));
+
+        QImage color(4, 1, QImage::Format_ARGB32);
+        row(color, 0, {0x00000000u, 0x00ff0000u, 0x00000000u, 0x00ffffffu});
+        QImage andMask(4, 1, QImage::Format_ARGB32);
+        row(andMask, 0, {black, black, white, white});
+        const auto masked = cursorPicture(color, andMask, {});
+        QCOMPARE(masked.image.pixel(0, 0), black);
+        QCOMPARE(masked.image.pixel(1, 0), qRgb(255, 0, 0));
+        QCOMPARE(qAlpha(masked.image.pixel(2, 0)), 0);
+        QCOMPARE(qAlpha(masked.image.pixel(3, 0)), 0);
+        QCOMPARE(QByteArray(reinterpret_cast<const char*>(masked.invert.constScanLine(0)), 4), QByteArray("\0\0\0\xff", 4));
+
+        QImage alpha(2, 1, QImage::Format_ARGB32);
+        row(alpha, 0, {qRgba(255, 0, 0, 128), qRgba(0, 0, 255, 255)});
+        QImage none(2, 1, QImage::Format_ARGB32);
+        row(none, 0, {white, white});
+        const auto shaded = cursorPicture(alpha, none, {});
+        QCOMPARE(shaded.image.format(), QImage::Format_ARGB32_Premultiplied);
+        QCOMPARE(qAlpha(shaded.image.pixel(0, 0)), 128);
+        QCOMPARE(shaded.image.pixel(1, 0), qRgb(0, 0, 255));
+        QVERIFY(shaded.invert.isNull());
+        QVERIFY(shaded.id != masked.id && masked.id != mono.id);
+    }
+
+    // On this desktop: the standard pointers at the size Windows shows them
+    // (whatever the handle's), a program's own at its own size, and an
+    // animated one stepping with the time.
+    void cursorShapes()
+    {
+        CursorShapes shapes(1.5);
+        QCOMPARE(shapes.systemSize(), systemCursorSize(1.5));
+        const CursorPicture* arrow = shapes.arrow();
+        QVERIFY(arrow && !arrow->image.isNull());
+        QCOMPARE(arrow->image.width(), shapes.systemSize());
+        const CursorPicture* beam = shapes.picture(::LoadCursorW(nullptr, IDC_IBEAM), 0);
+        QVERIFY(beam && !beam->image.isNull());
+        QCOMPARE(beam->image.width(), shapes.systemSize());
+        QCOMPARE(shapes.picture(::LoadCursorW(nullptr, IDC_ARROW), 0), arrow); // kept, not read again
+
+        std::array<BYTE, 32 * 32 / 8> andBits {}, xorBits {};
+        andBits.fill(0xff);
+        HCURSOR own = ::CreateCursor(::GetModuleHandleW(nullptr), 3, 4, 32, 32, andBits.data(), xorBits.data());
+        QVERIFY(own);
+        const CursorPicture* made = shapes.picture(own, 0);
+        QVERIFY(made);
+        QCOMPARE(made->image.size(), QSize(32, 32));
+        QCOMPARE(made->hotSpot, QPoint(3, 4));
+        ::DestroyCursor(own);
+
+        const auto busy = static_cast<HCURSOR>(::LoadImageW(nullptr, LR"(C:\Windows\Cursors\aero_busy.ani)", IMAGE_CURSOR, 48, 48, LR_LOADFROMFILE));
+        if (!busy)
+            QSKIP("no aero_busy.ani");
+        const CursorPicture* first = shapes.picture(busy, 1'000'000);
+        const CursorPicture* again = shapes.picture(busy, 1'100'000); // within its first frame
+        const CursorPicture* next = shapes.picture(busy, 1'000'000 + 2'000'000); // 200 ms on
+        ::DestroyCursor(busy);
+        QVERIFY(first && again && next);
+        QCOMPARE(again, first);
+        QVERIFY(next != first);
+        QCOMPARE(next->image.size(), QSize(48, 48));
+    }
+
+    // Pointer files read as Windows shows them: a .cur's picture made for
+    // the size as it is, else the next larger (or the largest) one resized;
+    // an .ani's frames in its steps' order and time.
+    void cursorFileFramesFromFiles()
+    {
+        const auto put16 = [](QByteArray& out, quint32 value) { out.append(char(value & 0xff)).append(char(value >> 8 & 0xff)); };
+        const auto put32 = [&put16](QByteArray& out, quint32 value) { put16(out, value & 0xffff); put16(out, value >> 16); };
+        struct Frame {
+            int width;
+            int blue; // tells the frames apart
+            int hotX, hotY;
+        };
+        // A .cur: 32-bit DIBs, bottom row first, then an empty AND mask.
+        // Each pixel is (x * 8, y * 8, blue); the diagonal is transparent.
+        const auto cur = [&](const std::vector<Frame>& frames) {
+            QByteArray head, body;
+            put16(head, 0);
+            put16(head, 2);
+            put16(head, quint32(frames.size()));
+            qsizetype offset = 6 + 16 * qsizetype(frames.size());
+            for (const Frame& frame : frames) {
+                QByteArray dib;
+                put32(dib, 40);
+                put32(dib, quint32(frame.width));
+                put32(dib, quint32(frame.width * 2));
+                put16(dib, 1);
+                put16(dib, 32);
+                for (int i = 0; i < 6; ++i)
+                    put32(dib, 0);
+                for (int y = frame.width - 1; y >= 0; --y)
+                    for (int x = 0; x < frame.width; ++x)
+                        put32(dib, x == y ? 0u : qRgba(x * 8, y * 8, frame.blue, 255));
+                dib.append(QByteArray(((frame.width + 31) / 32) * 4 * frame.width, '\0'));
+                head.append(char(frame.width)).append(char(frame.width)).append('\0').append('\0');
+                put16(head, quint32(frame.hotX));
+                put16(head, quint32(frame.hotY));
+                put32(head, quint32(dib.size()));
+                put32(head, quint32(offset + body.size()));
+                body.append(dib);
+            }
+            return head + body;
+        };
+        const QByteArray file = cur({{16, 16, 2, 3}, {24, 24, 3, 6}});
+
+        const CursorFrames exact = cursorFileFrames(file, 24);
+        QCOMPARE(exact.pictures.size(), size_t(1));
+        const CursorPicture& own = exact.pictures.front();
+        QCOMPARE(own.image.size(), QSize(24, 24));
+        QCOMPARE(own.hotSpot, QPoint(3, 6));
+        QVERIFY(own.invert.isNull());
+        QCOMPARE(own.image.pixel(5, 7), qRgba(40, 56, 24, 255)); // as made, not drawn again
+        QCOMPARE(qAlpha(own.image.pixel(9, 9)), 0);
+        QCOMPARE(exact.ends, std::vector<qint64>({10'000'000}));
+
+        const auto check = [&](int size, int blue, QPoint hotSpot) {
+            const CursorFrames read = cursorFileFrames(file, size);
+            QCOMPARE(read.pictures.size(), size_t(1));
+            const QImage& image = read.pictures.front().image;
+            QCOMPARE(image.size(), QSize(size, size));
+            QCOMPARE(read.pictures.front().hotSpot, hotSpot);
+            QVERIFY(std::abs(qBlue(image.pixel(size - 2, 1)) - blue) <= 2);
+        };
+        check(20, 24, QPoint(3, 5)); // the next larger, made smaller
+        check(12, 16, QPoint(2, 2));
+        check(32, 24, QPoint(4, 8)); // none larger: the largest
+
+        // An .ani of two frames in three steps: 1, 0, 1 for 2, 4, 6 jiffies.
+        QByteArray chunks = "anih", list;
+        put32(chunks, 36);
+        for (quint32 value : {36u, 2u, 3u, 0u, 0u, 0u, 0u, 10u, 1u})
+            put32(chunks, value);
+        chunks.append("rate");
+        put32(chunks, 12);
+        for (quint32 value : {2u, 4u, 6u})
+            put32(chunks, value);
+        chunks.append("seq ");
+        put32(chunks, 12);
+        for (quint32 value : {1u, 0u, 1u})
+            put32(chunks, value);
+        list.append("fram");
+        for (const QByteArray& icon : {cur({{16, 16, 1, 1}}), cur({{16, 99, 1, 1}})}) {
+            list.append("icon");
+            put32(list, quint32(icon.size()));
+            list.append(icon);
+        }
+        chunks.append("LIST");
+        put32(chunks, quint32(list.size()));
+        chunks.append(list);
+        QByteArray ani = "RIFF";
+        put32(ani, quint32(4 + chunks.size()));
+        ani.append("ACON").append(chunks);
+
+        const CursorFrames animated = cursorFileFrames(ani, 16);
+        QCOMPARE(animated.pictures.size(), size_t(3));
+        QCOMPARE(animated.ends, std::vector<qint64>({333'333, 1'000'000, 2'000'000}));
+        QCOMPARE(qBlue(animated.pictures[0].image.pixel(14, 1)), 99);
+        QCOMPARE(qBlue(animated.pictures[1].image.pixel(14, 1)), 16);
+        QCOMPARE(animated.pictures[2].id, animated.pictures[0].id); // one frame, one GPU copy
+
+        QVERIFY(cursorFileFrames(QByteArray("not a pointer"), 16).pictures.empty());
+        QVERIFY(cursorFileFrames(ani.first(40), 16).pictures.empty());
+    }
+
+    // PointerOverlay on a GPU texture, read back: the trail in its colour,
+    // no doubled alpha where it crosses itself, and a monochrome pointer
+    // drawn as Windows draws it (black, white, the screen kept, inverted).
+    void overlayDrawsTrailAndPointer()
+    {
+        ComPtr<ID3D11Device> device;
+        ComPtr<ID3D11DeviceContext> context;
+        HRESULT made = ::D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, nullptr, 0,
+            D3D11_SDK_VERSION, &device, nullptr, &context);
+        if (FAILED(made))
+            made = ::D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, nullptr, 0,
+                D3D11_SDK_VERSION, &device, nullptr, &context);
+        QVERIFY(SUCCEEDED(made));
+        constexpr int width = 64, height = 40;
+        std::vector<std::uint32_t> ground(size_t(width) * height, 0xffc86432u); // rgb(200, 100, 50)
+        D3D11_TEXTURE2D_DESC desc {};
+        desc.Width = width;
+        desc.Height = height;
+        desc.MipLevels = desc.ArraySize = desc.SampleDesc.Count = 1;
+        desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        desc.Usage = D3D11_USAGE_DEFAULT;
+        const D3D11_SUBRESOURCE_DATA initial {ground.data(), UINT(width * 4), 0};
+        ComPtr<ID3D11Texture2D> source;
+        QVERIFY(SUCCEEDED(device->CreateTexture2D(&desc, &initial, &source)));
+        desc.Usage = D3D11_USAGE_STAGING;
+        desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+        ComPtr<ID3D11Texture2D> staging;
+        QVERIFY(SUCCEEDED(device->CreateTexture2D(&desc, nullptr, &staging)));
+        const auto readBack = [&](ID3D11Texture2D* texture) {
+            std::vector<std::uint32_t> pixels(size_t(width) * height);
+            context->CopyResource(staging.Get(), texture);
+            D3D11_MAPPED_SUBRESOURCE mapped {};
+            if (SUCCEEDED(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) {
+                for (int y = 0; y < height; ++y)
+                    std::memcpy(pixels.data() + size_t(y) * width, static_cast<const char*>(mapped.pData) + size_t(y) * mapped.RowPitch, width * 4);
+                context->Unmap(staging.Get(), 0);
+            }
+            return pixels;
+        };
+        const auto alike = [](std::uint32_t pixel, QRgb want) {
+            return std::abs(qRed(pixel) - qRed(want)) <= 6 && std::abs(qGreen(pixel) - qGreen(want)) <= 6
+                && std::abs(qBlue(pixel) - qBlue(want)) <= 6;
+        };
+        const auto name = [](std::uint32_t pixel) { return u"%1"_s.arg(pixel & 0xffffffu, 6, 16, QChar(u'0')); };
+
+        PointerOverlay overlay(device.Get(), context.Get(), QSize(width, height), 1);
+        constexpr QRgb black = 0xff000000u, white = 0xffffffffu;
+        QImage mask(4, 2, QImage::Format_ARGB32);
+        for (int x = 0; x < 4; ++x) {
+            mask.setPixel(x, 0, x < 2 ? black : white); // AND
+            mask.setPixel(x, 1, x % 2 ? white : black); // XOR
+        }
+        const CursorPicture pointer = cursorPicture(QImage(), mask, QPoint(1, 0));
+        const std::vector<CursorTrail::Point> straight {{QPointF(4, 30), 1, 0}, {QPointF(60, 30), 1, 1}};
+        const std::array<QRgb, 1> green {qRgb(0, 200, 0)};
+        auto pixels = readBack(overlay.draw(source.Get(), {}, 0, {}, TrailDraw {straight, 8, green}, CursorDraw {&pointer, QPoint(11, 10)}));
+        const auto at = [&](int x, int y) { return pixels[size_t(y) * width + x]; };
+        QVERIFY2(alike(at(10, 10), qRgb(0, 0, 0)), qPrintable(name(at(10, 10))));
+        QVERIFY2(alike(at(11, 10), qRgb(255, 255, 255)), qPrintable(name(at(11, 10))));
+        QVERIFY2(alike(at(12, 10), qRgb(200, 100, 50)), qPrintable(name(at(12, 10))));
+        QVERIFY2(alike(at(13, 10), qRgb(55, 155, 205)), qPrintable(name(at(13, 10)))); // inverted
+        QVERIFY2(alike(at(30, 30), qRgb(0, 200, 0)), qPrintable(name(at(30, 30))));
+        QVERIFY2(alike(at(30, 20), qRgb(200, 100, 50)), qPrintable(name(at(30, 20))));
+        // The source frame is kept as it was (the overlay draws on a copy).
+        QVERIFY(readBack(source.Get()) == ground);
+
+        // Half faded, crossing itself at (30, 20): half green there, as
+        // everywhere else on it, not three quarters.
+        const std::vector<CursorTrail::Point> crossing {{QPointF(10, 6), 0.5f, 0}, {QPointF(50, 34), 0.5f, 0.33f},
+            {QPointF(50, 6), 0.5f, 0.66f}, {QPointF(10, 34), 0.5f, 1}};
+        pixels = readBack(overlay.draw(source.Get(), {}, 0, {}, TrailDraw {crossing, 16, green}));
+        const QRgb half = qRgb(100, 150, 25);
+        QVERIFY2(alike(at(30, 20), half), qPrintable(name(at(30, 20))));
+        QVERIFY2(alike(at(20, 13), half), qPrintable(name(at(20, 13))));
+        // Nothing to draw: the source itself, no copy.
+        QCOMPARE(overlay.draw(source.Get(), {}, 0, {}, TrailDraw {}, CursorDraw {}), source.Get());
+    }
+
+    // The trail through the GPU overlay and the encoder: there while the
+    // sample's pointer moves (250 ms), drawn back into it within half a
+    // second of its stop; the sample draws no pointer of the desktop's.
+    void trailInFrames()
+    {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        Options options;
+        options.path = temporary.filePath(u"trail.mp4"_s);
+        options.region = QRect(0, 0, 640, 360);
+        options.cursorTrail = true;
+        Result result;
+        HRESULT decoded = E_FAIL;
+        QList<QPair<qint64, int>> frames; // time, the trail's pixels in the top half
+        std::jthread worker([&] {
+            result = sample(options, 1000);
+            if (!result.error.isEmpty()) return;
+            decoded = ::CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+            if (FAILED(decoded)) return;
+            const auto uninit = qScopeGuard([] { ::CoUninitialize(); });
+            decoded = forEachFrame(result.path, [&](qint64 ms, const unsigned char* top, LONG pitch) {
+                int magenta = 0;
+                for (int y = 0; y < 180; ++y) {
+                    const unsigned char* line = top + qint64(y) * pitch;
+                    for (int x = 0; x < 640; ++x) {
+                        const unsigned char* bgr = line + x * 4;
+                        if (bgr[2] > 150 && bgr[0] > 150 && bgr[1] < 110) ++magenta;
+                    }
+                }
+                frames.append({ms, magenta});
+            });
+        });
+        worker.join();
+        QVERIFY2(result.error.isEmpty(), qPrintable(result.error));
+        QVERIFY2(SUCCEEDED(decoded), qPrintable(u"Decode HRESULT 0x%1"_s.arg(quint32(decoded), 8, 16, QChar(u'0'))));
+        QString seen;
+        for (const auto& [ms, count] : frames)
+            seen += u"%1:%2 "_s.arg(ms).arg(count);
+        int shown = 0, gone = 0, moving = 0, fading = 1 << 30;
+        for (const auto& [ms, count] : frames) {
+            if (ms >= 100 && ms <= 280) {
+                QVERIFY2(count > 300, qPrintable(seen));
+                ++shown;
+                moving = std::max(moving, count);
+            } else if (ms >= 420 && ms <= 480) {
+                fading = std::min(fading, count);
+            } else if (ms >= 800) {
+                QVERIFY2(count == 0, qPrintable(seen));
+                ++gone;
+            }
+        }
+        QVERIFY2(shown >= 3 && gone >= 3, qPrintable(seen));
+        QVERIFY2(fading < moving / 2, qPrintable(seen)); // drawing back, thinner and fainter
     }
 };
 

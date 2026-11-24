@@ -2118,6 +2118,10 @@ The unfinished recording is kept at: %1</translation>
         <translation>Click highlight</translation>
     </message>
     <message>
+        <source>鼠标拖尾</source>
+        <translation>Cursor trail</translation>
+    </message>
+    <message>
         <source>鼠标按键</source>
         <translation>Mouse buttons</translation>
     </message>

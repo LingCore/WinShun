@@ -38,6 +38,11 @@ struct Options {
     bool microphone = false;
     bool cursor = true;
     bool clickHighlights = false;
+    // A line behind the pointer that draws back into it when it stops
+    // (CursorTrail). The trail goes under the pointer, so the capture leaves
+    // the pointer out and the frames get it drawn as Windows shows it
+    // (CursorArt). Only with `cursor`.
+    bool cursorTrail = false;
     double pointerScale = 1;
     std::shared_ptr<ClickStream> clickInput;
     // GitHub #98: the keys and mouse buttons pressed, as keycap rows in a

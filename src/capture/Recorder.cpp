@@ -206,6 +206,13 @@ void Recorder::setClickHighlights(bool on)
     remember();
 }
 
+void Recorder::setCursorTrail(bool on)
+{
+    if (m_stage != Ready || m_preferences.cursorTrail == on) return;
+    m_preferences.cursorTrail = on;
+    remember();
+}
+
 void Recorder::setKeys(KeyDisplay value)
 {
     if (m_stage != Ready || value < KeysOff || value > KeysAll || m_preferences.keys == value) return;
@@ -386,6 +393,7 @@ void Recorder::begin()
     options.systemAudio = !gif && systemAudio();
     options.microphone = !gif && microphone();
     options.clickHighlights = clickHighlights();
+    options.cursorTrail = cursor() && cursorTrail();
     options.pointerScale = m_dpr;
     if (options.clickHighlights) {
         options.clickInput = std::make_shared<recording::ClickStream>(m_region, m_panel ? quintptr(m_panel->winId()) : 0);

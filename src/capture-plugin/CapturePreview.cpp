@@ -2593,6 +2593,7 @@ int runRecording(const QStringList& args)
         : args.contains(u"--high-quality"_s) ? Recorder::HighQuality : Recorder::Standard;
     Recorder::Preferences preferences {out.absolutePath(), args.contains(u"--system-audio"_s), false, quality,
         !args.contains(u"--no-cursor"_s), !args.contains(u"--no-countdown"_s), args.contains(u"--clicks"_s)};
+    preferences.cursorTrail = args.contains(u"--trail"_s);
     std::unique_ptr<RawClicks> clicks;
     Capture::Callbacks callbacks;
     callbacks.recording.preferences = [&] { return preferences; };
@@ -2821,6 +2822,11 @@ int runRecording(const QStringList& args)
     saved = recorder->countdown() != originalCountdown && saved;
     click("recordingCountdown");
     click("recordingClicks");
+    const bool originalTrail = recorder->cursorTrail();
+    click("recordingTrail");
+    saved = recorder->cursorTrail() != originalTrail && saved;
+    click("recordingTrail");
+    saved = recorder->cursorTrail() == originalTrail && saved;
     const bool originalMouse = recorder->mouseButtons();
     click("recordingMouseButtons");
     saved = recorder->mouseButtons() != originalMouse && saved;
