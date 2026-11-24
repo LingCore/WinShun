@@ -339,12 +339,12 @@ int runLongCapture(const QStringList& args)
         // right later, as a move after showing did here and not on the
         // reporter's screen.
         bool leftOutAsShown = false;
-        const auto shown = QObject::connect(preview, &QWindow::visibleChanged, preview, [&](bool visible) {
+        const auto watching = QObject::connect(preview, &QWindow::visibleChanged, preview, [&](bool visible) {
             if (visible)
                 leftOutAsShown = previewLeftOut();
         });
         panel->setProperty("previewVisible", true); // as the 预览 button does
-        QObject::disconnect(shown);
+        QObject::disconnect(watching);
         pump(300);
         check(preview->isVisible() && previewRect().intersects(region), "the preview must be shown over the region for this check");
         check(leftOutAsShown, "a preview opened over the region must be left out of the frames as it shows");
