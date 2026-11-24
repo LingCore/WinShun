@@ -73,7 +73,7 @@
 | `winshun.ocr-search` | `src/ocr-search-plugin` | `WinShunOcrSearch.exe` + `*App.dll` | 插件库 · `resident`（`eager`/`strict`/`contentSearch`） | 图片/扫描 PDF/文档内嵌图本地 OCR 倒排索引（SQLite 默认 ≤512 MiB），隔离后台工作进程（单文件 60 s 无进展跳过） |
 | `winshun.semantic` | `src/semantic-plugin` | `WinShunSemantic.exe`（无 Qt） | 插件库 · `resident`（`eager`/`strict`） | “按意思找”：经 `winshun:content` 复用内容索引，OpenAI 兼容 `/embeddings`，int8 mmap 向量段，首次前先估算并写入 `consent.txt` |
 | `winshun.devtools` | `src/devtools-plugin` | `WinShunDevTools.exe` + `*App.dll` | 插件库 · `resident`（`lazy`/`normal`） | JSON 格式化/压缩/转义及共享宿主 Qt 的树形查看器 |
-| `winshun.translate` | `src/translate-plugin` | `WinShunTranslate.exe`（无 Qt） | 插件库 · `resident`（`lazy`） | 翻译与 AI 词典（`tr`/`dict`）；异步 WinHTTP 单调截止时间（无逐请求 watchdog 线程，响应 ≤8 MiB） |
+| `winshun.translate` | `src/translate-plugin` | `WinShunTranslate.exe`（无 Qt） | 插件库 · `resident`（`lazy`） | 翻译与 AI 词典（`tr`/`dict`）；异步 WinHTTP 单调截止时间（无逐请求 watchdog 线程，响应 ≤8 MiB）；服务回 401/403 时给 `setup` 行（“翻译服务的密钥不对或没有权限（接口返回 401）”，Enter 打开插件设置），402/429/5xx 给直说原因的普通错误行；宿主 `translate_text` 把这一行的标题作为 `message` 随状态 `service` 交回，仍会继续尝试下一个翻译插件（#444） |
 | `winshun.bookmarks` | `src/bookmarks-plugin` | `WinShunBookmarks.exe`（无 Qt） | 插件库 · `once` | Chrome/Edge/Firefox 书签与浏览历史（`bm`/`bh`），查完即退无常驻 |
 | `winshun.localsend` | `src/localsend-plugin` | `WinShunLocalSend.exe`（无 Qt） | 插件库 · `resident`（`eager`/`normal`） | 局域网传输（LocalSend v2）：Schannel 自签证书 + CNG 持久密钥、组播 `224.0.0.167:53317` + `/24` 发现、`.wspart` 落盘与 MOTW |
 | `winshun.sync` | `src/sync-plugin` | `WinShunSync.exe`（无 Qt） | 插件库 · `resident`（`eager`/`normal`） | 跨设备剪贴板同步（ShunSync v1，与 Mac顺 互通），详见 [shunsync-protocol.md](../shunsync-protocol.md) |

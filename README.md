@@ -65,7 +65,7 @@
 | 📄 | [搜文件里的字](docs/使用说明.md#搜文件里的文字) | Word、Excel、PPT、PDF、WPS 和文本、代码，结果显示命中的那一行；可以用正则表达式 |
 | 🗂️ | [搜索面板](docs/使用说明.md#搜索面板筛选和排序) | `Ctrl+E` 展开：按类型、时间、大小、位置筛选，常用条件可存成一点就用的快捷筛选，按列排序，大图浏览 |
 | 👀 | [预览](docs/使用说明.md#预览文件) | `Alt+P` 看一眼图片、文档、PDF，不用打开 |
-| 🚀 | [应用和系统设置](docs/使用说明.md#打开应用和系统设置) | 开始菜单里的应用和约 1200 个设置页，`vsc`、`网卡` 都能找到；可以加一个把应用排成图标网格的“应用”标签，还能切换已打开的窗口 |
+| 🚀 | [应用和系统设置](docs/使用说明.md#打开应用和系统设置) | 开始菜单里的应用和约 1200 个设置页，`vsc`、`网卡` 都能找到；可以加一个把应用排成图标网格的“应用”标签，还能切换已打开的窗口；`关机`、`重启`、`锁屏` 也直接打得出（关机、重启要先确认） |
 | 📋 | [剪贴板历史](docs/使用说明.md#剪贴板历史) ¹ | 代替 `Win+V`，保存文字、图片和文件，支持分组查找与悬停预览 |
 | 📂 | [“打开”“另存为”对话框](docs/使用说明.md#打开另存为对话框) ² | 对话框旁多一个搜索框；`Ctrl+G` 转到文件管理器正开着的文件夹 |
 | 🖱️ | [在资源管理器里](docs/使用说明.md#在资源管理器里) ² | 双击空白处弹出常用文件夹，可一层层走进子文件夹；在文件列表里直接打字就搜 |
@@ -87,7 +87,7 @@
 | 小工具 | `= 1+2*3` 计算（只打 `=` 列出算过的账），`12 inch to cm` 换算，`#ff8800` 颜色，还有时间戳、UUID、Base64、哈希 | 随包 |
 | 结束进程 | `kill 进程名` | 随包 |
 | [系统开关](docs/使用说明.md#系统开关) | 深色模式、蓝牙、WLAN、音量等一键切换：`关蓝牙`、`静音`、`音量 30`、`保持唤醒 1小时` | 随包，默认关 |
-| [截图与录屏](docs/使用说明.md#截图) | 截图、标注、打码、长截图、贴图、截图翻译、录屏和 GIF、演示白板 | 插件库 |
+| [截图与录屏](docs/使用说明.md#截图) | 截图、标注、打码、聚光灯、长截图、贴图（可分组）、截图翻译、录屏和 GIF、演示白板 | 随安装包附带，插件库更新 |
 | [图片文字搜索](docs/使用说明.md#图片文字搜索) | 搜图片和扫描件里的字，或 `ocr 关键词` | 插件库 |
 | 按意思找 | `? 去年报销的规定` | 插件库 |
 | 翻译 | `tr 句子` 翻译，`dict 单词` 查词典；截图翻译也用它 | 插件库 |
@@ -96,7 +96,7 @@
 | 局域网传输 | `传`，和开着 [LocalSend](https://localsend.org) 的手机、电脑互传文件 | 插件库 |
 | [剪贴板同步](src/sync-plugin/package/README.md) | 在自己的几台 Windows 电脑和 Mac（[Mac顺](https://github.com/LingCore/MacShun)）之间同步剪贴板：这边复制，那边直接粘贴文字、图片、文件；端到端加密，不用账号；`同步` 看设备、加新设备 | 插件库 |
 | 休息提醒 | 定时提醒休息，`休息` 看还有多久 | 插件库 |
-| [鼠标手势](src/gestures-plugin/package/README.md) | 按住右键画一下：后退、关窗口、切标签页；选中文字再画或按快捷键：复制、搜索、翻译；画圈、屏幕角落、屏幕边、右键+滚轮、按程序设置，关机重启先倒数；`手势` 暂停 | 插件库 |
+| [鼠标手势](src/gestures-plugin/package/README.md) | 按住右键（或中键、侧键，还有组合手势）画一下：后退、关窗口、切标签页；选中文字再画或按快捷键：复制、搜索、翻译；画圈、屏幕角落、屏幕边、右键+滚轮、按程序设置，关机重启先倒数；`手势` 暂停 | 插件库 |
 | 缩写展开 | 在任何地方打 `cmd` 再按空格就换成 `command`，缩写和内容自己设，紧接着按退格撤回；`缩写` 列出、暂停 | 插件库 |
 | 资源管理器标签页 | 新开的资源管理器窗口并成标签页，还能在下次登录后打开上次的标签页（Windows 11 22H2 起） | 插件库 |
 | [云备份](docs/使用说明.md#外观设置和备份) | 设置自动备份到 WebDAV（坚果云、NAS）或 GitHub 私有仓库，`cloud` 立即备份或恢复 | 插件库 |
@@ -198,6 +198,14 @@ winget install LingCore.WinShun
 </details>
 
 ### 最近更新
+
+**0.45.0**
+
+- 🎬 **录屏更清楚**：画质分四档、帧率最高 60 帧，可加**鼠标拖尾**；📌 贴图能**分组**、截完**直接贴图**、关掉的贴图能**找回**，编辑过的图 `Ctrl+S` **存回原文件**；🔦 截图多了**聚光灯**；📜 长截图会**自己连续滚动**。
+- 🔎 搜索支持 **FZF 模糊匹配**（#422）；⏻ 在搜索框里就能**关机、重启、锁屏**（#428）；🗑️ 快捷菜单能直接**移到回收站**（#434）；🔠 `Ctrl++` / `Ctrl+-` / `Ctrl+0` **调界面大小**；📋 剪贴板可以**默认粘贴为纯文本**，微信、QQ 里复制的图片也能贴到屏幕、编辑；🖱️ 鼠标手势能用**中键、侧键和组合手势**（#436）。
+- 🛠️ **改进** 截图组件随安装包附带，第一次设置不用联网；安装程序点“完成”之后 Win顺 才出现；设置页滚轮触边翻页可以关掉（#445）。
+
+详见 [0.45.0 发布说明](docs/release-notes/v0.45.0.md)。
 
 **0.44.0**
 
@@ -433,7 +441,7 @@ No installer, or Scoop and WinGet? See [Download and install](#download-and-inst
 | 📄 | [Text inside files](docs/features.en.md#full-text-search) | Word, Excel, PowerPoint, PDF, WPS, text and code, showing the matching line; regular expressions too |
 | 🗂️ | [Search panel](docs/features.en.md#file-search) | `Ctrl+E` expands it: filter by kind, date, size and folder, save your own quick filters, sort by column, large icons |
 | 👀 | [Preview](docs/features.en.md#file-search) | `Alt+P` shows a picture, document or PDF without opening it |
-| 🚀 | [Apps and settings](docs/features.en.md#apps-and-settings) | Start menu apps and about 1,200 Windows settings pages; an optional Apps tab shows the apps as a grid of icons and switches to open windows |
+| 🚀 | [Apps and settings](docs/features.en.md#apps-and-settings) | Start menu apps and about 1,200 Windows settings pages; an optional Apps tab shows the apps as a grid of icons and switches to open windows; shut down, restart and lock are one typed word away (shut down and restart ask first) |
 | 📋 | [Clipboard history](docs/features.en.md#clipboard-history) ¹ | Replaces `Win+V` with text, pictures and files, group search and hover previews |
 | 📂 | [Open / Save dialogs](docs/features.en.md#open-and-save-dialogs) ² | A search bar beside the dialog; `Ctrl+G` jumps to the folder open in your file manager |
 | 🖱️ | [In File Explorer](docs/features.en.md#in-file-explorer) ² | Double-click empty space for your folders and the folders inside them; type in a file list to search |
@@ -455,7 +463,7 @@ Some plugins come with WinShun; the rest are installed when you want them from *
 | Tools | `= 1+2*3` calculator (`=` alone lists past sums), `12 inch to cm`, `#ff8800` colors, timestamps, UUID, Base64, hashes | Bundled |
 | Kill | `kill process` | Bundled |
 | System switches | Dark mode, Bluetooth, WLAN, volume and more in one step: `bluetooth off`, `mute`, `volume 30`, `awake 1h` | Bundled, off by default |
-| [Screenshot and recording](docs/features.en.md#screenshots-and-recording) | Capture, mark up, redact, scrolling screenshots, pins, translating a capture in place, MP4 and GIF recording, presenter and whiteboard | Plugin library |
+| [Screenshot and recording](docs/features.en.md#screenshots-and-recording) | Capture, mark up, redact, spotlight, scrolling screenshots, pins (in groups), translating a capture in place, MP4 and GIF recording, presenter and whiteboard | Comes with the setup; updated from the plugin library |
 | Image text search | Search the words in pictures and scans, or `ocr words` | Plugin library |
 | Search by meaning | `? last year's expense rules` | Plugin library |
 | Translate | `tr sentence` to translate, `dict word` for a dictionary; screenshot translation uses it too | Plugin library |
@@ -464,7 +472,7 @@ Some plugins come with WinShun; the rest are installed when you want them from *
 | LAN transfer | `ls ` to send files to and from phones and PCs running [LocalSend](https://localsend.org) | Plugin library |
 | [Clipboard sync](src/sync-plugin/package/README.md) | Copy on one of your Windows PCs or Macs ([Mac顺](https://github.com/LingCore/MacShun)), paste on another: text, pictures, files; end to end encrypted, no account; `sync` lists the devices and lets a new one in | Plugin library |
 | Break reminder | Reminds you to take breaks; `break` shows the time left | Plugin library |
-| [Mouse gestures](src/gestures-plugin/package/README.md) | Hold the right button and draw: back, close the window, switch tabs; select text, then draw or press a shortcut: copy, search, translate; circles, screen corners and edges, the wheel with the right button, rules per program, a countdown before shutting down; `gestures` pauses them | Plugin library |
+| [Mouse gestures](src/gestures-plugin/package/README.md) | Hold the right button (or the middle or a side button, or a chord) and draw: back, close the window, switch tabs; select text, then draw or press a shortcut: copy, search, translate; circles, screen corners and edges, the wheel with the right button, rules per program, a countdown before shutting down; `gestures` pauses them | Plugin library |
 | Text expander | Type `cmd` and a space anywhere and it becomes `command`, with abbreviations of your own; Backspace right after takes it back; `expander` lists and pauses them | Plugin library |
 | Explorer tabs | New File Explorer windows open as tabs, and the tabs from last time come back after a logon (Windows 11 22H2 or newer) | Plugin library |
 | [Cloud backup](docs/features.en.md#looks-and-settings) | Keeps the settings backup on a WebDAV server or in a private GitHub repository; `cloud` backs up or restores | Plugin library |
@@ -566,6 +574,14 @@ Standard and portable packages install enhanced text recognition on demand. Open
 </details>
 
 ### What's new
+
+**0.45.0**
+
+- 🎬 **Clearer recordings**: four qualities, up to 60 frames a second, an optional **cursor trail**; 📌 pins can be **grouped**, **pinned as you capture** and **brought back** after closing, and an edited picture saves back to its file with `Ctrl+S`; 🔦 a **Spotlight** tool; 📜 long screenshots **scroll by themselves**.
+- 🔎 **FZF fuzzy matching** (#422); ⏻ **shut down, restart or lock** from the search box (#428); 🗑️ **Move to Recycle Bin** in the quick menu (#434); 🔠 `Ctrl++` / `Ctrl+-` / `Ctrl+0` for the **interface size**; 📋 **paste as plain text by default**, if you like, and pictures copied in WeChat or QQ can be pinned and edited; 🖱️ mouse gestures with the **middle and side buttons and two-button chords** (#436).
+- 🛠️ **Improved**: the screenshot component comes with the setup, so first setup needs no network; WinShun appears only after Finish in the setup; the settings wheel paging can be turned off (#445).
+
+See the [0.45.0 release notes](docs/release-notes/v0.45.0.md).
 
 **0.44.0**
 

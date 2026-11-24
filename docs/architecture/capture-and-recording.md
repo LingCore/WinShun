@@ -82,7 +82,7 @@
 
 - **OCR 与表格（`CaptureOcr` / `OcrPanel.qml` / `OcrBubble.qml`）**：单低优先级线程运行 `PaddleOcr`（`clamp(核数/2, 1, 4)` 线程，空闲 60 秒卸载模型）；屏 DPR < 1.5 时预放大（最多 2× 且宽 ≤2000 px）。同时生成制表符分隔表格（`CaptureOcr::table`）供直接粘贴进 Excel/WPS；快捷识字弹轻量 `OcrBubble.qml`。
 - **二维码（`QrCode`）**：静态链接 `zxing-cpp`（仅 QRCode/MicroQRCode，最多 8 个；未检出时 2×/3× 重试且不超过 1200 万像素）。
-- **原地贴图翻译（`TranslateOverlay`）**：`ocrBlocks` 按行高、对齐与段宽合段（跳过倾角 >3°），经宿主 `translate_text` 调 `winshun.translate`。`translatedPicture` 按底色中位数、最远像素字色、字重门槛（深字 `0.085`、浅字深底 `0.105`）与居中边距覆盖重排，经 `PinWindow::setTranslation` 支持 `Tab` 翻面切换；行数不匹配且 ≤24 块时逐块降级重试，超限或未配置服务时新建翻译贴图回退至 OCR 窗口译文区。
+- **原地贴图翻译（`TranslateOverlay`）**：`ocrBlocks` 按行高、对齐与段宽合段（跳过倾角 >3°），经宿主 `translate_text` 调 `winshun.translate`。`translatedPicture` 按底色中位数、最远像素字色、字重门槛（深字 `0.085`、浅字深底 `0.105`）与居中边距覆盖重排，经 `PinWindow::setTranslation` 支持 `Tab` 翻面切换；行数不匹配且 ≤24 块时逐块降级重试，超限或未配置服务时新建翻译贴图回退至 OCR 窗口译文区；`translate_text` 答复 `service` 时带 `message`（服务拒绝密钥的 `setup` 行标题），OCR 窗口把它写在“设置翻译服务…”上方，旧宿主没有 `message` 则退回原来的措辞（#444）。
 
 ## 4. 长截图
 
