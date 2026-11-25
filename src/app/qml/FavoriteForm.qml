@@ -367,7 +367,7 @@ Item {
                         anchors.centerIn: parent
                         visible: iconPreview.status !== Image.Ready
                         glyph: "\uE756"
-                        size: 24
+                        size: 28
                         color: Theme.subtext
                     }
                 }

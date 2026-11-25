@@ -68,7 +68,7 @@ Item {
         Glyph {
             anchors.verticalCenter: parent.verticalCenter
             iconName: "text-aa"
-            size: 16
+            size: 18
             color: Theme.accent
         }
 

@@ -60,7 +60,7 @@ Window {
                 objectName: "recordingDragHandle"
                 Layout.preferredWidth: 14
                 Layout.fillHeight: true
-                Glyph { anchors.centerIn: parent; glyph: "\uE76F"; size: 12; color: Theme.faint }
+                Glyph { anchors.centerIn: parent; glyph: "\uE76F"; size: 14; color: Theme.faint }
                 DragHandler {
                     target: null
                     acceptedButtons: Qt.LeftButton

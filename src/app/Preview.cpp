@@ -10054,7 +10054,7 @@ bool checkTypeStripCounts(QQmlEngine* qml, const QDir& output)
             const qreal top = icon->y();
             const qreal bottom = chip->height() - top - icon->height();
             const qreal gap = name->x() - (left + icon->width());
-            if (icon->width() != 20 || icon->height() != 20 || std::abs(left - top) > 0.01 || std::abs(top - bottom) > 0.7
+            if (icon->width() != icon->height() || std::fmod(icon->width(), 2) != 0 || std::abs(left - top) > 0.01 || std::abs(top - bottom) > 0.7
                 || std::abs(gap - 4) > 0.01) {
                 qWarning("type strip counts regression: chip %d: icon box %.1fx%.1f, %.2f from the left, %.2f from the top, "
                          "%.2f from the bottom, %.2f before the name", type, icon->width(), icon->height(), left, top, bottom, gap);

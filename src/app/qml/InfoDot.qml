@@ -21,7 +21,7 @@ Item {
     Glyph {
         anchors.centerIn: parent
         glyph: String.fromCharCode(0xE946) // Info
-        size: 13
+        size: 14
         color: area.containsMouse ? Theme.accent : dot.caution ? Theme.caution : Theme.faint
     }
     MouseArea {

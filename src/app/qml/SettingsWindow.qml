@@ -1749,10 +1749,10 @@ Window {
 
             Glyph {
                 visible: !navItem.gleaning
-                x: 16
+                x: 15 // its centre on the author's mark's below (24)
                 anchors.verticalCenter: parent.verticalCenter
                 glyph: navItem.modelData.glyph ?? ""
-                size: 16
+                size: 18
                 color: navItem.foreground
             }
             Loader { // 拾穗计划: the author's mark, which plays when the page opens
@@ -2270,7 +2270,7 @@ Window {
                                     anchors.rightMargin: 18
                                     anchors.verticalCenter: parent.verticalCenter
                                     glyph: "\uE76C" // ChevronRight
-                                    size: 12
+                                    size: 14
                                 }
                                 MouseArea {
                                     id: windowsArea
@@ -3989,7 +3989,7 @@ Window {
                                         x: 12
                                         anchors.verticalCenter: parent.verticalCenter
                                         glyph: "" // Folder
-                                        size: 16
+                                        size: 18
                                     }
                                     Text {
                                         id: excludedPathLabel

@@ -215,7 +215,7 @@ SettingsSection {
         Glyph {
             anchors.verticalCenter: parent.verticalCenter
             glyph: "" // Warning
-            size: 20
+            size: 22
             color: Theme.caution
         }
     }

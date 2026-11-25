@@ -57,7 +57,7 @@ Item {
         Glyph {
             anchors.centerIn: parent
             glyph: strip.glyph
-            size: 12
+            size: 14
             color: strip.more ? Theme.text : Theme.faint
         }
     }
@@ -111,10 +111,10 @@ Item {
             }
             Glyph {
                 visible: entry.modelData.message !== true
-                x: 13
+                x: 12
                 anchors.verticalCenter: parent.verticalCenter
                 glyph: "" // Folder
-                size: 16
+                size: 18
                 color: entry.ink
             }
             Text {
@@ -133,7 +133,7 @@ Item {
                 anchors.rightMargin: 12
                 anchors.verticalCenter: parent.verticalCenter
                 glyph: "" // ChevronRight
-                size: 12
+                size: 14
                 color: entry.ink
             }
         }

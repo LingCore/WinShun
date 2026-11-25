@@ -146,7 +146,7 @@ Item {
                 x: 10
                 anchors.verticalCenter: parent.verticalCenter
                 glyph: "ph:magnifying-glass"
-                size: 14
+                size: 16
                 color: field.out("iconColor", Theme.subtext)
             }
             TextInput {

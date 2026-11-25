@@ -41,7 +41,7 @@ ColumnLayout {
             x: 12
             anchors.verticalCenter: parent.verticalCenter
             glyph: ""
-            size: 16
+            size: 18
             color: field.out("iconColor", Theme.subtext)
         }
         TextInput {

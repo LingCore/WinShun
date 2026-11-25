@@ -189,10 +189,10 @@ Item {
             }
             Glyph {
                 visible: !entry.separator && !entry.section && (entry.toggle || !icon.visible)
-                x: entry.toggle ? 15 : 13
+                x: entry.toggle ? 14 : 12
                 anchors.verticalCenter: parent.verticalCenter
                 glyph: entry.toggle ? (entry.expanded ? "\uE70D" : "\uE76C") : (entry.modelData.glyph ?? "")
-                size: entry.toggle ? 12 : 16
+                size: entry.toggle ? 14 : 18
                 color: entry.disabled ? Theme.faint : entry.toggle ? Theme.subtext : Theme.text
             }
             Text {
@@ -232,7 +232,7 @@ Item {
                 anchors.rightMargin: 12
                 anchors.verticalCenter: parent.verticalCenter
                 glyph: "\uE76C"
-                size: 12
+                size: 14
                 color: entry.disabled ? Theme.faint : Theme.text
             }
             MouseArea {

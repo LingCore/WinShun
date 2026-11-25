@@ -393,7 +393,7 @@ Item {
                         // The icon stands in a container (iconBox, an even square its ink never fills), and
                         // the chip is laid out by that: as far from the left edge as from the top and bottom,
                         // the name a fixed gap after it. Nothing here looks at the ink.
-                        readonly property int iconBox: 20
+                        readonly property int iconBox: 2 * Math.round(height * 0.35) // 14, 16, 20, 22 for the four sizes of chip
                         readonly property int iconGap: 4
                         readonly property real iconInset: strip.onPixel((height - iconBox) / 2)
                         readonly property real lead: ownLead > 0 ? ownLead : chip.glyph.length > 0 ? iconInset : 12
@@ -424,7 +424,7 @@ Item {
                             x: body.lead
                             y: strip.onPixel((body.height - height) / 2 + surface.out("contentOffsetY", 0))
                             glyph: chip.glyph
-                            container: body.iconBox
+                            size: body.iconBox
                             color: surface.out("iconColor", chip.active && !chip.isAll ? Theme.accentText
                                                           : area.containsMouse ? Theme.subtext : Theme.faint)
                         }
@@ -541,7 +541,7 @@ Item {
             anchors.verticalCenterOffset: editKey.out("contentOffsetY", 0)
             inkScale: editKey.out("contentScale", 1)
             glyph: "\uE710" // Add
-            size: 12
+            size: 14
             color: editKey.out("foreground", editArea.containsMouse ? Theme.text : Theme.subtext)
         }
 

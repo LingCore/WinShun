@@ -193,7 +193,7 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         iconName: entry.modelData.iconName ?? ""
                         glyph: entry.modelData.glyph ?? ""
-                        size: 14
+                        size: 16
                         color: entry.modelData.danger ? Theme.danger : Theme.text
                     }
                     Text {

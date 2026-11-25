@@ -196,7 +196,7 @@ Item {
             Glyph {
                 anchors.verticalCenter: parent.verticalCenter
                 iconName: hint.atBottom ? "arrow-down" : "arrow-up"
-                size: 14
+                size: 16
                 color: hint.accentColor
                 transform: Translate {
                     y: hint.shown ? hint.shownDirection * (1.5 * hint.easedProgress) : 0

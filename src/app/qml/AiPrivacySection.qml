@@ -73,7 +73,7 @@ SettingsSection {
                             x: 12
                             anchors.verticalCenter: parent.verticalCenter
                             glyph: "" // Folder
-                            size: 16
+                            size: 18
                         }
                         Text {
                             anchors.left: folderIcon.right

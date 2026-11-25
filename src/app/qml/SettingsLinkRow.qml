@@ -110,7 +110,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             iconName: linkRow.iconName
             glyph: linkRow.glyph
-            size: 16
+            size: 18
             color: linkRow.interactive ? Theme.accent : Theme.subtext
         }
 
@@ -164,7 +164,7 @@ Item {
             Glyph {
                 anchors.verticalCenter: parent.verticalCenter
                 iconName: "caret-right"
-                size: 12
+                size: 14
                 color: linkRow.interactive ? Theme.accent : Theme.subtext
             }
         }

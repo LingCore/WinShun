@@ -36,7 +36,7 @@ Item {
         anchors.leftMargin: 4
         anchors.verticalCenter: parent.verticalCenter
         glyph: "ph:caret-down"
-        size: 10
+        size: 12
         color: words.color
     }
     MouseArea {

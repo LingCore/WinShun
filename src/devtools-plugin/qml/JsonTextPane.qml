@@ -110,7 +110,7 @@ Item {
         Glyph {
             Layout.alignment: Qt.AlignHCenter
             glyph: "ph:file-text"
-            size: 32
+            size: 36
             color: Theme.faint
         }
         Text {

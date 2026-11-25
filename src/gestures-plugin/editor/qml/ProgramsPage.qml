@@ -78,7 +78,7 @@ Item {
                     x: 16
                     anchors.verticalCenter: parent.verticalCenter
                     glyph: "ph:app-window"
-                    size: 18
+                    size: 20
                     color: entry.selected ? Theme.text : Theme.subtext
                 }
                 Column {
@@ -135,7 +135,7 @@ Item {
                         anchors.centerIn: parent
                         anchors.verticalCenterOffset: dropPart.out("contentOffsetY", 0)
                         glyph: "ph:x"
-                        size: 12
+                        size: 14
                         color: dropArea.containsMouse ? Theme.danger : Theme.subtext
                     }
                     MouseArea {

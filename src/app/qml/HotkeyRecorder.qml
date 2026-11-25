@@ -183,7 +183,7 @@ Rectangle {
         Glyph {
             anchors.verticalCenter: parent.verticalCenter
             glyph: "\uE765"
-            size: 14
+            size: 16
             color: area.containsMouse ? Theme.accent : Theme.subtext
         }
 

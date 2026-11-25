@@ -113,7 +113,7 @@ Flickable {
                     anchors.verticalCenter: title.verticalCenter
                     anchors.verticalCenterOffset: link.containsMouse ? -1 : 0
                     glyph: "" // OpenInNewWindow
-                    size: 12
+                    size: 14
                     color: link.containsMouse ? WarmPalette.ink : WarmPalette.inkSoft
                 }
                 MouseArea {
@@ -170,7 +170,7 @@ Flickable {
             Glyph {
                 anchors.centerIn: parent
                 glyph: "" // FavoriteStar
-                size: 16
+                size: 18
                 color: WarmPalette.ink
             }
         }
@@ -348,7 +348,7 @@ Flickable {
                         Glyph {
                             anchors.verticalCenter: parent.verticalCenter
                             glyph: "" // OpenInNewWindow
-                            size: 12
+                            size: 14
                             color: WarmPalette.ink
                         }
                     }
@@ -453,7 +453,7 @@ Flickable {
                         Glyph {
                             anchors.verticalCenter: parent.verticalCenter
                             glyph: "" // Send
-                            size: 13
+                            size: 14
                             color: "white"
                         }
                         Text {
@@ -490,7 +490,7 @@ Flickable {
                         Glyph {
                             anchors.verticalCenter: parent.verticalCenter
                             iconName: "chats-circle"
-                            size: 14
+                            size: 16
                             color: WarmPalette.ink
                         }
                         Text {
@@ -578,7 +578,7 @@ Flickable {
                                 Glyph {
                                     anchors.verticalCenter: thanksTitle.verticalCenter
                                     glyph: "" // OpenInNewWindow
-                                    size: 12
+                                    size: 14
                                     color: thanksArea.containsMouse ? WarmPalette.ink : WarmPalette.inkSoft
                                 }
                             }

@@ -74,6 +74,7 @@ Keep `docs/architecture/` and `docs/pitfalls/` current-state (update in place; p
 - Function icons come from the bundled Phosphor set: `Glyph { iconName: "heart" }`. Reuse the icon that already means the same thing.
 - Windows keep DWM's own corners, edge and shadow: never draw them.
 - Everything must hold at 100, 125, 150 and 175 % scaling. Hairlines use `Theme.edge(dpr)`, positions `Theme.snap`; check real pixels (`--renderer d3d11 --scale 1.5`), not by eye.
+- `Glyph.size` is the icon's container (an even square: 12, 14, 16, 18, 20, 24) and Phosphor's em; lay out by the container, never by the ink, and don't give a `Glyph` a `width`/`height` of its own.
 - Never `scale` a `Glyph` or text (use `Glyph.inkScale`); `sourceSize` is logical pixels for `image://` and SVG, physical for PNG and JPG.
 - A QML file must not have the name of a C++ `QML_ELEMENT` class; a line starting with `(` or `[` joins the line before it.
 

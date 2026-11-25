@@ -29,15 +29,15 @@ Item {
     readonly property int cellWidth: 28 // a swatch, a size dot, a fill or toggle button
     readonly property int compactCell: 24 // compact number format and stepper cells (whole device px at 125%–200%)
     readonly property int swatchSize: 20
-    readonly property int checkSize: 12 // the tick on the chosen swatch
+    readonly property int checkSize: 14 // the tick on the chosen swatch
     readonly property var dots: [4, 8, 12] // the three widths' dots, thin to thick
     readonly property int fillIcon: 14 // the fill buttons' square
     readonly property int boxIconWidth: 18 // the box button's frame
     readonly property int boxIconHeight: 16
     readonly property int boxLetter: 11 // its "A", pixel size
-    readonly property int stepGlyph: 12 // the start value's minus and plus
-    readonly property int layerGlyph: 14 // up, down, delete
-    readonly property int boldGlyph: 16
+    readonly property int stepGlyph: 14 // the start value's minus and plus
+    readonly property int layerGlyph: 16 // up, down, delete
+    readonly property int boldGlyph: 18
     readonly property int startWidth: 24 // the start value's number
     readonly property int textPad: 8 // each side of a word button's text
     readonly property int separatorWidth: 12 // a 1 device px line in the middle

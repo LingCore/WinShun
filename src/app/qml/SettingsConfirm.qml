@@ -93,15 +93,13 @@ Window {
                 id: headerIcon
                 x: window.padding
                 anchors.verticalCenter: parent.verticalCenter
-                width: 20
-                height: 20
                 glyph: "" // Settings
-                size: 16
+                size: 18
                 color: Theme.text
             }
             Text {
                 anchors.left: headerIcon.right
-                anchors.leftMargin: 8
+                anchors.leftMargin: 10
                 anchors.right: parent.right
                 anchors.rightMargin: window.padding
                 y: window.onPixel((header.height - height) / 2)
@@ -308,7 +306,7 @@ Window {
                     width: 16
                     height: warning.height
                     glyph: "" // Warning
-                    size: 14
+                    size: 16
                     color: Theme.caution
                 }
                 Text {

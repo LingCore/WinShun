@@ -54,7 +54,7 @@ Rectangle {
         x: 16
         y: search.height + (Theme.rowHeight - height) / 2
         glyph: "\uE8B7"
-        size: Theme.metrics.dense ? 20 : 28
+        size: Theme.metrics.dense ? 22 : 32
         color: Theme.accent
     }
     Item { // 密集: one line, the folder after the name

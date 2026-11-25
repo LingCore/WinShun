@@ -74,15 +74,13 @@ Window {
             id: headerIcon
             x: window.padding
             anchors.verticalCenter: parent.verticalCenter
-            width: 20
-            height: 20
             glyph: "" // Camera
-            size: 16
+            size: 18
             color: Theme.text
         }
         Text {
             anchors.left: headerIcon.right
-            anchors.leftMargin: 8
+            anchors.leftMargin: 10
             y: window.onPixel((header.height - height) / 2)
             text: qsTr("AI 请求截屏")
             color: Theme.text

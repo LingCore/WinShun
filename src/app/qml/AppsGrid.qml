@@ -168,7 +168,7 @@ GridView {
                 anchors.centerIn: parent
                 iconName: "star"
                 filled: tile.favorite
-                size: 14
+                size: 16
                 color: tile.favorite ? Theme.accent : starArea.containsMouse ? Theme.text : Theme.subtext
             }
             MouseArea {

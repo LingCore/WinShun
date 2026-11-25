@@ -34,7 +34,7 @@ Item {
     Glyph {
         anchors.centerIn: parent
         iconName: key.iconName
-        size: 12
+        size: 14
         color: area.containsMouse ? key.strongInk : key.ink
     }
     MouseArea {

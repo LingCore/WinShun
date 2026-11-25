@@ -139,7 +139,7 @@ Item {
                 visible: rail.passed
                 anchors.verticalCenter: parent.verticalCenter
                 glyph: "\uE73E"
-                size: 14
+                size: 16
                 color: Theme.success
             }
             Text {
@@ -190,7 +190,7 @@ Item {
                         visible: step.done
                         anchors.centerIn: parent
                         iconName: "check"
-                        size: 10
+                        size: 12
                         color: Theme.accentText
                     }
                     CenteredNumber {

@@ -57,10 +57,10 @@ Rectangle {
     }
 
     Glyph {
-        x: 11
+        x: 10
         anchors.verticalCenter: parent.verticalCenter
         glyph: "" // Search
-        size: 16
+        size: 18
         color: box.warm ? WarmPalette.inkSoft : fieldPart.out("iconColor", Theme.subtext)
     }
 
@@ -141,7 +141,7 @@ Rectangle {
             anchors.verticalCenterOffset: clearPart.out("contentOffsetY", 0)
             inkScale: clearPart.out("contentScale", 1)
             glyph: "" // Cancel
-            size: 12
+            size: 14
             color: box.warm ? WarmPalette.ink : clearPart.out("foreground", clearArea.containsMouse ? Theme.text : Theme.subtext)
         }
 

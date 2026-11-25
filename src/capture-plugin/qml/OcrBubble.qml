@@ -73,11 +73,9 @@ Window {
             Glyph {
                 id: mark
                 anchors.verticalCenter: parent.verticalCenter
-                width: 18
-                height: 18
                 visible: bubble.phase !== "reading"
                 glyph: bubble.phase === "copied" ? String.fromCharCode(0xE73E) : String.fromCharCode(0xE7BA) // CheckMark, Warning
-                size: 16
+                size: 18
                 color: bubble.phase === "copied" ? Theme.success : Theme.caution
             }
             Text {
@@ -111,7 +109,7 @@ Window {
                     corner: Theme.smallControlRadius
                     height: 28
                     fontSize: Theme.uiCaption
-                    glyphSize: Math.min(14, Theme.uiCaption)
+                    glyphSize: 2 * Math.round(Math.min(16, Theme.uiCaption + 2) / 2)
                     glyph: String.fromCharCode(0xE70F) // Edit
                     text: qsTr("编辑")
                     onClicked: {
@@ -129,7 +127,7 @@ Window {
                     corner: Theme.smallControlRadius
                     width: 28
                     height: 28
-                    glyphSize: 11
+                    glyphSize: 12
                     glyph: String.fromCharCode(0xE711) // Cancel
                     Accessible.role: Accessible.Button
                     Accessible.name: qsTr("关闭")

@@ -509,7 +509,7 @@ Window {
                         inkScale: chipKey.out("contentScale", 1)
                         anchors.verticalCenter: parent.verticalCenter
                         glyph: chip.toOrigin ? "" : "" // Back, Folder
-                        size: 16
+                        size: 18
                         color: Theme.accent
                     }
                     Text {
@@ -590,7 +590,7 @@ Window {
                     anchors.centerIn: parent
                     glyph: "" // More
                     inkScale: moreKey.out("contentScale", 1)
-                    size: 16
+                    size: 18
                 }
 
                 function press() {

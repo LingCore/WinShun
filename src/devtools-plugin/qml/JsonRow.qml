@@ -58,7 +58,7 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         visible: row.expandable
         glyph: row.expanded ? "ph:caret-down" : "ph:caret-right"
-        size: 12
+        size: 14
         color: Theme.subtext
     }
     Text {

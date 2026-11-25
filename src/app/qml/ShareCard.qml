@@ -59,7 +59,7 @@ Rectangle {
         x: 14
         y: 14
         glyph: card.kind === "folder" ? "\uE8B7" : card.share.wsl === true ? "\uE756" : "\uE8CE"
-        size: 20
+        size: 22
         color: Theme.subtext
     }
 

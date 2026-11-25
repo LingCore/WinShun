@@ -158,7 +158,7 @@ Item {
             anchors.centerIn: parent
             anchors.verticalCenterOffset: removePart.out("contentOffsetY", 0)
             glyph: "ph:trash"
-            size: 14
+            size: 16
             color: removeArea.containsMouse ? Theme.danger : Theme.subtext
         }
         MouseArea {

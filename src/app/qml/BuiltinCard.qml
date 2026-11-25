@@ -80,7 +80,7 @@ Rectangle {
                 width: card.tile ? 36 : 32 // a tile's name where a plugin tile's is
                 height: width
                 glyph: card.glyph
-                size: 24
+                size: 28
                 color: Theme.text
             }
 

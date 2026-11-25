@@ -237,7 +237,7 @@ Item {
                                     y: Math.round((26 - height) / 2)
                                     visible: permissionRow.modelData.enforced
                                     glyph: "" // CheckMark
-                                    size: 12
+                                    size: 14
                                     color: Theme.success
                                 }
                                 Rectangle { // declared only: Win顺 cannot hold the plugin to it

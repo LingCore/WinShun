@@ -224,10 +224,8 @@ Rectangle {
                         id: shield
                         visible: card.elevation === "elevated"
                         anchors.verticalCenter: nameText.verticalCenter
-                        width: 16
-                        height: 16
                         glyph: String.fromCharCode(0xE7EF) // Admin: Phosphor's shield-check
-                        size: 14
+                        size: 16
                         color: Theme.subtext
                         Accessible.role: Accessible.Graphic
                         Accessible.name: card.elevationNote
@@ -483,7 +481,7 @@ Rectangle {
                     Glyph {
                         anchors.centerIn: parent
                         glyph: "" // ChevronDown
-                        size: 12
+                        size: 14
                         color: headerArea.containsMouse ? Theme.text : Theme.subtext
                         rotation: card.expanded ? 180 : 0
 

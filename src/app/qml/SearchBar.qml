@@ -333,7 +333,7 @@ Item {
                 anchors.centerIn: parent
                 glyph: "\uE841" // PinnedFill
                 overlay: "\uE718"
-                size: 12
+                size: 14
                 color: Theme.accent
             }
         }
@@ -512,7 +512,7 @@ Item {
             anchors.verticalCenterOffset: keySurface.out("contentOffsetY", 0)
             inkScale: keySurface.out("contentScale", 1)
             glyph: key.checked && key.checkedGlyph.length > 0 ? key.checkedGlyph : key.glyph
-            size: Theme.searchIconSize * 0.8
+            size: Math.round(Theme.searchIconSize * 0.45) * 2 // 16 to 22: a little under the Logo, an even box
             color: key.checked || key.marked ? Theme.accent
                  : keySurface.out("foreground", keyArea.containsMouse ? Theme.text : Theme.subtext)
         }
@@ -660,7 +660,7 @@ Item {
             inkScale: pinKey.out("contentScale", 1)
             glyph: "" // PinnedFill
             overlay: ""
-            size: 12
+            size: 14
             color: pinKey.out("foreground", Theme.accentText)
         }
         MouseArea {

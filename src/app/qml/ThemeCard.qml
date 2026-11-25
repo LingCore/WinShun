@@ -468,7 +468,7 @@ Item {
             Glyph {
                 anchors.centerIn: parent
                 glyph: "" // CheckMark
-                size: 11
+                size: 12
                 color: Theme.accentText
             }
         }

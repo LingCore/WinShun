@@ -71,7 +71,7 @@ Popup {
                 Glyph {
                     anchors.verticalCenter: numberText.verticalCenter
                     iconName: card.copied ? "check" : "copy"
-                    size: 13
+                    size: 14
                     color: copyArea.containsMouse || card.copied ? card.ink : card.inkSoft
                 }
             }

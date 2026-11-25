@@ -69,7 +69,7 @@ Column {
                     Glyph {
                         anchors.horizontalCenter: parent.horizontalCenter
                         glyph: "ph:monitor"
-                        size: 36
+                        size: 40
                         color: Theme.faint
                     }
                 }
@@ -129,7 +129,7 @@ Column {
                                 anchors.centerIn: parent
                                 anchors.verticalCenterOffset: clearPart.out("contentOffsetY", 0)
                                 glyph: "ph:x"
-                                size: 12
+                                size: 14
                                 color: clearArea.containsMouse ? Theme.text : Theme.subtext
                             }
                             MouseArea {

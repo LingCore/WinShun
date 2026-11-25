@@ -51,7 +51,7 @@ Button {
                 anchors.verticalCenter: parent.verticalCenter
                 glyph: button.glyph
                 iconName: button.iconName
-                size: 16
+                size: 18
                 color: button.foreground
             }
             Text {

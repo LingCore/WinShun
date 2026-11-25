@@ -126,7 +126,7 @@ Item {
             Glyph {
                 anchors.horizontalCenter: parent.horizontalCenter
                 glyph: "ph:mouse-right-click"
-                size: 32
+                size: 36
                 color: Theme.faint
             }
             Text {
