@@ -97,6 +97,8 @@ public:
     QString timeText() const;
     QString sizeText() const;
     QString error() const { return m_error; }
+    // Where recordings go while no folder is chosen: WinShun in the user's Videos.
+    static QString defaultFolder();
     QString folder() const;
     QString fileName() const;
     QString dimensions() const;

@@ -143,6 +143,9 @@ class CaptureSettings : public QObject {
     Q_PROPERTY(QVariantList capturePinGroups READ capturePinGroups NOTIFY changed FINAL)
     Q_PROPERTY(bool capturePinGroupsShowAll READ capturePinGroupsShowAll NOTIFY changed FINAL)
     Q_PROPERTY(QString captureSaveFolder READ captureSaveFolder WRITE setCaptureSaveFolder NOTIFY changed FINAL)
+    // The recordings' folder (the recording panel's 保存到 as well); empty is the default one.
+    Q_PROPERTY(QString captureRecordingFolder READ captureRecordingFolder WRITE setCaptureRecordingFolder NOTIFY changed FINAL)
+    Q_PROPERTY(QString captureRecordingDefaultFolder READ captureRecordingDefaultFolder CONSTANT FINAL)
     Q_PROPERTY(QString capturePinDoubleClick READ capturePinDoubleClick WRITE setCapturePinDoubleClick NOTIFY changed FINAL)
     Q_PROPERTY(bool capturePinAutoOcr READ capturePinAutoOcr WRITE setCapturePinAutoOcr NOTIFY changed FINAL)
     Q_PROPERTY(int capturePinHistoryCount READ capturePinHistoryCount WRITE setCapturePinHistoryCount NOTIFY changed FINAL)
@@ -245,6 +248,9 @@ public:
     Q_INVOKABLE QString suggestedPinGroupName() const;
     QString captureSaveFolder() const { return m_options.saveFolder; }
     void setCaptureSaveFolder(const QString& v) { change(m_options.saveFolder, v.trimmed()); }
+    QString captureRecordingFolder() const { return m_options.recordingFolder; }
+    void setCaptureRecordingFolder(const QString& v) { change(m_options.recordingFolder, v.trimmed()); }
+    QString captureRecordingDefaultFolder() const;
     QString capturePinDoubleClick() const { return m_options.pinDoubleClick; }
     void setCapturePinDoubleClick(const QString& v);
     bool capturePinAutoOcr() const { return m_options.pinAutoOcr; }
@@ -283,7 +289,8 @@ public:
     bool recordingHotkey() const { return m_recordingHotkey; }
     void setRecordingHotkey(bool on);
 
-    Q_INVOKABLE QString pickFolder(const QString& title);
+    // start: the folder the dialog opens in (none, or one that is gone: where it was last).
+    Q_INVOKABLE QString pickFolder(const QString& title, const QString& start = {});
 
     QVariantMap captureKeys() const;
     // A key pressed in a key box (HotkeyRecorder's keyMode): taken, and

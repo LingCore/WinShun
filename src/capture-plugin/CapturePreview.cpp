@@ -303,6 +303,26 @@ int runSettings(const QStringList& args)
         && choose("captureHistoryTabs", 1, "captureHistoryCount", 10, [](const CaptureOptions& o) { return QVariant(o.historyCount); })
         && choose("capturePinClickTabs", 2, "capturePinDoubleClick", u"collapse"_s, [](const CaptureOptions& o) { return QVariant(o.pinDoubleClick); })
         && choose("capturePinClickTabs", 0, "capturePinDoubleClick", u"reset"_s, [](const CaptureOptions& o) { return QVariant(o.pinDoubleClick); });
+    // 录屏保存文件夹: the default one named until a folder is chosen; a chosen
+    // one reaches the isolated file (the recording panel reads it there) and the row.
+    if (QObject* row = window->findChild<QObject*>(u"captureRecordingFolderRow"_s)) {
+        const QString chosen = QDir::toNativeSeparators(temporary.filePath(u"录屏"_s));
+        bool folder = editor.captureRecordingFolder().isEmpty() && !capture::Recorder::defaultFolder().isEmpty()
+            && row->property("description").toString() == capture::Recorder::defaultFolder();
+        editor.setCaptureRecordingFolder(chosen);
+        settle(window);
+        folder = folder && CaptureOptions::load(temporary.filePath(u"capture.ini"_s)).recordingFolder == chosen
+            && row->property("description").toString() == chosen;
+        editor.setCaptureRecordingFolder({});
+        settle(window);
+        folder = folder && CaptureOptions::load(temporary.filePath(u"capture.ini"_s)).recordingFolder.isEmpty()
+            && row->property("description").toString() == capture::Recorder::defaultFolder();
+        say(u"captureRecordingFolderRow: %1"_s.arg(folder ? u"ok"_s : u"WRONG"_s));
+        choices = choices && folder;
+    } else {
+        say(u"captureRecordingFolderRow: not found"_s);
+        choices = false;
+    }
     // The toolbar's buttons: 重做 (the second of the first row) off, then on again.
     // In a Repeater's row: found through the items, not the objects' parents.
     const std::function<QQuickItem*(QQuickItem*, const QString&)> visual = [&](QQuickItem* item, const QString& name) -> QQuickItem* {
@@ -2727,6 +2747,45 @@ int runRecording(const QStringList& args)
     };
     saved = panel->height() <= 60 && !panel->property("optionsShown").toBool() && saved;
     say(u"compact ready: %1 x %2"_s.arg(panel->width()).arg(panel->height()));
+    {
+        // The panel is moved by its grip and by any empty place, never by a
+        // control: pressed there and dragged, does the panel's drag begin?
+        // Dragged downwards and released below the controls: a button
+        // let go of outside itself is not clicked.
+        QObject* drag = panel->findChild<QObject*>(u"recordingPanelDrag"_s);
+        const auto dragBegins = [&](const QPointF& at) {
+            bool began = false;
+            const auto send = [&](QEvent::Type type, const QPointF& where, Qt::MouseButtons held) {
+                QMouseEvent event(type, where, panel->mapToGlobal(where), type == QEvent::MouseMove ? Qt::NoButton : Qt::LeftButton,
+                    held, Qt::NoModifier);
+                QCoreApplication::sendEvent(panel, &event);
+            };
+            send(QEvent::MouseButtonPress, at, Qt::LeftButton);
+            for (int step = 1; step <= 4; ++step) {
+                send(QEvent::MouseMove, at + QPointF(0, 15 * step), Qt::LeftButton);
+                began = began || (drag && drag->property("active").toBool());
+            }
+            send(QEvent::MouseButtonRelease, at + QPointF(0, 60), Qt::NoButton);
+            pump(20);
+            return began;
+        };
+        const auto middle = [&](const char* name) {
+            auto* item = panel->findChild<QQuickItem*>(QString::fromLatin1(name));
+            return item ? item->mapToScene(QPointF(item->width() / 2, item->height() / 2)) : QPointF(-1, -1);
+        };
+        auto* options = panel->findChild<QQuickItem*>(u"recordingOptions"_s);
+        const bool byGrip = dragBegins(middle("recordingDragHandle"));
+        const bool byMargin = dragBegins(QPointF(panel->width() / 2.0, 4));
+        // The room between two buttons (the toolbar's spacing).
+        const bool byGap = options && dragBegins(options->mapToScene(QPointF(-3, options->height() / 2)));
+        const bool byButton = dragBegins(middle("recordingOptions")) || dragBegins(middle("recordingStart"))
+            || dragBegins(middle("recordingGif"));
+        const bool moved = drag && byGrip && byMargin && byGap && !byButton && !panel->property("optionsShown").toBool()
+            && recorder->stage() == Recorder::Ready;
+        say(u"panel drags by grip %1, margin %2, gap %3, not by a button %4: %5"_s
+            .arg(byGrip).arg(byMargin).arg(byGap).arg(!byButton).arg(moved));
+        saved = moved && saved;
+    }
     const auto panelInsideWorkArea = [&] {
         MONITORINFO monitor {sizeof monitor};
         RECT bounds {};

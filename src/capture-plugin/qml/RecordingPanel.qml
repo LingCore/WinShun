@@ -43,6 +43,17 @@ Window {
             } else panel.recorder.close()
         }
     }
+    // Moved by the grip and by any empty place (the margins, the words, the
+    // room between the controls). Never taken from a control: a button pressed
+    // and dragged stays a button, the error's words stay selectable.
+    DragHandler {
+        id: panelDrag
+        objectName: "recordingPanelDrag"
+        target: null
+        acceptedButtons: Qt.LeftButton
+        grabPermissions: PointerHandler.TakeOverForbidden
+        onActiveChanged: if (active) panel.startSystemMove()
+    }
     Column {
         id: body
         x: panel.padding
@@ -61,12 +72,7 @@ Window {
                 Layout.preferredWidth: 14
                 Layout.fillHeight: true
                 Glyph { anchors.centerIn: parent; glyph: "\uE76F"; size: 12; color: Theme.faint }
-                DragHandler {
-                    target: null
-                    acceptedButtons: Qt.LeftButton
-                    onActiveChanged: if (active) panel.startSystemMove()
-                }
-                HoverHandler { cursorShape: Qt.SizeAllCursor }
+                HoverHandler { cursorShape: Qt.SizeAllCursor } // the grip says the panel moves; panelDrag moves it
                 Accessible.ignored: true
             }
             ChoiceGroup {
