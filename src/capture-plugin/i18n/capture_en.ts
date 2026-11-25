@@ -304,6 +304,14 @@
         <translation>Move toolbar</translation>
     </message>
     <message>
+        <source>选择：点选画好的标注，再移动、修改或删除</source>
+        <translation>Select: click an annotation to move, change or delete it</translation>
+    </message>
+    <message>
+        <source>选择</source>
+        <translation>Select</translation>
+    </message>
+    <message>
         <source>按住拖动；聚焦后可用方向键移动，Shift 加速</source>
         <translation>Drag to move. When focused, use the arrow keys; hold Shift to move faster.</translation>
     </message>

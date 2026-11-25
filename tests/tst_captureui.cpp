@@ -3,6 +3,7 @@
 #include "IdleGraphics.h"
 
 #include <QElapsedTimer>
+#include <QPainter>
 #include <QQmlComponent>
 #include <QQmlEngine>
 #include <QQuickWindow>
@@ -200,6 +201,90 @@ private slots:
                 pointer.setShape(Qt::CrossCursor);
                 QCOMPARE(pointer.cursor().pixmap().cacheKey(), cross.pixmap().cacheKey());
             }
+        }
+    }
+
+    // GitHub #461: the pen's tip as the pointer, as wide as the stroke.
+    void brushTipIsTheStrokesSizeAndColour()
+    {
+        const QColor red(229, 57, 53);
+        for (qreal dpr : {1.0, 1.25, 1.5, 1.75, 2.0}) {
+            for (int pixels : {3, 6, 11, 36, 96}) {
+                const QCursor cursor = brushCursor(red, pixels, dpr);
+                const QImage image = cursor.pixmap().toImage();
+                QCOMPARE(cursor.pixmap().devicePixelRatio(), dpr);
+                QCOMPARE(image.width(), image.height());
+                QCOMPARE(image.width() % 2, 1);
+                const int c = image.width() / 2;
+                QCOMPARE(qRound(cursor.hotSpot().x() * dpr), c); // the hotspot is the disc's middle
+                QCOMPARE(cursor.hotSpot().x(), cursor.hotSpot().y());
+                QCOMPARE(image.pixelColor(c, c), red);
+                // Across its middle row: the tip's colour for as many pixels as it
+                // is wide (those more ink than ring: its round edge is antialiased).
+                int width = 0;
+                for (int x = 0; x < image.width(); ++x) {
+                    const QRgb pixel = image.pixel(x, c);
+                    width += qAlpha(pixel) == 255 && qRed(pixel) > 200 && qGreen(pixel) < 156;
+                }
+                QVERIFY2(std::abs(width - pixels) <= 1, qPrintable(u"%1 px at %2: %3"_s.arg(pixels).arg(dpr).arg(width)));
+                // Ringed white just past its edge (lighter than the ink, nothing
+                // showing through); the corners are see-through.
+                const QRgb ring = image.pixel(c + (pixels + 1) / 2, c);
+                QVERIFY(qAlpha(ring) >= 240);
+                QVERIFY(qGreen(ring) > red.green());
+                QCOMPARE(qAlpha(image.pixel(0, 0)), 0);
+                // A small tip has ticks to be found by, a large one none: one
+                // pixel into where the right one starts, two rings and a gap out.
+                const int edge = std::max(1, qRound(dpr));
+                const int tickAt = c + int(std::ceil(pixels / 2.0 + 2 * edge)) + 2 * edge + 1;
+                const bool ticks = tickAt < image.width() && image.pixel(tickAt, c) == qRgb(255, 255, 255);
+                QCOMPARE(ticks, pixels < 12 * dpr);
+            }
+        }
+        // See-through ink stays see-through over the picture (the marker's).
+        const QColor ink(255, 235, 59, 128);
+        const QImage marker = brushCursor(ink, 24, 1.0).pixmap().toImage();
+        QCOMPARE(qAlpha(marker.pixel(marker.width() / 2, marker.height() / 2)), 128);
+
+        CapturePointer pointer;
+        pointer.setDpr(1.5);
+        const qint64 cross = pointer.cursor().pixmap().cacheKey();
+        pointer.setBrushColor(red);
+        pointer.setBrushSize(11);
+        const QCursor tip = pointer.cursor();
+        QVERIFY(tip.pixmap().cacheKey() != cross);
+        QCOMPARE(tip.pixmap().toImage().pixelColor(tip.pixmap().width() / 2, tip.pixmap().height() / 2), red);
+        pointer.setShape(Qt::IBeamCursor); // only the cross gives way to it
+        QVERIFY(pointer.cursor().pixmap().cacheKey() != tip.pixmap().cacheKey());
+        pointer.setShape(Qt::SizeAllCursor);
+        QCOMPARE(pointer.cursor().shape(), Qt::SizeAllCursor);
+        pointer.setShape(Qt::CrossCursor);
+        QCOMPARE(pointer.cursor().pixmap().cacheKey(), tip.pixmap().cacheKey()); // drawn once
+        pointer.setBrushSize(0);
+        QCOMPARE(pointer.cursor().pixmap().cacheKey(), cross);
+
+        // To look at them: WINSHUN_CURSOR_SHEET=<file.png> saves the cross and
+        // the tips (pen, marker, redaction) over light, mid and dark ground.
+        if (const QString sheet = qEnvironmentVariable("WINSHUN_CURSOR_SHEET"); !sheet.isEmpty()) {
+            const qreal dpr = 1.5;
+            QList<QImage> pictures {pointer.cursor().pixmap().toImage()};
+            for (int logical : {2, 4, 7, 12, 24}) // the pen's widths, logical px
+                pictures.append(brushCursor(red, qRound(logical * dpr), dpr).pixmap().toImage());
+            pictures.append(brushCursor(ink, qRound(24 * dpr), dpr).pixmap().toImage());
+            pictures.append(brushCursor(QColor(128, 128, 128, 128), qRound(36 * dpr), dpr).pixmap().toImage());
+            const int cell = 96;
+            QImage out(cell * int(pictures.size()), cell * 3, QImage::Format_RGB32);
+            QPainter painter(&out);
+            const QList<QColor> grounds {QColor(250, 250, 250), QColor(120, 144, 156), QColor(24, 26, 30)};
+            for (int row = 0; row < 3; ++row) {
+                painter.fillRect(0, row * cell, out.width(), cell, grounds[row]);
+                for (int i = 0; i < pictures.size(); ++i) {
+                    const QImage& picture = pictures[i];
+                    painter.drawImage(i * cell + (cell - picture.width()) / 2, row * cell + (cell - picture.height()) / 2, picture);
+                }
+            }
+            painter.end();
+            QVERIFY(out.save(sheet));
         }
     }
 

@@ -77,10 +77,13 @@ void CaptureScreen::setState(const QRect& hover, const QRect& selection, bool di
     emit changed();
 }
 
-void CaptureScreen::setCursor(bool here, QPoint at, int shape)
+void CaptureScreen::setCursor(bool here, QPoint at, int shape, qreal brushSize, QRgb brushColor)
 {
-    if (here == m_cursorHere && at == m_cursor && shape == m_cursorShape)
+    if (here == m_cursorHere && at == m_cursor && shape == m_cursorShape && brushSize == m_brushSize
+        && brushColor == m_brushColor)
         return;
+    m_brushSize = brushSize;
+    m_brushColor = brushColor;
     const bool moved = here != m_cursorHere || at != m_cursor;
     m_cursorHere = here;
     m_cursor = at;
@@ -193,8 +196,10 @@ CaptureSession::CaptureSession(QObject* parent)
     // The toolbar sets the tool on the model itself, not through publish():
     // a tool chosen counts as input (KeyHintPolicy rule 3).
     connect(&m_annot, &AnnotationModel::toolChanged, this, &CaptureSession::hintInput);
+    // panelChanged: the tool's width or colour, which its tip at the pointer shows (GitHub #461).
     for (const auto change : {&AnnotationModel::toolChanged, &AnnotationModel::gestureChanged,
-             &AnnotationModel::editingChanged, &AnnotationModel::selectionChanged, &AnnotationModel::pickingChanged})
+             &AnnotationModel::editingChanged, &AnnotationModel::selectionChanged, &AnnotationModel::pickingChanged,
+             &AnnotationModel::panelChanged})
         connect(&m_annot, change, this, &CaptureSession::refreshCursor);
     for (const auto change : {&AnnotationModel::gestureChanged, &AnnotationModel::editingChanged,
              &AnnotationModel::numberEditChanged, &AnnotationModel::pickingChanged})
@@ -786,8 +791,10 @@ void CaptureSession::updateHover(int screen, QPoint p)
 // selected annotation's handles first, then the selection's own, then what
 // the annotations say (the tool's cross, a movable object), else the
 // selection's (Move inside it).
-int CaptureSession::cursorShapeAt(int screen, QPoint p) const
+int CaptureSession::cursorShapeAt(int screen, QPoint p, bool* tool) const
 {
+    if (tool)
+        *tool = true;
     // In the selection's pixels (the desktop picture's when it is over several monitors).
     const QPoint at = toSpace(screen, p, m_selection.screen);
     const bool annotated = m_annot.active() && m_annotScreen == m_selection.screen;
@@ -798,6 +805,8 @@ int CaptureSession::cursorShapeAt(int screen, QPoint p) const
         if (const int shape = m_annot.cursorAt(at); shape >= 0)
             return shape;
     }
+    if (tool)
+        *tool = false;
     return cursorFor(handle);
 }
 
@@ -822,11 +831,18 @@ void CaptureSession::updateCursor(int screen, QPoint p)
     for (CaptureScreen* s : m_screens) {
         const bool here = s->index() == screen;
         int shape = Qt::CrossCursor;
-        if (here && (m_phase == Phase::Selected || m_phase == Phase::Annotating) && inSpace(screen, m_selection.screen))
-            shape = cursorShapeAt(screen, m_cursorAt);
-        else if (here && m_phase == Phase::Adjusting)
+        // The pen's, the marker's or the brush redaction's tip where a press would draw
+        // with it: as wide on the screen as its stroke (image pixels are the screen's here).
+        AnnotationModel::BrushTip tip;
+        if (here && (m_phase == Phase::Selected || m_phase == Phase::Annotating) && inSpace(screen, m_selection.screen)) {
+            bool tool = false;
+            shape = cursorShapeAt(screen, m_cursorAt, &tool);
+            if (tool && shape == Qt::CrossCursor)
+                tip = m_annot.brushTipAt(toSpace(screen, m_cursorAt, m_selection.screen));
+        } else if (here && m_phase == Phase::Adjusting)
             shape = cursorFor(m_handle);
-        s->setCursor(here, here ? m_cursorAt : QPoint(-1, -1), shape);
+        s->setCursor(here, here ? m_cursorAt : QPoint(-1, -1), shape,
+            tip.width > 0 ? annot::toImagePx(tip.width, m_annot.dpr()) : 0, tip.color);
     }
     // The redaction tool marks the line of text under the pointer (GitHub #129).
     m_annot.pointerAt(m_annot.active() && inSpace(screen, m_annotScreen) ? toSpace(screen, m_cursorAt, m_annotScreen)

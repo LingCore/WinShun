@@ -40,6 +40,56 @@ QCursor alphaCursor(QSize size, const QList<QRect>& white, int edge, qreal dpr, 
 
 } // namespace
 
+QCursor brushCursor(QColor color, qreal pixels, qreal dpr, int baseSize)
+{
+    dpr = std::isfinite(dpr) && dpr > 0 ? dpr : 1;
+    const qreal scale = std::clamp(baseSize, 32, 256) / 32.0;
+    const int edge = std::max(1, qRound(dpr * std::sqrt(scale)));
+    // Wider than this Windows would not show whole; narrower is not seen.
+    const qreal radius = std::clamp(pixels, 1.0, 256.0) / 2;
+    const qreal white = radius + edge;
+    const qreal dark = white + edge;
+    // A tip under 12 logical px is hard to find on a busy picture: ticks.
+    const bool ticks = 2 * radius < 12 * dpr * scale;
+    const int gap = 2 * edge;
+    const int tick = qRound(5 * dpr * scale);
+    const int reach = int(std::ceil(dark)) + (ticks ? gap + tick + edge : 0) + 1;
+    // The hotspot is given in whole logical pixels, which Qt multiplies by
+    // the dpr: the middle is put where that lands.
+    const int hot = int(std::ceil(reach / dpr));
+    const int c = qRound(hot * dpr);
+    const int n = 2 * c + 1;
+    QImage image(n, n, QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::transparent);
+    {
+        QPainter painter(&image);
+        if (ticks) {
+            const int off = int(std::ceil(dark)) + gap; // from the middle to where a tick starts
+            const int top = c - (edge - 1) / 2;
+            const QList<QRect> bars {QRect(c + off, top, tick, edge), QRect(c - off - tick + 1, top, tick, edge),
+                QRect(top, c + off, edge, tick), QRect(top, c - off - tick + 1, edge, tick)};
+            for (const QRect& bar : bars)
+                painter.fillRect(bar.adjusted(-edge, -edge, edge, edge), Qt::black);
+            for (const QRect& bar : bars)
+                painter.fillRect(bar, Qt::white);
+        }
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        painter.setPen(Qt::NoPen);
+        const QPointF centre(c + 0.5, c + 0.5); // a pixel's middle, as a dot's centre is
+        painter.setBrush(QColor(0, 0, 0, 120));
+        painter.drawEllipse(centre, dark, dark);
+        painter.setBrush(Qt::white);
+        painter.drawEllipse(centre, white, white);
+        // Its own colour, see-through where the ink is (the marker's).
+        painter.setCompositionMode(QPainter::CompositionMode_Source);
+        painter.setBrush(color);
+        painter.drawEllipse(centre, radius, radius);
+    }
+    QPixmap pixmap = QPixmap::fromImage(image);
+    pixmap.setDevicePixelRatio(dpr);
+    return QCursor(pixmap, hot, hot);
+}
+
 CapturePointer::CapturePointer(QQuickItem* parent)
     : QQuickItem(parent)
     , m_baseSize(systemBaseSize())
@@ -75,10 +125,38 @@ void CapturePointer::setBaseSize(int size)
     emit baseSizeChanged();
 }
 
+void CapturePointer::setBrushSize(qreal pixels)
+{
+    pixels = std::isfinite(pixels) && pixels > 0 ? pixels : 0;
+    if (qFuzzyCompare(m_brushSize + 1, pixels + 1))
+        return;
+    m_brushSize = pixels;
+    refreshCursor();
+    emit brushChanged();
+}
+
+void CapturePointer::setBrushColor(const QColor& color)
+{
+    if (m_brushColor == color)
+        return;
+    m_brushColor = color;
+    refreshCursor();
+    emit brushChanged();
+}
+
 void CapturePointer::refreshCursor()
 {
     if (m_shape != Qt::CrossCursor && m_shape != Qt::IBeamCursor) {
         setCursor(QCursor(static_cast<Qt::CursorShape>(m_shape)));
+        return;
+    }
+    if (m_shape == Qt::CrossCursor && m_brushSize > 0 && m_brushColor.isValid()) {
+        const Tip tip {m_brushSize, m_brushColor.rgba(), m_dpr, m_baseSize};
+        if (tip != m_drawnTip) {
+            m_tip = brushCursor(m_brushColor, m_brushSize, m_dpr, m_baseSize);
+            m_drawnTip = tip;
+        }
+        setCursor(m_tip);
         return;
     }
     if (!qFuzzyCompare(m_drawnDpr, m_dpr) || m_drawnSize != m_baseSize) {
