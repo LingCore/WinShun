@@ -16,7 +16,7 @@ Win顺 采用多进程、最小权限设计：日常界面保持普通用户权�
 | `bin/ws.exe` | 普通用户 / 无 Qt | 命令行客户端，通过本地命名管道调用主程序搜索、剪贴板、插件与设置。 |
 | `WinShunSearch.exe` | 普通用户 / 无 Qt | 可固定到任务栏的轻量搜索入口存根，通知主程序显隐。 |
 | `WinShunUpdate.exe` | 普通用户 / 无 Qt | 后台增量更新器：流式下载、校验与差分重建，避免拖慢主界面。 |
-| `WinShun*.exe`（插件） | 普通用户（部分共享 Qt） | 15 个插件库可选 C++ 插件与内置工具插件，按清单声明权限独立运行，不注入主进程。 |
+| `WinShun*.exe`（插件） | 普通用户（部分共享 Qt） | 16 个插件库可选插件与内置工具插件，按清单声明权限独立运行，不注入主进程。 |
 
 ## 2. 仓库目录地图
 
@@ -29,7 +29,7 @@ Win顺 采用多进程、最小权限设计：日常界面保持普通用户权�
 | `src/plugin/` | 插件宿主（`Host`）、清单权限校验、`WinShunPluginHost.exe` 与插件市场客户端。 |
 | `src/plugins-sdk/` | 官方插件开发 SDK 与示例（见 [DEVELOPMENT.md](../src/plugins-sdk/DEVELOPMENT.md)）。 |
 | `src/capture/` | 截图、标注、智能打码、长截图、录屏与演示共享库（供 `capture-plugin` 使用）。 |
-| `src/*-plugin/` | 官方 C++ 插件源码（16 个目录，连同 `plugins/` 下脚本/内置清单共 19 个官方插件：4 个随包 + 15 个插件库）。 |
+| `src/*-plugin/` | 官方 C++ 插件源码（17 个目录，连同 `plugins/` 下脚本/内置清单共 20 个官方插件：4 个随包 + 16 个插件库）。 |
 | `src/mcp/`、`src/cli/` | 内置 MCP 服务、`WinShunMcp.exe` 中继与 `bin/ws.exe` 命令行工具。 |
 | `src/stub/`、`src/updater/` | `WinShunSearch.exe` 任务栏存根与 `WinShunUpdate.exe` 增量更新器。 |
 | `integrations/`、`plugins/` | 外部程序集成扩展（如 Blender 文件对话框扩展）与内置脚本插件清单。 |
@@ -53,7 +53,7 @@ Win顺 采用多进程、最小权限设计：日常界面保持普通用户权�
 | 索引与搜索 | [indexing-and-search.md](architecture/indexing-and-search.md) | 内存索引、压缩快照、NTFS MFT/USN 与权限分离、SMB/WebDAV/WSL、搜索语法与排序、内容索引与详情窗格 |
 | 界面与系统集成 | [ui-and-windows.md](architecture/ui-and-windows.md) | 渲染器/字体/4 套主题/中英文、主搜索框与面板/大图/预览、首次引导、收藏/命令/网页搜索、文件对话框集成、资源管理器/拖放圆盘/任务栏搜索 |
 | 剪贴板与全局输入 | [clipboard-and-input.md](architecture/clipboard-and-input.md) | Raw Input 双击检测、服务 UIAccess 监听与 `TapTeller`、`GameGuard`、`win::bringToFront`、剪贴板 SQLite/图片/公式/OCR、`KeyRouter`、`ClipboardDisplay`、管理员代按粘贴与 `HoldToStep` |
-| 插件、MCP 与 CLI | [plugins-and-ai.md](architecture/plugins-and-ai.md) | 宿主/插件边界、沙箱与共享 Qt 运行时、19 个官方插件总表、`AiBridge` 与 MCP 服务、`ws.exe` 命令行与 Skills |
+| 插件、MCP 与 CLI | [plugins-and-ai.md](architecture/plugins-and-ai.md) | 宿主/插件边界、沙箱与共享 Qt 运行时、20 个官方插件总表、`AiBridge` 与 MCP 服务、`ws.exe` 命令行与 Skills |
 | 截图、录屏与演示 | [capture-and-recording.md](architecture/capture-and-recording.md) | `winshun.capture` 进程结构、多屏/HDR 捕获与遮罩、标注/智能打码/贴图/编辑器、长截图、Media Foundation/WASAPI 录屏、演示与激光笔 |
 | 诊断、配置、更新与验证 | [diagnostics-and-updates.md](architecture/diagnostics-and-updates.md) | 配置/便携目录与 `WinShun.ini`、JSONL 诊断与卡顿/崩溃采样、增量更新与推送链路、离屏预览/探针/压测入口与参考基线 |
 

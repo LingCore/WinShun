@@ -4,3 +4,4 @@
 *.ico binary
 *.mp3 binary
 /tests/data/signed-index/* -text
+/tests/fixtures/archives/* -text
