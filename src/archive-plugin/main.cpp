@@ -478,7 +478,8 @@ private:
     {
         const std::string own = fileName(hit.member);
         const std::string inner = folderOf(hit.member);
-        std::string subtitle = hit.archive + " › " + (inner.empty() ? std::string("\\") : inner);
+        // At the archive's top: its path alone (a bare "\" after it read as cut short).
+        std::string subtitle = inner.empty() ? hit.archive : hit.archive + " › " + inner;
         if (hit.locked)
             subtitle += zh(" · 有密码", " · password");
         Item item("m" + hex(hashOf(hit.archive + "\n" + hit.member)), own, std::move(subtitle));

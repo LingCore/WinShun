@@ -197,6 +197,8 @@ def main():
         check(len(found) >= 6 and all(r['title'] == '报价单.xlsx' for r in found), '报价单: the member in every kind of archive (%d rows)' % len(found))
         one = next((r for r in found if r['subtitle'].startswith(os.path.join(folder, 'names-gbk.zip'))), None)
         check(one is not None and one['subtitle'].endswith(' › 合同\\附件'), 'a row says the archive and the folder inside it: ' + (one or {}).get('subtitle', ''))
+        check(not any(r['subtitle'].endswith(' › \\') or r['subtitle'].endswith(' › ') for r in found),
+              'a member at the archive\'s top says the archive alone')
         check(one is not None and one.get('details') is True and 'open' not in one and one.get('icon') == 'ext:xlsx' and one.get('size') == 10,
               'a row is the member: its type, its size, shown by details')
         check(one is not None and one.get('copy') == os.path.join(folder, 'names-gbk.zip') + '\\合同\\附件\\报价单.xlsx', 'Ctrl+C copies where it is')
