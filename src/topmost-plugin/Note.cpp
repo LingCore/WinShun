@@ -1,5 +1,7 @@
 #include "Note.h"
 
+#include "Draw.h"
+
 #include <d2d1.h>
 #include <dwmapi.h>
 #include <dwrite.h>
@@ -47,21 +49,6 @@ constexpr float kPadding = 14;
 constexpr float kFont = 13;
 constexpr float kFromTop = 12;
 constexpr float kWidest = 520;
-
-template <class T>
-void release(T*& p)
-{
-    if (p) {
-        p->Release();
-        p = nullptr;
-    }
-}
-
-D2D1_COLOR_F colour(std::uint32_t argb)
-{
-    return D2D1::ColorF(static_cast<float>((argb >> 16) & 0xFF) / 255.f, static_cast<float>((argb >> 8) & 0xFF) / 255.f,
-        static_cast<float>(argb & 0xFF) / 255.f, static_cast<float>(argb >> 24) / 255.f);
-}
 
 struct Request {
     HWND window = nullptr;

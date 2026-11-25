@@ -16,7 +16,8 @@ namespace topmost {
 struct Look {
     bool rounded = true;
     bool dark = false;
-    std::uint32_t accentFill = 0; // 0xAARRGGBB, under white words
+    std::uint32_t accent = 0; // 0xAARRGGBB, for lines
+    std::uint32_t accentFill = 0; // under white words
     std::uint32_t dangerFill = 0;
     std::uint32_t background = 0;
     std::uint32_t edge = 0;

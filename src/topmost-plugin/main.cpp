@@ -4,10 +4,11 @@
 // running for its shortcut: the window in front goes on top of the others,
 // or comes off it again. The keyword 置顶 / top lists the windows to do the
 // same from the search box. Pins.cpp is the windows, Note.cpp the word said
-// on the window.
+// on the window, Border.cpp the line round a window it keeps on top.
 
 #include "winshun.h"
 
+#include "Border.h"
 #include "Note.h"
 #include "Pins.h"
 
@@ -44,17 +45,19 @@ protected:
     void initialized() override
     {
         m_note = std::make_unique<topmost::Note>();
-        m_note->setLook(look());
+        m_borders = std::make_unique<topmost::Borders>();
+        applyLook();
+        applyBorder();
         applyHotkey();
     }
 
-    void settingsChanged(const Json&) override { applyHotkey(); }
-
-    void appearanceChanged() override
+    void settingsChanged(const Json&) override
     {
-        if (m_note)
-            m_note->setLook(look());
+        applyBorder();
+        applyHotkey();
     }
+
+    void appearanceChanged() override { applyLook(); }
 
     // The windows this plugin put on top come off it as it stops (turned off,
     // removed, Win顺 quitting): nothing is left on top with no way to undo it.
@@ -63,6 +66,7 @@ protected:
         for (const HWND hwnd : m_mine)
             topmost::setPinned(hwnd, false);
         m_mine.clear();
+        m_borders.reset();
         m_note.reset();
     }
 
@@ -124,6 +128,8 @@ protected:
                     topmost::setPinned(w.hwnd, false);
             }
             m_mine.clear();
+            if (m_borders)
+                m_borders->clear();
             say(nullptr, topmost::Tone::Off, chinese() ? L"已全部取消置顶" : L"No window is on top now");
         } else if (id == "window") {
             const Json& data = a.item["data"];
@@ -160,12 +166,40 @@ private:
             l.rounded = native["rounded"].toBool();
         if (native["dark"].isBool() && native["dark"].toBool() != l.dark)
             return l; // written for the other theme, a moment before it changes
+        l.accent = topmost::argbOf(native["accent"].toString());
         l.accentFill = topmost::argbOf(native["accentFill"].toString());
         l.dangerFill = topmost::argbOf(native["dangerFill"].toString());
         l.background = topmost::argbOf(native["background"].toString());
         l.edge = topmost::argbOf(native["windowEdge"].toString());
         l.text = topmost::argbOf(native["text"].toString());
         return l;
+    }
+
+    void applyLook()
+    {
+        const topmost::Look l = look();
+        if (m_note)
+            m_note->setLook(l);
+        // The accent that reads on the theme's own windows: a line, not a fill.
+        if (m_borders)
+            m_borders->setColour(l.accent ? (l.accent | 0xFF000000u) : l.dark ? 0xFF4CC2FF : 0xFF0F6CBD);
+    }
+
+    // The line round the windows this plugin keeps on top, by its setting
+    // (on unless turned off).
+    void applyBorder()
+    {
+        const Json& setting = settings()["border"];
+        const bool on = !setting.isBool() || setting.toBool();
+        if (on == m_border || !m_borders)
+            return;
+        m_border = on;
+        if (!on) {
+            m_borders->clear();
+            return;
+        }
+        for (const HWND hwnd : m_mine)
+            m_borders->add(hwnd); // one no longer on top gets none
     }
 
     void say(HWND window, topmost::Tone tone, std::wstring text)
@@ -182,9 +216,15 @@ private:
         const std::wstring title = shortened(topmost::describe(hwnd).title);
         switch (topmost::setPinned(hwnd, on)) {
         case topmost::Result::Done:
-            std::erase(m_mine, hwnd);
+            // Without this one, and without those that closed or were taken
+            // off by another program meanwhile.
+            std::erase_if(m_mine, [hwnd](HWND mine) { return mine == hwnd || !::IsWindow(mine) || !topmost::pinned(mine); });
             if (on)
                 m_mine.push_back(hwnd);
+            if (m_borders && on && m_border)
+                m_borders->add(hwnd);
+            else if (m_borders)
+                m_borders->remove(hwnd);
             say(hwnd, on ? topmost::Tone::On : topmost::Tone::Off, on ? (zh ? L"已置顶" : L"On top") : (zh ? L"已取消置顶" : L"No longer on top"));
             return true;
         case topmost::Result::Gone:
@@ -226,6 +266,8 @@ private:
     }
 
     std::unique_ptr<topmost::Note> m_note;
+    std::unique_ptr<topmost::Borders> m_borders;
+    bool m_border = false; // lines are drawn; set from the setting
     std::vector<HWND> m_mine; // put on top by this plugin, still on top as far as it knows
     std::string m_hotkey = "\x01"; // none asked for yet
 };

@@ -3,9 +3,12 @@
 # single-header SDK (src/plugins-sdk/winshun.h): a shortcut keeps the window
 # in front above the others. No Qt, the C runtime linked in. Which windows
 # count and the switch itself (Pins) are plain C++ that tests/tst_topmost.cpp
-# builds in again; Note draws the word said on the window.
+# builds in again, as it does the line round a window on top (Border); Note
+# draws the word said on the window.
 add_executable(WinShunTopmost
     main.cpp
+    Border.cpp Border.h
+    Draw.h
     Note.cpp Note.h
     Pins.cpp Pins.h
     ${PROJECT_SOURCE_DIR}/resources/WinShunTopmost.rc
