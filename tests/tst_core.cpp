@@ -17842,6 +17842,28 @@ private slots:
         QCOMPARE(doubleCtrlIgnoreReason(captured, defaults), IgnoreReason::None);
     }
 
+    // GitHub #452: a game left exclusive full screen as the clipboard showed
+    // over it and minimized itself; the panel stays instead of going as a menu.
+    void panelOverLeftFullScreen()
+    {
+        const PanelFrontMove left {.overFullScreen = true, .targetMinimized = true, .keyPressed = false, .shownMs = 430};
+        QVERIFY(leftFullScreenForPanel(left)); // as in the report's package
+        static_assert(leftFullScreenForPanel({.overFullScreen = true, .targetMinimized = true, .shownMs = kFullScreenExitMs}));
+
+        PanelFrontMove ordinary = left; // over an ordinary window: minimized by its user, or by itself
+        ordinary.overFullScreen = false;
+        QVERIFY(!leftFullScreenForPanel(ordinary));
+        PanelFrontMove stillThere = left; // another program came over the game, which stays
+        stillThere.targetMinimized = false;
+        QVERIFY(!leftFullScreenForPanel(stillThere));
+        PanelFrontMove switched = left; // Alt+Tab, Win+D: its user went elsewhere
+        switched.keyPressed = true;
+        QVERIFY(!leftFullScreenForPanel(switched));
+        PanelFrontMove later = left; // long after it opened: not its doing
+        later.shownMs = kFullScreenExitMs + 1;
+        QVERIFY(!leftFullScreenForPanel(later));
+    }
+
     void hiddenForTypingRule()
     {
         // A key (not a modifier) went down to this window shortly before the hide.

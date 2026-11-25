@@ -6707,6 +6707,28 @@ void App::routedForeground(HWND window)
             ::SetForegroundWindow(m_keyRouterTarget);
         return;
     }
+    // The game it opened over left full screen for it and minimized itself:
+    // the front moved by the panel's own doing. It stays, with the focus (no
+    // program left to route the keys from), and pastes into the game, which
+    // comes back for it (paste::activate). GitHub #452.
+    const PanelFrontMove move {.overFullScreen = m_clipOver.fullScreen || m_clipOver.exclusive,
+        .targetMinimized = m_keyRouterTarget && ::IsIconic(m_keyRouterTarget),
+        .keyPressed = m_keyRouter->keyPresses() > 0,
+        .shownMs = ::GetTickCount64() - m_clipOver.at};
+    if (leftFullScreenForPanel(move)) {
+        stopKeyRouting();
+        const bool front = toFront(m_clipWindow) != win::Front::Refused;
+        diagnostics::record(u"clipboard-kept"_s,
+            {{u"shown_ms"_s, static_cast<qint64>(move.shownMs)}, {u"over_exclusive"_s, m_clipOver.exclusive},
+                {u"front"_s, front}});
+        if (front) {
+            m_clipWindow->requestActivate();
+            m_clipboard->setTargetLeft(true); // Esc brings the game back
+            return;
+        }
+        // Refused the front: neither routed nor active, it would stay up
+        // with no way to its keys.
+    }
     hideClipboard(true, "routed-front-moved"); // another program in front: as a menu
 }
 
@@ -7275,6 +7297,7 @@ void App::hideClipboard(bool launcherToo, const char* why)
     // Why it went and over what it had opened (GitHub #452: "it shows, then
     // hides by itself"). No titles, no programs.
     const HWND target = m_clipboard->target();
+    const bool targetMinimized = target && ::IsIconic(target);
     diagnostics::record(u"clipboard-hidden"_s,
         {{u"why"_s, QString::fromLatin1(why)},
             {u"shown_ms"_s, static_cast<qint64>(::GetTickCount64() - m_clipOver.at)},
@@ -7282,15 +7305,19 @@ void App::hideClipboard(bool launcherToo, const char* why)
             {u"active"_s, m_clipWindow->isActive()},
             {u"over_full_screen"_s, m_clipOver.fullScreen},
             {u"over_exclusive"_s, m_clipOver.exclusive},
-            {u"target_minimized"_s, target && ::IsIconic(target)},
+            {u"target_minimized"_s, targetMinimized},
             {u"target_gone"_s, target && !::IsWindow(target)}});
     if (m_clipDisplay) m_clipDisplay->hide();
     m_clipDisplayWanted = false;
     // Out as the launcher goes (弹出动画): a picture of it fades where it was
     // (GitHub #377); the window itself goes at once, so the focus, the keys
     // and a paste go on as ever. Not when it was never seen, nor behind the
-    // display (cloaked: fadeOutCopy shows nothing).
-    if (m_clipRevealedAt && m_settings.openAnimation && Placement::animationsOn()) {
+    // display (cloaked: fadeOutCopy shows nothing). Nor over a full-screen
+    // window that minimized itself for it: that one comes back next (a paste,
+    // Esc), and the picture would be over it as it takes full screen again
+    // (GitHub #452).
+    const bool overLeftFullScreen = targetMinimized && (m_clipOver.fullScreen || m_clipOver.exclusive);
+    if (m_clipRevealedAt && m_settings.openAnimation && Placement::animationsOn() && !overLeftFullScreen) {
         const quint64 fadeSeq = ++m_clipFadeSeq;
         QPointer<App> self(this);
         if (win::fadeOutCopy(m_clipWindow, 120ms, [self, fadeSeq] {

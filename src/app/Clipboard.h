@@ -278,7 +278,15 @@ public:
     void setWindow(QWindow* window) { m_window = window; }
     // The window to paste into: the one in front before the clipboard opened
     // (pinned: before it took the keys; else the one in front as it pastes).
-    void setTarget(HWND window) { m_target = window; }
+    void setTarget(HWND window)
+    {
+        m_target = window;
+        m_targetLeft = false;
+    }
+    // That window minimized itself as the clipboard showed over it (a game
+    // leaving exclusive full screen, GitHub #452): Esc brings it back, as
+    // closing a menu over it would have left it in front.
+    void setTargetLeft(bool left) { m_targetLeft = left; }
     HWND target() const { return m_target; }
     // The field of Win顺's own that had the keyboard as the window opened, if
     // any (see the class comment). Taken before the window takes the focus:
@@ -615,6 +623,7 @@ private:
 
     // A paste in progress (see the class comment).
     HWND m_target = nullptr;
+    bool m_targetLeft = false; // minimized itself as the clipboard showed (setTargetLeft)
     Field m_field; // the window's, while it shows
     bool m_pasting = false;
     ClipWrite m_write;

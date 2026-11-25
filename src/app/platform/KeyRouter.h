@@ -125,6 +125,9 @@ public:
     // Approximate session totals, readable from the GUI thread. No keys,
     // text, window titles or identifiers; never writes logs from a hook.
     QJsonObject diagnosticStatus() const;
+    // Keys other than modifiers pressed since it started, taken or not (a
+    // held key's repeats too). Any thread.
+    quint64 keyPresses() const noexcept { return m_counts[Presses].load(std::memory_order_relaxed); }
     // Puts the hooks in again, without activating the window: a click in
     // the search field asks for it. Hooks Windows took out after a late
     // answer come back on their own (hooks_recovered counts them), within

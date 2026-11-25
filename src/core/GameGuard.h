@@ -98,4 +98,28 @@ inline IgnoreReason doubleCtrlIgnoreReason(const ForegroundFacts& facts, const G
     return IgnoreReason::None;
 }
 
+// The clipboard opens over the program in front without taking its focus,
+// and goes as a menu when another program comes to the front. A game in
+// exclusive full screen cannot have a window over it: Windows takes it out of
+// full screen as the panel shows, the game minimizes itself, and whatever was
+// behind it comes to the front. That is the panel's own doing, not its user
+// going elsewhere: it stays, with the focus (GitHub #452).
+//
+// Told from a switch of programs (Alt+Tab, Win+D out of a full-screen game
+// minimize it too) by the keys: none pressed since it opened. And soon: the
+// change of display mode on the way out takes a second or two at most.
+struct PanelFrontMove {
+    bool overFullScreen = false; // it opened over a window covering its monitor, or in Direct3D's full screen
+    bool targetMinimized = false; // that window, as the front moved
+    bool keyPressed = false; // a key other than a modifier since it opened
+    std::uint64_t shownMs = 0; // since it opened
+};
+
+inline constexpr std::uint64_t kFullScreenExitMs = 3000;
+
+constexpr bool leftFullScreenForPanel(const PanelFrontMove& move) noexcept
+{
+    return move.overFullScreen && move.targetMinimized && !move.keyPressed && move.shownMs <= kFullScreenExitMs;
+}
+
 } // namespace ws
