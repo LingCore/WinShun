@@ -2415,6 +2415,7 @@ void Launcher::startOver()
         m_sizeMax.clear();
         m_folderFilter.clear();
         m_quickFiltersOn.clear();
+        clearNameFilter();
         emit filtersChanged();
     }
     if (m_scope != All) {
@@ -4012,7 +4013,7 @@ void Launcher::setClosing(bool on)
 
 bool Launcher::filtersActive() const
 {
-    return m_dateChoice != 0 || m_sizeChoice != 0 || !m_folderFilter.isEmpty() || !m_quickFiltersOn.isEmpty();
+    return m_dateChoice != 0 || m_sizeChoice != 0 || !m_folderFilter.isEmpty() || !m_quickFiltersOn.isEmpty() || !m_nameCondition.isEmpty();
 }
 
 QVariantList Launcher::quickFilters() const
@@ -4031,6 +4032,8 @@ QStringList Launcher::quickConditions() const
         if ((m_panel && m_quickFiltersOn.contains(m_quickFilters[i].name)) || typed.contains(int(i)))
             conditions.append(m_quickFilters[i].query);
     }
+    if (m_panel && !m_nameCondition.isEmpty()) // 名称: one more condition, the panel's
+        conditions.append(m_nameCondition);
     return conditions;
 }
 
@@ -4358,6 +4361,27 @@ void Launcher::setSizeRange(const QString& minMb, const QString& maxMb)
         search();
 }
 
+void Launcher::setNameFilter(const QString& starts, const QString& ends, const QString& lacks)
+{
+    if (starts == m_nameStarts && ends == m_nameEnds && lacks == m_nameLacks)
+        return;
+    m_nameStarts = starts;
+    m_nameEnds = ends;
+    m_nameLacks = lacks;
+    m_nameCondition = nameCondition(starts, ends, lacks);
+    emit filtersChanged();
+    if (m_panel)
+        search();
+}
+
+void Launcher::clearNameFilter()
+{
+    m_nameStarts.clear();
+    m_nameEnds.clear();
+    m_nameLacks.clear();
+    m_nameCondition.clear();
+}
+
 void Launcher::setFolderFilter(const QString& path)
 {
     QString folder = QDir::toNativeSeparators(path.trimmed());
@@ -4397,6 +4421,7 @@ void Launcher::clearFilters()
     m_sizeMax.clear();
     m_folderFilter.clear();
     m_quickFiltersOn.clear();
+    clearNameFilter();
     emit filtersChanged();
     if (m_panel)
         search();

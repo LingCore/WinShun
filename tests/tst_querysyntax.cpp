@@ -231,6 +231,51 @@ private slots:
         QCOMPARE(result.type.value_or(-1), type);
     }
 
+    // 名称 in the panel's filters (GitHub #457): the three boxes as a condition.
+    void nameConditionFromItsBoxes()
+    {
+        QCOMPARE(nameCondition({}, u"  "_s, u"\"\""_s), QString());
+        const auto finds = [](const QString& condition, const char* name) {
+            const ParsedQuery q = parseQuery(condition);
+            if (!q.error.isEmpty() || q.terms.empty())
+                return false;
+            const QString text = QString::fromUtf8(name);
+            return std::ranges::all_of(q.terms, [&](const QueryTerm& term) {
+                return term.regex && term.expression.match(text).hasMatch() != term.negated;
+            });
+        };
+        const QString starts = nameCondition(u"IMG_2026"_s, {}, {});
+        QVERIFY(finds(starts, "img_20260101.jpg")); // any case
+        QVERIFY(!finds(starts, "my IMG_2026.jpg"));
+        // Spaces and what a regular expression would read otherwise are the name's own.
+        const QString spaced = nameCondition(u" 年度 报告 (终"_s, {}, {});
+        QVERIFY(finds(spaced, "年度 报告 (终稿).docx"));
+        QVERIFY(!finds(spaced, "年度报告 (终稿).docx"));
+        // The end: before the extension, or with it.
+        const QString ends = nameCondition({}, u"终稿"_s, {});
+        QVERIFY(finds(ends, "报告终稿.docx"));
+        QVERIFY(finds(ends, "报告终稿"));
+        QVERIFY(!finds(ends, "终稿报告.docx"));
+        QVERIFY(!finds(ends, "报告终稿.tar.gz"));
+        QVERIFY(finds(nameCondition({}, u".tar.gz"_s, {}), "报告终稿.tar.gz"));
+        QVERIFY(finds(nameCondition({}, u".DOCX"_s, {}), "报告.docx"));
+        QVERIFY(!finds(nameCondition({}, u".doc"_s, {}), "报告.docx"));
+        // Not these words, none of them; "!" typed out of habit means the same.
+        const QString lacks = nameCondition({}, {}, u"草稿  !副本 a.b"_s);
+        QCOMPARE(parseQuery(lacks).terms.size(), 3u);
+        QVERIFY(finds(lacks, "报告.docx"));
+        QVERIFY(!finds(lacks, "报告草稿.docx"));
+        QVERIFY(!finds(lacks, "报告 - 副本.docx"));
+        QVERIFY(!finds(lacks, "A.B.txt"));
+        QVERIFY(finds(lacks, "axb.txt")); // the dot is a dot
+        // All three at once, quotes dropped.
+        const QString all = nameCondition(u"\"报告\""_s, u"v2"_s, u"草稿"_s);
+        QCOMPARE(parseQuery(all).terms.size(), 3u);
+        QVERIFY(finds(all, "报告_v2.pdf"));
+        QVERIFY(!finds(all, "报告草稿_v2.pdf"));
+        QVERIFY(!finds(all, "报告_v3.pdf"));
+    }
+
     // Quick filters named by keyword among what is typed (splitQuickFilterQuery).
     void quickFilterKeywords()
     {

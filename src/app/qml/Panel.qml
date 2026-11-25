@@ -86,6 +86,21 @@ Item {
     }
     // 自定义 was picked from a menu: the keyboard to its first box.
     signal customBoundsRequested(string kind)
+    // 名称 (GitHub #457): its three boxes show once asked for, and for as long as one says something.
+    property bool nameBoxesOpen: false
+    readonly property bool nameBoxesShown: nameBoxesOpen || launcher.nameFilterSet
+    readonly property string nameFilterTip: qsTr("按名字的开头、结尾筛选，或者去掉名字里带某些字的；不用记搜索语法")
+    // How many of the three say something: the row's value (the boxes under it say what).
+    readonly property int nameCount: launcher.nameFilterSet
+        ? [launcher.nameStarts, launcher.nameEnds, launcher.nameLacks].filter(text => text.replace(/[!"]/g, "").trim().length > 0).length : 0
+    function toggleNameBoxes() {
+        if (nameBoxesShown && !launcher.nameFilterSet) {
+            nameBoxesOpen = false
+            return
+        }
+        nameBoxesOpen = true
+        customBoundsRequested("name")
+    }
     readonly property int pickFolderAction: -2
     // A filter's choices (时间, 大小, 位置), in the menu the columns use.
     // What the + of the quick filters is for (the example as an argument: lupdate loses "\\" in a QML string).
@@ -468,6 +483,7 @@ Item {
     // 清除全部: every filter off, shown while one is on.
     component ClearLink: Text {
         id: clear
+        objectName: "panelFilterClear"
         height: Theme.labelRowHeight
         verticalAlignment: Text.AlignVCenter
         visible: panel.launcher.filtersActive
@@ -538,6 +554,19 @@ Item {
         Item {
             id: strip
             implicitHeight: stripFlow.height + 12
+
+            // In a narrow window the boxes a chip just showed may lie past the
+            // line's end: the line moves to show them, once they are laid out.
+            property Item revealFirst: null
+            property Item revealLast: null
+            function reveal() {
+                if (!revealLast || !revealLast.visible || revealLast.x <= 0)
+                    return
+                const most = Math.max(0, stripFlow.width - stripView.width)
+                const wanted = revealLast.x + revealLast.width - stripView.width
+                if (wanted > stripView.contentX)
+                    stripView.contentX = Math.min(most, Math.min(wanted, revealFirst.x))
+            }
 
             // The kinds one click each; 时间, 大小 and 位置 open their choices. One line: what a narrow
             // window has no room for is a wheel turn or a drag away.
@@ -657,6 +686,44 @@ Item {
                         active: panel.folderLabel.length > 0
                         onClicked: panel.openFilterMenu("folder", folderChip.mapToGlobal(0, folderChip.height + 2))
                     }
+                    Chip {
+                        objectName: "panelFilterName"
+                        iconName: "textbox"
+                        text: qsTr("名称")
+                        tip: panel.nameBoxesShown ? "" : panel.nameFilterTip // not over the boxes being typed in
+                        active: panel.launcher.nameFilterSet
+                        onClicked: panel.toggleNameBoxes()
+                    }
+                    BoundBox { // 名称: how it begins, how it ends, what it must not have
+                        id: nameStarts
+                        objectName: "panelNameStarts"
+                        visible: panel.nameBoxesShown
+                        next: nameEnds
+                        placeholder: qsTr("开头是")
+                        text: panel.launcher.nameStarts
+                        onEditingFinished: panel.launcher.setNameFilter(text, nameEnds.text, nameLacks.text)
+                        Component.onCompleted: panel.frame.addControl(nameStarts)
+                    }
+                    BoundBox {
+                        id: nameEnds
+                        objectName: "panelNameEnds"
+                        visible: panel.nameBoxesShown
+                        next: nameLacks
+                        placeholder: qsTr("结尾是")
+                        text: panel.launcher.nameEnds
+                        onEditingFinished: panel.launcher.setNameFilter(nameStarts.text, text, nameLacks.text)
+                        Component.onCompleted: panel.frame.addControl(nameEnds)
+                    }
+                    BoundBox {
+                        id: nameLacks
+                        objectName: "panelNameLacks"
+                        visible: panel.nameBoxesShown
+                        implicitWidth: 150
+                        placeholder: qsTr("不包含，空格隔开")
+                        text: panel.launcher.nameLacks
+                        onEditingFinished: panel.launcher.setNameFilter(nameStarts.text, nameEnds.text, text)
+                        Component.onCompleted: panel.frame.addControl(nameLacks)
+                    }
                     // The quick filters: queries saved under a name (Settings' [QuickFilters]),
                     // any number on at once, and all of them apply. The + is always there.
                     Item {
@@ -716,11 +783,21 @@ Item {
             Connections {
                 target: panel
                 function onCustomBoundsRequested(kind) {
-                    if (kind === "date")
-                        dateFrom.takeFocus()
-                    else
-                        sizeMin.takeFocus()
+                    const first = kind === "date" ? dateFrom : kind === "name" ? nameStarts : sizeMin
+                    const last = kind === "date" ? dateTo : kind === "name" ? nameLacks : sizeMax
+                    first.takeFocus()
+                    strip.revealFirst = first
+                    strip.revealLast = last
+                    Qt.callLater(strip.reveal) // shown already: nothing is laid out again
                 }
+            }
+            Connections { // the boxes just shown took their place in the line
+                target: stripFlow
+                function onWidthChanged() { strip.reveal() }
+            }
+            Connections { // 清除全部 came beside the line: it is shorter
+                target: stripView
+                function onWidthChanged() { strip.reveal() }
             }
         }
     }
@@ -904,6 +981,52 @@ Item {
                         marked: panel.folderLabel.length > 0
                         onClicked: panel.openFilterMenu("folder", folderRow.mapToGlobal(folderRow.width - 4, 0))
                     }
+                    FilterRow {
+                        objectName: "panelFilterName"
+                        iconName: "textbox"
+                        text: qsTr("名称")
+                        value: panel.nameCount > 0 ? qsTr("%1 项").arg(panel.nameCount) : qsTr("不限")
+                        tip: panel.nameBoxesShown ? "" : panel.nameFilterTip // not over the boxes being typed in
+                        marked: panel.launcher.nameFilterSet
+                        onClicked: panel.toggleNameBoxes()
+                    }
+                    Column { // 名称: how it begins, how it ends, what it must not have
+                        x: 12
+                        visible: panel.nameBoxesShown
+                        spacing: 4
+                        topPadding: 2
+                        bottomPadding: 6
+
+                        BoundBox {
+                            id: nameStarts
+                            objectName: "panelNameStarts"
+                            width: filterColumn.width - 24
+                            next: nameEnds
+                            placeholder: qsTr("开头是")
+                            text: panel.launcher.nameStarts
+                            onEditingFinished: panel.launcher.setNameFilter(text, nameEnds.text, nameLacks.text)
+                            Component.onCompleted: panel.frame.addControl(nameStarts)
+                        }
+                        BoundBox {
+                            id: nameEnds
+                            objectName: "panelNameEnds"
+                            width: filterColumn.width - 24
+                            next: nameLacks
+                            placeholder: qsTr("结尾是")
+                            text: panel.launcher.nameEnds
+                            onEditingFinished: panel.launcher.setNameFilter(nameStarts.text, text, nameLacks.text)
+                            Component.onCompleted: panel.frame.addControl(nameEnds)
+                        }
+                        BoundBox {
+                            id: nameLacks
+                            objectName: "panelNameLacks"
+                            width: filterColumn.width - 24
+                            placeholder: qsTr("不包含，空格隔开")
+                            text: panel.launcher.nameLacks
+                            onEditingFinished: panel.launcher.setNameFilter(nameStarts.text, nameEnds.text, text)
+                            Component.onCompleted: panel.frame.addControl(nameLacks)
+                        }
+                    }
 
                     // The quick filters: queries saved under a name (Settings' [QuickFilters]),
                     // any number on at once, and all of them apply. The + is always there.
@@ -957,6 +1080,8 @@ Item {
                 function onCustomBoundsRequested(kind) {
                     if (kind === "date")
                         dateFrom.takeFocus()
+                    else if (kind === "name")
+                        nameStarts.takeFocus()
                     else
                         sizeMin.takeFocus()
                 }

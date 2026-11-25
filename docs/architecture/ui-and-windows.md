@@ -32,7 +32,7 @@
 ### 2.4 搜索面板（`Ctrl+E`）、列管理、大图与内容详情
 
 - **同窗切换**：复用窗口与状态；展开加 `WS_THICKFRAME`（`WM_NCCALCSIZE` 返回 0 保持无边框），收回先 DWM cloak 并待 `afterNextFrame` 再 uncloak 消闪烁。
-- **筛选、快捷筛选与列**：大小与创建时间常驻 `FileIndex` 平行数组，排序筛选零访盘；`QuickFilter` 多选 AND（组内 `|` 为 OR）经 `Request::conditions` 传引擎不污染输入框；`PanelColumns` 管理 8 列显隐/顺序/宽度（名称列不可隐藏），每页 256 行续载；`Gallery` 共用 `ResultModel`，输入焦点留在搜索框保 IME 正常。
+- **筛选、快捷筛选与列**：大小与创建时间常驻 `FileIndex` 平行数组，排序筛选零访盘；`QuickFilter` 多选 AND（组内 `|` 为 OR）经 `Request::conditions` 传引擎不污染输入框；面板的“名称”三框（开头是/结尾是/不包含）由 `nameCondition` 拼成一条同样走 `conditions` 的字面量正则条件（`\A…`、`…(\.[^.]*)?\z`、`!regex:`），只在面板内生效；`PanelColumns` 管理 8 列显隐/顺序/宽度（名称列不可隐藏），每页 256 行续载；`Gallery` 共用 `ResultModel`，输入焦点留在搜索框保 IME 正常。
 - **内容详情与报告（`ContentDetails` / `ContentReport`）**：`ContentDetails` 将 `DocText` 转为共享只读文本与行偏移，仅在面板内容范围激活，按文件身份+大小+时间缓存（总预算 32 MiB）；5 个子页 `Loader` 懒加载，`Ctrl+Shift+1…5` 切页；内嵌文档预览复用 `PreviewHost`。`ContentReport` 基于不可变快照用独立 `SearchEngine` 后台生成纯文本/CSV（防公式注入）/HTML/最小 OOXML `.xlsx`（miniz，无 Excel COM）及 GDI 打印。
 
 ### 2.5 文件预览（`Alt+P`、`FilePreview`、`PreviewHost`）

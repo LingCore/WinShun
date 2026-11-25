@@ -4029,6 +4029,30 @@
         <translation>Location</translation>
     </message>
     <message>
+        <source>名称</source>
+        <translation>Name</translation>
+    </message>
+    <message>
+        <source>%1 项</source>
+        <translation>%1 set</translation>
+    </message>
+    <message>
+        <source>开头是</source>
+        <translation>Starts with</translation>
+    </message>
+    <message>
+        <source>结尾是</source>
+        <translation>Ends with</translation>
+    </message>
+    <message>
+        <source>不包含，空格隔开</source>
+        <translation>Without (space-separated)</translation>
+    </message>
+    <message>
+        <source>按名字的开头、结尾筛选，或者去掉名字里带某些字的；不用记搜索语法</source>
+        <translation>Filter by how a name starts or ends, or leave out names with certain words; no search syntax to remember</translation>
+    </message>
+    <message>
         <source>选择文件夹…</source>
         <translation>Choose a folder…</translation>
     </message>

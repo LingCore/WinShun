@@ -91,6 +91,23 @@ FileTypeQuery splitFileTypeQuery(const QString& text, const FileTypes& types, QS
     return result;
 }
 
+QString nameCondition(const QString& starts, const QString& ends, const QString& lacks)
+{
+    const auto plain = [](QString text) { return text.remove(u'"').trimmed(); };
+    QStringList parts;
+    if (const QString text = plain(starts); !text.isEmpty())
+        parts.append(u"regex:\"\\A%1\""_s.arg(QRegularExpression::escape(text)));
+    if (const QString text = plain(ends); !text.isEmpty())
+        parts.append(u"regex:\"%1(\\.[^.]*)?\\z\""_s.arg(QRegularExpression::escape(text)));
+    for (QString word : plain(lacks).split(QChar::Space, Qt::SkipEmptyParts)) {
+        while (word.startsWith(u'!'))
+            word.remove(0, 1);
+        if (!word.isEmpty())
+            parts.append(u"!regex:\"%1\""_s.arg(QRegularExpression::escape(word)));
+    }
+    return parts.join(QChar::Space);
+}
+
 QuickFilterQuery splitQuickFilterQuery(const QString& text, const QuickFilters& filters)
 {
     QuickFilterQuery result {text, {}};

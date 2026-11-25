@@ -36,6 +36,14 @@ FileTypeQuery splitFileTypeQuery(const QString& text, const FileTypes& types, QS
 // drive's "C:" is none): any number of them, and what is left to search for.
 QuickFilterQuery splitQuickFilterQuery(const QString& text, const QuickFilters& filters);
 
+// 名称 in the panel's filters (GitHub #457: what a name begins with, ends
+// with and must not have, without the syntax): the same as a condition
+// typed, for the query to carry as a quick filter's is. `starts` and `ends`
+// are taken whole, spaces and all; `ends` is the end of the name before its
+// extension or with it ("终稿" finds 报告终稿.docx, ".docx" too); `lacks` is
+// words, each one kept out. Quotes are dropped. Empty: nothing asked.
+QString nameCondition(const QString& starts, const QString& ends, const QString& lacks);
+
 // One whitespace-separated piece of the query.
 //
 //   report          name contains "report"

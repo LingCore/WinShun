@@ -408,6 +408,45 @@ void panelQuickFilters(QQmlEngine* engine, const QDir& output, Checks& check)
     settle(window);
     check(!on(0) && !launcher.filtersActive() && launcher.sizeChoice() == 0 && files().size() == 4, u"quick filters: 清除全部 switches them off"_s);
 
+    // 名称 (GitHub #457): three boxes under its row, what they say a condition as a quick filter's.
+    auto* nameRow = item(window->contentItem(), u"panelFilterName"_s);
+    auto* nameStarts = item(window->contentItem(), u"panelNameStarts"_s);
+    auto* nameLacks = item(window->contentItem(), u"panelNameLacks"_s);
+    check(nameRow && nameRow->isVisible() && nameStarts && nameLacks && !nameStarts->isVisible(), u"name filter: a row, its boxes away until asked for"_s);
+    if (!nameRow || !nameStarts || !nameLacks) return;
+    click(nameRow);
+    check(nameStarts->isVisible() && nameLacks->isVisible() && !launcher.filtersActive(), u"name filter: a click shows the boxes, nothing narrowed yet"_s);
+    check(nameLacks->mapToItem(sidebar, QPointF(nameLacks->width(), 0)).x() <= sidebar->width() + 0.5, u"name filter: the boxes stay inside the side bar"_s);
+    click(nameRow);
+    check(!nameStarts->isVisible(), u"name filter: empty, a second click puts the boxes away"_s);
+    launcher.setNameFilter({}, u"REPORT"_s, {});
+    settle(window);
+    check(launcher.filtersActive() && launcher.nameFilterSet() && nameStarts->isVisible() && files().size() == 4,
+        u"name filter: an end is the end before the extension, any case: "_s + files().join(u" | "_s));
+    launcher.setNameFilter(u"report"_s, {}, {});
+    settle(window);
+    check(files().isEmpty(), u"name filter: a beginning is not found in the middle: "_s + files().join(u" | "_s));
+    launcher.setNameFilter(u"WSQuick rep"_s, u".log"_s, {});
+    settle(window);
+    check(files() == QStringList({u"Q:\\$RECYCLE.BIN\\wsquick report.log"_s, u"Q:\\work\\wsquick report.log"_s}),
+        u"name filter: a beginning with a space in it and an extension as the end: "_s + files().join(u" | "_s));
+    launcher.toggleQuickFilter(0);
+    launcher.setNameFilter(u"wsquick"_s, {}, u"docx !nothing"_s);
+    settle(window);
+    check(files() == QStringList({u"Q:\\work\\wsquick report.log"_s}), u"name filter: words kept out, beside a quick filter: "_s + files().join(u" | "_s));
+    check(nameRow->property("value").toString() == u"2 项" && nameRow->property("marked").toBool(),
+        u"name filter: the row says how many of its boxes are set: "_s + nameRow->property("value").toString());
+    check(launcher.query() == u"wsquick", u"name filter: the search box keeps what was typed"_s);
+    check(window->grabWindow().save(output.filePath(u"panel-name-filter.png"_s)), u"capture the name filter, set"_s);
+    click(nameRow);
+    check(nameStarts->isVisible(), u"name filter: set, its boxes stay"_s);
+    launcher.clearFilters();
+    settle(window);
+    check(!launcher.filtersActive() && !launcher.nameFilterSet() && launcher.nameStarts().isEmpty() && files().size() == 4,
+        u"name filter: 清除全部 empties it"_s);
+    click(nameRow);
+    settle(window);
+
     // The +: the settings, with what is typed as a new one's query when it can be one.
     QStringList drafts;
     QObject::connect(&launcher, &Launcher::quickFilterSettingsRequested, window, [&](const QString& draft) { drafts.append(draft); });
@@ -465,6 +504,29 @@ void panelQuickFilters(QQmlEngine* engine, const QDir& output, Checks& check)
         click(chip);
         check(on(0) && chip->property("active").toBool() && files().size() == 2, u"quick filters: a chip over the rows switches one on"_s);
         check(window->grabWindow().save(output.filePath(u"panel-quick-filters-top.png"_s)), u"capture the quick filters over the rows"_s);
+    }
+    // 名称 there: a chip, its boxes beside it in the line.
+    launcher.clearFilters();
+    settle(window);
+    auto* nameChip = item(bar, u"panelFilterName"_s);
+    auto* topStarts = item(bar, u"panelNameStarts"_s);
+    check(nameChip && topStarts && nameChip->isVisible() && !topStarts->isVisible(), u"name filter: a chip over the rows, its boxes away"_s);
+    if (nameChip && topStarts) {
+        click(nameChip);
+        check(topStarts->isVisible(), u"name filter: the chip shows the boxes in the line"_s);
+        auto* topLacks = item(bar, u"panelNameLacks"_s);
+        auto* clear = item(bar, u"panelFilterLayoutKey"_s);
+        const qreal right = topLacks ? topLacks->mapToItem(bar, QPointF(topLacks->width(), 0)).x() : 0;
+        check(topLacks && clear && right > 0 && right <= clear->mapToItem(bar, QPointF(0, 0)).x(),
+            u"name filter: in a narrow window the line moves to show the boxes: right edge at %1"_s.arg(right));
+        launcher.setNameFilter(u"wsquick"_s, u".log"_s, {});
+        settle(window);
+        check(nameChip->property("active").toBool() && files().size() == 2, u"name filter: set over the rows, the chip is on: "_s + files().join(u" | "_s));
+        auto* clearLink = item(bar, u"panelFilterClear"_s);
+        const qreal edge = topLacks ? topLacks->mapToItem(bar, QPointF(topLacks->width(), 0)).x() : 0;
+        check(clearLink && clearLink->isVisible() && edge <= clearLink->mapToItem(bar, QPointF(0, 0)).x(),
+            u"name filter: the boxes stay in view when 清除全部 comes beside them: right edge at %1"_s.arg(edge));
+        check(window->grabWindow().save(output.filePath(u"panel-name-filter-top.png"_s)), u"capture the name filter over the rows"_s);
     }
     launcher.clearFilters();
     launcher.setPanelFiltersOnTop(false);
