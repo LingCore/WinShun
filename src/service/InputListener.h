@@ -20,7 +20,9 @@ bool requesterIsWinShun(DWORD pid);
 // for any client.
 bool mayNavigateDialogs(const Server& server, DWORD pid);
 bool canStartClipboardDisplay(DWORD pid);
+bool canStartCaptureSurface(const Server& server, DWORD pid);
 void serveClipboardDisplay(Server& server, Connection& conn, std::span<const std::byte> payload);
+void serveCaptureSurface(Server& server, Connection& conn, std::span<const std::byte> payload);
 void serveInputListener(Server& server, Connection& conn, std::span<const std::byte> payload);
 // Navigates a higher-integrity file dialog to a folder for Win顺's UI (#104):
 // launches the same uiAccess helper, which drives the dialog with window

@@ -4,6 +4,7 @@
 #include "CaptureDiagnostics.h"
 #include "CaptureHistory.h"
 #include "CaptureSession.h"
+#include "CaptureSurfaceBridge.h"
 #include "CaptureTools.h"
 #include "CountdownWindow.h"
 #include "DisplayPulse.h"
@@ -113,6 +114,11 @@ public:
         // The capture could not come over what is in front and has ended:
         // why, in words for the user (the log has it too).
         std::function<void(const QString&)> cannotShow;
+        // Leases a protected UIAccess Band-2 DWM mirror surface from Win顺's
+        // service so the overlay covers a full-screen Band-8 Store app without
+        // exiting full screen. Optional: without it, falls back to Win+Shift+Enter.
+        CaptureSurfaceBridge::OpenFn openCaptureSurface;
+        CaptureSurfaceBridge::CloseFn closeCaptureSurface;
         // How the annotation reads the selection's text and what it hides
         // (SmartRedact.h): 智能打码 and its pre-scan.
         Recorder::Hooks recording;
@@ -261,6 +267,11 @@ private:
     void findFlyout(); // the Start menu closed: where it was in the picture
     void fullScreenTick(); // m_fullScreen out of full screen: then show()
     void putBackTick(); // the overlays gone: m_fullScreen back into full screen
+    void exitFullScreenTick(); // a Band-1 result (pin/OCR/long/record) needs m_fullScreen out of Band 8
+    void stopSurface();
+    void onSurfaceReady(const std::vector<HWND>& surfaceHwnds);
+    void onSurfaceFailed(const QString& reason, unsigned long error);
+    void onSurfaceClosedExternally(capsurface::CloseReason reason);
     Recorder& recorder();
     LongCapture& longCapture(); // made the first time
     void tickCountdown();
@@ -337,16 +348,21 @@ private:
     HWND m_flyout = nullptr; // the Start menu or a shell flyout in front at the hotkey, closing
     HMONITOR m_flyoutMonitor = nullptr;
     // A Store app in full screen at the hotkey (a video in the Media Player):
-    // taken out of it for the overlays to show (fullScreenTick), put back in
-    // once they are gone (putBackTick).
+    // normally covered directly by a Band-2 UIAccess DWM mirror surface
+    // (m_surface) without changing the player's state; if the service is
+    // unavailable, falls back to taking it out of full screen (fullScreenTick)
+    // and putting it back once the overlays are gone (putBackTick).
     HWND m_fullScreen = nullptr;
+    bool m_usingSurface = false; // mirroring through WinShunService --capture-surface
+    bool m_exitFullScreenOnHide = false; // a Band-1 result (pin/OCR/long/record) needs Band 8 exited
     bool m_fullScreenSent = false; // Win+Shift+Enter sent, once the hotkey's keys were up
     bool m_putBack = false; // the capture ended leaving nothing of ours to be seen
-    qint64 m_fullScreenMs = -1; // from the switch to the app out of full screen
+    qint64 m_fullScreenMs = -1; // time until surface ready (or app out of full screen)
     QElapsedTimer m_fullScreenClock;
     int m_putBackSent = 0; // switches sent to put it back
     qint64 m_putBackSentMs = 0; // the last, on m_fullScreenClock
     qint64 m_putBackReadyMs = -1; // since when it has had the foreground with the keys up
+    std::unique_ptr<CaptureSurfaceBridge> m_surface;
     QImage m_last; // the last capture taken (copied, saved, pinned, read), for 贴上最近一次截图
     QPoint m_lastOrigin; // where it was, physical
     QByteArray m_lastProject;
@@ -403,6 +419,7 @@ private:
     QTimer m_flyoutWait;
     QTimer m_fullScreenWait;
     QTimer m_putBackWait;
+    QTimer m_exitFullScreenWait;
     QTimer m_hideTimeout;
     QTimer m_rebuild;
     std::jthread m_saver; // last: joined first

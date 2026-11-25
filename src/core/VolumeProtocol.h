@@ -58,7 +58,12 @@ constexpr std::uint16_t kMajor = 1; // different on the two ends: they cannot ta
 // navigator puts in the file name box once the dialog is in the folder; it
 // still never presses Open or Save (kCapabilityDialogNavName). An older
 // service is sent the folder alone.
-constexpr std::uint16_t kMinor = 8;
+// Minor 9: a leased UIAccess Band-2 mirror surface (--capture-surface, hosted
+// in protected WinShunService.exe) so the ordinary-rights capture plugin can
+// present its overlay over a full-screen Band-8 Store app without exiting
+// full screen or giving UIAccess to the user-writable plugin folder
+// (kCapabilityCaptureSurface, OpenCaptureSurface).
+constexpr std::uint16_t kMinor = 9;
 constexpr std::uint16_t kMinorSizes = 2;
 constexpr std::uint16_t kMinorCreated = 3;
 constexpr std::uint32_t kCapabilityBulkRead = 1; // HelloOk::capabilities
@@ -69,6 +74,7 @@ constexpr std::uint32_t kCapabilityClipboardDisplay = 16; // minor 5: authentica
 constexpr std::uint32_t kCapabilityHotkeyRelay = 32; // minor 6: the key listener relays the UI's plain hotkeys (#243)
 constexpr std::uint32_t kCapabilityPasteRelay = 64; // minor 7: presses the paste keys in an administrator's window (#277)
 constexpr std::uint32_t kCapabilityDialogNavName = 128; // minor 8: OpenDialogNav takes a file's name too (#353)
+constexpr std::uint32_t kCapabilityCaptureSurface = 256; // minor 9: Band-2 DWM mirror surface for capture over full-screen Store apps
 constexpr std::size_t kMaxBulkWants = 4u << 20; // files one bulk session may ask about
 constexpr wchar_t kPipeName[] = L"WinShun.Volumes"; // one service for the whole machine
 constexpr wchar_t kPipeEnvironment[] = L"WINSHUN_PIPE"; // another pipe's name, for tests (--console --pipe)
@@ -117,6 +123,9 @@ enum class Type : std::uint16_t {
     ClipboardDisplayPing = 87, // empty request/reply
     OpenPaste = 88, // u64 window HWND: press its paste keys there, a higher-integrity window in front (#277)
     PasteDone = 89, // empty reply: the helper pressed them (else Error)
+    OpenCaptureSurface = 90, // { u32 pluginPid, u64 fullScreenHwnd, string private pipe name }; protected service + own UI only
+    CaptureSurfaceReady = 91, // u32 child PID; connection owns the Band-2 mirror's lifetime
+    CaptureSurfacePing = 92, // empty request/reply
 };
 
 std::wstring fullPipePath(std::wstring_view name); // "\\.\pipe\" + name

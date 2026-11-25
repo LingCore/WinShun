@@ -102,6 +102,8 @@
 #include "platform/PointerWatch.h"
 #include "platform/Power.h"
 #include "platform/SelectedText.h"
+#include "CaptureSurfaceProtocol.h"
+#include "platform/ServiceCaptureSurface.h"
 #include "platform/ServiceDialogNav.h"
 #include "platform/ServiceKeyListener.h"
 #include "platform/Shell.h"
@@ -2958,6 +2960,50 @@ void App::setUpAppTools()
     tools.push_back({u"backup_restore"_s, plugin::Permission::WinshunBackup,
         [this, backupTool](const QString&, const QString& dataDir, const QJsonObject& arguments, std::function<void(mcp::ToolResult)> done) {
             m_backup->restoreTool(dataDir, arguments, backupTool(std::move(done)));
+        }});
+    // UIAccess Band-2 DWM mirror surface for winshun.capture over full-screen
+    // Band-8 Store apps (e.g. Media Player): the plugin stays ordinary
+    // Medium-IL, while protected WinShunService.exe hosts the Band-2 mirror.
+    tools.push_back({u"capture_surface_open"_s, plugin::Permission::Ui,
+        [this](const QString& pluginId, const QString&, const QJsonObject& arguments, std::function<void(mcp::ToolResult)> done) {
+            if (pluginId != kScreenshotPlugin) {
+                done(toolError(u"capture_surface_open is only for winshun.capture"_s));
+                return;
+            }
+            const DWORD pluginPid = m_pluginHost ? m_pluginHost->state(pluginId).pid : 0;
+            bool hwndOk = false;
+            const quint64 rawHwnd = arguments.value(u"window"_s).toString().toULongLong(&hwndOk, 10);
+            const std::wstring pipe = arguments.value(u"pipe"_s).toString().toStdWString();
+            if (!pluginPid || !hwndOk || !rawHwnd || !capsurface::isValidPipeName(pipe, pluginPid)) {
+                done(toolError(u"invalid capture surface parameters"_s));
+                return;
+            }
+            if (!m_captureSurface)
+                m_captureSurface = std::make_unique<ServiceCaptureSurface>();
+            QPointer<App> self(this);
+            m_captureSurface->open(pluginPid, reinterpret_cast<HWND>(static_cast<std::uintptr_t>(rawHwnd)), pipe,
+                [self, done = std::move(done)](ServiceCaptureSurface::Result result) mutable {
+                    QMetaObject::invokeMethod(qApp, [self, done = std::move(done), result = std::move(result)]() mutable {
+                        if (!self)
+                            return;
+                        if (result.ok) {
+                            done({QJsonObject {{u"ok"_s, true}, {u"pid"_s, static_cast<qint64>(result.childPid)}}});
+                        } else {
+                            done({QJsonObject {{u"ok"_s, false}, {u"reason"_s, result.reason},
+                                {u"error"_s, static_cast<qint64>(result.error)}}});
+                        }
+                    }, Qt::QueuedConnection);
+                });
+        }});
+    tools.push_back({u"capture_surface_close"_s, plugin::Permission::Ui,
+        [this](const QString& pluginId, const QString&, const QJsonObject&, std::function<void(mcp::ToolResult)> done) {
+            if (pluginId != kScreenshotPlugin) {
+                done(toolError(u"capture_surface_close is only for winshun.capture"_s));
+                return;
+            }
+            if (m_captureSurface)
+                m_captureSurface->close();
+            done({QJsonObject {{u"ok"_s, true}}});
         }});
     m_pluginHost->setAppTools(std::move(tools));
 }
@@ -9311,6 +9357,8 @@ void App::createPluginHost()
     connect(m_pluginHost.get(), &plugin::Host::processExited, this, [this](const QString& id) {
         m_pluginKeyRelay->remove(id);
         m_pluginTapActions.erase(id);
+        if (id == kScreenshotPlugin && m_captureSurface)
+            m_captureSurface->close();
         updateDoubleTapActions();
         m_trayMenus.erase(id);
     });

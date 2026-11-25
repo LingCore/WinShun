@@ -571,6 +571,28 @@ void CaptureApp::apply()
             m_idleTrim->poke();
         };
         callbacks.cannotShow = [this](const QString& why) { notify(tr("截图"), why); };
+        callbacks.openCaptureSurface = [this](HWND fullScreenHwnd, const QString& pipeName,
+                                           std::function<void(capture::CaptureSurfaceBridge::OpenReply)> done) {
+            m_protocol.tool(u"capture_surface_open"_s,
+                {{u"window"_s, QString::number(reinterpret_cast<quintptr>(fullScreenHwnd))}, {u"pipe"_s, pipeName}},
+                [done = std::move(done)](const QJsonValue& result, const QString& error) mutable {
+                    if (!done)
+                        return;
+                    if (!error.isEmpty()) {
+                        const QString reason = error.startsWith(u"Unknown tool"_s) ? u"old-host"_s : u"host-error"_s;
+                        done({false, 0, reason, ERROR_NOT_SUPPORTED});
+                        return;
+                    }
+                    const QJsonObject obj = result.toObject();
+                    if (obj.value(u"ok"_s).toBool()) {
+                        done({true, static_cast<DWORD>(obj.value(u"pid"_s).toInteger()), {}, ERROR_SUCCESS});
+                    } else {
+                        done({false, 0, obj.value(u"reason"_s).toString(u"failed"_s),
+                            static_cast<DWORD>(obj.value(u"error"_s).toInteger())});
+                    }
+                });
+        };
+        callbacks.closeCaptureSurface = [this] { m_protocol.tool(u"capture_surface_close"_s, {}); };
         callbacks.ocr = [this](const QImage& image, double dpr, const QRect& where) { showCaptureOcr(image, dpr, where); };
         callbacks.ocrThen = [this](const QImage& image, double dpr, const QRect& where, capture::CaptureSession::Action then) {
             using Action = capture::CaptureSession::Action;

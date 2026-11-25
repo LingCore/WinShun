@@ -37,6 +37,7 @@
 // volume. Contents it filters: each file's by the caller's own rights.
 // docs/architecture.md says so.
 
+#include "CaptureSurface.h"
 #include "DialogNav.h"
 #include "Log.h"
 #include "InputListener.h"
@@ -527,6 +528,16 @@ int wmain(int argc, wchar_t** argv)
             if (!window || !end || *end)
                 return ERROR_INVALID_PARAMETER;
             return ws::service::runPaste(reinterpret_cast<HWND>(window));
+        }
+        if (option == L"--capture-surface" && argc == 5) {
+            wchar_t* end = nullptr;
+            const unsigned long pluginPid = std::wcstoul(argv[2], &end, 10);
+            if (!pluginPid || !end || *end)
+                return ERROR_INVALID_PARAMETER;
+            const auto target = std::wcstoull(argv[3], &end, 10);
+            if (!target || !end || *end)
+                return ERROR_INVALID_PARAMETER;
+            return ws::service::runCaptureSurface(pluginPid, reinterpret_cast<HWND>(target), argv[4]);
         }
         if (option == L"--install")
             return install();
