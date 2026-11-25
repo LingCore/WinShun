@@ -8,12 +8,19 @@
 #include "winshun.h"
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace tr {
 
+// The local models plugin's address (winshun.localmodel, port 39281 unless
+// its settings say otherwise).
+inline constexpr const char* kLocalEndpoint = "http://127.0.0.1:39281/v1";
+
 struct Settings {
-    std::string provider = "none"; // none | deepl | openai (anything else is treated as openai)
+    // none | deepl | microsoft | local (Win顺's local models) | openai (and
+    // anything else: spoken to as OpenAI-compatible, as are deepseek, doubao, hunyuan)
+    std::string provider = "none";
     std::string key;
     std::string endpoint; // OpenAI-compatible base, e.g. https://api.openai.com/v1
     std::string model;
@@ -29,6 +36,15 @@ std::string keyField(const std::string& provider);
 // Credential Manager). Missing or blank values get their defaults; a service
 // without a key of its own uses the shared apiKey of 2.1.1 and earlier.
 Settings settingsFrom(const winshun::Json& json);
+
+// Whether a URL names this computer (127.0.0.1, localhost, [::1]): Win顺's
+// local models, Ollama, LM Studio. Such a service needs no key and is reached
+// without the proxy.
+bool loopback(const std::string& url);
+// Whether nothing may be sent before a key is set.
+bool needsKey(const Settings& settings);
+// A chat-completions service (not DeepL or Microsoft): its answer can stream.
+bool chatService(const Settings& settings);
 
 // Whether the text has a Chinese, Japanese or Korean character (kana and
 // Hangul count: those are not to be translated "into" Chinese either).
@@ -56,7 +72,9 @@ struct Request {
     std::string authorization;
     std::map<std::string, std::string> headers;
 };
-Request buildRequest(const Settings& settings, const std::string& text, const std::string& target, bool dictionary = false);
+// `stream`: the answer as server-sent events, to show it as it comes.
+Request buildRequest(const Settings& settings, const std::string& text, const std::string& target, bool dictionary = false,
+    bool stream = false);
 
 // What the service said, read.
 struct Answer {
@@ -65,7 +83,31 @@ struct Answer {
     std::string detected; // DeepL only: the language it found
     std::string error; // when !ok: why, in the user's language
 };
-Answer parseAnswer(const Settings& settings, const std::string& body, bool chinese);
+// `sentLines`: how many lines buildRequest sent each on its own (linesOf).
+Answer parseAnswer(const Settings& settings, const std::string& body, bool chinese, std::size_t sentLines = 1);
+// A chat model's reply, read as parseAnswer reads one: a JSON array (or, for
+// the local models, numbered lines) back into a line each.
+Answer answerFromText(const Settings& settings, const std::string& content, std::size_t sentLines = 1);
+
+// A streamed answer (server-sent events of chat completions), fed as it
+// comes: the reply so far. A body that is no stream gets no events (and is
+// read whole with parseAnswer).
+class StreamReader {
+public:
+    void feed(std::string_view chunk);
+    const std::string& text() const { return m_text; }
+    bool events() const { return m_events; } // at least one "data:" event came
+    bool done() const { return m_done; } // "data: [DONE]" came
+    const std::string& error() const { return m_error; } // an error event's message
+
+private:
+    void line(std::string_view line);
+    std::string m_pending; // a line not ended yet
+    std::string m_text;
+    std::string m_error;
+    bool m_events = false;
+    bool m_done = false;
+};
 
 // The service's own words from an error body: "error" as a string,
 // "error.message", or "message"; otherwise the body itself. Not cut.
@@ -86,6 +128,18 @@ winshun::Item workingRow(const std::string& text, bool chinese);
 // to set it up, and tries the next translate plugin (GitHub #444).
 winshun::Item statusRow(long status, const std::string& body, bool chinese);
 winshun::Item failedRow(const std::string& reason, bool chinese); // no answer, or one that cannot be used
+// The local models' own answer that they cannot (503 with type
+// "winshun_local_model": no model yet, still downloading, failed to load) or
+// nothing listening there: a "setup" row whose Enter opens the local models'
+// card (`settingsLinks`: this Win顺 opens another plugin's card), else
+// Translate's own.
+winshun::Item localModelRow(const std::string& message, bool chinese, bool settingsLinks);
+std::string localModelMessage(const std::string& body); // empty: not the local models' error
+// Nothing answers at a loopback address (connection refused): which program to start.
+winshun::Item notRunningRow(const Settings& settings, const std::string& host, bool chinese, bool settingsLinks);
+// While a streamed answer comes: what came so far (or "Translating…").
+// `waiting`: nothing has come for a while from a local model (it is loading).
+winshun::Item streamingRow(const std::string& text, const std::string& sofar, const std::string& target, bool waiting, bool chinese);
 winshun::Item emptyRow(const std::string& text, bool chinese);
 winshun::Items resultRows(const std::string& text, const std::string& translated, const std::string& target,
     const std::string& detected, bool chinese);

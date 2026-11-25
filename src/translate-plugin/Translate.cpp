@@ -42,6 +42,57 @@ std::string englishName(const std::string& target)
     return target;
 }
 
+unsigned nextCodePoint(const std::string& s, std::size_t i, std::size_t& length);
+
+// The Chinese name of the language, for the local models' Chinese prompt.
+std::string chineseName(const std::string& target)
+{
+    static const std::pair<const char*, const char*> kNames[] = {{"zh", "中文"}, {"en", "英语"}, {"ja", "日语"}, {"ko", "韩语"},
+        {"fr", "法语"}, {"de", "德语"}, {"es", "西班牙语"}, {"ru", "俄语"}, {"pt", "葡萄牙语"}, {"it", "意大利语"}};
+    for (const auto& [code, name] : kNames) {
+        if (target == code)
+            return name;
+    }
+    return englishName(target);
+}
+
+// What a small model on this computer is asked: one user message, no system
+// prompt, worded as HY-MT (Tencent's translation model) was trained on and
+// as plain chat models follow too. Chinese on either side: the Chinese
+// wording. Several lines go numbered, a line each (a small model keeps the
+// numbers better than a JSON array).
+std::string localPrompt(const std::string& text, const std::vector<std::string>& lines, const std::string& target)
+{
+    const bool each = lines.size() > 1;
+    std::string numbered;
+    for (std::size_t i = 0; each && i < lines.size(); ++i)
+        numbered += std::to_string(i + 1) + ". " + lines[i] + "\n";
+    if (target == "zh" || hasCjk(text)) {
+        if (each)
+            return "将以下 " + std::to_string(lines.size()) + " 行文本逐行翻译为" + chineseName(target)
+                + "，每行开头的编号保持不变，一行原文对应一行译文，注意只需要输出翻译后的结果，不要额外解释：\n\n" + numbered;
+        return "将以下文本翻译为" + chineseName(target) + "，注意只需要输出翻译后的结果，不要额外解释：\n\n" + text;
+    }
+    if (each)
+        return "Translate the following " + std::to_string(lines.size()) + " numbered lines into " + englishName(target)
+            + " line by line, keeping each line's number, one line of translation for each line, without additional explanation.\n\n"
+            + numbered;
+    return "Translate the following segment into " + englishName(target) + ", without additional explanation.\n\n" + text;
+}
+
+// The most a translation may take: about three tokens a character of the
+// text, so a model that will not stop does not run on.
+int tokenLimit(const std::string& text)
+{
+    std::size_t characters = 0;
+    for (std::size_t i = 0; i < text.size(); ++characters) {
+        std::size_t n = 1;
+        nextCodePoint(text, i, n);
+        i += n;
+    }
+    return static_cast<int>(std::clamp<std::size_t>(64 + 3 * characters, 256, 8192));
+}
+
 // DeepL's code for a target: ZH, EN, JA, else the upper-cased code.
 std::string deeplTarget(const std::string& target) { return upper(target); }
 
@@ -116,12 +167,47 @@ Settings settingsFrom(const Json& json)
             s.endpoint = "https://api.hunyuan.cloud.tencent.com/v1";
         if (s.model.empty())
             s.model = "hunyuan-turbos-latest";
+    } else if (s.provider == "local") {
+        // The local models plugin: the endpoint only when its port was changed.
+        if (s.endpoint.empty())
+            s.endpoint = kLocalEndpoint;
+        if (s.model.empty())
+            s.model = "local"; // it runs the one model chosen in its own settings
     }
     const std::string target = lower(winshun::trim(json["target"].toString()));
     if (!target.empty())
         s.target = target;
     return s;
 }
+
+bool loopback(const std::string& url)
+{
+    std::string rest = lower(winshun::trim(url));
+    const std::size_t scheme = rest.find("://");
+    if (scheme == std::string::npos)
+        return false;
+    rest = rest.substr(scheme + 3);
+    rest = rest.substr(0, rest.find_first_of("/?#"));
+    if (const std::size_t at = rest.rfind('@'); at != std::string::npos)
+        rest = rest.substr(at + 1);
+    std::string host = rest;
+    if (rest.starts_with("[")) // [::1]:port
+        host = rest.substr(0, rest.find(']') + 1);
+    else if (const std::size_t colon = rest.find(':'); colon != std::string::npos)
+        host = rest.substr(0, colon);
+    return host == "127.0.0.1" || host == "localhost" || host == "[::1]";
+}
+
+bool needsKey(const Settings& settings)
+{
+    if (settings.provider == "local")
+        return false;
+    if (settings.provider == "deepl" || settings.provider == "microsoft")
+        return true;
+    return !loopback(settings.endpoint); // a model server on this computer (Ollama, LM Studio) takes none
+}
+
+bool chatService(const Settings& settings) { return settings.provider != "deepl" && settings.provider != "microsoft"; }
 
 bool hasCjk(const std::string& utf8)
 {
@@ -170,7 +256,7 @@ std::vector<std::string> linesOf(const std::string& text)
     return lines;
 }
 
-Request buildRequest(const Settings& settings, const std::string& text, const std::string& target, bool dictionary)
+Request buildRequest(const Settings& settings, const std::string& text, const std::string& target, bool dictionary, bool stream)
 {
     Request r;
     const std::vector<std::string> lines = dictionary ? std::vector<std::string>() : linesOf(text);
@@ -212,6 +298,34 @@ Request buildRequest(const Settings& settings, const std::string& text, const st
     while (!base.empty() && base.back() == '/')
         base.pop_back();
     r.url = base + "/chat/completions";
+    if (settings.provider == "local") {
+        // A small model: its own prompt, sampling that keeps it to the text,
+        // no thinking first (Qwen3.5 would), and a limit on the length.
+        Json::Object body {
+            {"model", settings.model},
+            {"temperature", 0.2},
+            {"top_p", 0.6},
+            {"top_k", 20},
+            {"repeat_penalty", 1.05},
+            {"max_tokens", dictionary ? 1024 : tokenLimit(text)},
+            {"chat_template_kwargs", Json::Object {{"enable_thinking", false}}},
+        };
+        if (dictionary) {
+            const std::string prompt = "Act as a bilingual dictionary. Explain the word \"" + text + "\" in " + englishName(target)
+                + ". Return only a JSON object with term (string), phonetic (string, optional), "
+                  "definitions (up to 4 objects with partOfSpeech and meaning strings), "
+                  "examples (up to 2 objects with text and translation strings). "
+                  "For an unknown word return empty definitions. Do not invent a meaning.";
+            body["messages"] = Json::Array {Json::Object {{"role", "user"}, {"content", prompt}}};
+            body["response_format"] = Json::Object {{"type", "json_object"}}; // llama.cpp holds it to JSON
+        } else {
+            body["messages"] = Json::Array {Json::Object {{"role", "user"}, {"content", localPrompt(text, lines, target)}}};
+        }
+        if (stream)
+            body["stream"] = true;
+        r.body = Json(std::move(body)).dump();
+        return r; // no key: the address is this computer's
+    }
     // The language is named in English: the prompt is English whatever the UI says.
     const std::string prompt = dictionary
         ? "Act as a bilingual dictionary. Explain the user's word in " + englishName(target)
@@ -231,15 +345,17 @@ Request buildRequest(const Settings& settings, const std::string& text, const st
             strings.push_back(line);
         content = Json(std::move(strings)).dump();
     }
-    r.body = Json(Json::Object {
-                      {"model", settings.model.empty() ? "gpt-4o-mini" : settings.model},
-                      {"temperature", 0},
-                      {"messages",
-                          Json::Array {Json::Object {{"role", "system"}, {"content", prompt}},
-                              Json::Object {{"role", "user"}, {"content", content}}}},
-                  })
-                 .dump();
-    r.authorization = "Bearer " + settings.key;
+    Json::Object body {
+        {"model", settings.model.empty() ? "gpt-4o-mini" : settings.model},
+        {"temperature", 0},
+        {"messages",
+            Json::Array {Json::Object {{"role", "system"}, {"content", prompt}}, Json::Object {{"role", "user"}, {"content", content}}}},
+    };
+    if (stream)
+        body["stream"] = true;
+    r.body = Json(std::move(body)).dump();
+    if (!settings.key.empty())
+        r.authorization = "Bearer " + settings.key; // none for a server on this computer that takes none
     return r;
 }
 
@@ -255,7 +371,88 @@ std::string oneLine(std::string text, bool several)
 
 } // namespace
 
-Answer parseAnswer(const Settings& settings, const std::string& body, bool chinese)
+Answer answerFromText(const Settings& settings, const std::string& content, std::size_t sentLines)
+{
+    Answer a;
+    a.ok = true;
+    a.text = winshun::trim(content);
+    // The array asked for when several strings were sent (in a code fence or not): a line each.
+    std::string inner = a.text;
+    if (inner.rfind("```", 0) == 0) {
+        const std::size_t open = inner.find('\n');
+        const std::size_t close = inner.rfind("```");
+        if (open != std::string::npos && close > open)
+            inner = winshun::trim(inner.substr(open + 1, close - open - 1));
+    }
+    if (!inner.empty() && inner.front() == '[') {
+        const auto array = Json::parse(inner);
+        if (array && array->isArray() && !array->toArray().empty()
+            && std::ranges::all_of(array->toArray(), [](const Json& j) { return j.isString(); })) {
+            a.text.clear();
+            for (const Json& j : array->toArray())
+                a.text += (a.text.empty() ? "" : "\n") + oneLine(j.toString(), true);
+            return a;
+        }
+    }
+    // The local models' numbered lines ("1. …"): the numbers off, when each
+    // came back in its place. Otherwise the reply is kept as it is.
+    if (settings.provider == "local" && sentLines > 1) {
+        const std::vector<std::string> lines = linesOf(a.text);
+        std::string joined;
+        bool numbered = lines.size() == sentLines;
+        for (std::size_t i = 0; numbered && i < lines.size(); ++i) {
+            const std::string number = std::to_string(i + 1);
+            const std::string& line = lines[i];
+            std::size_t at = line.starts_with(number) ? number.size() : std::string::npos;
+            if (at != std::string::npos && at < line.size() && (line[at] == '.' || line[at] == ')'))
+                ++at;
+            else if (at != std::string::npos && line.compare(at, 3, "、") == 0) // the Chinese enumeration comma
+                at += 3;
+            else
+                at = std::string::npos;
+            numbered = at != std::string::npos;
+            if (numbered)
+                joined += (joined.empty() ? "" : "\n") + winshun::trim(line.substr(at));
+        }
+        if (numbered)
+            a.text = joined;
+    }
+    return a;
+}
+
+void StreamReader::feed(std::string_view chunk)
+{
+    m_pending.append(chunk);
+    std::size_t from = 0;
+    for (std::size_t end; (end = m_pending.find('\n', from)) != std::string::npos; from = end + 1)
+        line(std::string_view(m_pending).substr(from, end - from));
+    m_pending.erase(0, from);
+}
+
+void StreamReader::line(std::string_view text)
+{
+    if (!text.empty() && text.back() == '\r')
+        text.remove_suffix(1);
+    if (!text.starts_with("data:"))
+        return; // event:, id:, comments, the blank line between events
+    std::string data = winshun::trim(std::string(text.substr(5)));
+    m_events = true;
+    if (data == "[DONE]") {
+        m_done = true;
+        return;
+    }
+    const auto json = Json::parse(data);
+    if (!json)
+        return;
+    if (const std::string said = serviceMessage(data); (*json)["error"].isObject() || (*json)["error"].isString()) {
+        m_error = said;
+        return;
+    }
+    const Json& choice = (*json)["choices"].toArray().empty() ? Json() : (*json)["choices"].toArray()[0];
+    m_text += choice["delta"]["content"].toString();
+}
+
+Answer parseAnswer(const Settings& settings, const std::string& body, bool chinese, std::size_t sentLines)
 {
     Answer a;
     std::string problem;
@@ -293,24 +490,7 @@ Answer parseAnswer(const Settings& settings, const std::string& body, bool chine
                               : "No translation in the answer (not OpenAI-compatible chat/completions?)";
             return a;
         }
-        a.text = winshun::trim(choices[0]["message"]["content"].toString());
-        // The array asked for when several strings were sent (in a code fence or not): a line each.
-        std::string inner = a.text;
-        if (inner.rfind("```", 0) == 0) {
-            const std::size_t open = inner.find('\n');
-            const std::size_t close = inner.rfind("```");
-            if (open != std::string::npos && close > open)
-                inner = winshun::trim(inner.substr(open + 1, close - open - 1));
-        }
-        if (!inner.empty() && inner.front() == '[') {
-            const auto array = Json::parse(inner);
-            if (array && array->isArray() && !array->toArray().empty()
-                && std::ranges::all_of(array->toArray(), [](const Json& j) { return j.isString(); })) {
-                a.text.clear();
-                for (const Json& j : array->toArray())
-                    a.text += (a.text.empty() ? "" : "\n") + oneLine(j.toString(), true);
-            }
-        }
+        return answerFromText(settings, choices[0]["message"]["content"].toString(), sentLines);
     }
     a.ok = true;
     return a;
@@ -449,6 +629,58 @@ winshun::Items resultRows(const std::string& text, const std::string& translated
         + (chinese ? "Enter 复制" : "Enter copies");
     return {Item("t", translated, subtitle).withIcon(kIcon).withCopy(translated).withScore(90),
         Item("source", text, chinese ? "原文" : "source").withIcon(kIcon).withCopy(text)};
+}
+
+namespace {
+
+std::string localModelsCard(bool settingsLinks)
+{
+    return settingsLinks ? "winshun:settings/plugin/winshun.localmodel" : "winshun:settings";
+}
+
+} // namespace
+
+std::string localModelMessage(const std::string& body)
+{
+    const auto json = Json::parse(body);
+    if (!json || (*json)["error"]["type"].toString() != "winshun_local_model")
+        return {};
+    return (*json)["error"]["message"].toString();
+}
+
+winshun::Item localModelRow(const std::string& message, bool chinese, bool settingsLinks)
+{
+    return Item("setup", cut((chinese ? "本地模型还不能用：" : "The local model cannot translate yet: ") + message),
+        settingsLinks ? (chinese ? "Enter 打开“本地模型”的设置" : "Enter opens the Local models settings")
+                      : (chinese ? "Enter 打开设置；在 插件 → 本地模型 里处理" : "Enter opens the settings: see Plugins → Local models"))
+        .withIcon(kIcon)
+        .withUrl(localModelsCard(settingsLinks));
+}
+
+winshun::Item notRunningRow(const Settings& settings, const std::string& host, bool chinese, bool settingsLinks)
+{
+    if (settings.provider == "local")
+        return Item("setup", chinese ? "本地模型没有在运行" : "The local models are not running",
+            chinese ? "Enter 打开“本地模型”插件：装上并打开它，再下载或选一个模型（插件库里有）"
+                    : "Enter opens Local models: install and turn it on, then download or pick a model (in the plugin library)")
+            .withIcon(kIcon)
+            .withUrl(settingsLinks ? localModelsCard(true) : std::string("winshun:settings"));
+    // Ollama, LM Studio, a server of the user's own on this computer.
+    return Item("setup", chinese ? "本机的模型服务没有在运行（" + host + "）" : "No model server is running here (" + host + ")",
+        chinese ? "先打开 Ollama、LM Studio 等程序，或在设置里改接口地址" : "Start Ollama, LM Studio or the like, or change the endpoint in the settings")
+        .withIcon(kIcon)
+        .withUrl("winshun:settings");
+}
+
+winshun::Item streamingRow(const std::string& text, const std::string& sofar, const std::string& target, bool waiting, bool chinese)
+{
+    const std::string shown = winshun::trim(sofar);
+    std::string subtitle = waiting ? (chinese ? "本地模型加载中，第一次要几秒…" : "Loading the local model: the first time takes a few seconds…")
+                                   : "→ " + languageName(target, chinese) + " · " + (chinese ? "翻译中…" : "translating…");
+    return Item("working", shown.empty() ? (chinese ? "翻译中…" : "Translating…") : cut(shown, 2000),
+        shown.empty() && !waiting ? cut(text) : subtitle)
+        .withIcon(kIcon)
+        .invalid();
 }
 
 } // namespace tr

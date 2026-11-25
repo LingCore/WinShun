@@ -2,8 +2,8 @@
   "manifest": 1,
   "id": "winshun.translate",
   "name": {"zh": "翻译", "en": "Translate"},
-  "version": "2.2.6",
-  "description": {"zh": "tr 翻译、dict AI 词典，支持 DeepL、微软翻译及 OpenAI 兼容模型服务；使用自己的密钥", "en": "tr translation and dict AI dictionary with your own DeepL, Microsoft Translator or OpenAI-compatible service key"},
+  "version": "2.3.0",
+  "description": {"zh": "tr 翻译、dict AI 词典：用本机的本地模型离线翻译，或用自己密钥的 DeepL、微软翻译及 OpenAI 兼容模型服务", "en": "tr translation and dict AI dictionary: offline with a local model on this computer, or with your own DeepL, Microsoft Translator or OpenAI-compatible service key"},
   "author": "LingCore",
   "homepage": "https://github.com/LingCore/WinShun",
   "license": "MIT",
@@ -18,7 +18,7 @@
     "description": {"zh": "中文译成英文，其他译成中文", "en": "Chinese to English, anything else to Chinese"},
     "icon": "glyph:U+E8C1",
     "hint": {"zh": "要翻译的句子", "en": "a sentence to translate"},
-    "ai": {"description": "Translate a sentence with the user's configured translation API: Chinese to English, other languages to Chinese. The first item's title is the translation; when no API is configured the item says so."}
+    "ai": {"description": "Translate a sentence with the user's configured translation service (an online API or the local model on this computer): Chinese to English, other languages to Chinese. The first item's title is the translation; when no service is set up the item says so."}
   }, {
     "id": "dict",
     "keyword": ["dict", "词典"],
@@ -30,6 +30,7 @@
   "settings": [
     {"key": "provider", "type": "choice", "title": {"zh": "翻译服务", "en": "Service"}, "options": [
       {"value": "none", "title": {"zh": "未设置", "en": "Not set"}},
+      {"value": "local", "title": {"zh": "本地模型（离线，用“本地模型”插件）", "en": "Local model (offline, with the Local models plugin)"}},
       {"value": "deepl", "title": "DeepL"},
       {"value": "openai", "title": {"zh": "OpenAI 兼容", "en": "OpenAI-compatible"}},
       {"value": "deepseek", "title": "DeepSeek"},
@@ -43,8 +44,8 @@
     {"key": "deepseekKey", "type": "password", "title": {"zh": "DeepSeek 密钥", "en": "DeepSeek key"}, "hint": {"zh": "存在 Windows 凭据管理器里，不进设置文件", "en": "Kept in Windows Credential Manager, not in the settings file"}},
     {"key": "doubaoKey", "type": "password", "title": {"zh": "豆包 / 方舟密钥", "en": "Doubao / Ark key"}, "hint": {"zh": "存在 Windows 凭据管理器里，不进设置文件", "en": "Kept in Windows Credential Manager, not in the settings file"}},
     {"key": "hunyuanKey", "type": "password", "title": {"zh": "混元密钥", "en": "Hunyuan key"}, "hint": {"zh": "存在 Windows 凭据管理器里，不进设置文件", "en": "Kept in Windows Credential Manager, not in the settings file"}},
-    {"key": "endpoint", "type": "text", "title": {"zh": "接口地址", "en": "Endpoint"}, "hint": {"zh": "留空使用所选服务默认地址；自定义 OpenAI 兼容地址需含 /v1 等路径", "en": "Leave empty for the selected service's default; a custom OpenAI-compatible base includes /v1 if required"}, "default": ""},
-    {"key": "model", "type": "text", "title": {"zh": "模型", "en": "Model"}, "hint": {"zh": "留空使用服务默认模型；方舟须填已开通的模型或推理接入点 ID；切换服务时检查此项", "en": "Empty uses the service default; Ark needs an enabled model or endpoint ID. Check this when changing service"}, "default": ""},
+    {"key": "endpoint", "type": "text", "title": {"zh": "接口地址", "en": "Endpoint"}, "hint": {"zh": "留空使用所选服务默认地址；自定义 OpenAI 兼容地址需含 /v1 等路径。Ollama、LM Studio 等本机服务填 http://127.0.0.1:端口/v1，不用密钥", "en": "Leave empty for the selected service's default; a custom OpenAI-compatible base includes /v1 if required. Ollama, LM Studio and other services on this computer: http://127.0.0.1:port/v1, no key needed"}, "default": ""},
+    {"key": "model", "type": "text", "title": {"zh": "模型", "en": "Model"}, "hint": {"zh": "留空使用服务默认模型（本地模型用它设置里选的那个）；方舟须填已开通的模型或推理接入点 ID；切换服务时检查此项", "en": "Empty uses the service default (the local model: the one its settings choose); Ark needs an enabled model or endpoint ID. Check this when changing service"}, "default": ""},
     {"key": "region", "type": "text", "title": {"zh": "微软资源区域", "en": "Microsoft resource region"}, "hint": {"zh": "微软翻译资源需要时填写，如 eastasia；其他服务留空", "en": "For Microsoft resources that require a region, e.g. eastasia; otherwise leave empty"}, "default": ""},
     {"key": "target", "type": "choice", "title": {"zh": "译成", "en": "Target"}, "options": [
       {"value": "auto", "title": {"zh": "自动（中⇄英）", "en": "Auto (zh ⇄ en)"}},

@@ -2,7 +2,7 @@
 
 在设置 → 插件 → 插件库安装。`tr 句子` 或 `fy 句子` 翻译，`dict 单词` 或 `词典 单词` 显示音标、词性、释义和例句。词典结果由所选模型生成，界面会标明 AI 词典。Enter 复制当前项。
 
-选择服务并填写这个服务自己的 API 密钥。每个服务的密钥分开保存在 Windows 凭据管理器，切换服务不会把一个服务的密钥发给另一个。旧版填写的共用密钥仍然有效，所选服务没填自己的密钥时使用它。默认不联网，只有输入查询后才把待译文字发送给所选服务。支持 DeepL、微软 Translator、OpenAI 兼容接口，以及 DeepSeek、豆包／火山方舟、腾讯混元预设。AI 词典需要模型服务，DeepL 和微软 Translator 仅用于翻译。
+选择服务并填写这个服务自己的 API 密钥（本地模型和本机的模型服务不用）。每个服务的密钥分开保存在 Windows 凭据管理器，切换服务不会把一个服务的密钥发给另一个。旧版填写的共用密钥仍然有效，所选服务没填自己的密钥时使用它。默认不联网，只有输入查询后才把待译文字发送给所选服务。支持 DeepL、微软 Translator、OpenAI 兼容接口，以及 DeepSeek、豆包／火山方舟、腾讯混元预设。AI 词典需要模型服务，DeepL 和微软 Translator 仅用于翻译。
 
 - 接口地址留空使用所选服务的默认地址，也可填写自定义兼容接口。切换服务时检查原来填写的接口和模型。
 - 模型留空使用默认模型，方舟需填已开通的模型名称或推理接入点 ID。DeepSeek 默认 deepseek-flash，混元默认 hunyuan-turbos-latest。
@@ -10,6 +10,9 @@
 - 打字停止 100 毫秒后发请求。改词或关闭查询会取消旧请求，新词可立即开始处理。每个请求最多等 9 秒，成功结果缓存 5 分钟。网络与服务生成耗时仍取决于所选服务。
 - 日志仅记录服务名、请求耗时、HTTP 状态和错误码，便于定位网络延迟。日志不记录查询、译文和密钥。
 - 一次翻译多行文字（2.2.2）时，每一行单独翻译，译文按原来的顺序一行一行交回，截图翻译靠它把译文对回原处；一行文字照旧整句发送。
+- **本地模型（2.3.0，离线）**：服务选“本地模型（离线）”，用“本地模型”插件在这台电脑上运行的模型翻译，不联网、不用密钥，要翻译的字不出本机。先在插件库装“本地模型”并在它的卡片上下载模型；还没下载、没在运行或停了时，结果行直接说原因，回车打开它的卡片。接口地址留空即可，“本地模型”改过端口时填 `http://127.0.0.1:端口/v1`。
+- **本机的模型服务**（2.3.0）：Ollama、LM Studio 等选“OpenAI 兼容”，接口地址填 `http://127.0.0.1:端口/v1`（Ollama 是 11434），模型填它里面的名字，不用密钥；本机地址不走代理。
+- **边出边显示**（2.3.0）：在搜索框里用模型类服务（本地模型、OpenAI 兼容和各预设）时，译文一边生成一边显示，不受 9 秒限制（本地模型第一次加载也能等）；DeepL、微软和截图翻译、AI 调用照旧一次拿到完整结果。
 
 默认地址和请求格式依据服务官方文档维护。
 
@@ -28,3 +31,7 @@ Choose a service and enter that service's own key. Each service's key is kept se
 An empty endpoint uses the selected service's default. An empty model uses its default, except Ark requires your enabled model or endpoint ID. Check both fields when changing service. Microsoft resources may require their resource region. Requests use the system proxy, start after a 100 ms debounce, cancel superseded text, and have a 9-second budget. Successful results are cached for 5 minutes. Network and model generation still affect response time. Logs contain service, elapsed time, HTTP status and error code, with query text, translations and credentials excluded.
 
 Several lines of text (2.2.2) are translated each on its own and come back one line each, in order, which is how screenshot translation puts the translations back where the words were; a single line is sent exactly as before.
+
+Local model (2.3.0, offline): the model the Local models plugin runs on this computer, with no network and no key; the text stays on this PC. Install Local models from the plugin library and download a model on its card first; when there is none yet, or it is not running, the row says so and Enter opens that card. Leave the endpoint empty, or `http://127.0.0.1:<port>/v1` when Local models uses another port. Ollama, LM Studio and other servers on this computer: OpenAI-compatible, `http://127.0.0.1:<port>/v1` (Ollama: 11434), their model name, no key, never through the proxy.
+
+As it comes (2.3.0): typed in the search box, a model service's translation (the local model, OpenAI-compatible and the presets) shows while it is written, past the 9 seconds (a local model may load first); DeepL, Microsoft, screenshot translation and AI calls still get the whole answer at once.

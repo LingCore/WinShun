@@ -16,12 +16,20 @@ namespace {
 
 constexpr std::size_t kMaxBody = 8u << 20; // no translation is this big
 
-HINTERNET session()
+HINTERNET session(bool direct)
 {
-    // The system's proxy settings (WPAD and the user's), as a browser would.
-    static const HINTERNET s = ::WinHttpOpen(L"WinShun-translate/2.0", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
+    // The system's proxy settings (WPAD and the user's), as a browser would;
+    // a server on this computer directly (a proxy elsewhere cannot reach it).
+    static const HINTERNET proxied = ::WinHttpOpen(L"WinShun-translate/2.0", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
         WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, WINHTTP_FLAG_ASYNC);
-    return s; // kept until the process ends
+    static const HINTERNET local = ::WinHttpOpen(L"WinShun-translate/2.0", WINHTTP_ACCESS_TYPE_NO_PROXY,
+        WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, WINHTTP_FLAG_ASYNC);
+    return direct ? local : proxied; // kept until the process ends
+}
+
+bool onThisComputer(const std::wstring& host)
+{
+    return host == L"127.0.0.1" || host == L"localhost" || host == L"::1" || host == L"[::1]";
 }
 
 // One request, one absolute deadline. Only the calling thread uses or closes
@@ -125,7 +133,7 @@ private:
 } // namespace
 
 Response post(const std::string& url, const std::string& body, const std::string& authorization, int budgetMs,
-    const std::atomic_bool* canceled, const std::map<std::string, std::string>& extraHeaders)
+    const std::atomic_bool* canceled, const std::map<std::string, std::string>& extraHeaders, const OnData& onData)
 {
     Response r;
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(std::max(0, budgetMs));
@@ -141,8 +149,9 @@ Response post(const std::string& url, const std::string& body, const std::string
         return r;
     }
     const std::wstring hostName(parts.lpszHostName, parts.dwHostNameLength);
-    r.host = winshun::utf8(hostName);
-    if (!session()) {
+    r.host = winshun::utf8(hostName) + (onThisComputer(hostName) ? ":" + std::to_string(parts.nPort) : std::string());
+    const HINTERNET http = session(onThisComputer(hostName));
+    if (!http) {
         r.error = ::GetLastError();
         return r;
     }
@@ -156,7 +165,7 @@ Response post(const std::string& url, const std::string& body, const std::string
     if (canceled && canceled->load())
         return failed(ERROR_CANCELLED);
     Request request(canceled);
-    request.connection = ::WinHttpConnect(session(), hostName.c_str(), parts.nPort, 0);
+    request.connection = ::WinHttpConnect(http, hostName.c_str(), parts.nPort, 0);
     if (!request.connection)
         return failed(::GetLastError());
     std::wstring objectPath(parts.lpszUrlPath, parts.dwUrlPathLength);
@@ -213,10 +222,17 @@ Response post(const std::string& url, const std::string& body, const std::string
         if (error)
             return failed(error);
         r.body.append(request.buffer.data(), request.bytes);
+        if (onData && request.bytes > 0 && r.status >= 200 && r.status <= 299)
+            onData(std::string_view(request.buffer.data(), request.bytes));
         if (request.bytes == 0)
             break;
     }
     return r;
+}
+
+bool notConnected(const Response& r)
+{
+    return r.error == ERROR_WINHTTP_CANNOT_CONNECT || r.error == ERROR_WINHTTP_CONNECTION_ERROR;
 }
 
 std::string networkError(const Response& r, bool chinese)
@@ -224,6 +240,8 @@ std::string networkError(const Response& r, bool chinese)
     switch (r.error) {
     case ERROR_WINHTTP_CANNOT_CONNECT:
     case ERROR_WINHTTP_CONNECTION_ERROR:
+        if (r.host.starts_with("127.0.0.1") || r.host.starts_with("localhost") || r.host.starts_with("::1") || r.host.starts_with("[::1]"))
+            return chinese ? "本机的 " + r.host + " 没有程序在回答" : "Nothing answers at " + r.host + " on this computer";
         return chinese ? "连不上 " + r.host + "：检查网络或代理" : "Cannot reach " + r.host + ": check the network or proxy";
     case ERROR_WINHTTP_NAME_NOT_RESOLVED:
         return chinese ? "找不到服务器 " + r.host + "：检查接口地址和网络" : "Server not found (" + r.host + "): check the endpoint and the network";
