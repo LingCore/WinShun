@@ -182,7 +182,7 @@ Item {
                             anchors.verticalCenter: parent.verticalCenter
                             visible: notationArea.containsMouse
                             glyph: "" // Copy
-                            size: 14
+                            size: 16
                             color: Theme.subtext
                         }
                         MouseArea {
@@ -300,7 +300,7 @@ Item {
                     Glyph {
                         anchors.centerIn: parent
                         iconName: preview.pictureViewed ? "magnifying-glass-minus" : "magnifying-glass-plus"
-                        size: 16
+                        size: 18
                         color: Theme.text
                     }
                 }
@@ -393,7 +393,7 @@ Item {
                             Glyph {
                                 anchors.verticalCenter: parent.verticalCenter
                                 iconName: preview.wordsShown ? "caret-down" : "caret-right"
-                                size: 12
+                                size: 14
                                 color: Theme.faint
                             }
                             Text {
@@ -437,7 +437,7 @@ Item {
                                 inkScale: copyWordsKey.out("contentScale", 1)
                                 anchors.verticalCenter: parent.verticalCenter
                                 glyph: "" // Copy
-                                size: 13
+                                size: 14
                                 color: Theme.accent
                             }
                             Text {

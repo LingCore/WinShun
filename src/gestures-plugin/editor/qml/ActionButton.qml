@@ -49,7 +49,7 @@ Rectangle {
         anchors.verticalCenter: parent.verticalCenter
         anchors.verticalCenterOffset: surface.out("contentOffsetY", 0)
         glyph: button.icon
-        size: 16
+        size: 18
         color: button.ink
     }
     Text {
@@ -74,7 +74,7 @@ Rectangle {
         anchors.verticalCenterOffset: surface.out("contentOffsetY", 0)
         visible: !button.compact
         glyph: "ph:caret-down"
-        size: 12
+        size: 14
         color: Theme.subtext
     }
 

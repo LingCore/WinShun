@@ -74,7 +74,7 @@ SettingsSection {
             anchors.leftMargin: 5
             anchors.verticalCenter: parent.verticalCenter
             glyph: section.favorites.sortDescending ? "\uE70D" : "\uE70E" // caret-down : caret-up
-            size: 10
+            size: 12
             color: Theme.text
         }
         Rectangle { // keyboard focus
@@ -372,7 +372,7 @@ SettingsSection {
                             Glyph {
                                 anchors.centerIn: parent
                                 glyph: "\uE76F" // GripperBarHorizontal
-                                size: 14
+                                size: 16
                                 color: gripHover.hovered || dragger.active ? Theme.text : Theme.faint
                             }
                             HoverHandler {

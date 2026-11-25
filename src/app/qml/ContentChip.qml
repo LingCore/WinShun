@@ -35,7 +35,7 @@ Button {
             anchors.fill: parent
             z: 1 // over the part, made after it
             visible: chip.activeFocus
-            radius: Theme.pillRadius(height)
+            radius: Theme.chipRadius
             color: "transparent"
             border.width: 2
             border.color: Theme.accent

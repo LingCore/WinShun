@@ -125,7 +125,7 @@ Window {
                 Glyph {
                     y: Theme.snap((title.height - height) / 2, window.dpr)
                     glyph: card.glyph
-                    size: 16
+                    size: 18
                     color: card.checked || !card.switchShown ? Theme.accent : Theme.subtext
                 }
                 Text {
@@ -448,7 +448,7 @@ Window {
                 Glyph {
                     anchors.centerIn: parent
                     glyph: window.setup.captureReady ? "\uE73E" : window.setup.canRetry ? "\uE7BA" : "\uE722"
-                    size: 26
+                    size: 28
                     color: window.setup.canRetry ? Theme.danger : Theme.accent
                 }
             }
@@ -511,7 +511,7 @@ Window {
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: Theme.snap(status.height - statusMetrics.height * 1.15 + 2, window.dpr)
                 glyph: statusRoom.wrong ? "\uE7BA" : "\uE73E"
-                size: 14
+                size: 16
                 color: status.color
             }
             Explanation {

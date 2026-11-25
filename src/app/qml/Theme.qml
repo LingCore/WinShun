@@ -69,6 +69,8 @@ QtObject {
     readonly property real largeCardRadius: pick("largeCardRadius")
     readonly property real insetCardRadius: pick("insetCardRadius")
     readonly property real controlRadius: pick("controlRadius")
+    // A chip to pick (the type strip, the clipboard's groups, a filter) and the keys in a row with them.
+    readonly property real chipRadius: pick("chipRadius")
     readonly property real largeControlRadius: pick("largeControlRadius")
     readonly property real smallControlRadius: pick("smallControlRadius")
     readonly property real smallRadius: pick("smallRadius")

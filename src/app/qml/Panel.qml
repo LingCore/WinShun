@@ -321,16 +321,18 @@ Item {
         property string glyph // an icon before the words
         property string iconName
         property bool menu: false // opens its choices: a chevron after the words
-        readonly property real iconRoom: glyph.length > 0 || iconName.length > 0 ? 21 : 0
+        readonly property bool hasIcon: glyph.length > 0 || iconName.length > 0
         readonly property bool tipWanted: chipArea.containsMouse && tip.length > 0
         onTipWantedChanged: panel.offerTip(chip, tipWanted)
 
         signal clicked()
 
-        // Where the words start: after the lamp's room where the part has one (tactile's 不限), else 10.
+        // Where the words start: after the lamp's room where the part has one (tactile's 不限), else 10. An icon's container (16) is as far from the chip's left edge as from its top and bottom, the words 6 after it.
         readonly property real lead: chipSurface.out("leadingInset", 0) > 0 ? chipSurface.out("leadingInset", 0) : 10
+        readonly property real iconX: chipSurface.out("leadingInset", 0) > 0 ? lead : panel.onPixel((height - 16) / 2)
+        readonly property real nameX: hasIcon ? iconX + 16 + 6 : lead
         // As wide as what it says now: in a line of them, room kept for the other word is a gap.
-        width: Math.ceil(panel.showTypeKeywords && keyword.length > 0 ? prefixWidth.width : nameWidth.width) + lead + 10 + iconRoom + (menu ? 15 : 0)
+        width: Math.ceil(panel.showTypeKeywords && keyword.length > 0 ? prefixWidth.width : nameWidth.width) + nameX + 10 + (menu ? 16 : 0)
         TextMetrics { id: nameWidth; font: chipLabel.font; text: chip.text }
         TextMetrics { id: prefixWidth; font: chipLabel.font; text: chip.keyword.length > 0 ? ":" + chip.keyword : "" }
         height: Theme.chipHeight + 4
@@ -350,30 +352,30 @@ Item {
             hovered: chipArea.containsMouse
             pressed: chipArea.pressed
             focused: chip.activeFocus
-            corner: Theme.pillRadius(chip.height)
+            corner: Theme.chipRadius
             role: "filter"
             dpr: panel.dpr
         }
         Glyph {
-            visible: chip.iconRoom > 0
-            x: chip.lead - 1
+            visible: chip.hasIcon
+            x: chip.iconX
             y: panel.onPixel((chip.height - height) / 2 + chipSurface.out("contentOffsetY", 0))
             glyph: chip.glyph
             iconName: chip.iconName
-            size: 15
+            size: 16
             color: chipLabel.color
         }
         Glyph {
             visible: chip.menu
-            x: chip.width - 19
+            x: chip.width - 20
             y: panel.onPixel((chip.height - height) / 2 + chipSurface.out("contentOffsetY", 0))
             iconName: "caret-down"
-            size: 10
+            size: 12
             color: chipLabel.color
         }
         Text {
             id: chipLabel
-            x: chip.lead + chip.iconRoom
+            x: chip.nameX
             y: panel.onPixel((chip.height - height) / 2 + chipSurface.out("contentOffsetY", 0))
             text: panel.showTypeKeywords && chip.keyword.length > 0 ? ":" + chip.keyword : chip.text
             color: chipSurface.out("foreground", chip.active && !chip.isAll ? Theme.accentText : chip.active || chipArea.containsMouse ? Theme.text : Theme.subtext)
@@ -444,7 +446,7 @@ Item {
             y: panel.onPixel((row.height - height) / 2)
             glyph: row.glyph
             iconName: row.iconName
-            size: 16
+            size: 18
             color: row.active ? Theme.accent : rowArea.containsMouse ? Theme.text : Theme.subtext
         }
         Text {
@@ -1171,7 +1173,7 @@ Item {
             x: headerText.x + headerText.width + 4
             y: panel.onPixel((header.height - height) / 2)
             glyph: panel.launcher.panelSortDescending ? "" : "" // ChevronDown, ChevronUp
-            size: 8
+            size: 10
             color: Theme.accent
         }
         MouseArea {

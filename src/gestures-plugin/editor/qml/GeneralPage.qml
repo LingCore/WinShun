@@ -48,7 +48,7 @@ Column {
                         dpr: page.dpr
                         implicitHeight: 32
                         fontSize: Theme.fontCaption
-                        glyphSize: 14
+                        glyphSize: 16
                         highlighted: active
                         glyph: active ? "ph:check" : modelData.glyph
                         text: modelData.label

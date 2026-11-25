@@ -97,18 +97,16 @@ Window {
             Glyph {
                 id: tick
                 anchors.top: headline.top
-                anchors.topMargin: 1
-                width: 18
-                height: 18
+                anchors.topMargin: 2
                 // 撤销 that could not (all of it) put back is a caution, not a tick.
                 glyph: notice.outcome.length > 0 && !notice.outcomeOk ? "" : "" // Warning, Accept
-                size: 14
+                size: 16
                 color: notice.outcome.length > 0 && !notice.outcomeOk ? Theme.caution : Theme.success
             }
             Text {
                 id: headline
                 anchors.left: tick.right
-                anchors.leftMargin: 8
+                anchors.leftMargin: 10
                 anchors.right: closeButton.left
                 anchors.rightMargin: 8
                 text: notice.outcome.length > 0 ? notice.outcome
@@ -141,7 +139,7 @@ Window {
                 Glyph {
                     anchors.centerIn: parent
                     glyph: "" // Cancel
-                    size: 10
+                    size: 12
                     anchors.verticalCenterOffset: closeSurface.out("contentOffsetY", 0)
                     inkScale: closeSurface.out("contentScale", 1)
                     color: closeSurface.out("iconColor", Theme.subtext)

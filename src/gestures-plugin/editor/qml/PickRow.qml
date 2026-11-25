@@ -47,7 +47,7 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         visible: row.icon.length > 0 || row.marked
         glyph: row.marked && row.icon.length === 0 ? "ph:check" : row.icon
-        size: 14
+        size: 16
         color: row.danger ? Theme.danger : row.marked && row.icon.length === 0 ? Theme.accent : Theme.text
     }
     Text {
@@ -77,7 +77,7 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         visible: row.chevron || (row.marked && row.icon.length > 0)
         glyph: row.chevron ? "ph:caret-right" : "ph:check"
-        size: 12
+        size: 14
         color: row.chevron ? Theme.subtext : Theme.accent
     }
     MouseArea {

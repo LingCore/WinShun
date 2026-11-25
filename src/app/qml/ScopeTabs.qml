@@ -157,10 +157,10 @@ Rectangle {
 
                 Glyph {
                     visible: tabs.multiSelect
-                    x: 10
+                    x: 8
                     anchors.verticalCenter: parent.verticalCenter
                     glyph: tab.isChecked ? "\uE73E" : "\uE739" // CheckMark / Checkbox
-                    size: 12
+                    size: 14
                     color: tab.off ? Theme.faint : tab.isChecked ? Theme.accent : Theme.subtext
                 }
 
@@ -217,7 +217,7 @@ Rectangle {
                         anchors.verticalCenter: parent.verticalCenter
                         width: 14
                         glyph: "\uE76C" // ChevronRight
-                        size: 10
+                        size: 12
                         color: Theme.faint
                     }
 
@@ -271,7 +271,7 @@ Rectangle {
                         anchors.verticalCenter: parent.verticalCenter
                         width: 14
                         glyph: "" // ChevronRight
-                        size: 10
+                        size: 12
                         color: Theme.faint
                     }
 

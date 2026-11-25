@@ -30,7 +30,7 @@ ComboBox {
         x: control.mirrored ? 12 : control.width - width - 12
         y: (control.height - height) / 2
         glyph: "\uE70D"
-        size: 12
+        size: 14
         color: control.enabled ? Theme.subtext : Theme.faint
     }
     delegate: ItemDelegate {

@@ -806,7 +806,7 @@ private slots:
             const auto* outline = qobject_cast<const PhosphorGlyph*>(item); // not text: see PhosphorGlyph.h
             QVERIFY2(outline, item->metaObject()->className());
             QCOMPARE(outline->family(), regular.familyName());
-            QVERIFY(qAbs(outline->em() - 20 * phosphor::kScale) <= 1);
+            QCOMPARE(outline->em(), 20.0); // the container is the em, whatever the font DPI
         }
         QCOMPARE(drawn, 1);
         // A caption button keeps Windows' own close glyph.

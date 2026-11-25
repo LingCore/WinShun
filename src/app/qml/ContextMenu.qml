@@ -217,7 +217,7 @@ Window {
                     anchors.verticalCenter: parent.verticalCenter
                     // `checked: true` marks the entry as on (a column that is shown) in the icon's place
                     glyph: entry.modelData.checked === true ? String.fromCharCode(0xE73E) : (entry.modelData.glyph ?? "") // CheckMark
-                    size: 16
+                    size: 18
                     color: entry.disabled ? Theme.faint : entry.danger ? Theme.danger : Theme.text
                 }
 

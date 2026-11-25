@@ -141,7 +141,7 @@ Item {
         Glyph {
             anchors.centerIn: parent
             iconName: view.pictureViewed ? "magnifying-glass-minus" : "magnifying-glass-plus"
-            size: 16
+            size: 18
             color: Theme.text
         }
         MouseArea {

@@ -97,8 +97,8 @@ Item {
                     required property int index
                     required property var modelData
                     readonly property bool active: index === tabs.clipboard.category
-                    // Where the words start: after the lamp's room where the part has one (tactile's 全部), else 12.
-                    readonly property real lead: surface.out("leadingInset", 0) > 0 ? surface.out("leadingInset", 0) : 12
+                    // Where the words start: after the lamp's room where the part has one (tactile's 全部), else 12; a pinned group's pin is as far from the chip's left edge as from its top and bottom.
+                    readonly property real lead: surface.out("leadingInset", 0) > 0 ? surface.out("leadingInset", 0) : modelData.pinned ? Theme.snap((height - 14) / 2, tabs.dpr) : 12
 
                     visible: !tabs.noting
                     width: Math.ceil(lead + content.implicitWidth) + 12
@@ -121,13 +121,13 @@ Item {
                         id: content
                         x: chip.lead
                         y: Theme.snap((chip.height - height) / 2 + surface.out("contentOffsetY", 0), tabs.dpr)
-                        spacing: 5
+                        spacing: 4
 
                         Glyph {
                             anchors.verticalCenter: parent.verticalCenter
                             visible: chip.modelData.pinned
                             glyph: "" // Pin
-                            size: 12
+                            size: 14
                             color: surface.out("iconColor", chip.active && chip.index !== 0 ? Theme.accentText : Theme.subtext)
                         }
                         Text {
@@ -294,7 +294,7 @@ Item {
                     hovered: addArea.containsMouse
                     pressed: addArea.pressed
                     flat: true
-                    corner: Theme.pillRadius(addChip.height)
+                    corner: Theme.chipRadius
                     role: "toolbar"
                     dpr: tabs.dpr
                 }
@@ -303,7 +303,7 @@ Item {
                     x: Theme.snap((parent.width - width) / 2, Screen.devicePixelRatio) // on whole device pixels
                     y: Theme.snap((parent.height - height) / 2, Screen.devicePixelRatio)
                     glyph: "" // Add
-                    size: tabs.metrics.dense ? 16 : 64 / 3 // as the header's pin button (RowAction): 32 device pixels at 150%
+                    size: tabs.metrics.dense ? 18 : 24 // as the header's pin button (RowAction)
                     color: addKey.out("foreground", addArea.containsMouse ? Theme.text : Theme.subtext)
                     inkScale: addKey.out("contentScale", 1)
                 }
@@ -337,7 +337,7 @@ Item {
             pressed: orderArea.pressed
             checked: tabs.clipboard.pinnedFirst
             flat: true
-            corner: Theme.pillRadius(orderChip.height)
+            corner: Theme.chipRadius
             role: "toolbar"
             dpr: tabs.dpr
         }
@@ -346,7 +346,7 @@ Item {
             x: Theme.snap((parent.width - width) / 2, Screen.devicePixelRatio) // on whole device pixels
             y: Theme.snap((parent.height - height) / 2, Screen.devicePixelRatio)
             glyph: "" // Sort
-            size: tabs.metrics.dense ? 16 : 64 / 3 // as the header's pin button (RowAction): 32 device pixels at 150%
+            size: tabs.metrics.dense ? 18 : 24 // as the header's pin button (RowAction)
             color: orderKey.out("foreground", tabs.clipboard.pinnedFirst ? Theme.accentText : orderArea.containsMouse ? Theme.text : Theme.subtext)
             inkScale: orderKey.out("contentScale", 1)
         }

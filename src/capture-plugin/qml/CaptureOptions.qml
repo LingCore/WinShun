@@ -961,7 +961,7 @@ Column {
                                                 Glyph {
                                                     anchors.centerIn: parent
                                                     glyph: "" // Cancel
-                                                    size: 10
+                                                    size: 12
                                                     color: groupChip.active ? Theme.accentText
                                                          : removeArea.containsMouse ? Theme.danger : Theme.subtext
                                                 }

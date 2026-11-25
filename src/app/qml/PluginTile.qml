@@ -178,10 +178,8 @@ Rectangle {
                         id: shield
                         anchors.verticalCenter: parent.verticalCenter
                         visible: tile.elevation === "elevated"
-                        width: 16
-                        height: 16
                         glyph: String.fromCharCode(0xE7EF) // Admin: Phosphor's shield-check
-                        size: 14
+                        size: 16
                         color: Theme.subtext
                         Accessible.role: Accessible.Graphic
                         Accessible.name: tile.elevationNote

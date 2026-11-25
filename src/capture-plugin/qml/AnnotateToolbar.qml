@@ -74,7 +74,7 @@ Item {
     readonly property int buttonHeight: 36 // as FlatButton
     readonly property int toolWidth: 32 // a tool, an action
     readonly property int helpWidth: 24 // the "?"
-    readonly property int iconSize: 16 // drawn tool icons and glyphs
+    readonly property int iconSize: 18 // drawn tool icons and glyphs
     readonly property int separatorWidth: 8 // a 1 device px line in the middle
     readonly property int separatorHeight: 20
     readonly property int rowGap: 4 // between the two cards

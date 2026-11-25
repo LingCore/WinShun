@@ -33,7 +33,7 @@ Rectangle {
     // move of the mouse is told, in this button's coordinates.
     property bool draggable: false
     property bool small: false // a smaller box and icon (the clipboard's 密集 rows)
-    property real iconSize: small ? 16 : 64 / 3 // 32 device pixels at 150%
+    property real iconSize: small ? 18 : 24
     // One of the few sets a list lends to its rows (RowActionsPool): its
     // surface made with it rather than when it first shows, and a drawn icon
     // kept while it shows another, for the next row it is lent to.

@@ -277,6 +277,7 @@ QtObject {
     readonly property int largeCardRadius: r(10)
     readonly property int insetCardRadius: r(6)
     readonly property int controlRadius: keyRadius
+    readonly property int chipRadius: keyRadius // chipSurface's own corner, for the keys beside the chips
     readonly property int largeControlRadius: r(8)
     readonly property int smallControlRadius: r(4)
     readonly property real smallRadius: r(2)

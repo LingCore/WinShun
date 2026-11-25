@@ -183,7 +183,7 @@ FocusScope {
         Glyph {
             Layout.alignment: Qt.AlignHCenter
             glyph: "ph:brackets-curly"
-            size: 40
+            size: 44
             color: Theme.faint
         }
         Text {
@@ -223,7 +223,7 @@ FocusScope {
         Glyph {
             Layout.alignment: Qt.AlignHCenter
             glyph: "ph:warning-circle"
-            size: 40
+            size: 44
             color: Theme.danger
         }
         Text {

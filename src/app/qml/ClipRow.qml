@@ -197,7 +197,7 @@ Item {
             Glyph {
                 anchors.centerIn: parent
                 glyph: row.kind === 1 ? "" : "" // Link, Font
-                size: 16
+                size: 18
                 color: row.kind === 1 ? Theme.tok("clipLinkInk", Theme.accent) : Theme.tok("clipTextInk", Theme.accent)
             }
         }
@@ -336,7 +336,7 @@ Item {
             Glyph {
                 anchors.centerIn: parent
                 glyph: String.fromCharCode(0xE73E) // CheckMark
-                size: 12
+                size: 14
                 color: Theme.accentText
             }
         }
@@ -394,7 +394,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 visible: row.hotkey.length > 0 || row.pinned
                 glyph: row.hotkey.length > 0 ? "\uE765" : "\uE718" // Keyboard, Pin
-                size: 12
+                size: 14
                 color: Theme.accent
             }
             Text {

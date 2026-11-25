@@ -10,7 +10,7 @@ RowLayout {
     required property string path
     signal removed()
     spacing: 4
-    Glyph { glyph: "\uE8B7"; size: 16; color: Theme.subtext }
+    Glyph { glyph: "\uE8B7"; size: 18; color: Theme.subtext }
     Text {
         id: pathLabel
         Layout.fillWidth: true

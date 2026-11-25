@@ -231,7 +231,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 visible: box.session.ratioLocked && box.selectedHere
                 iconName: "lock-simple"
-                size: 12
+                size: 14
                 color: Theme.accentText
             }
             Glyph { // 只检测窗口 (#360, Tab): what is outlined is a whole window
@@ -239,7 +239,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 visible: box.session.windowsOnly && !box.selectedHere
                 iconName: "app-window"
-                size: 12
+                size: 14
                 color: Theme.accentText
             }
             Text {
@@ -251,7 +251,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 visible: box.selectedHere
                 iconName: "caret-down"
-                size: 10
+                size: 12
                 color: Theme.accentText
                 opacity: chipArea.containsMouse ? 1 : 0.7
             }
@@ -498,7 +498,7 @@ Item {
             anchors.centerIn: parent
             anchors.verticalCenterOffset: keyFace.out("contentOffsetY", 0)
             iconName: key.iconName
-            size: 16
+            size: 18
             color: key.enabled ? keyFace.out("foreground", Theme.text) : Theme.faint
         }
     }
@@ -535,7 +535,7 @@ Item {
             x: 8
             anchors.verticalCenter: parent.verticalCenter
             iconName: item.iconName
-            size: 14
+            size: 16
             color: item.enabled ? Theme.subtext : Theme.faint
         }
         Text {
@@ -586,7 +586,7 @@ Item {
             Glyph {
                 anchors.centerIn: parent
                 iconName: "x"
-                size: 12
+                size: 14
                 color: removeFace.out("foreground", Theme.subtext)
             }
         }

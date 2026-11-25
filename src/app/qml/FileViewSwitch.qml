@@ -95,7 +95,7 @@ Row {
             x: viewSwitch.onPixel((chip.width - width) / 2)
             y: viewSwitch.onPixel((chip.height - height) / 2 + track.call("labelOffsetY", [chip.index], 0))
             glyph: chip.glyph
-            size: 16
+            size: 18
             color: track.call("labelColor", [chip.index], chip.active || chip.hovered ? Theme.text : Theme.subtext)
         }
 

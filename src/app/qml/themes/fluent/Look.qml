@@ -33,6 +33,7 @@ QtObject {
     property real largeCardRadius: r(8)
     property real insetCardRadius: r(5)
     property real controlRadius: r(4)
+    property real chipRadius: controlRadius // a chip to pick (chipSurface) and the keys beside it: a control's corner, no capsule
     property real largeControlRadius: r(6)
     property real smallControlRadius: r(3)
     property real smallRadius: r(1.5)

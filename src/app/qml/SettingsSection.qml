@@ -71,10 +71,10 @@ Column {
 
         Glyph {
             id: pageGlyph
-            x: Theme.snap(-inkLeft, section.dpr) // the icon's ink, not its box, on the edge the card below starts at
+            x: 0 // its container on the edge the card below starts at
             anchors.verticalCenter: parent.verticalCenter
             glyph: section.pageInfo?.glyph ?? ""
-            size: 16
+            size: 18
             color: Theme.text
         }
         Text {
@@ -116,7 +116,7 @@ Column {
         height: 26
 
         Row {
-            x: sectionGlyph.visible ? Theme.snap(-sectionGlyph.inkLeft, section.dpr) : 0 // the icon's ink on the card's edge
+            x: 0 // the icon's container on the card's edge
             anchors.verticalCenter: parent.verticalCenter
             spacing: 8
 
@@ -125,7 +125,7 @@ Column {
                 visible: section.glyph.length > 0
                 anchors.verticalCenter: parent.verticalCenter
                 glyph: section.glyph
-                size: 15
+                size: 16
                 color: Theme.accent
             }
 

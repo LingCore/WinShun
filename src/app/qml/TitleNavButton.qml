@@ -54,7 +54,7 @@ Item {
         anchors.verticalCenterOffset: button.warm ? 0 : surface.out("contentOffsetY", 0)
         inkScale: button.warm ? 1 : surface.out("contentScale", 1)
         iconName: button.iconName
-        size: 14
+        size: 16
         opacity: button.active ? 1 : 0.34
         color: button.warm
                ? (button.active && area.containsMouse ? WarmPalette.ink : button.ink)

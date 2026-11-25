@@ -134,7 +134,7 @@ Window {
                 Glyph {
                     anchors.verticalCenter: parent.verticalCenter
                     iconName: "check"
-                    size: 13
+                    size: 14
                     color: Theme.success
                 }
                 Text {
@@ -155,7 +155,7 @@ Window {
             height: 28
             flat: !window.linesMerged
             fontSize: Theme.uiCaption
-            glyphSize: 13
+            glyphSize: 14
             glyph: "ph:paragraph"
             text: qsTr("合并换行")
             visible: !window.ocr.busy && window.ocr.link.length === 0

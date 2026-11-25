@@ -62,7 +62,7 @@ Item {
             anchors.verticalCenterOffset: removePart.out("contentOffsetY", 0)
             inkScale: removePart.out("contentScale", 1)
             glyph: "" // Cancel
-            size: 12
+            size: 14
             color: removePart.out("foreground", area.containsMouse ? Theme.text : Theme.subtext)
         }
 

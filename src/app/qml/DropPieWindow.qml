@@ -166,13 +166,13 @@ Window {
             readonly property bool paged: pie.dropPie.pageCount > 1
             readonly property bool dots: pie.dropPie.pageCount <= 6
             // The smaller cross, an even number of device pixels (150 %: 16, not 15), so its centre is the middle's.
-            readonly property real cross: Math.round(10 * pie.dpr / 2) * 2 / pie.dpr
+            readonly property real cross: Math.round(12 * pie.dpr / 2) * 2 / pie.dpr
 
             Glyph {
                 anchors.centerIn: parent
                 anchors.verticalCenterOffset: middle.paged ? -Theme.snap((middle.dots ? 3.5 : 6) * pie.k, pie.dpr) : 0
                 glyph: "\uE711" // Cancel
-                size: middle.paged ? middle.cross : 12
+                size: middle.paged ? middle.cross : 14
                 color: Theme.subtext
             }
 
@@ -259,7 +259,7 @@ Window {
                     Glyph {
                         anchors.verticalCenter: parent.verticalCenter
                         glyph: chip.modelData.disabled && pie.dropPie.noFolders ? "\uE734" : "\uE8B7" // FavoriteStar, Folder
-                        size: 16 * pie.k
+                        size: 18 * pie.k
                         color: chip.ink
                     }
                     Text {

@@ -172,7 +172,7 @@ Window {
                 readonly property bool flashing: footer.message.length > 0
                 visible: flashing || window.tool.error.length > 0
                 glyph: flashing ? (footer.bad ? "ph:warning-circle" : "ph:check-circle") : "ph:warning-circle"
-                size: 14
+                size: 16
                 color: flashing && !footer.bad ? Theme.success : Theme.danger
             }
             Text {

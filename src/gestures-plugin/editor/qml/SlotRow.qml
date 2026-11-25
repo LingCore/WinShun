@@ -56,7 +56,7 @@ Item {
         Glyph {
             anchors.centerIn: parent
             glyph: row.trigger === "wheel:up" ? "ph:arrow-line-up" : "ph:arrow-line-down"
-            size: 18
+            size: 20
             color: Theme.text
         }
     }
@@ -124,7 +124,7 @@ Item {
             anchors.centerIn: parent
             anchors.verticalCenterOffset: clearPart.out("contentOffsetY", 0)
             glyph: "ph:x"
-            size: 14
+            size: 16
             color: clearArea.containsMouse ? Theme.text : Theme.subtext
         }
         MouseArea {

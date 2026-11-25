@@ -23,5 +23,5 @@ Glyph {
     ]
 
     iconName: kind >= 0 && kind < names.length ? names[kind] : ""
-    size: 16
+    size: 18
 }

@@ -388,8 +388,17 @@ Item {
 
                     Item {
                         id: body
-                        readonly property real lead: surface.out("leadingInset", 0) > 0 ? surface.out("leadingInset", 0) : (chip.glyph.length > 0 ? 10 : 12) // 0 (a key without a lamp) is no say; 10 with an icon: it then sits as far from the key's edge as the last word does
-                        width: strip.stepUp(Math.ceil(lead + (chip.glyph.length > 0 ? icon.width + 4 : 0) + labelSize.width + badge.room) + (chip.glyph.length > 0 ? 6 : 12))
+                        // The style's own inset (a key with a lamp), 0 for no say.
+                        readonly property real ownLead: surface.out("leadingInset", 0)
+                        // The icon stands in a container (iconBox, an even square its ink never fills), and
+                        // the chip is laid out by that: as far from the left edge as from the top and bottom,
+                        // the name a fixed gap after it. Nothing here looks at the ink.
+                        readonly property int iconBox: 2 * Math.round(height * 0.35) // 14, 16, 20, 22 for the four sizes of chip
+                        readonly property int iconGap: 4
+                        readonly property real iconInset: strip.onPixel((height - iconBox) / 2)
+                        readonly property real lead: ownLead > 0 ? ownLead : chip.glyph.length > 0 ? iconInset : 12
+                        readonly property real nameX: chip.glyph.length > 0 ? lead + iconBox + iconGap : lead
+                        width: strip.stepUp(Math.ceil(nameX + labelSize.width + badge.room) + (chip.glyph.length > 0 ? 6 : 12))
                         height: parent.height
 
                         TextMetrics { id: labelSize; font: label.font; text: label.text }
@@ -410,18 +419,20 @@ Item {
 
                         Glyph {
                             id: icon
+                            objectName: "searchTypeChipIcon"
                             visible: chip.glyph.length > 0
                             x: body.lead
                             y: strip.onPixel((body.height - height) / 2 + surface.out("contentOffsetY", 0))
                             glyph: chip.glyph
-                            size: 16
+                            size: body.iconBox
                             color: surface.out("iconColor", chip.active && !chip.isAll ? Theme.accentText
                                                           : area.containsMouse ? Theme.subtext : Theme.faint)
                         }
 
                         Text {
                             id: label
-                            x: chip.glyph.length > 0 ? body.lead + icon.width + 4 : body.lead
+                            objectName: "searchTypeChipName"
+                            x: body.nameX
                             y: strip.onPixel((body.height - height) / 2 + surface.out("contentOffsetY", 0))
                             text: strip.showKeywords && (chip.modelData.keyword ?? "").length > 0 ? ":" + chip.modelData.keyword : chip.modelData.name
                             color: surface.out("foreground", chip.active && !chip.isAll ? Theme.accentText
@@ -513,14 +524,14 @@ Item {
         Accessible.role: Accessible.Button
         Accessible.name: tip
 
-        Hook { // the style's key, flat until hovered, round as the chips
+        Hook { // the style's key, flat until hovered, cornered as the chips
             id: editKey
             anchors.fill: parent
             part: Theme.keySurface
             hovered: editArea.containsMouse
             pressed: editArea.pressed
             flat: true
-            corner: Theme.pillRadius(edit.height)
+            corner: Theme.chipRadius
             role: "toolbar"
             dpr: strip.dpr
         }
@@ -530,7 +541,7 @@ Item {
             anchors.verticalCenterOffset: editKey.out("contentOffsetY", 0)
             inkScale: editKey.out("contentScale", 1)
             glyph: "\uE710" // Add
-            size: 12
+            size: 14
             color: editKey.out("foreground", editArea.containsMouse ? Theme.text : Theme.subtext)
         }
 

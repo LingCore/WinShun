@@ -84,7 +84,7 @@ SettingsSection {
                 visible: clientRow.modelData.connected
                 anchors.verticalCenter: parent.verticalCenter
                 glyph: "" // CheckMark
-                size: 20
+                size: 22
                 color: Theme.accent
             }
             FlatButton {

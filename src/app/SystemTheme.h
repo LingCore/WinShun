@@ -25,7 +25,7 @@ class SystemTheme : public QObject, public QAbstractNativeEventFilter {
     // A fill that carries white words or marks (see accentFill()).
     Q_PROPERTY(QColor accentFill READ accentFill NOTIFY changed FINAL)
     Q_PROPERTY(QString iconFont READ iconFont CONSTANT FINAL)
-    // How much larger a Phosphor icon is drawn than its box (phosphor::kScale).
+    // How much larger Phosphor's em is than the system icon font's for the same weight (phosphor::kScale).
     Q_PROPERTY(qreal iconScale READ iconScale CONSTANT FINAL)
     // Settings > Accessibility > Visual effects > Animation effects.
     Q_PROPERTY(bool animations READ animations NOTIFY changed FINAL)

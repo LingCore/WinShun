@@ -42,7 +42,10 @@ std::optional<Icon> forSegoe(const QString& glyph);
 QList<QChar> segoeCodes();
 
 // Phosphor draws within about 82% of its em square, Segoe within nearly all
-// of it: drawn this much larger in the same box, both weigh the same.
+// of it: an em this much larger than Segoe's weighs the same. Glyph.qml lays
+// its icons out by the em itself (the icon's container); this is for what
+// draws an icon into a picture of a given size (a menu's, a plugin's glyph
+// icon, a badge), and for the system font where Phosphor did not load.
 inline constexpr double kScale = 1.125;
 
 } // namespace ws::phosphor

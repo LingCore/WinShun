@@ -169,7 +169,7 @@ Item {
                         anchors.leftMargin: 4
                         anchors.verticalCenter: siteWords.verticalCenter
                         iconName: "arrow-up-right"
-                        size: 12
+                        size: 14
                         color: Theme.accent
                     }
                     MouseArea {

@@ -256,7 +256,7 @@ Item {
                             Glyph {
                                 anchors.centerIn: parent
                                 glyph: "\uE946"
-                                size: 13
+                                size: 14
                                 color: tipArea.containsMouse ? Theme.accent : Theme.subtext
                             }
 

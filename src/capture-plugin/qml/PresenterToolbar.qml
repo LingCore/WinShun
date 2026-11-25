@@ -39,7 +39,7 @@ Window {
     readonly property int buttonHeight: 36
     readonly property int toolWidth: 32
     readonly property int gripWidth: 20
-    readonly property int iconSize: 16
+    readonly property int iconSize: 18
     readonly property int separatorWidth: 8
     readonly property int separatorHeight: 20
     readonly property int dotSize: 14 // the colour button's dot

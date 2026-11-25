@@ -77,7 +77,7 @@ Item {
                 x: 14
                 anchors.verticalCenter: parent.verticalCenter
                 glyph: row.modelData.pinned ? "\uE718" : "\uE8B7"
-                size: 18
+                size: 20
                 color: Theme.accent
             }
             Text {

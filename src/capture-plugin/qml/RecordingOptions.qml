@@ -296,7 +296,7 @@ Item {
             anchors.bottom: parent.bottom
             anchors.margins: 2
             glyph: "\uE73E"
-            size: 8
+            size: 10
             color: toggle.foreground
             Accessible.ignored: true
         }
