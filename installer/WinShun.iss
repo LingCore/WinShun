@@ -1783,7 +1783,8 @@ end;
 // run this copy's WinShunSearch.exe: a portable copy's stay.
 procedure RemoveExplorerMenu();
 var
-  Keys: array[0..5] of String;
+  Keys: TArrayOfString;
+  Pictures: TArrayOfString;
   CascadeKeys: array[0..1] of String;
   Command: String;
   State: String;
@@ -1791,16 +1792,28 @@ var
   I: Integer;
 begin
   Stub := Lowercase(ExpandConstant('{app}\WinShunSearch.exe'));
+  // 贴到屏幕 is on each picture extension (kPinnablePictureExtensions in
+  // src/app/PictureFile.h: the same list, tst_settings compares them), and
+  // was under *\shell (0.45.0) and SystemFileAssociations\image before.
+  Pictures := StringSplit('png,jpg,jpeg,jpe,jfif,bmp,dib,gif,webp,tif,tiff,ico,heic,heif,avif,jxr,wdp,hdp', [','], stAll);
+  SetArrayLength(Keys, 6 + GetArrayLength(Pictures));
   Keys[0] := 'Software\Classes\Directory\shell\WinShun.SearchHere';
   Keys[1] := 'Software\Classes\Directory\Background\shell\WinShun.SearchHere';
   Keys[2] := 'Software\Classes\Drive\shell\WinShun.SearchHere';
   Keys[3] := 'Software\Classes\Directory\Background\shell\WinShun.PasteFile';
   Keys[4] := 'Software\Classes\*\shell\WinShun.PinPicture';
   Keys[5] := 'Software\Classes\SystemFileAssociations\image\shell\WinShun.PinPicture';
-  for I := 0 to 5 do
+  for I := 0 to GetArrayLength(Pictures) - 1 do
+    Keys[6 + I] := 'Software\Classes\SystemFileAssociations\.' + Pictures[I] + '\shell\WinShun.PinPicture';
+  for I := 0 to GetArrayLength(Keys) - 1 do
     if RegQueryStringValue(HKCU, Keys[I] + '\command', '', Command)
       and (Pos(Stub, Lowercase(Command)) > 0) then
+    begin
       RegDeleteKeyIncludingSubkeys(HKCU, Keys[I]);
+      // No empty "shell" or ".webp" left behind (as ShellMenu.cpp, removeEmptyParents).
+      if RegDeleteKeyIfEmpty(HKCU, ExtractFileDir(Keys[I])) then
+        RegDeleteKeyIfEmpty(HKCU, ExtractFileDir(ExtractFileDir(Keys[I])));
+    end;
   CascadeKeys[0] := 'Software\Classes\*\shell\WinShun.Commands';
   CascadeKeys[1] := 'Software\Classes\Directory\shell\WinShun.Commands';
   for I := 0 to 1 do

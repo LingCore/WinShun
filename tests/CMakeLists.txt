@@ -771,6 +771,7 @@ set_tests_properties(tst_remotecontent PROPERTIES
 
 qt_add_executable(tst_settings tst_settings.cpp ${PROJECT_SOURCE_DIR}/src/app/Settings.cpp)
 target_include_directories(tst_settings PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_compile_definitions(tst_settings PRIVATE WINSHUN_INSTALLER_SCRIPT="${PROJECT_SOURCE_DIR}/installer/WinShun.iss")
 target_link_libraries(tst_settings PRIVATE wscore Qt6::Gui Qt6::Test)
 set_target_properties(tst_settings PROPERTIES WIN32_EXECUTABLE FALSE)
 add_test(NAME tst_settings COMMAND tst_settings)
@@ -1445,6 +1446,19 @@ target_link_libraries(tst_winkeys PRIVATE wscore Qt6::Test advapi32)
 set_target_properties(tst_winkeys PROPERTIES WIN32_EXECUTABLE FALSE)
 add_test(NAME tst_winkeys COMMAND tst_winkeys)
 set_tests_properties(tst_winkeys PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
+# Explorer's 贴到屏幕（Win顺）(src/app/platform/ShellMenu): a verb for each
+# picture extension, earlier versions' taken away, nothing empty left behind.
+# In a scratch key that stands in for HKCU; with the stub beside the test, as
+# the verbs are written only for a copy that has it.
+qt_add_executable(tst_shellmenu tst_shellmenu.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/ShellMenu.cpp)
+target_include_directories(tst_shellmenu PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_link_libraries(tst_shellmenu PRIVATE wscore Qt6::Gui Qt6::Test advapi32 ole32 shell32)
+set_target_properties(tst_shellmenu PROPERTIES WIN32_EXECUTABLE FALSE)
+add_dependencies(tst_shellmenu WinShunSearch)
+add_test(NAME tst_shellmenu COMMAND tst_shellmenu)
+set_tests_properties(tst_shellmenu PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
 # The MCP server (src/mcp): the protocol, the tools on a hand-made index, the

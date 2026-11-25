@@ -783,7 +783,7 @@ private slots:
         restored.load();
         QVERIFY(restored.explorerPinPicture);
 
-        // Shared WIC picture list & Explorer AppliesTo AQS expression.
+        // The pictures 贴到屏幕 is on: in the launcher, the clipboard history and Explorer alike.
         for (const QString& ok : {
                  u"C:\\img\\a.png"_s,
                  u"C:\\img\\photo.JPG"_s,
@@ -809,13 +809,19 @@ private slots:
              }) {
             QVERIFY2(!ws::isPinnablePicture(bad), qPrintable(bad));
         }
-        const std::wstring aqs = ws::pinPictureAppliesTo();
-        QVERIFY(aqs.find(L"System.FileExtension:=\".webp\"") != std::wstring::npos);
-        QVERIFY(aqs.find(L"System.FileExtension:=\".png\"") != std::wstring::npos);
-        QVERIFY(aqs.find(L"System.FileExtension:=\".heic\"") != std::wstring::npos);
-        QVERIFY(aqs.find(L"System.FileExtension:=\".avif\"") != std::wstring::npos);
-        QVERIFY(aqs.find(L".svg") == std::wstring::npos);
-        QVERIFY(aqs.find(L".txt") == std::wstring::npos);
+        // Explorer's entry is one verb per extension (ShellMenu.cpp), which the
+        // uninstaller takes away by a list of its own: the same extensions.
+        QFile script(QStringLiteral(WINSHUN_INSTALLER_SCRIPT));
+        QVERIFY2(script.open(QIODevice::ReadOnly), qPrintable(script.fileName()));
+        const QString text = QString::fromUtf8(script.readAll());
+        const qsizetype from = text.indexOf(u"Pictures := StringSplit('");
+        QVERIFY2(from >= 0, "the uninstaller's picture extensions are not where they were");
+        const qsizetype start = from + QStringView(u"Pictures := StringSplit('").size();
+        const QStringList uninstalled = text.sliced(start, text.indexOf(u'\'', start) - start).split(u',');
+        QStringList pinned;
+        for (const QStringView extension : ws::kPinnablePictureExtensions)
+            pinned.append(extension.toString());
+        QCOMPARE(uninstalled, pinned);
     }
 
     void startListOptions()

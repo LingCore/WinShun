@@ -32,11 +32,11 @@ void applyUriProtocol(bool on);
 void applyPasteFile(bool on);
 
 // 贴到屏幕（Win顺）on a picture file (GitHub #128; --pin-picture "<file>", which hands the file
-// to Win顺 for the screenshot plugin to pin). Registered under *\shell with an AppliesTo filter
-// over kPinnablePictureExtensions (not SystemFileAssociations\image, which Windows fails to
-// resolve with ERROR_NO_ASSOCIATION / drops on soft-coded formats like .webp, .heic and .avif).
-// Also cleans up any legacy SystemFileAssociations\image verb set by this copy. With several
-// pictures chosen Explorer runs it once a file, and each is pinned.
+// to Win顺 for the screenshot plugin to pin). Under SystemFileAssociations\.<extension>\shell for
+// each of kPinnablePictureExtensions, so that it stands with the file type's own verbs at the top
+// of the menu and runs for .webp, .heic and .avif too. This copy's verbs where earlier versions
+// put them (*\shell, SystemFileAssociations\image) go either way. With several pictures chosen
+// Explorer runs it once a file, and each is pinned.
 void applyPinPicture(bool on);
 
 // Win顺 命令 › on a file or a folder (GitHub #61): the user's own commands that ask to be there
