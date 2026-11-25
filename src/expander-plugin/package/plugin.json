@@ -2,7 +2,7 @@
   "manifest": 1,
   "id": "winshun.expander",
   "name": {"zh": "缩写展开", "en": "Text expander"},
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": {"zh": "在任何地方打出缩写，再按空格或标点，就换成设好的文字：cmd 变成 command，;addr 变成你的地址。紧接着按退格可以撤回。管理员身份运行的窗口里用不了", "en": "Type an abbreviation anywhere, then a space or punctuation, and it becomes the text you set: cmd becomes command, ;addr your address. Backspace right after takes it back. Not in windows run as administrator"},
   "author": "LingCore",
   "homepage": "https://github.com/LingCore/WinShun",

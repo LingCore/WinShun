@@ -2,7 +2,7 @@
   "manifest": 1,
   "id": "winshun.sync",
   "name": {"zh": "剪贴板同步", "en": "Clipboard sync"},
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": {"zh": "在自己的几台 Windows 电脑和 Mac（Mac顺）之间同步剪贴板：文字、图片、文件，端到端加密，不用账号", "en": "Share the clipboard between your Windows PCs and Macs (Mac顺): text, pictures, files; end to end encrypted, no account"},
   "author": "LingCore",
   "homepage": "https://github.com/LingCore/WinShun",
