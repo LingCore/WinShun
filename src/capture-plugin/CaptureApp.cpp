@@ -570,6 +570,7 @@ void CaptureApp::apply()
             m_stallWatch.reset();
             m_idleTrim->poke();
         };
+        callbacks.cannotShow = [this](const QString& why) { notify(tr("截图"), why); };
         callbacks.ocr = [this](const QImage& image, double dpr, const QRect& where) { showCaptureOcr(image, dpr, where); };
         callbacks.ocrThen = [this](const QImage& image, double dpr, const QRect& where, capture::CaptureSession::Action then) {
             using Action = capture::CaptureSession::Action;

@@ -2459,6 +2459,10 @@ The unfinished recording is kept at: %1</translation>
         <translation>Translate: drag over an area, or click a window · Esc cancels</translation>
     </message>
     <message>
+        <source>全屏的应用挡住了截图，请先退出全屏再截图</source>
+        <translation>A full-screen app is in front of the screenshot. Leave full screen first, then take it.</translation>
+    </message>
+    <message>
         <source>截图并贴图：拖选区域，或单击窗口 · Esc 取消</source>
         <translation>Capture &amp; pin: drag over an area, or click a window · Esc cancels</translation>
     </message>

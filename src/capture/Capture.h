@@ -110,6 +110,9 @@ public:
         std::function<void()> starting;
         // The overlays are on the screen (once a capture).
         std::function<void()> shown;
+        // The capture could not come over what is in front and has ended:
+        // why, in words for the user (the log has it too).
+        std::function<void(const QString&)> cannotShow;
         // How the annotation reads the selection's text and what it hides
         // (SmartRedact.h): 智能打码 and its pre-scan.
         Recorder::Hooks recording;
@@ -256,6 +259,8 @@ private:
     void finish(CaptureSession::Action action, int screen, const QRect& rect);
     void hideAll(); // once the frames without the pictures are drawn
     void findFlyout(); // the Start menu closed: where it was in the picture
+    void fullScreenTick(); // m_fullScreen out of full screen: then show()
+    void putBackTick(); // the overlays gone: m_fullScreen back into full screen
     Recorder& recorder();
     LongCapture& longCapture(); // made the first time
     void tickCountdown();
@@ -331,6 +336,17 @@ private:
     bool m_legacySwapSet = false; // QT_D3D_NO_FLIP set for the overlays being made
     HWND m_flyout = nullptr; // the Start menu or a shell flyout in front at the hotkey, closing
     HMONITOR m_flyoutMonitor = nullptr;
+    // A Store app in full screen at the hotkey (a video in the Media Player):
+    // taken out of it for the overlays to show (fullScreenTick), put back in
+    // once they are gone (putBackTick).
+    HWND m_fullScreen = nullptr;
+    bool m_fullScreenSent = false; // Win+Shift+Enter sent, once the hotkey's keys were up
+    bool m_putBack = false; // the capture ended leaving nothing of ours to be seen
+    qint64 m_fullScreenMs = -1; // from the switch to the app out of full screen
+    QElapsedTimer m_fullScreenClock;
+    int m_putBackSent = 0; // switches sent to put it back
+    qint64 m_putBackSentMs = 0; // the last, on m_fullScreenClock
+    qint64 m_putBackReadyMs = -1; // since when it has had the foreground with the keys up
     QImage m_last; // the last capture taken (copied, saved, pinned, read), for 贴上最近一次截图
     QPoint m_lastOrigin; // where it was, physical
     QByteArray m_lastProject;
@@ -385,6 +401,8 @@ private:
     bool m_scanRunning = false;
     int m_scanTicket = 0;
     QTimer m_flyoutWait;
+    QTimer m_fullScreenWait;
+    QTimer m_putBackWait;
     QTimer m_hideTimeout;
     QTimer m_rebuild;
     std::jthread m_saver; // last: joined first

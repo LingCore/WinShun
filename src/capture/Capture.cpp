@@ -32,6 +32,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <string_view>
 #include <thread>
 
 using namespace Qt::StringLiterals;
@@ -50,6 +51,22 @@ constexpr qint64 kFlyoutSettleMs = 500;
 // Hiding waits for a frame drawn without the pictures (their textures go
 // with it); one that does not come does not hold the windows up.
 constexpr auto kHideTimeout = 200ms;
+// A Store app in full screen: the hotkey's keys up first (Ctrl of Ctrl+1
+// down would make Win+Shift+Enter another chord), at most this long; then out
+// of full screen, measured in 3 ms (the Media Player), given this long.
+constexpr qint64 kKeysUpWaitMs = 1500;
+constexpr qint64 kFullScreenWaitMs = 1000;
+// The overlays gone: the app has the foreground back and the keys are up
+// (Ctrl of Ctrl+C) within this, or it is left out of full screen. Then the
+// switch waits a little more: sent the moment the app has the foreground
+// again, it is not taken (measured: 3 of 3 then, 100 ms later it is, in
+// some 20 ms); not back after the check time, it is sent once more.
+constexpr qint64 kPutBackWaitMs = 1500;
+constexpr qint64 kPutBackSettleMs = 150;
+constexpr qint64 kPutBackCheckMs = 400;
+// ZBID_DESKTOP: the band of the Z order every desktop program's windows are
+// in, topmost or not.
+constexpr DWORD kDesktopBand = 1;
 
 HMONITOR monitorOf(QScreen* screen)
 {
@@ -145,6 +162,84 @@ void sendEscape()
     ::SendInput(2, keys, sizeof keys[0]);
 }
 
+// The window's band of the Z order (user32's GetWindowBand, Windows 8 on,
+// not documented); 0: not known.
+DWORD windowBand(HWND window)
+{
+    using GetWindowBand = BOOL(WINAPI*)(HWND, DWORD*);
+    static const auto get = reinterpret_cast<GetWindowBand>(
+        reinterpret_cast<void*>(::GetProcAddress(::GetModuleHandleW(L"user32.dll"), "GetWindowBand")));
+    DWORD band = 0;
+    return get && get(window, &band) ? band : 0;
+}
+
+// A Store app in full screen (a video in the Media Player, F11): its frame
+// goes into a band over the desktop's (8), where no desktop program's window
+// comes, topmost or not, nor takes the foreground from it. The overlay stayed
+// under it, and the keys went to the app: Esc took it out of full screen, and
+// then showed the capture still there, out of the keys' reach. PixPin's
+// overlay does not come over it either (measured).
+bool fullScreenStoreApp(HWND window)
+{
+    wchar_t name[32] {};
+    if (!window || !::GetClassNameW(window, name, static_cast<int>(std::size(name)))
+        || std::wstring_view(name) != L"ApplicationFrameWindow")
+        return false;
+    if (const DWORD band = windowBand(window); band == 0 || band == kDesktopBand)
+        return false;
+    RECT frame {};
+    MONITORINFO monitor {sizeof monitor};
+    return ::GetWindowRect(window, &frame)
+        && ::GetMonitorInfoW(::MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), &monitor)
+        && frame.left <= monitor.rcMonitor.left && frame.top <= monitor.rcMonitor.top
+        && frame.right >= monitor.rcMonitor.right && frame.bottom >= monitor.rcMonitor.bottom;
+}
+
+bool modifiersDown()
+{
+    for (const int key : {VK_SHIFT, VK_CONTROL, VK_MENU, VK_LWIN, VK_RWIN}) {
+        if (::GetAsyncKeyState(key) & 0x8000)
+            return true;
+    }
+    return false;
+}
+
+// Win+Shift+Enter: Windows' own switch for the full screen of the Store app
+// in front, both ways (out in 3 ms, measured).
+void sendFullScreenSwitch()
+{
+    constexpr WORD chord[] {VK_LWIN, VK_SHIFT, VK_RETURN};
+    constexpr std::size_t n = std::size(chord);
+    INPUT keys[2 * n] {};
+    for (std::size_t i = 0; i < n; ++i) {
+        INPUT& down = keys[i];
+        INPUT& up = keys[2 * n - 1 - i];
+        down.type = up.type = INPUT_KEYBOARD;
+        down.ki.wVk = up.ki.wVk = chord[i];
+        up.ki.dwFlags = KEYEVENTF_KEYUP;
+        down.ki.dwExtraInfo = up.ki.dwExtraInfo = kOwnInput;
+    }
+    ::SendInput(static_cast<UINT>(std::size(keys)), keys, sizeof keys[0]);
+}
+
+// What leaves nothing of ours to be seen once the overlays are gone: the
+// app goes back into full screen after these. Not after a pin, the words
+// read, a recording, a long screenshot: they would be under it.
+bool putsBack(CaptureSession::Action action)
+{
+    using Action = CaptureSession::Action;
+    switch (action) {
+    case Action::Copy:
+    case Action::Save:
+    case Action::SaveAs:
+    case Action::SavePrevious:
+    case Action::Cancel:
+        return true;
+    default:
+        return false;
+    }
+}
+
 } // namespace
 
 Capture::Capture(QQmlEngine* engine, Callbacks callbacks, QObject* parent)
@@ -223,6 +318,10 @@ Capture::Capture(QQmlEngine* engine, Callbacks callbacks, QObject* parent)
         m_flyout = nullptr;
         show();
     });
+    m_fullScreenWait.setInterval(10ms);
+    connect(&m_fullScreenWait, &QTimer::timeout, this, &Capture::fullScreenTick);
+    m_putBackWait.setInterval(10ms);
+    connect(&m_putBackWait, &QTimer::timeout, this, &Capture::putBackTick);
     m_hideTimeout.setSingleShot(true);
     m_hideTimeout.setInterval(kHideTimeout);
     connect(&m_hideTimeout, &QTimer::timeout, this, &Capture::hideAll);
@@ -462,6 +561,15 @@ void Capture::start(QuickPurpose purpose)
     // flyout in front stays in the picture (wanted), and is closed after.
     const HWND foreground = ::GetForegroundWindow();
     const bool flyout = win::isShellFlyout(foreground);
+    // A Store app in full screen stays in the picture too, and goes out of
+    // full screen for the overlays to come over it (fullScreenTick).
+    const bool fullScreen = !flyout && fullScreenStoreApp(foreground);
+    m_fullScreenWait.stop();
+    m_putBackWait.stop(); // a capture right after one that put an app back: this one's
+    m_putBack = false;
+    m_fullScreen = nullptr;
+    m_fullScreenSent = false;
+    m_fullScreenMs = -1;
     m_shots = m_grabber.grab(&m_grabReport, m_hdrFile);
     if (m_includeCursor)
         drawCursorInShots();
@@ -518,6 +626,12 @@ void Capture::start(QuickPurpose purpose)
             }
         }
     }
+    // Nor does EnumWindows list a Store app's frame in full screen (measured):
+    // the hover found the windows under it, not in the picture. Over them all.
+    if (RECT r {}; fullScreen && ::GetWindowRect(foreground, &r) && !::IsRectEmpty(&r)) {
+        windows.tops.insert(windows.tops.begin(), QRect(r.left, r.top, r.right - r.left, r.bottom - r.top));
+        ++extra;
+    }
     windows.children = [this, extra](std::size_t i) {
         return i < extra ? std::vector<QRect> {} : m_snapshot.children(i - extra);
     };
@@ -545,7 +659,103 @@ void Capture::start(QuickPurpose purpose)
         m_flyoutWait.start();
         return;
     }
+    if (fullScreen) {
+        m_fullScreen = foreground;
+        m_fullScreenClock.start();
+        m_state = State::Waiting;
+        m_fullScreenWait.start();
+        return;
+    }
     show();
+}
+
+void Capture::fullScreenTick()
+{
+    if (m_state != State::Waiting || !m_fullScreen) {
+        m_fullScreenWait.stop();
+        return;
+    }
+    if (!m_fullScreenSent) {
+        if (modifiersDown() && m_fullScreenClock.elapsed() < kKeysUpWaitMs)
+            return;
+        sendFullScreenSwitch();
+        m_fullScreenSent = true;
+        m_fullScreenClock.restart();
+        return;
+    }
+    // Closed meanwhile: nothing over the overlays either.
+    const DWORD band = ::IsWindow(m_fullScreen) ? windowBand(m_fullScreen) : kDesktopBand;
+    if (band != kDesktopBand && m_fullScreenClock.elapsed() < kFullScreenWaitMs)
+        return;
+    m_fullScreenWait.stop();
+    m_fullScreenMs = m_fullScreenClock.elapsed();
+    const QString program = foreground::programOf(m_fullScreen);
+    diagnostics::record(u"capture-full-screen-app"_s, {{u"program"_s, program}, {u"band"_s, static_cast<qint64>(band)},
+        {u"left_full_screen"_s, band == kDesktopBand}, {u"ms"_s, m_fullScreenMs}});
+    if (band == kDesktopBand) {
+        show();
+        return;
+    }
+    // Still over every window of ours: overlays under it would show to no one
+    // and take no key. Ended, and said why.
+    qWarning().noquote() << u"Screen capture: %1 stayed in full screen (band %2) %3 ms after Win+Shift+Enter; the capture ended"_s
+                                .arg(program)
+                                .arg(band)
+                                .arg(m_fullScreenMs);
+    m_fullScreen = nullptr;
+    m_session.act(static_cast<int>(CaptureSession::Action::Cancel));
+    if (m_callbacks.cannotShow)
+        m_callbacks.cannotShow(tr("全屏的应用挡住了截图，请先退出全屏再截图"));
+}
+
+void Capture::putBackTick()
+{
+    const HWND app = m_fullScreen;
+    const auto done = [this] {
+        m_putBackWait.stop();
+        m_fullScreen = nullptr;
+    };
+    if (m_state != State::Idle || !app || !::IsWindow(app)) {
+        done();
+        return;
+    }
+    const qint64 now = m_fullScreenClock.elapsed();
+    if (m_putBackSent > 0) {
+        if (windowBand(app) != kDesktopBand) {
+            qInfo().noquote() << u"Screen capture: %1 back in full screen (%2 ms after the overlays went, %3 switch(es))"_s
+                                     .arg(foreground::programOf(app))
+                                     .arg(now)
+                                     .arg(m_putBackSent);
+            done();
+            return;
+        }
+        if (now - m_putBackSentMs < kPutBackCheckMs)
+            return;
+        if (m_putBackSent >= 2) {
+            qWarning().noquote() << u"Screen capture: %1 did not go back into full screen after %2 switches"_s.arg(
+                foreground::programOf(app)).arg(m_putBackSent);
+            done();
+            return;
+        }
+    }
+    if (::GetForegroundWindow() != app || modifiersDown()) {
+        m_putBackReadyMs = -1;
+        if (now >= kPutBackWaitMs) {
+            const HWND front = ::GetForegroundWindow();
+            qInfo().noquote() << u"Screen capture: %1 left out of full screen (%2 in front%3)"_s.arg(
+                foreground::programOf(app), front ? foreground::programOf(front) : u"no window"_s,
+                modifiersDown() ? u", keys down"_s : QString());
+            done();
+        }
+        return;
+    }
+    if (m_putBackReadyMs < 0)
+        m_putBackReadyMs = now;
+    if (now - m_putBackReadyMs < kPutBackSettleMs)
+        return;
+    sendFullScreenSwitch();
+    ++m_putBackSent;
+    m_putBackSentMs = now;
 }
 
 void Capture::show()
@@ -836,7 +1046,10 @@ void Capture::frameDrawn(QQuickWindow* window)
                                  .arg(m_grabReport)
                                  .arg(m_snapshot.windows().size())
                                  .arg(m_listMs - m_grabMs)
-                                 .arg(m_flyoutMs >= 0 ? u"; waited %1 ms for the Start menu to close"_s.arg(m_flyoutMs) : QString())
+                                 .arg(m_flyoutMs >= 0 ? u"; waited %1 ms for the Start menu to close"_s.arg(m_flyoutMs)
+                                         : m_fullScreen && m_fullScreenMs >= 0
+                                         ? u"; %1 out of full screen in %2 ms"_s.arg(foreground::programOf(m_fullScreen)).arg(m_fullScreenMs)
+                                         : QString())
                                  .arg(m_beginMs)
                                  .arg(m_showMs)
                                  .arg(m_upFaults);
@@ -907,6 +1120,10 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
     }
     m_flyoutWait.stop();
     m_flyout = nullptr;
+    m_fullScreenWait.stop();
+    m_putBack = m_fullScreen && m_fullScreenSent && putsBack(action);
+    if (!m_putBack)
+        m_fullScreen = nullptr;
     QImage picture;
     QByteArray project;
     std::optional<QList<RedactLine>> prescanned;
@@ -1346,6 +1563,12 @@ void Capture::hideAll()
     }
     m_state = State::Idle;
     m_pulse.disarm(); // (recordCapture did, for every way out through finish)
+    if (std::exchange(m_putBack, false)) {
+        m_fullScreenClock.restart();
+        m_putBackSent = 0;
+        m_putBackReadyMs = -1;
+        m_putBackWait.start(); // once Windows has given the app the foreground back
+    }
     if (m_callbacks.ended)
         m_callbacks.ended();
     if (std::exchange(m_delayAfter, false))
