@@ -1,0 +1,73 @@
+{
+  "mode": "InApp",
+  "hold": false,
+  "before": {
+    "version": "0.46.0",
+    "exeSha": "ea08ef7ed99452ece2030b724c18d66c2c16dd9e498d1fdf1fa303716ca896d4",
+    "runningFromHere": 1,
+    "running": 2,
+    "elevated": [
+      false,
+      false
+    ],
+    "aside": [],
+    "service": "STATE : 4 RUNNING",
+    "serviceBinary": "BINARY_PATH_NAME : \"C:\\Program Files\\WinShun\\WinShunService.exe\"",
+    "task": "<Command>C:\\Program Files\\WinShun\\WinShun.exe</Command> <Arguments>--background</Arguments>",
+    "installedVersion": "0.46.0",
+    "iniBytes": 9828,
+    "historySha": "654570b9896783f4108ddd87c578ee55151ac5473d7dac66f43ab36ff84483b4",
+    "indexBytes": 27704617
+  },
+  "updated": true,
+  "seconds": 53.6,
+  "after": {
+    "version": "0.47.0",
+    "exeSha": "421b061526351f7b043dab853168cea75d960847a6afab2a597e496fb6c82b98",
+    "runningFromHere": 1,
+    "running": 2,
+    "elevated": [
+      false,
+      false
+    ],
+    "aside": [],
+    "service": "STATE : 4 RUNNING",
+    "serviceBinary": "BINARY_PATH_NAME : \"C:\\Program Files\\WinShun\\WinShunService.exe\"",
+    "task": "<Command>C:\\Program Files\\WinShun\\WinShun.exe</Command> <Arguments>--background</Arguments>",
+    "installedVersion": "0.47.0",
+    "iniBytes": 9850,
+    "historySha": "654570b9896783f4108ddd87c578ee55151ac5473d7dac66f43ab36ff84483b4",
+    "indexBytes": 26130323
+  },
+  "feedRequests": [
+    "0.47.0 from F:\\电脑便捷工具\\dist\\release047 on http://127.0.0.1:47631/stable.json, deltas: ['WinShun-0.47.0-x64-delta-from-0.44.0.zip', 'WinShun-0.47.0-x64-delta-from-0.45.0.zip', 'WinShun-0.47.0-x64-delta-from-0.46.0.zip'], push: normal",
+    "\"GET /stable.json HTTP/1.1\" 200 -",
+    "\"GET /stable.json HTTP/1.1\" 200 -",
+    "\"GET /WinShun-0.47.0-x64-delta-from-0.46.0.zip HTTP/1.1\" 200 -",
+    "\"GET /WinShun-0.47.0-x64-setup.exe HTTP/1.1\" 200 -"
+  ],
+  "downloaded": [
+    "WinShun-0.47.0-x64-delta-from-0.46.0.zip",
+    "WinShun-0.47.0-x64-setup.exe"
+  ],
+  "setupLog": null,
+  "helperLog": [
+    "2026-11-20 15:09:05 Setup ended (exit code 0)",
+    "2026-11-21 14:15:04 Setup ended (exit code 0)",
+    "2026-11-21 19:42:29 Setup ended (exit code 0)",
+    "2026-11-24 21:00:41 Setup ended (exit code 0)",
+    "2026-11-25 14:00:59 Setup ended (exit code 0)",
+    "2026-11-25 16:57:07 Setup ended (exit code 0)"
+  ],
+  "appLog": [
+    "info: Update: delta package WinShun-0.44.0-x64-delta-from-0.43.0.zip 7892874 bytes",
+    "warning: Update: installing 0.45.0 at once (WINSHUN_UPDATE_AUTOINSTALL)",
+    "info: Update: delta package WinShun-0.45.0-x64-delta-from-0.44.0.zip 10936604 bytes",
+    "warning: Update: installing 0.46.0 at once (WINSHUN_UPDATE_AUTOINSTALL)",
+    "info: Update: delta package WinShun-0.46.0-x64-delta-from-0.45.0.zip 8457416 bytes",
+    "warning: Update: installing 0.47.0 at once (WINSHUN_UPDATE_AUTOINSTALL)",
+    "info: Update: delta package WinShun-0.47.0-x64-delta-from-0.46.0.zip 7559565 bytes",
+    "warning: Update: the delta package did not do, downloading the full one: changed here: library-plugins/winshun.capture/README.md"
+  ],
+  "runningAfterRestart": 1
+}
