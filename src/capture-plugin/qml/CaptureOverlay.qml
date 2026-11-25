@@ -515,5 +515,16 @@ Window {
         }
         Keys.onPressed: (event) => handleKey(event)
         Keys.onReleased: (event) => handleRelease(event)
+
+        // The overlay is used again: a capture begins with the keys here, not on
+        // a button clicked in the last one, where Enter saved or opened the save
+        // menu instead of copying. Tab still goes on to the buttons from here.
+        Connections {
+            target: overlay.session
+            function onActiveChanged() {
+                if (overlay.session.active)
+                    keys.forceActiveFocus()
+            }
+        }
     }
 }
