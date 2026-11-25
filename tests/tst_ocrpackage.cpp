@@ -104,6 +104,37 @@ int readComponent(const QString& root)
     qInfo().noquote() << "Installed component recognition:" << text;
     return text.contains(u"123.45") && text.contains(u"测试成功") ? 0 : 6;
 }
+
+// A line of Japanese read by the installed component: 0 with the larger
+// reading model and the kana read, 10 with the tiny one and none read (it
+// has no kana); anything else is wrong.
+int readJapanese(const QString& root)
+{
+    ws::ocr::setComponentsRoot(root);
+    QImage image(700, 100, QImage::Format_RGB32);
+    image.fill(Qt::white);
+    {
+        QPainter painter(&image);
+        QFont font(u"Yu Gothic UI"_s);
+        font.setPixelSize(28);
+        painter.setFont(font);
+        painter.setPen(Qt::black);
+        painter.drawText(12, 55, u"設定を保存しますか 2026年"_s);
+    }
+    QString error;
+    const std::unique_ptr<ws::PaddleOcr> reader = ws::PaddleOcr::load(root + u"/no-bundled-copy"_s, 2, &error);
+    QStringList lines;
+    if (!reader || !reader->read(image, &lines, &error)) {
+        qInfo().noquote() << "Japanese reading failed:" << error;
+        return 2;
+    }
+    const QString text = lines.join(u' ');
+    qInfo().noquote() << "Japanese read by the" << (reader->precise() ? "larger" : "tiny") << "model:" << text;
+    const bool kana = text.contains(u"を保存しますか");
+    if (reader->precise())
+        return kana && text.contains(u"2026") ? 0 : 6;
+    return kana ? 7 : 10;
+}
 }
 
 class TestOcrPackage : public QObject {
@@ -324,6 +355,140 @@ private slots:
             + QString::fromLatin1(WINSHUN_VERSION) + u'/' + ws::ocr::package().name;
         QCOMPARE(tried, ws::download::sources(origin));
     }
+
+    // The larger reading model: one file, taken only with its size and hash,
+    // found by its receipt, and gone again when removed.
+    void preciseModelIsInstalledWholeAndRemoved()
+    {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const QString beforeRoot = ws::ocr::componentsRoot();
+        const auto restore = qScopeGuard([&] { ws::ocr::setComponentsRoot(beforeRoot); });
+        ws::ocr::setComponentsRoot(temporary.filePath(u"用户 组件"_s));
+        const QByteArray model("a reading model");
+        const ws::ocr::Model spec {u"unused"_s, QCryptographicHash::hash(model, QCryptographicHash::Sha256).toHex(), model.size()};
+        std::atomic_bool cancelled {false};
+        QVERIFY(ws::ocr::preciseModel().isEmpty());
+        QVERIFY(!ws::ocr::installPrecise("a reading mode1", spec, cancelled).isEmpty()); // same size, another file
+        QVERIFY(!ws::ocr::installPrecise(model + model, spec, cancelled).isEmpty());
+        QVERIFY(ws::ocr::preciseModel().isEmpty());
+        QVERIFY(!QFileInfo::exists(ws::ocr::preciseFolder()));
+        cancelled = true;
+        QVERIFY(!ws::ocr::installPrecise(model, spec, cancelled).isEmpty());
+        QVERIFY(ws::ocr::preciseModel().isEmpty());
+        cancelled = false;
+        QCOMPARE(ws::ocr::installPrecise(model, spec, cancelled), QString());
+        const QString installed = ws::ocr::preciseModel();
+        QCOMPARE(QFileInfo(installed).fileName(), QString(ws::ocr::kPreciseModel));
+        QFile file(installed);
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        QCOMPARE(file.readAll(), model);
+        file.close();
+        QCOMPARE(ws::ocr::installPrecise(model, spec, cancelled), QString()); // over itself
+        QVERIFY(!ws::ocr::preciseModel().isEmpty());
+        // Nothing staged is left beside it.
+        QCOMPARE(QDir(ws::ocr::componentsRoot()).entryList(QDir::Dirs | QDir::NoDotAndDotDot), QStringList {QString(ws::ocr::kPreciseVersion)});
+        // A model without its receipt (a copy cut short) is not used.
+        QVERIFY(QFile::remove(ws::ocr::preciseFolder() + u"/.ready"_s));
+        QVERIFY(ws::ocr::preciseModel().isEmpty());
+        QCOMPARE(ws::ocr::installPrecise(model, spec, cancelled), QString());
+        QCOMPARE(ws::ocr::removePrecise(), QString());
+        QVERIFY(ws::ocr::preciseModel().isEmpty());
+        QVERIFY(!QFileInfo::exists(ws::ocr::preciseFolder()));
+        QCOMPARE(ws::ocr::removePrecise(), QString()); // nothing there: nothing to say
+    }
+
+    // The settings' row: a download that is not the model is refused and
+    // said so, the model is installed, another object sees it, removal too.
+    void preciseModelDownloadsAreCheckedAndCanBeRemoved()
+    {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const QString beforeRoot = ws::ocr::componentsRoot();
+        const auto restore = qScopeGuard([&] { ws::ocr::setComponentsRoot(beforeRoot); });
+        ws::ocr::setComponentsRoot(temporary.filePath(u"组件"_s));
+        const QByteArray model(4096, 'm');
+        const ws::ocr::Model spec {u"https://models.example/rec.onnx"_s, QCryptographicHash::hash(model, QCryptographicHash::Sha256).toHex(), model.size()};
+        QByteArray served(4096, 'x');
+        QStringList asked;
+        QMutex mutex;
+        const ws::download::Fetcher web = [&](const QString& url, qint64, const ws::download::Progress& progress) {
+            const QMutexLocker lock(&mutex);
+            asked.append(url);
+            if (progress)
+                progress(served.size());
+            return ws::download::Fetched {200, served, 0};
+        };
+        ws::OcrModel row(nullptr, web, spec);
+        ws::OcrModel other(nullptr, web, spec); // the settings window's, beside the program's
+        QVERIFY(!row.installed());
+        QVERIFY(row.status().isEmpty());
+        row.download();
+        QVERIFY(row.busy());
+        QTRY_VERIFY_WITH_TIMEOUT(!row.busy(), 15000);
+        QVERIFY(!row.installed());
+        QVERIFY(!row.status().isEmpty());
+        QVERIFY(ws::ocr::preciseModel().isEmpty());
+        {
+            const QMutexLocker lock(&mutex);
+            QCOMPARE(asked, QStringList {spec.url}); // a model's address has no mirrors
+            served = model;
+        }
+        QSignalSpy seen(&other, &ws::OcrModel::changed);
+        row.download();
+        QTRY_VERIFY_WITH_TIMEOUT(!row.busy(), 15000);
+        QVERIFY2(row.installed(), qUtf8Printable(row.status()));
+        QVERIFY(row.status().isEmpty());
+        QCOMPARE(row.progress(), 1.0);
+        QTRY_VERIFY_WITH_TIMEOUT(other.installed(), 5000); // by the folder's change
+        QVERIFY(seen.count() > 0);
+        row.download(); // installed: nothing to do
+        QVERIFY(!row.busy());
+        row.remove();
+        QVERIFY(!row.installed());
+        QVERIFY2(row.status().isEmpty(), qUtf8Printable(row.status()));
+        QVERIFY(ws::ocr::preciseModel().isEmpty());
+        QTRY_VERIFY_WITH_TIMEOUT(!other.installed(), 5000);
+        // A file picked by hand that is not the model.
+        const QString wrong = temporary.filePath(u"别的.onnx"_s);
+        QFile file(wrong);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write(QByteArray(4096, 'x'));
+        file.close();
+        row.installFile(wrong);
+        QTRY_VERIFY_WITH_TIMEOUT(!row.busy(), 15000);
+        QVERIFY(!row.installed());
+        QVERIFY(row.status().contains(QString(ws::ocr::kPreciseModel)));
+    }
+
+    // The real one: without it the tiny model reads no kana, with it Japanese
+    // is read, and after its removal the tiny model reads again.
+    void realPreciseModelReadsJapanese()
+    {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const QString beforeRoot = ws::ocr::componentsRoot();
+        const auto restore = qScopeGuard([&] { ws::ocr::setComponentsRoot(beforeRoot); });
+        const QString root = temporary.filePath(u"用户 组件"_s);
+        ws::ocr::setComponentsRoot(root);
+        std::atomic_bool cancelled {false};
+        QCOMPARE(ws::ocr::install(archive(realFiles()), root, ws::ocr::package(), cancelled), QString());
+        const auto read = [&] {
+            QProcess child;
+            child.start(QCoreApplication::applicationFilePath(), {u"--read-japanese"_s, root});
+            if (!child.waitForFinished(30000) || child.exitStatus() != QProcess::NormalExit)
+                return -1;
+            qInfo().noquote() << child.readAllStandardError().trimmed();
+            return child.exitCode();
+        };
+        QCOMPARE(read(), 10);
+        QFile model(QCoreApplication::applicationDirPath() + u"/ocr-precise/"_s + QString(ws::ocr::kPreciseModel));
+        QVERIFY2(model.open(QIODevice::ReadOnly), "the build folder has no ocr-precise model (tests/CMakeLists.txt)");
+        QCOMPARE(ws::ocr::installPrecise(model.readAll(), ws::ocr::preciseSpec(), cancelled), QString());
+        QCOMPARE(read(), 0);
+        QCOMPARE(ws::ocr::removePrecise(), QString());
+        QCOMPARE(read(), 10);
+    }
 };
 
 int main(int argc, char** argv)
@@ -332,6 +497,8 @@ int main(int argc, char** argv)
     const QStringList args = app.arguments();
     if (const int index = args.indexOf(u"--read-component"_s); index >= 0)
         return readComponent(args.value(index + 1));
+    if (const int index = args.indexOf(u"--read-japanese"_s); index >= 0)
+        return readJapanese(args.value(index + 1));
     TestOcrPackage test;
     return QTest::qExec(&test, argc, argv);
 }

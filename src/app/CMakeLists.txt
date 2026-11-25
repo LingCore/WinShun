@@ -287,6 +287,7 @@ set(qml_files
     qml/AiPrivacySection.qml
     qml/PluginsSection.qml
     qml/OcrPackageRow.qml
+    qml/OcrModelRow.qml
     qml/PluginCard.qml
     qml/PluginTile.qml
     qml/PluginReport.qml

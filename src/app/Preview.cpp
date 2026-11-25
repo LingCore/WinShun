@@ -67,6 +67,7 @@
 #include "platform/WindowEffects.h"
 #include "platform/Foreground.h"
 #include "platform/MessageWindow.h"
+#include "platform/OcrFiles.h"
 #include "platform/OcrPackage.h"
 #include "miniz.h"
 
@@ -15502,6 +15503,41 @@ int runRuntime(const QStringList& args)
                 const QString retry = valueAfter(args, u"--ocr-retry-source");
                 if (!retry.isEmpty() && !attempt(retry, false, false, 2))
                     return 4;
+                // --ocr-precise <the larger reading model's file>: its row shows
+                // once the package is there; installed from the file, in use,
+                // and removed again by the row's own button.
+                if (const QString precise = valueAfter(args, u"--ocr-precise"); !precise.isEmpty()) {
+                    auto* preciseRow = qobject_cast<QQuickItem*>(visualNamed(window->contentItem(), u"preciseOcrRow"_s));
+                    auto* preciseButton = qobject_cast<QQuickItem*>(visualNamed(window->contentItem(), u"preciseOcrButton"_s));
+                    OcrModel* larger = model->preciseModel();
+                    if (!preciseRow || !preciseButton)
+                        return 4;
+                    report.insert(u"precise_shown_with_package"_s, preciseRow->isVisible() == model->available());
+                    QMetaObject::invokeMethod(window, "goTo", Q_ARG(QVariant, QVariant::fromValue(preciseRow)));
+                    settle(window, 3);
+                    report.insert(u"precise_offer"_s, preciseRow->property("description").toString());
+                    report.insert(u"precise_offer_button"_s, preciseButton->property("text").toString());
+                    if (!saveGrab(window, out.filePath(u"ocr-precise-offer.png"_s)))
+                        return 4;
+                    larger->installFile(precise);
+                    QElapsedTimer waiting;
+                    waiting.start();
+                    while (larger->busy() && waiting.elapsed() < 20000)
+                        pump(20);
+                    settle(window, 3);
+                    const QRectF inRow = preciseButton->mapRectToItem(preciseRow, QRectF(QPointF(), preciseButton->size()));
+                    report.insert(u"precise_installed"_s, larger->installed() && !ocr::preciseModel().isEmpty());
+                    report.insert(u"precise_status"_s, larger->status());
+                    report.insert(u"precise_installed_text"_s, preciseRow->property("description").toString());
+                    report.insert(u"precise_installed_button"_s, preciseButton->property("text").toString());
+                    report.insert(u"precise_button_inside_row"_s, QRectF(QPointF(-1, -1), preciseRow->size() + QSizeF(2, 2)).contains(inRow));
+                    if (!saveGrab(window, out.filePath(u"ocr-precise-installed.png"_s)))
+                        return 4;
+                    QMetaObject::invokeMethod(preciseButton, "clicked");
+                    settle(window, 3);
+                    report.insert(u"precise_removed"_s, !larger->installed() && ocr::preciseModel().isEmpty());
+                    report.insert(u"precise_removed_button"_s, preciseButton->property("text").toString());
+                }
                 report.insert(u"ocr_attempts"_s, attempts);
             } else {
             QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, window->property("pluginsPage")), Q_ARG(QVariant, QVariant(0)));

@@ -14,7 +14,9 @@ namespace ws {
 
 // The words in a picture, read by PP-OCRv6 tiny (PaddleOCR: a model that
 // finds the lines of text, one that reads each line; Chinese, English and
-// the Latin-script languages) run by ONNX Runtime on the processor. Much
+// the Latin-script languages) run by ONNX Runtime on the processor. With
+// the larger reading model installed (ocr::preciseModel) Japanese and
+// traditional Chinese too. Much
 // better on screenshots than Windows' own recognizer: small UI text, digits
 // with decimal points, mixed Chinese and English.
 //
@@ -67,6 +69,8 @@ public:
     // Null when something is missing or will not load; why in `error`.
     static std::unique_ptr<PaddleOcr> load(const QString& programFolder, int threads, QString* error = nullptr);
     ~PaddleOcr();
+    // Reads with the larger model (ocr::preciseModel), not the tiny one.
+    bool precise() const;
 
     // One string per line of text, top to bottom: the pieces found side by
     // side put together, with a space where there is a gap or Latin writing.

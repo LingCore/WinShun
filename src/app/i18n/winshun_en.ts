@@ -3737,6 +3737,41 @@
     </message>
 </context>
 <context>
+    <name>OcrModelRow</name>
+    <message>
+        <source>高精度识别模型</source>
+        <translation>High-accuracy model</translation>
+    </message>
+    <message>
+        <source>识字;OCR;日语;日文;假名;繁体;生僻字;高精度;模型;下载;Japanese;traditional;model</source>
+        <translation>OCR;Japanese;kana;traditional Chinese;rare characters;accuracy;model;download</translation>
+    </message>
+    <message>
+        <source>已安装并在使用：截图识别、剪贴板图片和图片搜索都用它，剪贴板里的图片会重新识别一遍。</source>
+        <translation>Installed and in use by screenshot recognition, clipboard pictures and picture search. The pictures in the clipboard history are read once more.</translation>
+    </message>
+    <message>
+        <source>能认日文、繁体字和更多生僻字，中英文小字也更准；每张图多花约 0.2 秒。需下载%1，可随时移除。</source>
+        <translation>Adds Japanese, traditional Chinese and rare characters, and reads small text better. About 0.2 s more a picture. The download is %1; remove it any time.</translation>
+    </message>
+    <message>
+        <source>移除</source>
+        <translation>Remove</translation>
+    </message>
+    <message>
+        <source>取消</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>下载并安装</source>
+        <translation>Download and install</translation>
+    </message>
+    <message>
+        <source>从本地安装模型文件…</source>
+        <translation>Install a local model file…</translation>
+    </message>
+</context>
+<context>
     <name>OcrPackageRow</name>
     <message>
         <source>增强文字识别</source>
@@ -15092,7 +15127,66 @@ Content index: %5</translation>
     </message>
 </context>
 <context>
+    <name>ws::OcrModel</name>
+    <message>
+        <source>约 %1 MB</source>
+        <translation>about %1 MB</translation>
+    </message>
+    <message>
+        <source>正在取消…</source>
+        <translation>Cancelling…</translation>
+    </message>
+    <message>
+        <source>正在下载高精度模型…</source>
+        <translation>Downloading the high-accuracy model…</translation>
+    </message>
+    <message>
+        <source>下载没有完成，请检查网络后重试，或从本地安装模型文件。</source>
+        <translation>The download did not finish. Check the network and try again, or install a local model file.</translation>
+    </message>
+    <message>
+        <source>这不是高精度模型文件 %1。</source>
+        <translation>This is not the high-accuracy model file %1.</translation>
+    </message>
+    <message>
+        <source>已取消，稍后可以重新安装。</source>
+        <translation>Cancelled. You can install it again later.</translation>
+    </message>
+    <message>
+        <source>选择高精度模型文件 %1</source>
+        <translation>Choose the high-accuracy model file %1</translation>
+    </message>
+    <message>
+        <source>识别模型</source>
+        <translation>Recognition model</translation>
+    </message>
+</context>
+<context>
     <name>ws::OcrPackage</name>
+    <message>
+        <source>高精度模型未通过校验，请重新下载。</source>
+        <translation>The high-accuracy model failed verification. Download it again.</translation>
+    </message>
+    <message>
+        <source>无法创建高精度模型的安装目录。</source>
+        <translation>Could not create the folder for the high-accuracy model.</translation>
+    </message>
+    <message>
+        <source>另一个窗口正在安装高精度模型，完成后会自动可用。</source>
+        <translation>Another window is installing the high-accuracy model; it will be available when that finishes.</translation>
+    </message>
+    <message>
+        <source>无法保存高精度模型，请检查磁盘空间。</source>
+        <translation>Could not save the high-accuracy model. Check the free disk space.</translation>
+    </message>
+    <message>
+        <source>高精度模型正在使用，请关闭识别窗口后重试。</source>
+        <translation>The high-accuracy model is in use. Close the recognition windows and try again.</translation>
+    </message>
+    <message>
+        <source>无法完成高精度模型的安装。</source>
+        <translation>Could not finish installing the high-accuracy model.</translation>
+    </message>
     <message>
         <source>增强识别已安装，可以离线使用。</source>
         <translation>Enhanced recognition is installed and works offline.</translation>

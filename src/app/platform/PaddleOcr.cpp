@@ -5,6 +5,7 @@
 #define ORT_API_MANUAL_INIT
 #include <onnxruntime_cxx_api.h>
 
+#include <QDebug>
 #include <QDir>
 #include <QFile>
 #include <QPainter>
@@ -684,6 +685,7 @@ struct PaddleOcr::Impl {
     Ort::Session rec {nullptr};
     std::string detIn, detOut, recIn, recOut;
     QStringList characters; // by the reading model's classes: 0 is none
+    bool precise = false; // rec is the larger reading model
     Ort::MemoryInfo memory = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
 
     std::vector<Quad> detect(const QImage& strip);
@@ -705,6 +707,8 @@ void PaddleOcr::setTrace(Trace trace)
 {
     g_trace.store(trace);
 }
+
+bool PaddleOcr::precise() const { return d && d->precise; }
 
 bool PaddleOcr::installed(const QString& programFolder)
 {
@@ -745,7 +749,18 @@ std::unique_ptr<PaddleOcr> PaddleOcr::load(const QString& programFolder, int thr
             return Ort::Session(impl->env, reinterpret_cast<const wchar_t*>(file.utf16()), options);
         };
         impl->det = open(kDetModel);
-        impl->rec = open(kRecModel);
+        // The larger reading model where the user installed it; the tiny one
+        // when it will not load (a file gone bad), said in the log.
+        if (const QString precise = QDir::toNativeSeparators(ocr::preciseModel()); !precise.isEmpty()) {
+            try {
+                impl->rec = Ort::Session(impl->env, reinterpret_cast<const wchar_t*>(precise.utf16()), options);
+                impl->precise = true;
+            } catch (const std::exception& e) {
+                qWarning().noquote() << "Text recognition: the larger reading model did not load, the tiny one instead:" << e.what();
+            }
+        }
+        if (!impl->precise)
+            impl->rec = open(kRecModel);
         Ort::AllocatorWithDefaultOptions allocator;
         impl->detIn = impl->det.GetInputNameAllocated(0, allocator).get();
         impl->detOut = impl->det.GetOutputNameAllocated(0, allocator).get();

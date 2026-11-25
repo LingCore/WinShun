@@ -46,6 +46,21 @@ QString installedFolder()
     return receipt.open(QIODevice::ReadOnly) && receipt.read(128) == QString(kVersion).toUtf8() && hasFiles(path) ? path : QString();
 }
 
+QString preciseFolder()
+{
+    return QDir(componentsRoot()).filePath(QString(kPreciseVersion));
+}
+
+QString preciseModel()
+{
+    const QString folder = preciseFolder();
+    QFile receipt(folder + u"/.ready"_s);
+    if (!receipt.open(QIODevice::ReadOnly) || receipt.read(128) != QString(kPreciseVersion).toUtf8())
+        return {};
+    const QFileInfo model(QDir(folder).filePath(QString(kPreciseModel)));
+    return model.isFile() && model.size() > 0 ? model.absoluteFilePath() : QString();
+}
+
 QString folder(const QString& programFolder)
 {
     if (const QString installed = installedFolder(); !installed.isEmpty())
