@@ -1,6 +1,6 @@
 #include "CaptureSettings.h"
 
-#include "Recorder.h"
+#include "RecordingFolder.h"
 #include "platform/HotkeyText.h"
 #include "platform/Shell.h"
 
@@ -564,7 +564,7 @@ QString CaptureSettings::suggestedPinGroupName() const
     return store.suggestedNewName();
 }
 
-QString CaptureSettings::captureRecordingDefaultFolder() const { return capture::Recorder::defaultFolder(); }
+QString CaptureSettings::captureRecordingDefaultFolder() const { return capture::defaultRecordingFolder(); }
 
 QString CaptureSettings::pickFolder(const QString& title, const QString& start)
 {

@@ -5,6 +5,7 @@
 #include "Geometry.h"
 #include "GifExport.h"
 #include "KeyStream.h"
+#include "RecordingFolder.h"
 #include "RecordingPointer.h"
 #include "RecordingWorker.h"
 #include "platform/Shell.h"
@@ -136,7 +137,7 @@ QString Recorder::sizeText() const
 
 QString Recorder::defaultFolder()
 {
-    return QDir::toNativeSeparators(QDir(QStandardPaths::writableLocation(QStandardPaths::MoviesLocation)).filePath(u"WinShun"_s));
+    return defaultRecordingFolder();
 }
 
 QString Recorder::folder() const
