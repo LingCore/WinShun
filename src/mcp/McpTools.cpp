@@ -2025,6 +2025,32 @@ void ToolHost::addTools()
     docs.run = [this](const std::shared_ptr<Call>& call) { listDocuments(call); };
     m_tools.push_back(std::move(docs));
 
+    Tool files;
+    files.name = u"list_files"_s;
+    files.title = u"Files of given types in the index"_s;
+    files.description = u"Every file on the local drives whose name ends in one of the given extensions, from the name "
+                        "index, in a stable order, a page at a time: pass next_cursor as cursor for the next page. Each "
+                        "comes with its size and modification time as the index has them (a size above 16 MB is "
+                        "approximate): together they tell a reader which files to read again. search_files finds by "
+                        "name and ranks; this lists them all."_s;
+    files.inputSchema = object({{u"extensions"_s, array(typed("string", u"Extension without the dot, e.g. zip"_s), u"The extensions to list"_s)},
+            {u"folders"_s, array(typed("string", u"Full path"_s), u"Only under these folders; default: all"_s)},
+            {u"include_system"_s, boolean(u"Also system, program and tool folders"_s, false)},
+            {u"cursor"_s, integer(u"Where to go on from: next_cursor of the page before"_s, 0, std::numeric_limits<int>::max(), 0)},
+            {u"limit"_s, integer(u"How many at most"_s, 1, kMaxDocuments, kDefaultDocuments)}},
+        {u"extensions"_s});
+    files.outputSchema = object({{u"items"_s, array(object({{u"path"_s, typed("string", u"Full Windows path"_s)},
+                                                         {u"size"_s, typed("integer", u"Bytes; absent when unknown"_s)},
+                                                         {u"modified"_s, typed("integer", u"Seconds since 1970, UTC; absent when unknown"_s)}}),
+                                     u"The files"_s)},
+        {u"returned"_s, typed("integer", u"How many items"_s)},
+        {u"next_cursor"_s, typed("integer", u"For the next page; absent after the last"_s)},
+        {u"index_state"_s, typed("string", u"Present while the index is still being built: more files may come"_s)}});
+    files.annotations = annotations(true, true);
+    files.gate = Tool::Gate::Documents;
+    files.run = [this](const std::shared_ptr<Call>& call) { listFiles(call); };
+    m_tools.push_back(std::move(files));
+
     // ws plugin: one handler in the app for them all (Services::plugins),
     // which reads the arguments itself. No schema: they are never listed.
     for (const char* name : kPluginTools) {
@@ -2863,6 +2889,114 @@ void ToolHost::listDocuments(const std::shared_ptr<Call>& call)
         QJsonObject out {{u"items"_s, items}, {u"returned"_s, items.size()}, {u"reading"_s, reading}};
         if (next)
             out.insert(u"next_cursor"_s, static_cast<qint64>(*next));
+        return {out};
+    };
+    runAside(call, std::move(work));
+}
+
+// The files of some types, all of them, for a plugin that keeps something of
+// its own about each (winshun.archive: what is inside the archives). From the
+// name index alone; files on servers (shares, WebDAV, WSL) are left out, a
+// reader would go to the network for each.
+void ToolHost::listFiles(const std::shared_ptr<Call>& call)
+{
+    Args args(call->arguments);
+    const QStringList extensions = args.strings(u"extensions"_s);
+    const QStringList folderArgs = args.strings(u"folders"_s);
+    const bool system = args.boolean(u"include_system"_s, false);
+    const int cursor = args.integer(u"cursor"_s, 0, 0, std::numeric_limits<int>::max());
+    const int limit = args.integer(u"limit"_s, kDefaultDocuments, 1, kMaxDocuments);
+    if (!args.error().isEmpty())
+        return finish(call, {{}, true, args.error()});
+    std::vector<std::string> wanted; // extensions, lower case, without the dot
+    for (QString ext : extensions) {
+        while (ext.startsWith(u'.'))
+            ext.remove(0, 1);
+        if (!ext.isEmpty())
+            wanted.push_back(ext.toLower().toStdString());
+    }
+    if (wanted.empty())
+        return finish(call, {{}, true, u"extensions is empty: name the file types to list, like [\"zip\", \"7z\"]."_s});
+    std::vector<QString> folders; // case-folded, with a trailing separator
+    for (const QString& folder : folderArgs) {
+        QString f = nativePath(folder).toCaseFolded();
+        if (f.isEmpty())
+            continue;
+        if (!f.endsWith(u'\\'))
+            f.append(u'\\');
+        folders.push_back(f);
+    }
+
+    // The index's lock and the access checks: aside.
+    AsideWork work = [service = m_services.index, folders = std::move(folders), wanted = std::move(wanted), system, cursor, limit,
+                         cli = call->cli, excluded = m_excluded](AsideContext& aside) -> ToolResult {
+        struct Row {
+            QString path;
+            EntryId entry;
+            FileSize size;
+            FileTime modified;
+        };
+        std::vector<Row> rows;
+        std::optional<EntryId> next;
+        {
+            // Every name, it may be, to find a page: read for long without
+            // holding up the index's searches.
+            const auto index = service->index();
+            const auto lock = index->longReadLock();
+            const auto count = static_cast<EntryId>(index->slotCount());
+            for (auto id = static_cast<EntryId>(cursor); id < count; ++id) {
+                const EntryScan& e = index->scan(id);
+                if (e.isDeleted() || e.isDir() || (e.flags & EntryFlag::Remote) || (!system && (e.flags & EntryFlag::LowPriority)))
+                    continue;
+                std::size_t extLength = 0;
+                const std::string_view name = index->fileName(e, extLength);
+                if (extLength == 0)
+                    continue;
+                const std::string_view ext = name.substr(name.size() - extLength);
+                const auto same = [ext](const std::string& w) {
+                    return w.size() == ext.size() && std::ranges::equal(w, ext, [](char a, char b) {
+                        return a == static_cast<char>(std::tolower(static_cast<unsigned char>(b)));
+                    });
+                };
+                if (std::ranges::none_of(wanted, same))
+                    continue;
+                if (std::ssize(rows) >= limit) {
+                    next = id;
+                    break;
+                }
+                QString path = index->path(id);
+                if (!folders.empty()) {
+                    const QString folded = path.toCaseFolded();
+                    if (std::ranges::none_of(folders, [&](const QString& f) { return folded.startsWith(f); }))
+                        continue;
+                }
+                rows.push_back({std::move(path), id, index->size(id), index->modified(id)});
+            }
+        }
+        // What the caller could not read is, to it, not there.
+        Budget budget(cli);
+        QJsonArray items;
+        for (const Row& row : rows) {
+            if (aside.stopped())
+                return {};
+            if (excludedIndexPath(excluded, row.path) || !aside.sees(row.path) || !aside.canRead(row.path))
+                continue;
+            QJsonObject item {{u"path"_s, row.path}};
+            if (row.size != kUnknownSize)
+                item.insert(u"size"_s, static_cast<qint64>(unpackSize(row.size)));
+            if (const FileTime modified = knownTime(row.modified))
+                item.insert(u"modified"_s, static_cast<qint64>(modified));
+            if (!budget.take(item)) {
+                next = row.entry; // the next page goes on from here
+                break;
+            }
+            items.push_back(item);
+        }
+        QJsonObject out {{u"items"_s, items}, {u"returned"_s, items.size()}};
+        if (next)
+            out.insert(u"next_cursor"_s, static_cast<qint64>(*next));
+        if (service->state() != IndexService::State::Ready)
+            out.insert(u"index_state"_s, stateName(service->state()));
         return {out};
     };
     runAside(call, std::move(work));

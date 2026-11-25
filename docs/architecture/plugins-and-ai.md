@@ -53,14 +53,14 @@
 | `Runner` / `WinShunPluginHost` | `Runner.*`、`runner/*` | 单命名管道 `WinShun.Plugin.<SID>.<pid>.<seq>.<rand>` 多路复用实例（复用 `LineChannel`，16 MiB 单行上限），校验对端 PID 与 hello 密钥 |
 | `InProcess` | `runner/InProcess.{h,cpp}` | 随包普通权限常驻插件 `winshun.tools`（静态编入 `wstools`）与 `winshun.switches`（单常驻 `QtLane` 线程加载 `WinShunSwitchesApp.dll`）直接在 runner 线程运行，减少常驻进程数；`WINSHUN_PLUGINS_APART=1` 可切回独立进程 |
 | `Session` / `Host` | `Session.*`、`Host.*` | JSON-RPC 2.0 会话；GUI 线程门面：防抖、超时、崩溃退避、空闲退出、开发者模式追踪（密码打码）及 `callCommand()` 独立通道；`winshun/status` 经 `Host::reportFrom` 限长限项后存为 `State::report`（进程退出即清），`reportChanged` 只在插件页可见时刷新卡片（`PluginReport.qml`：一行状态、进度条、至多两个按钮），按钮经 `statusAction` 以 `trigger: "status"` 的 `action` 回传 |
-| `Tools` | `Tools.{h,cpp}` | 插件反向 `winshun/tool` 主机：独立 `SearchEngine` + `mcp::ToolHost`，不看 `[Mcp] Enabled` 与 AI 排除目录，严格按清单权限放行 |
+| `Tools` | `Tools.{h,cpp}` | 插件反向 `winshun/tool` 主机：独立 `SearchEngine` + `mcp::ToolHost`，不看 `[Mcp] Enabled` 与 AI 排除目录，严格按清单权限放行；只给插件的分页全量工具 `list_documents`（`winshun:content`）与 `list_files`（`winshun:search`：按扩展名列名称索引里的本机文件，`longReadLock` 下按条目号游标翻页，远程根与低优先目录默认不列）不对 AI 客户端提供 |
 
 - **统一停止与限额**：停用、移除、权限未确认与 runner 断开共用同一停止入口，释放排队查询、`once` 进程、热键、托盘与在途工具调用。`once` 默认防抖 120 ms、stdout 上限 **16 MiB**，通过 `lastQuery` 防同步取消后误建 rerun；查询超时默认 `resident` 1500 ms / `once` 3000 ms，连超 3 次重启；崩溃退避 `1 → 5 → 30` 秒，5 分钟内崩 3 次自动停用；常驻上限 8（`eager` 不计入淘汰）。
 - **查询缓存**：`QCache` LRU，序列化数据预算 **2 MiB**，键含插件/命令/输入/筛选上下文，单调时钟过期，动态 rerun 不入缓存；设置、清单、权限、语言、动作与 refresh 触发失效。
 
 ## 3. 官方插件一览
 
-当前仓库包含 **19 个官方插件**（4 个随包 + 15 个插件库）：
+当前仓库包含 **20 个官方插件**（4 个随包 + 16 个插件库）：
 
 | 插件 ID | 源码目录 | 二进制 / 入口 | 分发与运行模式 | 核心职责与要点 |
 |---|---|---|---|---|
@@ -82,6 +82,7 @@
 | `winshun.gestures` | `src/gestures-plugin` | `WinShunGestures.exe` + `*Editor.dll` | 插件库 · `resident`（`eager`/`normal`） | 鼠标手势、触发角/摩擦边与划词动作（常驻无 Qt，编辑器共享宿主 Qt），详见 [design-gestures.md](../design-gestures.md) |
 | `winshun.expander` | `src/expander-plugin` | `WinShunExpander.exe`（无 Qt） | 插件库 · `resident`（`eager`/`normal`） | 缩写展开：`WH_KEYBOARD_LL`/`WH_MOUSE_LL` + `ToUnicodeEx` + 输入法中文状态检测 + `SendInput` 替换 |
 | `winshun.topmost` | `src/topmost-plugin` | `WinShunTopmost.exe`（无 Qt） | 插件库 · `resident`（`eager`/`normal`） | 窗口置顶：快捷键（宿主代注册 `register_hotkeys`，默认 `Win+Ctrl+T`）切换前台窗口的 `WS_EX_TOPMOST`，`置顶`/`top` 列出窗口；状态只认窗口自身的置顶位，`SWP_ASYNCWINDOWPOS` 不等无响应程序；提权窗口（UIPI）、无响应、已关闭都在窗口上的提示条（独立线程 Direct2D 分层窗口）写明；自己置顶的窗口有描边（`Border`，设置 `border`）：独立线程，每个窗口四条点击穿透的分层窗口（上下两条含圆角、左右两条，不建整窗大小的位图），画在 `DWMWA_EXTENDED_FRAME_BOUNDS` 以内、紧贴目标窗口之上的 Z 序；按目标线程挂 WinEvent 钩子跟随移动/缩放/最小化/隐藏，另有 250 ms 核对（置顶位被别人摘掉、Z 序、缩放变化）；圆角取 `DWMWA_WINDOW_CORNER_PREFERENCE`，最大化按工作区裁剪并取直角，铺满显示器（全屏）不画；停止时取消自己置顶过的窗口 |
+| `winshun.archive` | `src/archive-plugin` | `WinShunArchive.exe`（无 Qt） | 插件库 · `resident`（`eager`/`strict`/`contentSearch`） | 压缩包内文件名搜索：经 `list_files` 向宿主分页取压缩包清单（不自己扫盘），后台线程（`THREAD_MODE_BACKGROUND_BEGIN`）用静态链接的 libarchive（`cmake/Libarchive.cmake`：libarchive + zlib + liblzma 按固定 SHA256 从源码包以 ExternalProject 构建）只读每个包的文件列表，按宿主给的大小+修改时间作戳增量重读；清单相同的包共享一份 `Contents`（同名同大小同时间的拷贝直接沿用、不再打开，搜索时同一份清单只扫一次、拷贝排在后面），名字常驻内存（去重后 ≤128 MiB，空闲时让出工作集）并原子落盘 `archives.bin`；正在读的包记在 `reading.txt`，进程死在某个包上时下次启动把它记为打不开、不再重读，直到它变了；行为 `details` 行，预览/解压时才把单个成员取到 `<id>.data`（预览 ≤32 MiB、4 s；打开 ≤1 GiB、8 s）；文件名加密、网盘占位、损坏与截断分别计数并显示在卡片状态上 |
 | `winshun.explorer-tabs` | `src/explorer-tabs-plugin` | `WinShunExplorerTabs.exe`（无 Qt） | 插件库 · `resident`（`eager`/`elevated`） | Win11 22H2+ 资源管理器合并标签页与会话恢复；提权宿主经确认可合并管理员窗口 |
 
 - **系统开关线程模型（`winshun.switches`）**：宿主仅留 `SwitchCommand` 语法解析、`places.txt` 与 GUI 异步缓存（`Switches`/`SwitchPlugin`）。插件内部三线程分离：① 插件事件线程（`RegistryWatch`、`PowerCreateRequest` 与保持唤醒定时器，严禁调 WinRT `.get()` 或全局广播）；② MTA `ComWorker` 开关线程（串行硬件读写，回调经 `SwitchRelay` 转回）；③ 独立 `detach` 广播线程（深色模式先同步刷本进程窗再 `HWND_BROADCAST` `ImmersiveColorSet` 配 `SMTO_ABORTIFHUNG`，退出不 `join` 防主消息循环死锁）。因全属当前用户会话与 HKCU，不经 LocalSystem 服务；崩溃或停用立即撤销电源请求，重启仅重读不重放写入。
@@ -105,5 +106,5 @@ MCP 服务端位于 `src/mcp/`（`wsmcp`），实现 MCP 2025-11-25（兼容 202
 
 - **插件运行时与安全**：`tst_plugin`、`tst_plugincommands`、`tst_pluginhotkeys`、`tst_pluginupdates`、`tst_pluginsdk`、`tst_movedplugins`、`tst_pluginreadme`、`tst_pluginconfirm`、`tst_pluginhomepage`、`tst_pluginkeywords`、`tst_pluginsliders`。
 - **MCP 与命令行**：`tst_mcp`、`tst_aisettings`、`tst_cli`、`tst_commandline`、`tst_shelllaunch`。
-- **官方插件回归**：`tst_switchplugin`、`tst_switches`、`tst_tools`、`tst_shunsync`、`tst_semantic`、`tst_localsend`、`tst_ocrsearch`、`tst_devtools`、`tst_cloudbackup`、`tst_explorertabs`、`tst_gestures`、`tst_expander`、`tst_topmost`、`tst_break`、`tst_translate`、`tst_bookmarks`。
+- **官方插件回归**：`tst_switchplugin`、`tst_switches`、`tst_tools`、`tst_shunsync`、`tst_semantic`、`tst_localsend`、`tst_ocrsearch`、`tst_devtools`、`tst_cloudbackup`、`tst_explorertabs`、`tst_gestures`、`tst_expander`、`tst_topmost`、`tst_break`、`tst_translate`、`tst_bookmarks`、`tst_archive`。
 - **探针与预览**：`wsbench --plugin` / `--launcher-sim` / `--mcp-host` / `--switches`、`plugin-probe --parent`、`WinShun.exe --preview-plugins` / `--preview-ai-cards`。

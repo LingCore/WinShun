@@ -231,7 +231,16 @@
 //                      follows the indexing for up to S seconds (default
 //                      900), then asks each QUERY. --data keeps its vectors
 //                      in FOLDER for the next run
-//   wsbench --launcher-sim [--plugins DIR] [--index FOLDER] [--key-ms N] [--scope files|folders|save] [--each-key] ["TEXT" ...]
+//   wsbench --archive [--setting KEY=VALUE ...] [--data FOLDER] [--wait S] ["QUERY" ...]
+//                      the 压缩包搜索 plugin (winshun.archive) through the
+//                      real plugin host over a copy of the index: follows
+//                      the line on its card until the archives are read (S
+//                      seconds at most, default 600), asks each QUERY as
+//                      "zip QUERY" and in 内容, and on the first row found
+//                      asks its details and tries its three actions (the
+//                      effects are printed, nothing is opened). --data keeps
+//                      what it read in FOLDER for the next run
+//   wsbench --launcher-sim [--plugins DIR] [--index FOLDER] [--key-ms N] [--scope files|folders|save] [--each-key] [--data ID=DIR ...] ["TEXT" ...]
 //                      the launcher's list without the launcher: each TEXT
 //                      typed key by key (N ms apart, default 80) over a copy
 //                      of the index, with the plugins of DIR (default
@@ -5219,6 +5228,12 @@ int runLauncherSim(QStringList args)
         contentFilter = args[at + 1] == u"on"_s;
         args.remove(at, 2);
     }
+    QList<std::pair<QString, QString>> pluginData; // --data ID=DIR
+    for (qsizetype at = args.indexOf(u"--data"_s); at >= 0 && at + 1 < args.size(); at = args.indexOf(u"--data"_s)) {
+        if (const qsizetype eq = args[at + 1].indexOf(u'='); eq > 0)
+            pluginData.append({args[at + 1].left(eq), QDir(args[at + 1].mid(eq + 1)).absolutePath()});
+        args.remove(at, 2);
+    }
     ws::Settings settings;
     settings.load();
     // --web KEYWORD: a [WebSearch] entry for this run (the user's file is not
@@ -5284,6 +5299,14 @@ int runLauncherSim(QStringList args)
         const QString to = options.dataRoot + u"/winshun.ocr-search.data"_s;
         QDir().mkpath(to);
         for (const QFileInfo& file : QDir(ocrData).entryInfoList(QDir::Files))
+            QFile::copy(file.filePath(), to + u'/' + file.fileName());
+    }
+    // --data ID=DIR: a copy of a plugin's data folder (its files), as it
+    // would find it at a start (winshun.archive: what it read of the archives).
+    for (const auto& [id, from] : pluginData) {
+        const QString to = options.dataRoot + u'/' + id + u".data"_s;
+        QDir().mkpath(to);
+        for (const QFileInfo& file : QDir(from).entryInfoList(QDir::Files))
             QFile::copy(file.filePath(), to + u'/' + file.fileName());
     }
     ws::plugin::Host host(options);
@@ -6198,6 +6221,223 @@ int runSemantic(QStringList args)
     return 0;
 }
 
+// ---- winshun.archive end to end (--archive) ---------------------------------------
+
+// The 压缩包搜索 plugin as the app runs it (the real plugin host: strict
+// sandbox, low integrity), over a copy of the index: its list_files answered
+// by plugin::Tools. Follows what it says of itself (the card's line) until
+// the archives are read, then asks each QUERY as its keyword ("zip QUERY")
+// and as a content provider, and on the first row found tries what a user
+// would: the details (the member taken out), Ctrl+Enter, Shift+Enter.
+int runArchive(QStringList args)
+{
+    QJsonObject pluginSettings;
+    for (qsizetype at = args.indexOf(u"--setting"_s); at >= 0 && at + 1 < args.size(); at = args.indexOf(u"--setting"_s)) {
+        const QString pair = args[at + 1];
+        if (const qsizetype eq = pair.indexOf(u'='); eq > 0)
+            pluginSettings.insert(pair.left(eq), pair.mid(eq + 1) == u"true" ? QJsonValue(true) : QJsonValue(pair.mid(eq + 1)));
+        args.remove(at, 2);
+    }
+    QString pluginsDir = QCoreApplication::applicationDirPath() + u"/library-plugins"_s;
+    if (const qsizetype at = args.indexOf(u"--plugins"_s); at >= 0 && at + 1 < args.size()) {
+        pluginsDir = QDir(args[at + 1]).absolutePath();
+        args.remove(at, 2);
+    }
+    QString dataRoot; // --data: kept between runs (what it read of the archives)
+    if (const qsizetype at = args.indexOf(u"--data"_s); at >= 0 && at + 1 < args.size()) {
+        dataRoot = QDir(args[at + 1]).absolutePath();
+        args.remove(at, 2);
+    }
+    int waitSec = 600;
+    if (const qsizetype at = args.indexOf(u"--wait"_s); at >= 0 && at + 1 < args.size()) {
+        waitSec = std::max(5, args[at + 1].toInt());
+        args.remove(at, 2);
+    }
+    const QStringList queries = args;
+
+    ws::Settings settings;
+    settings.load();
+    QTemporaryDir temp;
+    const QString indexFolder = temp.path() + u"/index"_s;
+    QDir().mkpath(indexFolder);
+    if (const QString from = QDir::fromNativeSeparators(settings.indexDir()); !QFile::copy(from + u"/index.bin"_s, indexFolder + u"/index.bin"_s)) {
+        std::printf("no index at %s\n", qUtf8Printable(QDir::toNativeSeparators(from)));
+        return 1;
+    }
+    ws::IndexService::Options options;
+    options.rules = settings.crawlRules();
+    options.rescanOnStartup = false;
+    options.content.enabled = false;
+    ws::IndexService service(indexFolder, options);
+    service.start();
+    QElapsedTimer timer;
+    timer.start();
+    while (service.state() != ws::IndexService::State::Ready && timer.elapsed() < 120000)
+        QCoreApplication::processEvents(QEventLoop::AllEvents | QEventLoop::WaitForMoreEvents, 100);
+    std::printf("index %s: %zu items in %.1f s\n", service.state() == ws::IndexService::State::Ready ? "ready" : "NOT ready",
+        service.itemCount(), msSince(timer) / 1000);
+
+    ws::mcp::Services services;
+    services.index = &service;
+    services.version = QStringLiteral(WINSHUN_VERSION "-bench");
+    int pages = 0;
+    services.log = [&pages](const QString& line) {
+        if (line.contains(u" list_files "))
+            ++pages;
+        else
+            std::printf("  tool: %s\n", qUtf8Printable(line));
+    };
+    ws::plugin::Tools tools(std::move(services), nullptr, nullptr);
+    tools.setPolicy({});
+
+    ws::plugin::Host::Options pluginOptions;
+    pluginOptions.userPluginDir = temp.path() + u"/plugins"_s;
+    pluginOptions.bundledPluginDir = pluginsDir;
+    pluginOptions.dataRoot = dataRoot.isEmpty() ? temp.path() + u"/data"_s : dataRoot;
+    pluginOptions.logPath = temp.path() + u"/plugins.log"_s;
+    pluginOptions.runnerExe = QCoreApplication::applicationDirPath() + u"/WinShunPluginHost.exe"_s;
+    pluginOptions.version = QStringLiteral(WINSHUN_VERSION "-bench");
+    ws::plugin::Host host(pluginOptions);
+    host.setToolBridge(ws::plugin::toolBridge(&tools.host()));
+    const QString id = u"winshun.archive"_s;
+    host.setEnabled(id, true);
+    host.setPluginSettings(id, pluginSettings);
+    QObject::connect(&host, &ws::plugin::Host::logged, [](const QString& line) {
+        if (qEnvironmentVariableIsSet("WSBENCH_VERBOSE"))
+            std::printf("  plugins.log: %s\n", qUtf8Printable(line));
+    });
+    QObject::connect(&host, &ws::plugin::Host::notice, [](const QString&, const QString& text) { std::printf("  notice: %s\n", qUtf8Printable(text)); });
+
+    const auto spin = [](int ms) {
+        const QDeadlineTimer pause(ms);
+        while (!pause.hasExpired())
+            QCoreApplication::processEvents(QEventLoop::AllEvents | QEventLoop::WaitForMoreEvents, 50);
+    };
+    // The card's line, each time it changes, until it is no longer at work.
+    timer.restart();
+    QString last;
+    const auto report = [&] {
+        const auto r = host.state(id).report;
+        const QString line = !r ? u"(nothing said)"_s
+                                : u"[%1%2] %3%4"_s.arg(r->tone, r->progress >= 0 ? u" %1%"_s.arg(qRound(r->progress * 100)) : QString(), r->text,
+                                      r->actions.isEmpty() ? QString() : u"  {"_s + r->actions.first().title + u'}');
+        if (line != last) {
+            last = line;
+            std::printf("%6.1f s  %s\n", msSince(timer) / 1000, qUtf8Printable(line));
+        }
+        return r;
+    };
+    host.preload();
+    bool settled = false;
+    while (timer.elapsed() < waitSec * 1000LL) {
+        spin(200);
+        const auto r = report();
+        if (r && r->tone != u"busy" && r->progress < 0 && timer.elapsed() > 1500) {
+            settled = true;
+            break;
+        }
+    }
+    std::printf("%s after %.1f s; list_files pages: %d\n", settled ? "archives read" : "STILL READING", msSince(timer) / 1000, pages);
+
+    std::uint64_t nextId = 1;
+    const auto ask = [&](const QString& text, ws::Scope scope, double* took) {
+        const std::uint64_t queryId = nextId++;
+        ws::plugin::Items found;
+        bool done = false;
+        QElapsedTimer t;
+        t.start();
+        const auto results = QObject::connect(&host, &ws::plugin::Host::results,
+            [&](std::uint64_t q, const QString&, const QString&, const ws::plugin::Items& items, bool partial, bool replace) {
+                if (q != queryId)
+                    return;
+                if (replace)
+                    found.clear();
+                found += items;
+                done = done || !partial;
+            });
+        const auto failed = QObject::connect(&host, &ws::plugin::Host::queryFailed, [&](std::uint64_t q, const QString&, const QString& why) {
+            if (q == queryId) {
+                std::printf("  query \"%s\" failed: %s\n", qUtf8Printable(text), qUtf8Printable(why));
+                done = true;
+            }
+        });
+        const QJsonObject filters = scope == ws::Scope::Content ? QJsonObject {{u"contentEnabled"_s, true}, {u"contentWords"_s, text}} : QJsonObject();
+        if (!host.query(text, scope, queryId, filters))
+            done = true; // nobody took it
+        const QDeadlineTimer deadline(20000);
+        while (!done && !deadline.hasExpired())
+            QCoreApplication::processEvents(QEventLoop::AllEvents | QEventLoop::WaitForMoreEvents, 50);
+        QObject::disconnect(results);
+        QObject::disconnect(failed);
+        *took = msSince(t);
+        return found;
+    };
+    std::optional<ws::plugin::Item> firstRow;
+    for (const QString& q : queries) {
+        double took = 0;
+        const ws::plugin::Items typed = ask(u"zip "_s + q, ws::Scope::All, &took);
+        std::printf("\nzip %s  (%lld rows, %.0f ms)\n", qUtf8Printable(q), static_cast<long long>(typed.size()), took);
+        for (qsizetype i = 0; i < typed.size() && i < 8; ++i)
+            std::printf("  %2lld. %s\n      %s\n", static_cast<long long>(i + 1), qUtf8Printable(typed[i].title), qUtf8Printable(typed[i].subtitle.left(150)));
+        if (!firstRow && !typed.isEmpty() && typed.first().valid)
+            firstRow = typed.first();
+        const ws::plugin::Items content = ask(q, ws::Scope::Content, &took);
+        std::printf("  in 内容: %lld rows, %.0f ms\n", static_cast<long long>(content.size()), took);
+    }
+
+    if (firstRow) {
+        std::printf("\non \"%s\":\n", qUtf8Printable(firstRow->title));
+        bool done = false;
+        const bool sent = host.request(id, u"details"_s, {{u"item"_s, ws::plugin::itemToJson(*firstRow)}, {u"text"_s, QString()}},
+            [&](bool ok, const QJsonValue& result) {
+                const QJsonObject o = result.toObject();
+                const QString file = o.value(u"file"_s).toString();
+                if (!ok)
+                    std::printf("  details: failed\n");
+                else if (!file.isEmpty())
+                    std::printf("  details: file %s (%lld bytes)\n", qUtf8Printable(file), static_cast<long long>(QFileInfo(file).size()));
+                else
+                    std::printf("  details: text %s\n", qUtf8Printable(o.value(u"text"_s).toString().left(300).replace(u'\n', u" / "_s)));
+                done = true;
+            });
+        for (const QDeadlineTimer deadline(12000); sent && !done && !deadline.hasExpired();)
+            QCoreApplication::processEvents(QEventLoop::AllEvents | QEventLoop::WaitForMoreEvents, 50);
+        for (const QString& actionId : {u"extract"_s, u"folder"_s, u"open"_s}) {
+            done = false;
+            const auto finished = QObject::connect(&host, &ws::plugin::Host::actionDone,
+                [&](std::uint64_t, const QString&, const ws::plugin::Effects& effects, bool ok, const QString& error) {
+                    QStringList said;
+                    for (const ws::plugin::Effect& e : effects) {
+                        using Kind = ws::plugin::Effect::Kind;
+                        said.push_back(e.kind == Kind::Open ? u"open "_s + e.open.target : e.kind == Kind::Reveal ? u"reveal "_s + e.open.target
+                                : e.kind == Kind::Notify ? u"notify "_s + e.text : e.kind == Kind::Hide ? u"hide"_s : e.kind == Kind::Keep ? u"keep"_s : u"other"_s);
+                    }
+                    std::printf("  %s: %s\n", qUtf8Printable(actionId), ok ? qUtf8Printable(said.join(u"; "_s)) : qUtf8Printable(error));
+                    done = true;
+                });
+            host.action(nextId++, id, u"find"_s, actionId, *firstRow, QString());
+            for (const QDeadlineTimer deadline(12000); !done && !deadline.hasExpired();)
+                QCoreApplication::processEvents(QEventLoop::AllEvents | QEventLoop::WaitForMoreEvents, 50);
+            QObject::disconnect(finished);
+        }
+    }
+
+    const ws::plugin::Host::State state = host.state(id);
+    std::printf("\nplugin state %d, pid %lu%s\n", static_cast<int>(state.status), static_cast<unsigned long>(state.pid),
+        state.error.isEmpty() ? "" : qUtf8Printable(u" ("_s + state.error + u")"_s));
+    if (state.pid != 0) {
+        const HANDLE process = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, state.pid);
+        PROCESS_MEMORY_COUNTERS_EX memory {};
+        if (process && ::GetProcessMemoryInfo(process, reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&memory), sizeof memory))
+            std::printf("plugin memory: private %.1f MB, working set %.1f MB\n", memory.PrivateUsage / 1048576.0, memory.WorkingSetSize / 1048576.0);
+        if (process)
+            ::CloseHandle(process);
+    }
+    host.shutdown();
+    service.shutdown();
+    return settled ? 0 : 1;
+}
+
 // ---- the plugin library (--plugin-index, --plugin-install-from-index) -----------
 
 namespace {
@@ -6771,6 +7011,10 @@ int main(int argc, char* argv[])
     if (args.contains(u"--semantic"_s)) {
         args.removeAll(u"--semantic"_s);
         return runSemantic(args);
+    }
+    if (args.contains(u"--archive"_s)) {
+        args.removeAll(u"--archive"_s);
+        return runArchive(args);
     }
     if (args.contains(u"--extract"_s)) {
         QStringList paths = args;

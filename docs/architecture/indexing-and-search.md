@@ -80,5 +80,5 @@
 
 ## 6. 已知边界与测试入口
 
-- **当前已知边界**：拼音仅认开头且 `!排除` 不走拼音；大小写折叠仅限 ASCII，1–2 字母英文词不进内容索引；非 NTFS 卷不建内容索引；未实现布尔括号分组；`DocExtractor` 不支持加密文档及 `xlsb`/`odt`/`RTF`/`EPUB`/`OFD`（图片/扫描件 OCR 由 `winshun.ocr-search` 插件提供）；`EverythingIpc` 为 1.4 子集；远程内核同步 I/O 取消后退出仍可能等待系统超时。
+- **当前已知边界**：拼音仅认开头且 `!排除` 不走拼音；大小写折叠仅限 ASCII，1–2 字母英文词不进内容索引；非 NTFS 卷不建内容索引；未实现布尔括号分组；`DocExtractor` 不支持加密文档及 `xlsb`/`odt`/`RTF`/`EPUB`/`OFD`（图片/扫描件 OCR 由 `winshun.ocr-search` 插件提供；压缩包内的文件名由 `winshun.archive` 插件提供，宿主不解析压缩包）；`EverythingIpc` 为 1.4 子集；远程内核同步 I/O 取消后退出仍可能等待系统超时。
 - **测试与基准**：`tst_core`、`tst_querysyntax`、`tst_searchworkload`、`tst_everything`、`tst_service`、`tst_remotecontent`、`tst_wsl`、`tst_contentdetails`、`wsbench`。

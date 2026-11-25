@@ -19,7 +19,7 @@ void Tools::setPolicy(mcp::Policy policy)
 {
     policy.allowOpen = true; // the manifest's winshun:open gates it
     policy.allowClipboard = true; // ... and clipboard:read
-    policy.allowDocuments = true; // ... and winshun:content
+    policy.allowDocuments = true; // ... and winshun:content (list_documents), winshun:search (list_files)
     policy.excludedPaths.clear(); // "不让 AI 看到的文件夹" is the AI's: a plugin runs as the user, who sees them
     m_host->setPolicy(std::move(policy));
 }

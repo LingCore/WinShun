@@ -20,6 +20,7 @@ option(WINSHUN_BUILD_TESTS "Build unit tests" ON)
 option(WINSHUN_ASAN "Build with AddressSanitizer (MSVC), for the tests" OFF)
 
 include(cmake/Download.cmake)
+include(cmake/Libarchive.cmake) # winshun_libarchive(): for src/archive-plugin
 winshun_configure_mirrors("${CMAKE_BINARY_DIR}/generated/GitHubMirrors.h")
 
 # Shared compiler settings for every target in the project.
@@ -71,6 +72,7 @@ add_subdirectory(src/explorer-tabs-plugin)
 add_subdirectory(src/gestures-plugin)
 add_subdirectory(src/expander-plugin)
 add_subdirectory(src/topmost-plugin)
+add_subdirectory(src/archive-plugin)
 add_subdirectory(src/switches-plugin)
 add_subdirectory(src/bookmarks-plugin)
 add_subdirectory(src/translate-plugin)
@@ -142,6 +144,17 @@ file(READ "${devtools_plugin_source}" devtools_plugin_manifest)
 string(JSON devtools_plugin_manifest SET "${devtools_plugin_manifest}" minWinShun "\"${PROJECT_VERSION}\"")
 set(DEVTOOLS_PLUGIN_MANIFEST "${CMAKE_BINARY_DIR}/generated/devtools-plugin.json")
 file(GENERATE OUTPUT "${DEVTOOLS_PLUGIN_MANIFEST}" CONTENT "${devtools_plugin_manifest}\n")
+# list_files (the plugins' tool the archive search lists the archives with)
+# is not in 0.46.0: it needs at least the version it is built with.
+set(archive_plugin_source "${PROJECT_SOURCE_DIR}/src/archive-plugin/package/plugin.json")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${archive_plugin_source}")
+file(READ "${archive_plugin_source}" archive_plugin_manifest)
+string(JSON archive_plugin_manifest SET "${archive_plugin_manifest}" minWinShun "\"${PROJECT_VERSION}\"")
+set(ARCHIVE_PLUGIN_MANIFEST "${CMAKE_BINARY_DIR}/generated/archive-plugin.json")
+file(GENERATE OUTPUT "${ARCHIVE_PLUGIN_MANIFEST}" CONTENT "${archive_plugin_manifest}\n")
+list(GET WS_LIBARCHIVE_LICENSES 0 archive_license_libarchive)
+list(GET WS_LIBARCHIVE_LICENSES 1 archive_license_xz)
+list(GET WS_LIBARCHIVE_LICENSES 2 archive_license_zlib)
 add_custom_target(library_plugins ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/web-plugin/package" "${library_plugins_dir}/winshun.web"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_BINARY_DIR}/generated/web-plugin.json" "${library_plugins_dir}/winshun.web/plugin.json"
@@ -175,6 +188,13 @@ add_custom_target(library_plugins ALL
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunExpander>" "${library_plugins_dir}/winshun.expander/WinShunExpander.exe"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/topmost-plugin/package" "${library_plugins_dir}/winshun.topmost"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunTopmost>" "${library_plugins_dir}/winshun.topmost/WinShunTopmost.exe"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/archive-plugin/package" "${library_plugins_dir}/winshun.archive"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${ARCHIVE_PLUGIN_MANIFEST}" "${library_plugins_dir}/winshun.archive/plugin.json"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunArchive>" "${library_plugins_dir}/winshun.archive/WinShunArchive.exe"
+    # What is linked into WinShunArchive.exe (cmake/Libarchive.cmake).
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${archive_license_libarchive}" "${library_plugins_dir}/winshun.archive/licenses/libarchive.txt"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${archive_license_xz}" "${library_plugins_dir}/winshun.archive/licenses/xz.txt"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${archive_license_zlib}" "${library_plugins_dir}/winshun.archive/licenses/zlib.txt"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/bookmarks-plugin/package" "${library_plugins_dir}/winshun.bookmarks"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunBookmarks>" "${library_plugins_dir}/winshun.bookmarks/WinShunBookmarks.exe"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/translate-plugin/package" "${library_plugins_dir}/winshun.translate"
@@ -187,7 +207,7 @@ add_custom_target(library_plugins ALL
     # What is compiled into WinShunCaptureApp.dll; Qt, ONNX Runtime and the OCR models are Win顺's.
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/third_party/zxing-cpp/LICENSE" "${library_plugins_dir}/winshun.capture/licenses/zxing-cpp.txt"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/third_party/miniz/LICENSE" "${library_plugins_dir}/winshun.capture/licenses/miniz.txt"
-    DEPENDS WinShunSemantic WinShunLocalSend WinShunSync WinShunBreak WinShunExplorerTabs WinShunGestures WinShunGesturesEditor WinShunExpander WinShunTopmost WinShunBookmarks WinShunTranslate WinShunCloudBackup WinShunCapture WinShunCaptureApp WinShunOcrSearch WinShunOcrSearchApp
+    DEPENDS WinShunSemantic WinShunLocalSend WinShunSync WinShunBreak WinShunExplorerTabs WinShunGestures WinShunGesturesEditor WinShunExpander WinShunTopmost WinShunArchive WinShunBookmarks WinShunTranslate WinShunCloudBackup WinShunCapture WinShunCaptureApp WinShunOcrSearch WinShunOcrSearchApp
         WinShunDevTools WinShunDevToolsApp
     COMMENT "Staging the library plugins into ${library_plugins_dir}"
     VERBATIM)

@@ -2545,6 +2545,93 @@ private slots:
     // search_files in some folders (ws find --in): only what lies in them,
     // the limit counting only that; folders AI must not see, and those the
     // caller cannot list, are not there for it; full paths only.
+    // list_files: every file of some types, a page at a time, for plugins
+    // (winshun.archive lists the archives with it); not a tool of AI clients.
+    void listFiles()
+    {
+        Fixture f;
+        const QString sized = f.write(u"备份\\2025.zip"_s, "zip", 1'700'000'000);
+        {
+            const auto index = f.service->index();
+            const auto lock = index->writeLock();
+            index->setSize(index->findPath(sized.toStdWString()), packSize(3)); // as a drive's index has it
+        }
+        f.write(u"备份\\照片.7Z"_s, "seven", 1'700'000'100);
+        f.write(u"备份\\深\\源码.tar.gz"_s, "gz", 1'700'000'200);
+        f.write(u"下载\\setup.ZIP"_s, "zip2", 1'700'000'300);
+        f.write(u"下载\\说明.txt"_s, "text", 1'700'000'400);
+        f.write(u"下载\\zip"_s, "a name, not a type", 1'700'000'500);
+        f.subfolder(u"假.zip"_s, 1'700'000'600); // a folder is no file
+        Session s(f.server.get());
+        QVERIFY(s.initialize());
+        const QJsonArray types {u"zip"_s, u".7z"_s, u"GZ"_s};
+        const auto list = [&](int id, QJsonObject args) {
+            const auto reply = s.exchange(callLine(id, u"list_files"_s, args));
+            return reply ? outcomeOf(*reply) : Outcome {true, u"(no answer)"_s};
+        };
+        // Its items are paths (no name apart, as list_documents').
+        const auto names = [](const QJsonObject& structured) {
+            QStringList out;
+            for (const QJsonValue& item : structured.value(u"items"_s).toArray())
+                out.push_back(item.toObject().value(u"path"_s).toString().section(u'\\', -1));
+            return out;
+        };
+
+        // Not a tool of AI clients: off, as list_documents is, and nothing listed.
+        Outcome out = list(2, {{u"extensions"_s, types}});
+        QVERIFY(out.isError);
+        QVERIFY(!out.structured.contains(u"items"_s));
+        QVERIFY(f.host->known(u"list_files"_s) == ToolHost::Known::Off);
+
+        Policy policy = f.host->policy();
+        policy.allowDocuments = true; // as the plugins' host has it
+        f.host->setPolicy(policy);
+        out = list(3, {{u"extensions"_s, types}});
+        QVERIFY2(!out.isError, qPrintable(out.text));
+        QStringList found = names(out.structured);
+        found.sort();
+        QCOMPARE(found, (QStringList {u"2025.zip"_s, u"setup.ZIP"_s, u"源码.tar.gz"_s, u"照片.7Z"_s}));
+        QVERIFY(!out.structured.contains(u"next_cursor"_s));
+        // Each with what tells a reader it changed: its size and time, from the index.
+        for (const QJsonValue& v : out.structured.value(u"items"_s).toArray()) {
+            const QJsonObject item = v.toObject();
+            if (!item.value(u"path"_s).toString().endsWith(u"2025.zip"))
+                continue;
+            QCOMPARE(item.value(u"size"_s).toInt(), 3);
+            QCOMPARE(item.value(u"modified"_s).toInteger(), 1'700'000'000);
+        }
+
+        // A page at a time: together the same, none twice.
+        QStringList paged;
+        QJsonObject args {{u"extensions"_s, types}, {u"limit"_s, 2}};
+        for (int id = 10; id < 20; ++id) {
+            out = list(id, args);
+            QVERIFY2(!out.isError, qPrintable(out.text));
+            QVERIFY(out.structured.value(u"returned"_s).toInt() <= 2);
+            paged += names(out.structured);
+            if (!out.structured.contains(u"next_cursor"_s))
+                break;
+            args.insert(u"cursor"_s, out.structured.value(u"next_cursor"_s));
+        }
+        paged.sort();
+        QCOMPARE(paged, found);
+
+        // Only under some folders; and no types at all is an error that says so.
+        out = list(20, {{u"extensions"_s, types}, {u"folders"_s, QJsonArray {f.root + u"\\备份\\"_s}}});
+        found = names(out.structured);
+        found.sort();
+        QCOMPARE(found, (QStringList {u"2025.zip"_s, u"源码.tar.gz"_s, u"照片.7Z"_s}));
+        out = list(21, {{u"extensions"_s, QJsonArray {u"."_s}}});
+        QVERIFY(out.isError);
+        QVERIFY2(out.text.contains(u"extensions is empty"), qPrintable(out.text));
+        // One the caller cannot read is, to it, not there.
+        QVERIFY(f.restrict(u"下载"_s));
+        out = list(22, {{u"extensions"_s, types}});
+        QVERIFY(!names(out.structured).contains(u"setup.ZIP"_s));
+        QCOMPARE(out.structured.value(u"returned"_s).toInt(), 3);
+        f.unrestrict();
+    }
+
     void searchFilesInFolders()
     {
         Fixture f;

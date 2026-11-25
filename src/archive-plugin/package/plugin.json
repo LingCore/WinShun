@@ -1,0 +1,34 @@
+{
+  "manifest": 1,
+  "id": "winshun.archive",
+  "name": {"zh": "压缩包搜索", "en": "Archive search"},
+  "version": "1.0.0",
+  "description": {"zh": "按文件名找压缩包里的文件：zip、7z、rar、tar.gz 等。直接在搜索框里输入名字就能搜到，或输入 zip 加空格只看压缩包里的。后台只读文件列表，不解压", "en": "Finds files by name inside archives: zip, 7z, rar, tar.gz and more. Type the name in the search box, or zip and a space for archives only. Only the lists of files are read, in the background; nothing is unpacked"},
+  "author": "LingCore",
+  "homepage": "https://github.com/LingCore/WinShun",
+  "license": "MIT",
+  "minWinShun": "0.47.0",
+  "runtime": {"mode": "resident", "program": "WinShunArchive.exe", "start": "eager", "sandbox": "strict", "timeoutMs": 10000, "idleExitSec": 0, "memoryMB": 512},
+  "permissions": ["winshun:search", {"files:read": ["Win顺 索引里的压缩包 / The archives in Win顺's index"]}],
+  "commands": [{
+    "id": "find",
+    "keyword": ["zip", "压缩包"],
+    "contentSearch": true,
+    "title": {"zh": "压缩包搜索", "en": "Archive search"},
+    "description": {"zh": "按文件名找压缩包里的文件", "en": "Files inside archives, by name"},
+    "icon": "ph:file-zip",
+    "hint": {"zh": "压缩包里的文件名，例如：报价单", "en": "a file name inside an archive, e.g. invoice"},
+    "actions": [
+      {"id": "open", "title": {"zh": "打开压缩包", "en": "Open the archive"}, "key": "Enter"},
+      {"id": "extract", "title": {"zh": "解压并打开这个文件", "en": "Unpack and open this file"}, "key": "Ctrl+Enter"},
+      {"id": "folder", "title": {"zh": "打开压缩包所在文件夹", "en": "Show the archive in its folder"}, "key": "Shift+Enter"}
+    ],
+    "ai": {"description": "Find files by name inside the archives on this PC (zip, 7z, rar, tar and its compressed kinds, cab, iso): give part of the file name; several words must all be in the member's path. Each item's title is the member's name, its subtitle the archive's full path and the folder inside it. search_files does not look inside archives; use this when a file may be packed in one."}
+  }],
+  "settings": [
+    {"key": "more", "type": "text", "title": {"zh": "还要收录的类型", "en": "More types"}, "hint": {"zh": "用空格隔开，例如 jar apk epub。已包含 zip、7z、rar、tar、tar.gz、tgz、tar.xz、txz、cab、iso", "en": "Separated by spaces, e.g. jar apk epub. Already in: zip, 7z, rar, tar, tar.gz, tgz, tar.xz, txz, cab, iso"}, "default": ""},
+    {"key": "folders", "type": "text", "title": {"zh": "只看这些文件夹", "en": "Only these folders"}, "hint": {"zh": "用分号隔开，例如 %USERPROFILE%\\Downloads;D:\\备份。留空是本机全部磁盘", "en": "Separated by semicolons, e.g. %USERPROFILE%\\Downloads;D:\\Backup. Empty: all local drives"}, "default": ""},
+    {"key": "system", "type": "bool", "title": {"zh": "也收录系统和程序文件夹里的压缩包", "en": "Also archives in system and program folders"}, "default": false}
+  ],
+  "ai": {"expose": true}
+}

@@ -1603,6 +1603,21 @@ add_test(NAME tst_topmost COMMAND tst_topmost)
 set_tests_properties(tst_topmost PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# winshun.archive (src/archive-plugin): its index of the names inside archives
+# (Index), built in again; the reading of archives (libarchive, linked into
+# the plugin's program with the C runtime) is asked of WinShunArchive.exe
+# itself, on the small archives of fixtures/archives.
+qt_add_executable(tst_archive tst_archive.cpp ${PROJECT_SOURCE_DIR}/src/archive-plugin/Index.cpp)
+target_include_directories(tst_archive PRIVATE ${PROJECT_SOURCE_DIR}/src/archive-plugin)
+target_link_libraries(tst_archive PRIVATE winshun_options Qt6::Test)
+target_compile_definitions(tst_archive PRIVATE WINSHUN_ARCHIVE_EXE="$<TARGET_FILE:WinShunArchive>"
+    WINSHUN_ARCHIVE_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/archives")
+add_dependencies(tst_archive WinShunArchive)
+set_target_properties(tst_archive PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_archive COMMAND tst_archive)
+set_tests_properties(tst_archive PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # winshun.bookmarks (src/bookmarks-plugin/Bookmarks), built in again: reading
 # Bookmarks files, the folder text, percent-decoding, matching, scoring,
 # the 50-row cap and the "nothing found" rows.
