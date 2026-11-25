@@ -13,12 +13,15 @@
 namespace ws::capture {
 
 // The keys of the screen capture that the user may change (#187): the pin
-// action while capturing and in the editing window, and the keys inside a pin
+// and save actions while capturing and in the editing window, the long
+// screenshot and the recording from a selection (#455), and the keys inside a pin
 // window. Pure logic with no window in it, so the rules are tested on their
 // own (tst_capturekeys). The windows ask this map; nothing else knows a key.
 enum class KeyAction {
     Pin, // 贴到屏幕, in the capture and the editing window
     Save,
+    Long, // 长截图, from a selection (#455)
+    Record, // 录屏, from a selection
     PinClose, // from here on: inside the pin window
     PinCopy,
     PinSave,
@@ -52,6 +55,10 @@ inline constexpr std::array kActions {
         QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "贴到屏幕")},
     ActionInfo {KeyAction::Save, "Save", KeyContext::Capture, QKeyCombination(Qt::ControlModifier, Qt::Key_S),
         QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "保存")},
+    ActionInfo {KeyAction::Long, "Long", KeyContext::Capture, QKeyCombination(Qt::ControlModifier, Qt::Key_L),
+        QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "长截图")},
+    ActionInfo {KeyAction::Record, "Record", KeyContext::Capture, QKeyCombination(Qt::ControlModifier, Qt::Key_R),
+        QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "录屏")},
     ActionInfo {KeyAction::PinClose, "PinClose", KeyContext::PinWindow, QKeyCombination(Qt::Key_Escape),
         QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "关闭贴图")},
     ActionInfo {KeyAction::PinCopy, "PinCopy", KeyContext::PinWindow, QKeyCombination(Qt::ControlModifier, Qt::Key_C),
@@ -108,6 +115,28 @@ inline constexpr unsigned kVkBack = 0x08, kVkTab = 0x09, kVkReturn = 0x0D, kVkEs
                           kVkNumpad0 = 0x60, kVkNumpad9 = 0x69, kVkAdd = 0x6B, kVkSubtract = 0x6D, kVkF1 = 0x70,
                           kVkF24 = 0x87, kVkOemPlus = 0xBB, kVkOemMinus = 0xBD, kVkSnapshot = 0x2C;
 
+// A letter with nothing held.
+constexpr bool isPlainLetter(QKeyCombination c)
+{
+    return c.keyboardModifiers() == Qt::NoModifier && c.key() >= Qt::Key_A && c.key() <= Qt::Key_Z;
+}
+
+// The letters a capture or the editing window uses alone, with no other key
+// for what they do: the pointer (WASD), the recent selections (R), the size
+// (F), the colour (C), the toolbar (H), QR codes (Q), the eyedropper (I), fit (Z),
+// and the spotlight (G), the one tool with no digit. The other letters are free,
+// or a tool's, which has its digit as well.
+constexpr bool captureKeepsLetter(int key)
+{
+    switch (key) {
+    case Qt::Key_W: case Qt::Key_A: case Qt::Key_S: case Qt::Key_D: case Qt::Key_R: case Qt::Key_F:
+    case Qt::Key_C: case Qt::Key_H: case Qt::Key_Q: case Qt::Key_I: case Qt::Key_Z: case Qt::Key_G:
+        return true;
+    default:
+        return false;
+    }
+}
+
 // The keys a pin window can be told about (fromVirtualKey makes exactly these).
 constexpr bool pinCanHear(int key)
 {
@@ -143,6 +172,19 @@ public:
         const QKeyCombination k = key(action);
         return k.key() != Qt::Key_unknown && k.keyboardModifiers() == (modifiers & ~Qt::KeypadModifier)
             && keys::normalKey(k.key()) == keys::normalKey(qtKey);
+    }
+    // A letter alone that the user gave to an action of the capture (#455):
+    // a tool with that letter is chosen by its digit only, and typing a text
+    // never sets the action off.
+    bool captureTakesLetter(int qtKey) const
+    {
+        if (qtKey < Qt::Key_A || qtKey > Qt::Key_Z)
+            return false;
+        for (const keys::ActionInfo& a : keys::kActions) {
+            if (a.context == KeyContext::Capture && key(a.action) == QKeyCombination(Qt::Key(qtKey)))
+                return true;
+        }
+        return false;
     }
     // Which action of `context` this key is.
     std::optional<KeyAction> triggered(KeyContext context, int qtKey, Qt::KeyboardModifiers modifiers) const
@@ -197,9 +239,14 @@ public:
             // Win chords are the system's; PrtScn is the Snipping Tool's or the capture hotkey's.
             if (meta || k == Qt::Key_Print)
                 return tr("截图时不支持这个键");
-            // Letters and digits choose a tool or type into a text; Ctrl or Alt keeps them clear.
+            // A letter alone is fine (#455: L for the long screenshot, as in
+            // PixPin) unless the capture needs it; one that is a tool's leaves
+            // that tool its digit. Digits, signs and Shift with a letter stay
+            // the tools' and the texts'.
+            if (keys::isPlainLetter(candidate))
+                return keys::captureKeepsLetter(k) ? std::optional(tr("截图时这个键已经有用处")) : std::nullopt;
             if (keys::isPrintable(k) && !ctrl && !alt)
-                return tr("截图时字母、数字会用来选工具或打字，请带上 Ctrl 或 Alt，或用功能键");
+                return tr("截图时数字、符号和带 Shift 的字母另有用处，请用单个字母、带上 Ctrl 或 Alt，或用功能键");
             if (captureReserved(k, ctrl, alt))
                 return tr("截图时这个键已经有用处");
             return std::nullopt;
@@ -357,8 +404,6 @@ private:
         case Qt::Key_Y:
         case Qt::Key_A: // select all
         case Qt::Key_D: // duplicate, Ctrl+Shift+D delay
-        case Qt::Key_L: // long capture
-        case Qt::Key_R: // record
         case Qt::Key_Plus: // the editor's zoom
         case Qt::Key_Equal:
         case Qt::Key_Minus:

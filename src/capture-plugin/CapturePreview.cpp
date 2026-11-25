@@ -352,10 +352,11 @@ int runSettings(const QStringList& args)
     if (!choices)
         qWarning("capture settings: a segmented choice did not update the editor and isolated file");
     ok = ok && choices;
-    // 按键 (#187): keys pressed in the key boxes. A bare letter for 保存 is
-    // refused, with why under the row, and nothing stored; Ctrl+Shift+S is
-    // taken and stored; an arrow for 关闭贴图 is refused. Pictured so (the
-    // 恢复默认 and the words), then put back.
+    // 按键 (#187): keys pressed in the key boxes. A letter the capture needs
+    // (S, the pointer) is refused for 保存, with why under the row, and
+    // nothing stored; Ctrl+Shift+S is taken and stored; a letter alone, L, is
+    // taken for 长截图 (#455); an arrow for 关闭贴图 is refused. Pictured so
+    // (the 恢复默认 and the words), then put back.
     {
         using capture::KeyAction;
         QObject* options = window->findChild<QObject*>(u"captureOptions"_s);
@@ -379,11 +380,15 @@ int runSettings(const QStringList& args)
             const int previousGroup = options->property("currentGroup").toInt();
             options->setProperty("currentGroup", 1);
             settle(window);
-            const QString refused = press(save, Qt::Key_P, Qt::NoModifier);
+            const QString refused = press(save, Qt::Key_S, Qt::NoModifier);
             keys = !refused.isEmpty() && stored(KeyAction::Save) == QKeyCombination(Qt::ControlModifier, Qt::Key_S);
             const QString taken = press(save, Qt::Key_S, Qt::ControlModifier | Qt::ShiftModifier);
             keys = keys && taken.isEmpty() && stored(KeyAction::Save) == QKeyCombination(Qt::ControlModifier | Qt::ShiftModifier, Qt::Key_S)
                 && editor.options().keys.text(KeyAction::Save) == u"Ctrl+Shift+S"_s;
+            QQuickItem* longKey = visual(window->contentItem(), u"captureKeyLong"_s);
+            const QString letter = longKey && rowOf(longKey) ? press(longKey, Qt::Key_L, Qt::NoModifier) : u"no 长截图 row"_s;
+            keys = keys && letter.isEmpty() && stored(KeyAction::Long) == QKeyCombination(Qt::Key_L)
+                && editor.options().keys.text(KeyAction::Long) == u"L"_s;
             const QString arrow = press(close, Qt::Key_Left, Qt::NoModifier);
             keys = keys && !arrow.isEmpty() && stored(KeyAction::PinClose) == QKeyCombination(Qt::Key_Escape);
             say(u"key boxes: refused \"%1\", \"%2\"; taken: %3"_s.arg(refused, arrow).arg(keys ? u"ok"_s : u"WRONG"_s));
@@ -396,9 +401,11 @@ int runSettings(const QStringList& args)
             settle(window);
             keys = saveGrab(window, out.filePath(u"capture-keys-states.png"_s)) && keys;
             editor.resetCaptureKey(u"Save"_s);
+            editor.resetCaptureKey(u"Long"_s);
             press(close, Qt::Key_Escape, Qt::NoModifier);
             settle(window);
             keys = keys && stored(KeyAction::Save) == QKeyCombination(Qt::ControlModifier, Qt::Key_S)
+                && stored(KeyAction::Long) == QKeyCombination(Qt::ControlModifier, Qt::Key_L)
                 && rowOf(close)->property("error").toString().isEmpty();
             options->setProperty("currentGroup", previousGroup);
             window->resize(560, 640);

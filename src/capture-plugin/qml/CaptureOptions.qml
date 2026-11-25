@@ -483,7 +483,7 @@ Column {
                     width: parent.width
                     title: qsTr("截图时")
                     glyph: "" // Keyboard
-                    note: qsTr("截图和编辑图片时按。清除后仍可点工具条上的按钮")
+                    note: qsTr("截图和编辑图片时按，可以设成单个字母（如 L）。设成某个工具的字母后，那个工具改按数字键选。清除后仍可点工具条上的按钮")
 
                     KeyRow {
                         keyId: "Pin"
@@ -494,6 +494,16 @@ Column {
                         keyId: "Save"
                         capture: true
                         title: qsTranslate("ws::capture::CaptureKeys", "保存")
+                    }
+                    KeyRow { // #455
+                        keyId: "Long"
+                        capture: true
+                        title: qsTranslate("ws::capture::CaptureKeys", "长截图")
+                    }
+                    KeyRow {
+                        keyId: "Record"
+                        capture: true
+                        title: qsTranslate("ws::capture::CaptureKeys", "录屏")
                     }
                 }
 

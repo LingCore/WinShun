@@ -273,12 +273,21 @@ private slots:
         QCOMPARE(text("Pin"), u"F3"_s);
         QVERIFY(!entry("Pin").value(u"changed"_s).toBool());
 
-        // Refused: a bare letter while capturing, an arrow in a pin, a key another action has.
-        QVERIFY(!settings.setCaptureKey(u"Save"_s, Qt::Key_P, 0).isEmpty());
+        // Refused: a letter the capture needs (S, the pointer), an arrow in a pin, a key another action has.
+        QVERIFY(!settings.setCaptureKey(u"Save"_s, Qt::Key_S, 0).isEmpty());
         QVERIFY(!settings.setCaptureKey(u"PinCopy"_s, Qt::Key_Left, 0).isEmpty());
         QVERIFY(settings.setCaptureKey(u"PinCopy"_s, Qt::Key_T, 0).contains(u"选取文字"_s));
         QCOMPARE(changed.count(), 0);
         QCOMPARE(text("Save"), u"Ctrl+S"_s);
+
+        // GitHub #455: a letter alone for the long screenshot, and back.
+        QCOMPARE(text("Long"), u"Ctrl+L"_s);
+        QVERIFY(settings.setCaptureKey(u"Long"_s, Qt::Key_L, 0).isEmpty());
+        QCOMPARE(text("Long"), u"L"_s);
+        QVERIFY(entry("Long").value(u"changed"_s).toBool());
+        settings.resetCaptureKey(u"Long"_s);
+        QCOMPARE(text("Long"), u"Ctrl+L"_s);
+        changed.clear();
 
         // Taken: stored at once, told once.
         QVERIFY(settings.setCaptureKey(u"Save"_s, Qt::Key_S, int(Qt::ControlModifier | Qt::ShiftModifier)).isEmpty());

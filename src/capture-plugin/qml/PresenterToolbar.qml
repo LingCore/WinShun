@@ -173,7 +173,7 @@ Window {
                         readonly property var info: window.annot ? window.annot.tools[modelData] : null
                         checked: !window.presenter.laser && window.presenter.tool === modelData
                         name: info ? info.name : ""
-                        keys: info ? info.letter + " / " + info.digit : ""
+                        keys: !info ? "" : info.letter.length > 0 ? info.letter + " / " + info.digit : String(info.digit)
                         onClicked: {
                             window.presenter.tool = checked ? -1 : modelData
                             window.presenter.draw()

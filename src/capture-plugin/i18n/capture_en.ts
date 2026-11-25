@@ -821,6 +821,14 @@
         <source>一直显示</source>
         <translation>Always show</translation>
     </message>
+    <message>
+        <source>录屏</source>
+        <translation>Record</translation>
+    </message>
+    <message>
+        <source>长截图</source>
+        <translation>Long screenshot</translation>
+    </message>
 </context>
 <context>
     <name>CaptureKeyList</name>
@@ -923,6 +931,18 @@
     <message>
         <source>显示 / 隐藏屏幕角落的快捷键提示</source>
         <translation>Show / hide the shortcut hints in the screen corner</translation>
+    </message>
+    <message>
+        <source>%1 或 1–9</source>
+        <translation>%1 or 1–9</translation>
+    </message>
+    <message>
+        <source>拖顶边的小条</source>
+        <translation>Drag a tab on the top edge</translation>
+    </message>
+    <message>
+        <source>沿屏幕顶边左右挪开；点一下展开</source>
+        <translation>Slides it along the top edge; a click opens it</translation>
     </message>
 </context>
 <context>
@@ -1116,8 +1136,8 @@
         <translation>While capturing</translation>
     </message>
     <message>
-        <source>截图和编辑图片时按。清除后仍可点工具条上的按钮</source>
-        <translation>Pressed while capturing or editing a picture. Cleared, the toolbar buttons still work</translation>
+        <source>截图和编辑图片时按，可以设成单个字母（如 L）。设成某个工具的字母后，那个工具改按数字键选。清除后仍可点工具条上的按钮</source>
+        <translation>Pressed while capturing or editing a picture; a single letter (such as L) works too. A letter that was a tool&apos;s leaves that tool its digit key. When cleared, the toolbar buttons still work</translation>
     </message>
     <message>
         <source>贴图窗口</source>
@@ -2585,8 +2605,8 @@ The unfinished recording is kept at: %1</translation>
         <translation>This key can&apos;t be used while capturing</translation>
     </message>
     <message>
-        <source>截图时字母、数字会用来选工具或打字，请带上 Ctrl 或 Alt，或用功能键</source>
-        <translation>Letters and digits pick tools or type while capturing: add Ctrl or Alt, or use a function key</translation>
+        <source>截图时数字、符号和带 Shift 的字母另有用处，请用单个字母、带上 Ctrl 或 Alt，或用功能键</source>
+        <translation>Digits, signs and Shift with a letter are in use while capturing: use a single letter, add Ctrl or Alt, or use a function key</translation>
     </message>
     <message>
         <source>截图时这个键已经有用处</source>
@@ -2599,6 +2619,14 @@ The unfinished recording is kept at: %1</translation>
     <message>
         <source>贴图窗口里这个键已经有用处</source>
         <translation>This key already does something in a pin</translation>
+    </message>
+    <message>
+        <source>长截图</source>
+        <translation>Long screenshot</translation>
+    </message>
+    <message>
+        <source>录屏</source>
+        <translation>Record</translation>
     </message>
 </context>
 <context>

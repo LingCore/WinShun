@@ -240,7 +240,8 @@ QStringList CaptureSession::keyHintRows() const
         rows.append({u"arrows"_s, u"size"_s});
         if (m_ocrAvailable)
             rows.append(u"ocr"_s);
-        if (m_selection.screen != kDesktop) // a long screenshot scrolls one window
+        // A long screenshot scrolls one window; no row with both keys cleared (#455).
+        if (m_selection.screen != kDesktop && (m_annot.keys().has(KeyAction::Long) || m_annot.keys().has(KeyAction::Record)))
             rows.append(u"long"_s);
         if (m_recalledSelection >= 0)
             rows.append(u"recalled"_s);
@@ -1405,14 +1406,25 @@ bool CaptureSession::key(int key, Qt::KeyboardModifiers modifiers)
         publish();
         return true;
     }
-    // The pin and save keys, as the user set them (#187; Ctrl+S, F3 by
-    // default). CaptureKeys::problem keeps them off every key below and off
-    // the plain letters above, so plain S still moves the pointer.
+    // The pin, save, long screenshot and recording keys, as the user set them
+    // (#187, #455; F3, Ctrl+S, Ctrl+L, Ctrl+R by default). CaptureKeys::problem
+    // keeps them off every key below and off the capture's own letters above,
+    // so plain S still moves the pointer; a tool's letter given to one of them
+    // was left alone by the model above. A letter alone is typed into a text.
     if (const auto action = m_annot.keys().triggered(KeyContext::Capture, key, modifiers)) {
+        if (plain && !shift && (m_annot.editingText() || m_annot.editingNumber()))
+            return false;
         if (*action == KeyAction::Save && busy)
             return false;
-        if (!busy)
-            finish(*action == KeyAction::Pin ? Action::Pin : Action::Save);
+        if (busy)
+            return true;
+        switch (*action) {
+        case KeyAction::Pin: finish(Action::Pin); break;
+        case KeyAction::Save: finish(Action::Save); break;
+        case KeyAction::Long: act(static_cast<int>(Action::Long)); break;
+        case KeyAction::Record: act(static_cast<int>(Action::Record)); break;
+        default: break;
+        }
         return true;
     }
     switch (key) {
@@ -1423,12 +1435,6 @@ bool CaptureSession::key(int key, Qt::KeyboardModifiers modifiers)
     case Qt::Key_Enter:
         if (!busy)
             finish(Action::Copy);
-        return true;
-    case Qt::Key_L:
-        if (!ctrl)
-            return false;
-        if (!busy)
-            act(static_cast<int>(Action::Long));
         return true;
     case Qt::Key_H:
         if (ctrl || busy || m_selection.screen < 0)
@@ -1473,12 +1479,6 @@ bool CaptureSession::key(int key, Qt::KeyboardModifiers modifiers)
         }
         return true;
     }
-    case Qt::Key_R:
-        if (ctrl && !shift && !busy) {
-            act(static_cast<int>(Action::Record));
-            return true;
-        }
-        return false;
     case Qt::Key_Q:
         if (ctrl || shift)
             return false;

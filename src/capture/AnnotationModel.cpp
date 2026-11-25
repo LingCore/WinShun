@@ -712,8 +712,10 @@ QVariantList AnnotationModel::toolList() const
 {
     QVariantList list;
     for (const annot::ToolInfo& t : annot::tools()) {
+        // No letter while the user's own key has it (#455): the digit chooses the tool.
+        const bool taken = m_keys.captureTakesLetter(t.letter.toUpper().unicode());
         list.append(QVariantMap {{u"kind"_s, int(t.kind)}, {u"name"_s, annot::toolName(t.kind)},
-            {u"letter"_s, QString(t.letter)}, {u"digit"_s, t.digit}, {u"glyph"_s, t.glyph}});
+            {u"letter"_s, taken ? QString() : QString(t.letter)}, {u"digit"_s, t.digit}, {u"glyph"_s, t.glyph}});
     }
     return list;
 }
@@ -2212,7 +2214,8 @@ bool AnnotationModel::key(int key, Qt::KeyboardModifiers modifiers)
         for (qsizetype i = 0; i < annot::tools().size() && action == Action::None; ++i) {
             const annot::ToolInfo& t = annot::tools()[i];
             const bool digit = t.digit >= 1 && t.digit <= 9 && key == Qt::Key_0 + t.digit;
-            if (key == int(t.letter.toUpper().unicode()) || digit) {
+            // The letter is the user's own key's when given to one (#455): the digit stays.
+            if ((key == int(t.letter.toUpper().unicode()) && !m_keys.captureTakesLetter(key)) || digit) {
                 action = Action::Tool;
                 toolIndex = int(i);
             }

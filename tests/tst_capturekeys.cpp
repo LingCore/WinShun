@@ -129,7 +129,13 @@ private slots:
         const auto row = [](const char* name, Qt::KeyboardModifiers m, Qt::Key k, bool ok) {
             QTest::newRow(name) << int(m) << int(k) << ok;
         };
-        row("bare letter", {}, Qt::Key_P, false);
+        row("bare letter", {}, Qt::Key_L, true); // #455: a tool's (the line), which keeps its digit
+        row("bare free letter", {}, Qt::Key_K, true);
+        row("bare letter the capture needs", {}, Qt::Key_W, false); // the pointer
+        row("bare r", {}, Qt::Key_R, false); // the recent selections
+        row("bare c", {}, Qt::Key_C, false); // the colour
+        row("bare z", {}, Qt::Key_Z, false); // the editing window's fit
+        row("bare g", {}, Qt::Key_G, false); // the spotlight, which has no digit
         row("shift letter", Qt::ShiftModifier, Qt::Key_P, false);
         row("digit", {}, Qt::Key_5, false);
         row("space", {}, Qt::Key_Space, false);
@@ -149,8 +155,8 @@ private slots:
         row("ctrl z", Qt::ControlModifier, Qt::Key_Z, false);
         row("ctrl y", Qt::ControlModifier, Qt::Key_Y, false);
         row("ctrl shift z", Qt::ControlModifier | Qt::ShiftModifier, Qt::Key_Z, false);
-        row("ctrl l", Qt::ControlModifier, Qt::Key_L, false);
-        row("ctrl r", Qt::ControlModifier, Qt::Key_R, false);
+        row("ctrl l", Qt::ControlModifier, Qt::Key_L, false); // the long screenshot's
+        row("ctrl r", Qt::ControlModifier, Qt::Key_R, false); // the recording's
         row("ctrl a", Qt::ControlModifier, Qt::Key_A, false);
         row("ctrl d", Qt::ControlModifier, Qt::Key_D, false);
         row("ctrl plus", Qt::ControlModifier, Qt::Key_Plus, false);
@@ -182,10 +188,43 @@ private slots:
         QCOMPARE(!why.has_value(), ok);
     }
 
+    // GitHub #455: the long screenshot and the recording have keys of their own
+    // to set, a letter alone too (L, as in PixPin); the tool it was is then its digit's.
+    void letterAloneForTheLongScreenshot()
+    {
+        CaptureKeys k;
+        QCOMPARE(k.text(KeyAction::Long), u"Ctrl+L"_s);
+        QCOMPARE(k.text(KeyAction::Record), u"Ctrl+R"_s);
+        QVERIFY(k.triggered(KeyContext::Capture, Qt::Key_L, Qt::ControlModifier) == KeyAction::Long);
+        QVERIFY(k.triggered(KeyContext::Capture, Qt::Key_R, Qt::ControlModifier) == KeyAction::Record);
+        QVERIFY(!k.captureTakesLetter(Qt::Key_L));
+        const auto taken = k.problem(KeyAction::Pin, combo(Qt::ControlModifier, Qt::Key_L));
+        QVERIFY(taken && taken->contains(u"长截图"_s));
+
+        QVERIFY(!k.problem(KeyAction::Long, combo({}, Qt::Key_L)).has_value());
+        k.set(KeyAction::Long, combo({}, Qt::Key_L));
+        QCOMPARE(k.text(KeyAction::Long), u"L"_s);
+        QVERIFY(k.triggered(KeyContext::Capture, Qt::Key_L, {}) == KeyAction::Long);
+        QVERIFY(!k.triggered(KeyContext::Capture, Qt::Key_L, Qt::ShiftModifier).has_value());
+        QVERIFY(!k.triggered(KeyContext::Capture, Qt::Key_L, Qt::ControlModifier).has_value());
+        QVERIFY(k.captureTakesLetter(Qt::Key_L));
+        QVERIFY(!k.captureTakesLetter(Qt::Key_E));
+        // Ctrl+L is free again; L is the long screenshot's.
+        QVERIFY(!k.problem(KeyAction::Pin, combo(Qt::ControlModifier, Qt::Key_L)).has_value());
+        const auto clash = k.problem(KeyAction::Record, combo({}, Qt::Key_L));
+        QVERIFY(clash && clash->contains(u"长截图"_s));
+        // A pin window's letter is not the capture's.
+        QVERIFY(!CaptureKeys().captureTakesLetter(Qt::Key_T));
+        // Round trip through the settings' text.
+        QCOMPARE(CaptureKeys::parse(k.portable(KeyAction::Long)), std::optional(combo({}, Qt::Key_L)));
+    }
+
     void capturePrintableHasAHint()
     {
-        const auto why = CaptureKeys().problem(KeyAction::Pin, combo({}, Qt::Key_P));
+        const auto why = CaptureKeys().problem(KeyAction::Pin, combo(Qt::ShiftModifier, Qt::Key_P));
         QVERIFY(why && why->contains(u"Ctrl"_s));
+        const auto kept = CaptureKeys().problem(KeyAction::Long, combo({}, Qt::Key_S));
+        QVERIFY(kept && kept->contains(u"已经有用处"_s));
         const auto fixed = CaptureKeys().problem(KeyAction::Pin, combo(Qt::ControlModifier, Qt::Key_Z));
         QVERIFY(fixed && fixed->contains(u"已经有用处"_s));
     }

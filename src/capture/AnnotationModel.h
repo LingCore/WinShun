@@ -49,7 +49,7 @@ class AnnotationModel : public QObject {
     // The tool's index in annot::tools() (the toolbar's order); -1: none.
     Q_PROPERTY(int tool READ tool WRITE setTool NOTIFY toolChanged FINAL)
     // [{kind, name (translated), letter, digit, glyph}] in the toolbar's order.
-    Q_PROPERTY(QVariantList tools READ toolList CONSTANT FINAL)
+    Q_PROPERTY(QVariantList tools READ toolList NOTIFY keysChanged FINAL) // a letter goes to the user's own key (#455)
     Q_PROPERTY(bool canUndo READ canUndo NOTIFY historyChanged FINAL)
     Q_PROPERTY(bool canRedo READ canRedo NOTIFY historyChanged FINAL)
     Q_PROPERTY(QString undoLabel READ undoLabel NOTIFY historyChanged FINAL)
@@ -102,6 +102,8 @@ class AnnotationModel : public QObject {
     // The pin and save keys as tips and key lists show them ("F3"); empty: none (#187).
     Q_PROPERTY(QString pinKeyText READ pinKeyText NOTIFY keysChanged FINAL)
     Q_PROPERTY(QString saveKeyText READ saveKeyText NOTIFY keysChanged FINAL)
+    Q_PROPERTY(QString longKeyText READ longKeyText NOTIFY keysChanged FINAL)
+    Q_PROPERTY(QString recordKeyText READ recordKeyText NOTIFY keysChanged FINAL)
     // A save folder was chosen: Save and its key go straight into it, and the
     // menu offers 另存为… instead of 保存到旧路径 (#194).
     Q_PROPERTY(bool saveDirect READ saveDirect NOTIFY keysChanged FINAL)
@@ -308,6 +310,8 @@ public:
     const CaptureKeys& keys() const { return m_keys; }
     QString pinKeyText() const { return m_keys.text(KeyAction::Pin); }
     QString saveKeyText() const { return m_keys.text(KeyAction::Save); }
+    QString longKeyText() const { return m_keys.text(KeyAction::Long); }
+    QString recordKeyText() const { return m_keys.text(KeyAction::Record); }
     void setSaveDirect(bool on)
     {
         if (on == m_saveDirect)
@@ -319,6 +323,8 @@ public:
     Q_INVOKABLE bool isFinishKey(int key, int modifiers) const
     {
         const auto mods = Qt::KeyboardModifiers(modifiers);
+        if (keys::isPlainLetter(QKeyCombination(mods & ~Qt::KeypadModifier, Qt::Key(key))))
+            return false; // a letter alone (#455) is typed into the text
         return m_keys.matches(KeyAction::Pin, key, mods) || m_keys.matches(KeyAction::Save, key, mods);
     }
     // Esc, steps 2 and 3 of 3.6: commit the text under way, or cancel the

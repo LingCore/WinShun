@@ -22,8 +22,14 @@ QtObject {
     // settings list them as boxes of their own and leave this unset.
     property AnnotationModel annot: null
 
+    // A tool's letter that the user gave to a key of their own (#455) is its digit here.
+    readonly property bool lettersTaken: annot !== null && annot.tools.some(tool => tool.letter.length === 0)
+    readonly property string toolKeys: !annot ? ""
+        : annot.tools.map(tool => tool.letter.length === 0 || (!editor && (tool.letter === "R" || tool.letter === "A"))
+                                  ? String(tool.digit) : tool.letter).join(" ")
     readonly property var commonRows: [
-        editor ? qsTranslate("AnnotateToolbar", "R E A L P M T N B G 或 1–9") : qsTranslate("AnnotateToolbar", "1 E 3 L P M T N B G 或 1–9"),
+        lettersTaken ? qsTr("%1 或 1–9").arg(toolKeys)
+        : editor ? qsTranslate("AnnotateToolbar", "R E A L P M T N B G 或 1–9") : qsTranslate("AnnotateToolbar", "1 E 3 L P M T N B G 或 1–9"),
         qsTranslate("AnnotateToolbar", "选工具：矩形、椭圆、箭头、直线、画笔、荧光笔、文字、序号、打码、聚光灯"),
         qsTranslate("AnnotateToolbar", "工具键再按一次"), qsTranslate("AnnotateToolbar", "关掉工具"),
         "Ctrl+Z", qsTranslate("AnnotateToolbar", "撤销"),
@@ -55,11 +61,12 @@ QtObject {
         "R / Shift+R", qsTranslate("AnnotateToolbar", "恢复最近选区：向前 / 向后循环，最多 10 个；使用当前画面"),
         ",  .", qsTranslate("AnnotateToolbar", "翻看之前截图时的画面（整屏、选区和标注），. 往回翻"),
         "Q", qsTranslate("AnnotateToolbar", "识别选区里的二维码"),
-        "Ctrl+Shift+D", qsTranslate("AnnotateToolbar", "延时截图：关掉这次，倒计时后再截"),
-        "Ctrl+L", qsTranslate("AnnotateToolbar", "长截图：选区里的内容一边滚动一边截"),
-        "Ctrl+R", qsTranslate("AnnotateToolbar", "区域录屏：把选区里的操作录成 MP4 或 GIF"),
-        qsTranslate("AnnotateToolbar", "Esc、右键"), qsTranslate("AnnotateToolbar", "退一步：写完文字、放弃标注、关闭截图")
-    ]
+        "Ctrl+Shift+D", qsTranslate("AnnotateToolbar", "延时截图：关掉这次，倒计时后再截")
+    ].concat(annot && annot.longKeyText.length > 0
+                 ? [annot.longKeyText, qsTranslate("AnnotateToolbar", "长截图：选区里的内容一边滚动一边截")] : [],
+             annot && annot.recordKeyText.length > 0
+                 ? [annot.recordKeyText, qsTranslate("AnnotateToolbar", "区域录屏：把选区里的操作录成 MP4 或 GIF")] : [],
+             [qsTranslate("AnnotateToolbar", "Esc、右键"), qsTranslate("AnnotateToolbar", "退一步：写完文字、放弃标注、关闭截图")])
     readonly property var editorRows: [
         qsTranslate("AnnotateToolbar", "方向键"), qsTranslate("AnnotateToolbar", "挪动选中的对象，按住 Shift 一次 10 像素；没有选中时滚动图片"),
         qsTranslate("AnnotateToolbar", "Shift+点击、拖空白处"), qsTranslate("AnnotateToolbar", "多选；Ctrl+A 全选，Ctrl+D 复制一份"),
@@ -83,6 +90,7 @@ QtObject {
         qsTr("加号 / 减号"), qsTr("放大 / 缩小"),
         qsTr("拖四角"), qsTr("按比例缩放"),
         qsTr("中键"), qsTr("收成小块 / 展开"),
+        qsTr("拖顶边的小条"), qsTr("沿屏幕顶边左右挪开；点一下展开"),
         qsTr("右键、菜单键"), qsTr("贴图菜单：另存为、置顶、鼠标穿透、关闭其他等"),
         "Tab", qsTr("截图翻译的贴图：看原文 / 看译文"),
         "Ctrl+A", qsTr("全选已识别的文字"),

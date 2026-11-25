@@ -72,7 +72,11 @@ Item {
 
     // The overlay's own keys: R and A pick the area there, so the rectangle and the arrow are 1 and 3.
     readonly property var tool: annot && annot.tool >= 0 ? annot.tools[annot.tool] : null
-    readonly property string toolKey: !tool ? "" : tool.letter === "R" ? "1" : tool.letter === "A" ? "3" : tool.letter
+    // A tool whose letter the user gave to a key of their own (#455) has its digit.
+    readonly property string toolKey: !tool ? "" : tool.letter === "R" ? "1" : tool.letter === "A" ? "3"
+                                    : tool.letter.length > 0 ? tool.letter : String(tool.digit)
+    readonly property string longKey: annot ? annot.longKeyText : ""
+    readonly property string recordKey: annot ? annot.recordKeyText : ""
     // annot::Kind: 0 rectangle, 1 ellipse, 2 arrow, 3 line, 4 pen, 5 marker, 6 text, 7 number, 8 redaction, 9 spotlight.
     readonly property int toolKind: tool ? tool.kind : -1
 
@@ -91,7 +95,8 @@ Item {
         case "save": return { keys: [annot ? annot.saveKeyText : ""], text: annot && annot.saveDirect ? qsTr("保存") : qsTr("另存为") } // as the user set them (#187), #194
         case "pin": return { keys: [annot ? annot.pinKeyText : ""], text: qsTr("贴到屏幕上") }
         case "arrows": return { keys: ["← ↑ ↓ →"], text: qsTr("移动选区，加 Shift 改大小") }
-        case "long": return { keys: ["Ctrl+L", "Ctrl+R"], text: qsTr("长截图 / 录屏") }
+        case "long": return { keys: [longKey, recordKey].filter(key => key.length > 0), // as the user set them (#455)
+                              text: longKey.length === 0 ? qsTr("录屏") : recordKey.length === 0 ? qsTr("长截图") : qsTr("长截图 / 录屏") }
         case "recalled": return { keys: ["R", "Shift+R"],
                                   text: qsTr("最近选区 %1/%2").arg(session.recalledSelection + 1).arg(session.selectionHistoryCount) }
         case "shift": return { keys: ["Shift"], text: toolKind <= 1 || toolKind === 9 ? qsTr("按住画正方形、正圆")

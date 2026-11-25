@@ -382,7 +382,7 @@ Item {
             glyph: String.fromCharCode(0xEC8F)
             name: qsTr("长截图")
             tipText: qsTr("长截图：滚动着截下选区里更长的内容")
-            tipKeys: "Ctrl+L"
+            tipKeys: bar.annot ? bar.annot.longKeyText : ""
             onClicked: bar.act(CaptureSession.Long)
         }
         ActionButton {
@@ -391,7 +391,7 @@ Item {
             glyph: String.fromCharCode(0xE714)
             name: qsTr("录屏")
             tipText: qsTr("区域录屏：录制选区里的操作，保存为 MP4 或 GIF")
-            tipKeys: "Ctrl+R"
+            tipKeys: bar.annot ? bar.annot.recordKeyText : ""
             onClicked: bar.act(CaptureSession.Record)
         }
         ActionButton {
@@ -423,7 +423,8 @@ Item {
             const tip = bar.tip
             if (tip && tip.tool >= 0 && a) {
                 const t = a.tools[tip.tool]
-                if (!bar.editor && (t.digit === 1 || t.digit === 3))
+                // The digit alone: R and A pick the area in a capture, and a letter may be the user's own key's (#455).
+                if ((!bar.editor && (t.digit === 1 || t.digit === 3)) || t.letter.length === 0)
                     return String(t.digit)
                 return t.digit > 0 ? t.letter + " / " + t.digit : t.letter
             }
