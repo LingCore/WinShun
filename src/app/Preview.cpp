@@ -5400,19 +5400,19 @@ bool checkSearchLogo(QQmlEngine* engine, const QDir& output)
             const qreal fieldEnd = field->mapToScene({field->width(), 0}).x();
             launcher.setSearchLogo(false);
             settle(window);
-            auto* pinKey = visualNamed(window->contentItem(), panel ? u"panelPinKey"_s : u"searchPinKey"_s);
+            auto* pinChip = visualNamed(window->contentItem(), panel ? u"panelPinKey"_s : u"searchPinKey"_s);
             check(!logo->isVisible() && std::abs(field->mapToScene({0, 0}).x() - logoInk) < 0.01,
                 mode + u"Logo off: the words start where the Logo's left edge was"_s);
             check(hit(logoSpot) == HTCLIENT && modeGrip && hit(modeGrip->mapToScene({modeGrip->width() / 2, modeGrip->height() / 2})) == HTCAPTION,
                 mode + u"Logo off: its place is the field's, the grip still moves the window"_s);
-            check(pinKey && !pinKey->isVisible() && std::abs(field->mapToScene({field->width(), 0}).x() - fieldEnd) < 0.01,
+            check(pinChip && !pinChip->isVisible() && std::abs(field->mapToScene({field->width(), 0}).x() - fieldEnd) < 0.01,
                 mode + u"Logo off, not pinned: no key more, the field as wide to the right"_s);
             check(saveGrab(window, output.filePath(panel ? u"logo-panel-off.png"_s : u"logo-box-off.png"_s)), mode + u"Logo off screenshot"_s);
             launcher.setPinned(true);
             settle(window);
-            if (pinKey && scopes) {
-                const QRectF pinRect = pinKey->mapRectToScene(QRectF(0, 0, pinKey->width(), pinKey->height()));
-                check(pinKey->isVisible() && pinRect.right() <= scopes->mapToScene({0, 0}).x() - 5.99
+            if (pinChip && scopes) {
+                const QRectF pinRect = pinChip->mapRectToScene(QRectF(0, 0, pinChip->width(), pinChip->height()));
+                check(pinChip->isVisible() && pinRect.right() <= scopes->mapToScene({0, 0}).x() - 5.99
                         && field->mapToScene({field->width(), 0}).x() <= pinRect.left() - 7.99,
                     mode + u"Logo off, pinned: the pin key stands between the field and the scopes"_s);
                 check(saveGrab(window, output.filePath(panel ? u"logo-panel-off-pinned.png"_s : u"logo-box-off-pinned.png"_s)),
@@ -5423,7 +5423,7 @@ bool checkSearchLogo(QQmlEngine* engine, const QDir& output)
                 QMouseEvent pinRelease(QEvent::MouseButtonRelease, at, window->mapToGlobal(at), Qt::LeftButton, {}, {});
                 QCoreApplication::sendEvent(window, &pinRelease);
                 settle(window);
-                check(!launcher.pinned() && !pinKey->isVisible(), mode + u"Logo off: a click on the pin key unpins"_s);
+                check(!launcher.pinned() && !pinChip->isVisible(), mode + u"Logo off: a click on the pin key unpins"_s);
             }
             launcher.setPinned(false);
             launcher.setSearchLogo(true);
@@ -5477,10 +5477,16 @@ bool checkSearchLogo(QQmlEngine* engine, const QDir& output)
         // The native window made anew (Qt can; the old handle takes the
         // subclass with it): the logo and the grip still drag the window. A
         // user's did not until the program was started again.
+        const int warned = g_warnings;
         window->destroy();
         window->create();
         showOffScreen(window);
         settle(window);
+        // Placement and the frame each say so in the log (a warning: it is
+        // rare, and worth a line in a user's diagnostics). Wanted here, so
+        // not counted against the run.
+        check(g_warnings == warned + 2, u"a native window made anew is logged once by the placement and once by the frame"_s);
+        g_warnings = warned;
         const HWND fresh = reinterpret_cast<HWND>(window->winId());
         RECT client {};
         ::GetClientRect(fresh, &client);

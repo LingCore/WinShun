@@ -502,7 +502,10 @@ int WindowFrame::hitTest(int screenX, int screenY) const
         return HTCLIENT; // an open menu over a drag area or the title bar: the press is the menu's
     const bool onMaximize = m_ownFrame && covers(m_maximizeButton, pos);
     const bool onControl = onMaximize || anyCovers(m_controls, pos);
-    if (!onControl && anyCovers(m_dragHandles, pos))
+    // The grip, and the Logo (a handle): all of what shows of them is theirs.
+    // In the dense size the Logo's box reaches into the panel's top resize
+    // edge, where its upper rows resized the window while lit as the Logo's.
+    if (!onControl && (anyCovers(m_dragHandles, pos) || anyCovers(m_handles, pos)))
         return HTCAPTION;
     if ((m_ownFrame || m_resizable) && !m_fixedSize && !::IsZoomed(hwnd)) {
         // Resize edges as thick as the system frame, inside the window.
