@@ -9344,6 +9344,147 @@ private slots:
     // Settings' skipped file types: files of them are left out of names (and
     // the start list), whatever the case; a folder that is named so is not a
     // file; asked for by extension (ext: typed, a type chosen), they show.
+    // The numbers on 文件's type chips (NameSearchOptions::tally,
+    // SearchEngine::Request::countTypes): what is typed counted for every
+    // kind, whichever kind the list is narrowed to.
+    void typeCountsOfASearch()
+    {
+        FileIndex index;
+        const EntryId d = index.addRoot("D:");
+        const EntryId work = index.add(d, "work", EntryFlag::Directory);
+        const EntryId home = index.add(d, "home", EntryFlag::Directory);
+        index.add(work, "report 2024.xlsx", 0);
+        index.add(work, "report 2025.XLSX", 0); // any case
+        index.add(work, "report.docx", 0);
+        index.add(home, "report.docx", 0);
+        index.add(home, "report.pdf", 0);
+        index.add(home, "report", 0); // no extension: of no kind
+        index.add(home, "report.docx.tmp", 0); // its last extension counts
+        index.add(home, "report photos", EntryFlag::Directory);
+        index.add(home, "report.pdf", EntryFlag::Directory); // a folder is of no kind, whatever it is called
+        index.add(home, "budget.xlsx", 0); // not what is typed
+        WorkerPool pool(4);
+        TypeTally tally;
+        tally.types.push_back({.extensions = {"docx", "pdf"}}); // 文档
+        tally.types.push_back({.extensions = {"xlsx", "xls"}}); // 表格
+        tally.types.push_back({.extensions = {"docx"}, .folders = {work}}); // bound to a folder
+        tally.types.push_back({.extensions = {"png"}}); // none of them
+        tally.types.push_back({.extensions = {"pdf", "xlsx"}}); // shares extensions with others
+        const NameMatcher report(ws::parseQuery(u"report"_s));
+        const std::vector<std::size_t> expected {3, 2, 1, 0, 3};
+
+        NameSearchOptions options {.limit = 3, .tally = &tally};
+        NameSearchOutput out = searchNames(index, report, options, pool, {});
+        QCOMPARE(out.totalMatches, std::size_t {9});
+        QCOMPARE(out.typeCounts.all, std::size_t {9});
+        QCOMPARE(out.typeCounts.folders, std::size_t {2});
+        QCOMPARE(out.typeCounts.types, expected);
+        QCOMPARE(out.hits.size(), std::size_t {3}); // the list as without the counting
+
+        // Counted alone: the same numbers, nothing listed.
+        options.countOnly = true;
+        out = searchNames(index, report, options, pool, {});
+        QCOMPARE(out.typeCounts.types, expected);
+        QCOMPARE(out.typeCounts.folders, std::size_t {2});
+        QVERIFY(out.hits.empty());
+
+        // Not asked for: nothing counted.
+        out = searchNames(index, report, {.limit = 3}, pool, {});
+        QVERIFY(out.typeCounts.types.empty());
+        QCOMPARE(out.typeCounts.all, std::size_t {0});
+    }
+
+    void typeCountsFromTheEngine()
+    {
+        QTemporaryDir dir;
+        IndexService::Options options;
+        options.content.enabled = false;
+        IndexService service(dir.path() + u"/index"_s, options);
+        {
+            const auto index = service.index();
+            const auto lock = index->writeLock();
+            const EntryId f = index->addRoot("F:");
+            const EntryId test = index->add(f, "wscounttest", EntryFlag::Directory);
+            const EntryId sub = index->add(test, "sub", EntryFlag::Directory);
+            for (const char* name : {"plan.docx", "plan.pdf", "plan.xlsx", "plan.png", "plan.bak"})
+                index->add(test, name, 0);
+            index->add(sub, "plan 2.docx", 0);
+            index->add(sub, "plan archive", EntryFlag::Directory);
+            FileTime t = 1'700'000'000;
+            for (std::size_t i = 0; i < index->slotCount(); ++i)
+                index->setModified(static_cast<EntryId>(i), t += 100);
+        }
+        SearchEngine engine(&service);
+        QSignalSpy results(&engine, &SearchEngine::resultsReady);
+        QSignalSpy counts(&engine, &SearchEngine::typeCounts);
+        const QList<SearchEngine::Request::CountType> kinds {
+            {{u"docx"_s, u"PDF"_s}, {}}, {{u"xlsx"_s}, {}}, {{u"docx"_s}, {u"F:\\wscounttest\\sub"_s}}, {{u"mp4"_s}, {}}};
+        // The numbers of one search: after its results, once.
+        const auto counted = [&](SearchEngine::Request request) -> std::optional<NameTypeCounts> {
+            results.clear();
+            counts.clear();
+            const quint64 id = engine.submit(std::move(request));
+            if (!QTest::qWaitFor([&] { return !counts.isEmpty() && !results.isEmpty(); }, 5000))
+                return std::nullopt;
+            if (counts.size() != 1 || counts.at(0).at(0).toULongLong() != id || results.at(0).at(0).toULongLong() != id)
+                return std::nullopt;
+            return counts.at(0).at(1).value<NameTypeCounts>();
+        };
+        const auto request = [&](const QString& text) {
+            SearchEngine::Request r;
+            r.text = text;
+            r.scope = Scope::Files;
+            r.countTypes = kinds;
+            return r;
+        };
+        const NameTypeCounts whole {.all = 7, .folders = 1, .types = {3, 1, 1, 0}};
+
+        // No kind chosen: counted in the search's own pass.
+        QCOMPARE(counted(request(u"plan"_s)), std::optional(whole));
+        QCOMPARE(results.at(0).at(2).toLongLong(), 7);
+
+        // A kind chosen: the list is that kind's, the numbers still everyone's.
+        SearchEngine::Request documents = request(u"plan"_s);
+        documents.extensions = {u"docx"_s, u"pdf"_s};
+        QCOMPARE(counted(documents), std::optional(whole));
+        QCOMPARE(results.at(0).at(2).toLongLong(), 3);
+
+        // 文件夹, and a kind bound to a folder: likewise.
+        SearchEngine::Request folders = request(u"plan"_s);
+        folders.scope = Scope::Folders;
+        QCOMPARE(counted(folders), std::optional(whole));
+        QCOMPARE(results.at(0).at(2).toLongLong(), 1);
+        SearchEngine::Request bound = request(u"plan"_s);
+        bound.extensions = {u"docx"_s};
+        bound.typeFolders = {u"F:\\wscounttest\\sub"_s};
+        QCOMPARE(counted(bound), std::optional(whole));
+        QCOMPARE(results.at(0).at(2).toLongLong(), 1);
+
+        // Files the settings skip are in no number, as in no list.
+        SearchEngine::Request skipping = request(u"plan"_s);
+        skipping.excludedTypes = {u"bak"_s};
+        QCOMPARE(counted(skipping), std::optional(NameTypeCounts {.all = 6, .folders = 1, .types = {3, 1, 1, 0}}));
+
+        // What is typed narrows the numbers too.
+        QCOMPARE(counted(request(u"plan 2"_s)), std::optional(NameTypeCounts {.all = 1, .folders = 0, .types = {1, 0, 1, 0}}));
+        QCOMPARE(counted(request(u"nothing so named"_s)),
+            std::optional(NameTypeCounts {.all = 0, .folders = 0, .types = {0, 0, 0, 0}}));
+
+        // Nothing typed: asked, and answered with no numbers (the chips show none).
+        QCOMPARE(counted(request(QString())), std::optional(NameTypeCounts {}));
+
+        // Not asked: no answer at all.
+        results.clear();
+        counts.clear();
+        SearchEngine::Request plain;
+        plain.text = u"plan"_s;
+        plain.scope = Scope::Files;
+        engine.submit(std::move(plain));
+        QVERIFY(QTest::qWaitFor([&] { return !results.isEmpty(); }, 5000));
+        QTest::qWait(50);
+        QVERIFY(counts.isEmpty());
+    }
+
     void skippedFileTypes()
     {
         const QString root = u"F:\\wsskiptest\\"_s;

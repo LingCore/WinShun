@@ -63,6 +63,23 @@ struct NameHit {
     FileSize size = kUnknownSize; // read when the search is by size, or filters by it
 };
 
+// The matches of a search counted by kind of file as well (the numbers on
+// 文件's type chips): each kind its extensions, and the folders it is bound
+// to, if any. A file counts for every kind it is of; a folder for none.
+struct TypeTally {
+    struct Type {
+        std::vector<std::string> extensions; // folded, without the dot
+        std::vector<EntryId> folders; // sorted; only files under one of them. Empty: anywhere
+    };
+    std::vector<Type> types;
+};
+
+struct TypeCounts {
+    std::size_t all = 0; // files and folders
+    std::size_t folders = 0;
+    std::vector<std::size_t> types; // as TypeTally::types
+};
+
 struct NameSearchOptions {
     std::size_t limit = 100;
     bool foldersOnly = false;
@@ -101,6 +118,10 @@ struct NameSearchOptions {
     // one of those left-out sets alone on demand.
     enum class SkipMode : std::uint8_t { Shown, OnlyHiddenFolders, OnlyExcludedFiles };
     SkipMode skipMode = SkipMode::Shown;
+    // Counted by kind too (NameSearchOutput::typeCounts); not owned. With
+    // `countOnly` nothing else is wanted: no hits are kept.
+    const TypeTally* tally = nullptr;
+    bool countOnly = false;
 };
 
 struct NameSearchOutput {
@@ -108,6 +129,7 @@ struct NameSearchOutput {
     std::size_t totalMatches = 0;
     std::size_t hiddenFolderMatches = 0;
     std::size_t excludedFileMatches = 0;
+    TypeCounts typeCounts; // with NameSearchOptions::tally
     bool cancelled = false;
 };
 

@@ -21,6 +21,20 @@ SettingsSection {
     }
 
     SettingRow {
+        title: qsTr("类型标签显示数量")
+        keywords: qsTr("数量;个数;计数;统计;标签;角标;count;badge;number").split(";")
+        description: qsTr("在“文件”里输入后，每个类型的名字右边显示它有多少个匹配；选了某个类型，其他类型的数量照样显示")
+
+        ToggleSwitch {
+            dpr: section.dpr
+            objectName: "typeCountsToggle"
+            checked: section.editor.typeCounts
+            Accessible.name: qsTr("类型标签显示数量")
+            onToggled: (on) => section.editor.typeCounts = on
+        }
+    }
+
+    SettingRow {
         id: fileTypesRow
         title: qsTr("文件类型")
         keywords: qsTr("类型;扩展名;后缀;筛选;前缀;快捷键;搜索范围;目录;folder;filter;type;extension").split(";")

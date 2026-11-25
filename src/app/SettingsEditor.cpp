@@ -294,6 +294,14 @@ void SettingsEditor::setShowFileSize(bool on)
     commit();
 }
 
+void SettingsEditor::setTypeCounts(bool on)
+{
+    if (m_settings.typeCounts == on)
+        return;
+    m_settings.typeCounts = on;
+    commit();
+}
+
 void SettingsEditor::setDoubleClickToOpen(bool on)
 {
     if (m_settings.doubleClickToOpen == on)

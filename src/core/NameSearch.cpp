@@ -471,6 +471,34 @@ private:
     std::array<Slot, 4096> m_cache {};
 };
 
+// Which kinds (TypeTally) a file is of, by its extension: asked for every
+// match, so a lookup by the folded extension, no walk through the kinds.
+class TallyMap {
+public:
+    explicit TallyMap(const TypeTally& tally)
+    {
+        for (std::size_t type = 0; type < tally.types.size(); ++type) {
+            for (const std::string& extension : tally.types[type].extensions) {
+                std::vector<std::uint16_t>& of = m_kinds[extension];
+                if (std::ranges::find(of, static_cast<std::uint16_t>(type)) == of.end())
+                    of.push_back(static_cast<std::uint16_t>(type));
+            }
+        }
+    }
+    // `extension` as the name has it; none for one no kind lists.
+    const std::vector<std::uint16_t>* kindsOf(std::string_view extension) const
+    {
+        if (extension.empty() || extension.size() > kLongest)
+            return nullptr;
+        const auto found = m_kinds.find(text::foldAscii(extension));
+        return found == m_kinds.end() ? nullptr : &found->second;
+    }
+
+private:
+    static constexpr std::size_t kLongest = 32;
+    std::unordered_map<std::string, std::vector<std::uint16_t>> m_kinds;
+};
+
 // The hits in the folder typed in first (NameSearchOptions::insideFirst),
 // then the others, each part in `order`: one key more in front of it, so the
 // slices' heaps and their merge keep the best of the folder's own first.
@@ -523,6 +551,12 @@ NameSearchOutput search(const FileIndex& index, const NameMatcher& matcher, cons
     // compare per folder up the way, remembered by parent as for the filter.
     const std::vector<EntryId> insideOf
         = options.insideFirst == kNoEntry ? std::vector<EntryId>() : std::vector<EntryId> {options.insideFirst};
+    // Counted by kind as well (TypeTally): each worker its own counts, added up at its end.
+    const TypeTally* tally = options.tally;
+    const std::optional<TallyMap> tallyMap = tally ? std::optional<TallyMap>(std::in_place, *tally) : std::nullopt;
+    const std::size_t tallied = tally ? tally->types.size() : 0;
+    std::vector<std::atomic<std::size_t>> typeTotals(tallied);
+    std::atomic<std::size_t> folderTotal {0};
 
     NameBits* names = nullptr;
     const bool rankByMatch = options.order.key == SortKey::Rank && options.rankBy == RankBy::Match;
@@ -559,6 +593,14 @@ NameSearchOutput search(const FileIndex& index, const NameMatcher& matcher, cons
         std::size_t matches = 0;
         std::size_t hiddenFolders = 0;
         std::size_t excludedFiles = 0;
+        std::size_t folderMatches = 0;
+        std::vector<std::size_t> typeMatches(tallied);
+        // A kind bound to folders: whether a file lies under them, each kind its own cache.
+        std::vector<std::optional<UnderAny>> typeUnder(tallied);
+        for (std::size_t type = 0; type < tallied; ++type) {
+            if (!tally->types[type].folders.empty())
+                typeUnder[type].emplace(index, tally->types[type].folders);
+        }
         for (std::size_t slice = grouped ? nextSlice.fetch_add(1, std::memory_order_relaxed) : part; slice < slices;
             slice = grouped ? nextSlice.fetch_add(1, std::memory_order_relaxed) : slices) {
             if (cancelled.load(std::memory_order_relaxed))
@@ -620,6 +662,22 @@ NameSearchOutput search(const FileIndex& index, const NameMatcher& matcher, cons
                         continue;
                 }
                 ++matches;
+                if (tallyMap) {
+                    if (e.isDir()) {
+                        ++folderMatches;
+                    } else {
+                        std::size_t extLength = 0;
+                        const std::string_view name = index.fileName(e, extLength);
+                        if (const auto* kinds = tallyMap->kindsOf(name.substr(name.size() - extLength))) {
+                            for (const std::uint16_t type : *kinds) {
+                                if (!typeUnder[type] || (*typeUnder[type])(e))
+                                    ++typeMatches[type];
+                            }
+                        }
+                    }
+                    if (options.countOnly)
+                        continue;
+                }
                 int score = matched.score + staticBonus(e);
                 // Before mayAccept, which takes the score for the most it can be:
                 // asking it first with the most this could add let many more
@@ -648,6 +706,11 @@ NameSearchOutput search(const FileIndex& index, const NameMatcher& matcher, cons
             }
         }
         total.fetch_add(matches, std::memory_order_relaxed);
+        if (tallyMap) {
+            folderTotal.fetch_add(folderMatches, std::memory_order_relaxed);
+            for (std::size_t type = 0; type < tallied; ++type)
+                typeTotals[type].fetch_add(typeMatches[type], std::memory_order_relaxed);
+        }
         if (hiddenFolders > 0)
             hiddenFolderTotal.fetch_add(hiddenFolders, std::memory_order_relaxed);
         if (excludedFiles > 0)
@@ -695,6 +758,12 @@ NameSearchOutput search(const FileIndex& index, const NameMatcher& matcher, cons
             output.hits.end(), order);
     }
     output.totalMatches = total.load();
+    if (tally) {
+        output.typeCounts.all = output.totalMatches;
+        output.typeCounts.folders = folderTotal.load();
+        for (const std::atomic<std::size_t>& count : typeTotals)
+            output.typeCounts.types.push_back(count.load());
+    }
     output.hiddenFolderMatches = hiddenFolderTotal.load();
     output.excludedFileMatches = excludedFileTotal.load();
     return output;

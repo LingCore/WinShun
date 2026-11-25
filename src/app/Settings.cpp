@@ -1012,6 +1012,7 @@ void Settings::load()
     showModified = readOrDefault(s, u"Results/ShowModified"_s, d.showModified);
     showModifiedTime = readOrDefault(s, u"Results/ShowModifiedTime"_s, d.showModifiedTime);
     showFileSize = readOrDefault(s, u"Results/ShowFileSize"_s, d.showFileSize);
+    typeCounts = readOrDefault(s, u"Results/TypeCounts"_s, d.typeCounts);
     folderKeyword = normalizedTypeKeyword(readOrDefault(s, u"Results/FolderKeyword"_s, d.folderKeyword)).value_or(d.folderKeyword);
     doubleClickToOpen = readOrDefault(s, u"Results/DoubleClickToOpen"_s, d.doubleClickToOpen);
     clickPreviews = readOrDefault(s, u"Results/ClickPreviews"_s, d.clickPreviews);
@@ -1493,6 +1494,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Results/ShowModified"_s, showModified);
     s.setValue(u"Results/ShowModifiedTime"_s, showModifiedTime);
     s.setValue(u"Results/ShowFileSize"_s, showFileSize);
+    s.setValue(u"Results/TypeCounts"_s, typeCounts);
     s.setValue(u"Results/FolderKeyword"_s, folderKeyword);
     s.setValue(u"Results/DoubleClickToOpen"_s, doubleClickToOpen);
     s.setValue(u"Results/ClickPreviews"_s, clickPreviews);

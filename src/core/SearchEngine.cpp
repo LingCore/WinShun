@@ -1349,6 +1349,7 @@ SearchEngine::SearchEngine(IndexService* index, AppCatalog* apps, SystemCatalog*
     qRegisterMetaType<ws::ContentLeftOut>();
     qRegisterMetaType<ws::ContentScope>();
     qRegisterMetaType<ws::NameLeftOut>();
+    qRegisterMetaType<ws::NameTypeCounts>();
     qRegisterMetaType<ws::RemovableDrives>();
     m_drivesWorker = std::jthread([this](std::stop_token stop) { drivesLoop(stop); });
     m_scanWorker = std::jthread([this](std::stop_token stop) { workerLoop(stop, Lane::Scans); });
@@ -1530,6 +1531,10 @@ void SearchEngine::runNameSearch(const Job& job)
     const bool filtered = request.filter.any() || !request.folders.isEmpty() || !request.typeFolders.isEmpty() || query.hasFilters();
     const bool listing = filtered || (request.browse && query.isEmpty());
     NameLeftOut leftOut;
+    // The matches by kind (Request::countTypes), told after the results: what
+    // the search counted on its way, or a pass of its own still to run.
+    std::optional<TypeCounts> kindCounts;
+    std::function<std::optional<TypeCounts>()> countLater;
     if (request.nameSet == NameSet::Shown && query.isEmpty() && request.startList == StartList::Modified && !listing) {
         // The files written last (in 文件夹, the folders they are in), newest first.
         // A day ahead at most: later is a clock gone wrong, not new work.
@@ -1689,7 +1694,25 @@ void SearchEngine::runNameSearch(const Job& job)
                 typeFolders.push_back(id == kNoEntry ? kNoEntry - 1 : id);
             }
             std::ranges::sort(typeFolders);
-            const NameSearchOptions options {.limit = static_cast<std::size_t>(request.limit),
+            // Counted by kind too: in this very pass when no kind narrows it;
+            // else in a pass of its own without the kind, once the results
+            // are out (they never wait for the numbers).
+            TypeTally tally;
+            const bool counting = !request.countTypes.isEmpty() && skipMode == NameSearchOptions::SkipMode::Shown
+                && !query.isEmpty();
+            if (counting) {
+                for (const Request::CountType& type : request.countTypes) {
+                    TypeTally::Type kind {.extensions = foldedExtensions(type.extensions)};
+                    for (const QString& path : type.folders) {
+                        const EntryId id = index->findPath(path.toStdWString());
+                        kind.folders.push_back(id == kNoEntry ? kNoEntry - 1 : id);
+                    }
+                    std::ranges::sort(kind.folders);
+                    tally.types.push_back(std::move(kind));
+                }
+            }
+            const bool countNow = counting && types.empty() && typeFolders.empty() && !foldersOnly;
+            NameSearchOptions options {.limit = static_cast<std::size_t>(request.limit),
                 .foldersOnly = foldersOnly,
                 .rankBy = rankBy,
                 .kindsApart = !request.browse || request.order.key == SortKey::Rank,
@@ -1699,9 +1722,24 @@ void SearchEngine::runNameSearch(const Job& job)
                 .order = request.order,
                 .trustedUntil = trustedUntil(),
                 .preferred = preferred,
-                .skipMode = skipMode};
+                .skipMode = skipMode,
+                .tally = countNow ? &tally : nullptr};
             const NameSearchOutput out
                 = searchNames(*index, matcher, options, m_pool, [&] { return isStale(job.id); });
+            if (countNow && !out.cancelled) {
+                kindCounts = out.typeCounts;
+            } else if (counting) {
+                // The same words, bounds and skipped files, without the kind.
+                ParsedQuery words = !typedIn && !typedPath.folder.isEmpty() ? parseQuery(typedPath.name) : query;
+                countLater = [this, index, id = job.id, autoFuzzyNow, filter, tally = std::move(tally),
+                                 words = withTypes(std::move(words), {}, searchHidden)]() -> std::optional<TypeCounts> {
+                    const auto lock = index->readLock();
+                    const NameMatcher all(words, autoFuzzyNow);
+                    const NameSearchOptions count {.limit = 1, .filter = filter, .tally = &tally, .countOnly = true};
+                    const NameSearchOutput out = searchNames(*index, all, count, m_pool, [&] { return isStale(id); });
+                    return out.cancelled ? std::nullopt : std::optional<TypeCounts>(out.typeCounts);
+                };
+            }
             names = Clock::now() - began - lockWait;
             if (out.cancelled || isStale(job.id))
                 return;
@@ -2268,6 +2306,18 @@ void SearchEngine::runNameSearch(const Job& job)
     if (!query.isEmpty())
         emit nameLeftOut(job.id, leftOut);
     emit resultsReady(job.id, results, total, timer.nsecsElapsed() / 1000);
+    if (countLater && !isStale(job.id)) {
+        phase = "counting by kind";
+        kindCounts = countLater();
+    }
+    if (kindCounts && !isStale(job.id)) {
+        NameTypeCounts counts {.all = static_cast<qint64>(kindCounts->all), .folders = static_cast<qint64>(kindCounts->folders)};
+        for (const std::size_t count : kindCounts->types)
+            counts.types.append(static_cast<qint64>(count));
+        emit typeCounts(job.id, counts);
+    } else if (!request.countTypes.isEmpty() && !isStale(job.id)) {
+        emit typeCounts(job.id, {}); // nothing typed, or a list that is not counted: no numbers
+    }
     // Something typed, and the list is all there is: whether a drive the
     // index leaves out could hold what was not found (the launcher offers to
     // walk it). Not while the list goes on past what was asked for: there,

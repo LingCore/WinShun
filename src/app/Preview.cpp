@@ -9979,6 +9979,92 @@ bool checkContentKinds(QQmlEngine* qml, const QDir& output)
 // takes no clicks through its MouseArea alone: the chip itself stays enabled,
 // since a style's key may change with that (tactile's chosen key turns bold,
 // wider), and `whole` reads the chip's width (a binding loop, 2026-11-24).
+// --preview-results <dir> --type-strip-counts: 文件's chips with how many of
+// what is typed each lists (Launcher.fileTypeCounts): a tag after each name,
+// the chip as much wider; none for no numbers, and the chips as before.
+bool checkTypeStripCounts(QQmlEngine* qml, const QDir& output)
+{
+    QTemporaryDir temporary;
+    IndexService index(temporary.filePath(u"index"_s), IndexService::Options{});
+    AppCatalog apps;
+    SystemCatalog places;
+    apps.setApps(std::make_shared<const AppList>());
+    places.setPlaces(std::make_shared<const PlaceList>());
+    History history(temporary.filePath(u"history.tsv"_s));
+    SearchEngine search(&index, &apps, &places);
+    Launcher launcher(&index, &apps, &places, &search, &history);
+    FileTypes types;
+    for (const auto& [name, extension] : {std::pair {u"文档"_s, u"docx"_s}, {u"图片"_s, u"jpg"_s}, {u"视频"_s, u"mp4"_s},
+             {u"音频"_s, u"mp3"_s}, {u"压缩包"_s, u"zip"_s}})
+        types.append(FileType {name, {extension}});
+    launcher.setFileTypes(types);
+    ClipStore store(temporary.filePath(u"clipboard"_s));
+    if (!store.open(QDateTime::currentMSecsSinceEpoch())) return false;
+    ClipboardWatcher watcher({}, {});
+    Clipboard clipboard(&store, &watcher);
+    Placement placement(temporary.filePath(u"state.ini"_s), u"Launcher"_s);
+    WindowFrame frame(false);
+    QQmlComponent component(qml, u"WinShun"_s, u"Main"_s);
+    std::unique_ptr<QObject> object(component.createWithInitialProperties({
+        {u"launcher"_s, QVariant::fromValue(&launcher)}, {u"clipboard"_s, QVariant::fromValue(&clipboard)},
+        {u"frame"_s, QVariant::fromValue(&frame)}, {u"placement"_s, QVariant::fromValue(&placement)}}));
+    auto* window = qobject_cast<QQuickWindow*>(object.get());
+    if (!window) { say(component.errorString()); return false; }
+    window->create();
+    launcher.setWindow(window);
+    frame.setWindow(window);
+    placement.setWindow(window);
+    showOffScreen(window);
+    bool ok = true;
+    const auto check = [&](bool condition, const char* reason) {
+        ok = condition && ok;
+        if (!condition) qWarning("type strip counts regression: %s", reason);
+    };
+    launcher.setScope(Launcher::Files);
+    launcher.toggleFileType(0); // 文档 chosen: the others' numbers stay
+    settle(window);
+    const auto chipOf = [&](int type) { return visualNamed(window->contentItem(), u"searchTypeChip%1"_s.arg(type)); };
+    const auto tagOf = [&](int type) { QQuickItem* chip = chipOf(type); return chip ? visualNamed(chip, u"searchTypeChipCount"_s) : nullptr; };
+    const QList<int> shown {-1, -2, 0, 1, 2, 3, 4};
+    QList<qreal> plain;
+    for (const int type : shown) {
+        QQuickItem* chip = chipOf(type);
+        QQuickItem* tag = tagOf(type);
+        if (!chip || !tag) { check(false, "a chip or its tag is missing"); return false; }
+        check(!tag->isVisible(), "a tag shows with no numbers");
+        plain.append(chip->width());
+    }
+    check(saveGrab(window, output.filePath(u"type-strip-counts-none.png"_s)), "the window did not render");
+    // all, folders, then the kinds: small, none, and too long to write out.
+    launcher.setFileTypeCounts({QVariant(1'254'380), QVariant(3), QVariant(128), QVariant(0), QVariant(9'999), QVariant(10'000), QVariant(356'000)});
+    settle(window);
+    const qreal dpr = window->effectiveDevicePixelRatio();
+    for (int i = 0; i < shown.size(); ++i) {
+        QQuickItem* chip = chipOf(shown.at(i));
+        QQuickItem* tag = tagOf(shown.at(i));
+        check(tag->isVisible(), "a tag does not show with numbers");
+        check(chip->width() > plain.at(i) + tag->width(), "a chip is not wider by its tag");
+        // Inside its chip, clear of the edge, on whole device pixels.
+        const QPointF at = tag->mapToItem(chip, QPointF(0, 0));
+        check(at.x() + tag->width() <= chip->width() - 4 && at.x() > 0, "a tag is not inside its chip");
+        const qreal left = tag->mapToScene(QPointF(0, 0)).x() * dpr;
+        check(std::abs(left - std::round(left)) < 0.01, "a tag is not on a whole device pixel");
+    }
+    check(launcher.countLabel(128) == u"128" && launcher.countLabel(0) == u"0" && launcher.countLabel(9'999) == u"9999",
+        "a small count is not written out");
+    check(launcher.countLabel(10'000) == u"1万" && launcher.countLabel(356'000) == u"35万"
+            && launcher.countLabel(1'254'380) == u"125万" && launcher.countLabel(19'999) == u"1.9万"
+            && launcher.countLabel(230'000'000) == u"2.3亿",
+        "a large count is not shortened");
+    check(saveGrab(window, output.filePath(u"type-strip-counts.png"_s)), "the window did not render");
+    // Switched off: the numbers go, the chips as wide as before.
+    launcher.setTypeCounts(false);
+    settle(window);
+    for (int i = 0; i < shown.size(); ++i)
+        check(!tagOf(shown.at(i))->isVisible() && chipOf(shown.at(i))->width() == plain.at(i), "switched off, a tag or its room stays");
+    return ok;
+}
+
 bool checkTypeStripScroll(QQmlEngine* qml, const QDir& output)
 {
     static QtMessageHandler counted = nullptr;
@@ -11723,6 +11809,8 @@ int runResults(const QStringList& args)
         return checkContentKinds(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--type-strip-scroll"_s))
         return checkTypeStripScroll(&engine, out) ? std::min(g_warnings, 100) : 4;
+    if (args.contains(u"--type-strip-counts"_s))
+        return checkTypeStripCounts(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-crashed-reading"_s)) // its warning when it gives up is expected
         return checkClipboardCrashedReading() ? 0 : 4;
     if (const qsizetype at = args.indexOf(u"--terminal-launch"_s); at >= 0 && at + 2 < args.size()) {

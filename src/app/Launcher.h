@@ -204,6 +204,10 @@ class Launcher : public QObject {
     Q_PROPERTY(int thumbnailSize READ thumbnailSize WRITE setThumbnailSize NOTIFY galleryChanged FINAL)
     // The kinds as the settings have them: [{name, extensions: "jpg png …"}].
     Q_PROPERTY(QVariantList fileTypes READ fileTypes NOTIFY fileTypesChanged FINAL)
+    // How many of what is typed each of the strip's chips would list, whatever
+    // kind is chosen now: [all, folders, then one for each of fileTypes]. Empty:
+    // no numbers (nothing typed, not counted yet, or switched off: setTypeCounts).
+    Q_PROPERTY(QVariantList fileTypeCounts READ fileTypeCounts NOTIFY fileTypeCountsChanged FINAL)
     // Plugins (plugin::Host, the plugin design §4.1): a keyword typed first
     // ("kill note") gives the list to that command. The keyword as typed,
     // empty otherwise; the command's title and icon for the chip in the
@@ -808,6 +812,12 @@ public:
     void setThumbnailSize(int size);
     Q_INVOKABLE void toggleFileType(int type);
     QVariantList fileTypes() const;
+    QVariantList fileTypeCounts() const { return m_fileTypeCounts; }
+    void setTypeCounts(bool on); // Settings::typeCounts
+    // The numbers as a search's answer sets them (onTypeCounts); also a preview's own.
+    void setFileTypeCounts(QVariantList counts);
+    // A count as a chip's tag has room for: 9999, then "1万", "1.2万", "35万" ("12k", "1.2M" in English).
+    Q_INVOKABLE QString countLabel(qint64 count) const;
     void setFileTypes(const FileTypes& types); // named (Settings::namedFileTypes)
     void setFolderKeyword(const QString& keyword);
     QString folderKeyword() const { return m_folderKeyword; }
@@ -984,6 +994,7 @@ signals:
     void galleryChanged();
     void queryErrorChanged();
     void fileTypesChanged();
+    void fileTypeCountsChanged();
     void quickFiltersChanged();
     void quickFilterSettingsRequested(const QString& draft); // ... at the quick filters, `draft` as a new one's query
     void fileChoiceChanged();
@@ -1230,6 +1241,7 @@ private:
     void onRecycledMany(const SearchResults& items, bool ok);
     void onResults(quint64 id, const SearchResults& results, qint64 total, qint64 elapsedUs);
     void onNameLeftOut(quint64 id, const NameLeftOut& leftOut);
+    void onTypeCounts(quint64 id, const NameTypeCounts& counts);
     void onContentResults(quint64 id, const SearchResults& results);
     void onContentProgress(quint64 id, int scanned, int total, bool finished);
     void onContentLeftOut(quint64 id, const ContentLeftOut& leftOut);
@@ -1403,6 +1415,9 @@ private:
     // nothing with a new query.
     ContentLeftOut m_leftOut;
     NameLeftOut m_nameLeftOut;
+    bool m_typeCounts = true; // setTypeCounts
+    quint64 m_countRequestId = 0; // the name search asked to count by kind; 0: none
+    QVariantList m_fileTypeCounts;
     RemovableDrives m_drives;
     QString m_hintRunning;
     QSet<QString> m_hintsTaken;
