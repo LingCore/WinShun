@@ -159,9 +159,18 @@ Item {
     }
 
     // Too many for the width, the chips scroll by whole chips: the first one
-    // shown starts at the left edge and only whole chips show, none cut off.
-    // Kept so that the current chip is in view (Ctrl+Tab past the end).
+    // shown starts at the left edge and only whole chips show, none cut off
+    // (but while one is dragged). Kept so that the current chip is in view
+    // (Ctrl+Tab past the end).
     property int firstChip: 0
+    // The chips by place. Repeater.itemAt is no binding's dependency, so this
+    // reads chipsMade too (counted up as the Repeater makes or drops a chip):
+    // what reads the chips this way follows them when they are made anew (a
+    // reorder, the settings) rather than keeping the old ones' places.
+    property int chipsMade: 0
+    function chipAt(index: int): Item {
+        return chipsMade > 0 ? chipRepeater.itemAt(index) : null
+    }
     property bool revealRequested: false
     property real slidePosition: 0
     readonly property bool scrolls: view.contentWidth > view.width
@@ -171,7 +180,7 @@ Item {
     readonly property int scrollStep: { let n = 1; while (n < 4 && Math.abs(n * dpr - Math.round(n * dpr)) > 0.001) ++n; return n }
     // Where the chips rest with chip `index` first.
     function stopAt(index: int): real {
-        const chip = chipRepeater.itemAt(index)
+        const chip = chipAt(index)
         return chip ? Math.floor(chip.x / scrollStep + 0.001) * scrollStep : 0
     }
     readonly property real restX: scrolls ? stopAt(firstChip) : 0
@@ -183,7 +192,7 @@ Item {
         let last = null
         let count = 0
         for (let i = firstChip; i < chipRepeater.count; ++i) {
-            const chip = chipRepeater.itemAt(i)
+            const chip = chipAt(i)
             if (!chip || chip.x + chip.keyWidth > restX + view.width + 0.5)
                 break
             last = chip
@@ -246,19 +255,19 @@ Item {
     }
     function reveal() {
         cancelReveal()
-        const index = chips.findIndex(c => c.type === current)
-        const chip = chipRepeater.itemAt(index)
-        let first = firstChip
-        if (chip) {
-            if (index < first) {
-                first = index
-            } else {
-                const right = chip.x + chip.keyWidth
-                while (first < index && right - stopAt(first) > view.width + 0.5)
-                    ++first
-            }
-        }
-        scrollTo(first, true)
+        scrollTo(firstShowing(chips.findIndex(c => c.type === current), firstChip), true)
+    }
+    // The first chip to show, from `first` on as few steps as can be, for chip `index` to be in full view.
+    function firstShowing(index: int, first: int): int {
+        const chip = chipAt(index)
+        if (!chip)
+            return first
+        if (index < first)
+            return index
+        const right = chip.x + chip.keyWidth
+        while (first < index && right - stopAt(first) > view.width + 0.5)
+            ++first
+        return first
     }
     onSlidePositionChanged: {
         if (slide.running)
@@ -294,15 +303,15 @@ Item {
     property bool settling: false
     property real settleLeft: 0
     property bool keepView: false // the chips made anew after a drop: no scrolling to the current one
-    readonly property Item draggedChip: dragFrom >= 0 ? chipRepeater.itemAt(dragFrom) : null
+    readonly property Item draggedChip: dragFrom >= 0 ? chipAt(dragFrom) : null
     readonly property real dragRoom: draggedChip ? draggedChip.width + row.spacing + spreadGap : 0
     // Where chip `index` rests in the row, and where the one dragged would rest at index `to`.
     function slotLeft(index: int): real {
-        const chip = chipRepeater.itemAt(index)
+        const chip = chipAt(index)
         return chip ? chip.x + chip.targetShift : 0
     }
     function restLeft(to: int): real {
-        const chip = chipRepeater.itemAt(to)
+        const chip = chipAt(to)
         return chip && draggedChip && to > dragFrom ? slotLeft(to) + chip.width - draggedChip.width : slotLeft(to)
     }
     // Its left edge in the row: under the pointer, after 不限, before the end, in view.
@@ -322,13 +331,13 @@ Item {
         const right = dragLeft + draggedChip.width
         let to = dragFrom
         for (let i = dragFrom + 1; i < chipRepeater.count; ++i) {
-            const chip = chipRepeater.itemAt(i)
+            const chip = chipAt(i)
             if (!chip || right <= slotLeft(i) + chip.width / 2)
                 break
             to = i
         }
         for (let i = dragFrom - 1; i >= 1; --i) {
-            const chip = chipRepeater.itemAt(i)
+            const chip = chipAt(i)
             if (!chip || dragLeft >= slotLeft(i) + chip.width / 2)
                 break
             to = i
@@ -365,12 +374,17 @@ Item {
         settling = false
         dragFrom = -1
         dragTo = -1
-        if (from < 1 || to < 1 || to === from)
-            return
-        keepView = true
-        launcher.moveFileChip(from - 1, to - 1) // the places after 不限
-        keepView = false
-        scrollTo(firstChip, false) // where the chips, other widths in other places, now rest
+        if (from >= 1 && to >= 1 && to !== from) {
+            keepView = true
+            launcher.moveFileChip(from - 1, to - 1) // the places after 不限
+            row.forceLayout() // the new chips where they stand, before anything reads them
+            keepView = false
+        }
+        // Whole chips again: from the first now wholly in view, with the one let go in view too.
+        let first = 0
+        while (first + 1 < chipRepeater.count && stopAt(first) < view.contentX - 0.5)
+            ++first
+        scrollTo(firstShowing(to, first), true)
     }
     NumberAnimation {
         id: settle
@@ -416,6 +430,7 @@ Item {
 
     Flickable {
         id: view
+        objectName: "searchTypeView"
         x: 12
         // Comes down from under the search box as the strip opens.
         y: strip.height - strip.fullHeight
@@ -439,6 +454,8 @@ Item {
             Repeater {
                 id: chipRepeater
                 model: strip.chips
+                onItemAdded: ++strip.chipsMade
+                onItemRemoved: ++strip.chipsMade
 
                 // A chip on the style's chipSurface (role "type"); after 不限 a
                 // short line parts it from the real filters (outside its hit area).
@@ -501,10 +518,11 @@ Item {
                         NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
                     }
                     z: dragged ? 2 : 0
-                    // Whole or not at all where the chips scroll (strip.firstChip); where
-                    // it goes when making way. The one dragged stays, kept in view.
-                    readonly property bool whole: dragged || !strip.scrolls
-                        || (x + makeWay >= strip.restX - 0.5 && x + makeWay + body.width <= strip.restX + view.width + 0.5)
+                    // Whole or not at all where the chips scroll (strip.firstChip). While one
+                    // is dragged all show, those making way past an edge cut off by the view,
+                    // and whole chips again once it is let go (finishDrag).
+                    readonly property bool whole: strip.dragFrom >= 0 || !strip.scrolls
+                        || (x >= strip.restX - 0.5 && x + body.width <= strip.restX + view.width + 0.5)
                     opacity: whole ? 1 : 0
                     // Its share of strip.spreadGap; while the chips scroll, on its
                     // way there from where it was, with them. Whole device pixels.

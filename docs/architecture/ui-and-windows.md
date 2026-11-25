@@ -15,7 +15,7 @@
 ### 2.1 主搜索框（`Launcher`）
 
 - **输入区内 Logo 与拖动**：主搜索、面板、剪贴板与对话框搜索栏统一内置程序 Logo；左侧 Logo 与顶部横条由 `WindowFrame::addHandle` 登记为拖动把手，`WM_NCLBUTTONDOWN` 经 `DragDetect` 区分拖动与点击。
-- **类型条顺序**：“不限”固定在首位，其后为 `Settings::fileTypes` 的顺序，“文件夹”插在 `Results/FolderChipAt`（0 到类型数）处；类型条拖动（`TypeStrip` 内 `MouseArea` 里的 `DragHandler`，越过拖动距离才从 `MouseArea` 接管，点击不受影响）与设置页把手、上移下移都走 `Settings::moveStripChip`，`Launcher::setFileTypes` 按类型本身搬运已选类型和角标数量，只换顺序时不重搜。离屏验证 `--preview-results <dir> --type-strip-drag` 与 `--preview-settings <dir> --file-types` 的鼠标经 `qt_handleMouseEvent` 走 `QGuiApplication`；直接 `sendEvent` 的 `QMouseEvent` 没有按下位置，`DragHandler` 会在按下时就误判越过阈值。
+- **类型条顺序**：“不限”固定在首位，其后为 `Settings::fileTypes` 的顺序，“文件夹”插在 `Results/FolderChipAt`（0 到类型数）处；类型条拖动（`TypeStrip` 内 `MouseArea` 里的 `DragHandler`，越过拖动距离才从 `MouseArea` 接管，点击不受影响）与设置页把手、上移下移都走 `Settings::moveStripChip`，`Launcher::setFileTypes` 按类型本身搬运已选类型和角标数量，只换顺序时不重搜。拖动中所有标签都显示（让位越过边缘的由视图裁掉），按住停在两端时逐个滚动；松手后标签按新顺序重建，`finishDrag` 先 `row.forceLayout()`，再从当前完整可见的第一个标签起滚到整标签位置并让松手的标签可见。离屏验证 `--preview-results <dir> --type-strip-drag` 与 `--preview-settings <dir> --file-types` 的鼠标经 `qt_handleMouseEvent` 走 `QGuiApplication`；直接 `sendEvent` 的 `QMouseEvent` 没有按下位置，`DragHandler` 会在按下时就误判越过阈值。
 - **文件类型多选与大小**：`selectedFileTypes` 合并多选扩展名并与 `ext:` 取交集（文件夹与其他类型互斥）；`Results/ShowFileSize` 复用 `ResultModel::SizeRole` 不访盘，面板文件夹列由 `FolderSizes` 后台遍历内存索引显示 `≈`。
 - **拖拽出窗口（`dragout::drag`）**：`SHCreateDataObject` 构造完整 PIDL 列表并写 `CF_HDROP` 与 `Preferred DropEffect = Copy`；左键只允许复制/快捷方式（防同盘误移），右键允许移动以弹出目标拖放菜单；管理员拖给普通目标不受 UIPI 阻断；网络共享先探测 1.5 s 防卡界面。
 - **系统右键菜单（`platform/ShellContextMenu`）**：GUI 队列异步弹出 `IContextMenu3`（`Shift` 带 `CMF_EXTENDEDVERBS`），以独立隐藏窗 `WinShun.MenuOwner` 作为外壳命令对话框属主防止启动器隐藏带走确认框；`shellcontext::watchKeys` 绕过中文 IME `VK_PROCESSKEY`。

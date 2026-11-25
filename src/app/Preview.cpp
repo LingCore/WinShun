@@ -10261,8 +10261,11 @@ bool checkTypeStripDrag(QQmlEngine* qml, const QDir& output)
     };
     // The chips shown side by side as they rest: none over another, the gaps
     // between the kinds the row's, each on a whole device pixel.
-    // (Scrolling, the room left is shared out between the gaps: as wide each.)
+    // (Scrolling, the room left is shared out between the gaps: as wide each,
+    // and the first chip shown starts at the view's left edge, none left out before it.)
     const qreal dpr = window->effectiveDevicePixelRatio();
+    auto* view = visualNamed(strip, u"searchTypeView"_s);
+    if (!view) { check(false, "there is no view of the chips"); return false; }
     const auto laidOut = [&](const char* when) {
         const QVariantList chips = strip->property("chips").toList();
         qreal right = -1;
@@ -10272,6 +10275,12 @@ bool checkTypeStripDrag(QQmlEngine* qml, const QDir& output)
             if (!chip || !chip->property("whole").toBool())
                 continue;
             const qreal left = chip->mapToScene(QPointF(0, 0)).x();
+            if (right < 0 && strip->property("scrolls").toBool()
+                && (i != strip->property("firstChip").toInt() || std::abs(left - view->mapToScene(QPointF(0, 0)).x()) > 0.6)) {
+                qWarning("type strip drag regression: %s: chip %d is the first shown, %.2f from the left edge; firstChip is %d", when, i,
+                    left - view->mapToScene(QPointF(0, 0)).x(), strip->property("firstChip").toInt());
+                ok = false;
+            }
             if (right >= 0 && i > 1 && gap < 0)
                 gap = left - right;
             if (right >= 0 && (left < right - 0.5 || (i > 1 && std::abs(left - right - gap) > 0.6))) {
@@ -10345,12 +10354,24 @@ bool checkTypeStripDrag(QQmlEngine* qml, const QDir& output)
     drag(chipOf(1), 2000, [&] { // 文档
         check(strip->property("firstChip").toInt() > 0, "held at the end, the chips did not scroll on");
         check(chipOf(1)->property("whole").toBool() && chipOf(1)->opacity() == 1, "the chip dragged was hidden");
+        // The chips that made way past the left edge show cut off by it: no room left empty there.
+        const qreal viewLeft = view->mapToScene(QPointF(0, 0)).x();
+        qreal shownFrom = viewLeft + view->width();
+        for (const QVariant& each : strip->property("chips").toList()) {
+            QQuickItem* chip = chipOf(each.toMap().value(u"type"_s).toInt());
+            const qreal left = chip ? chip->mapToScene(QPointF(0, 0)).x() : 0;
+            if (chip && chip->opacity() > 0.99 && left + chip->width() > viewLeft + 0.5)
+                shownFrom = std::min(shownFrom, std::max(left, viewLeft));
+        }
+        check(shownFrom - viewLeft <= 4 + strip->property("spreadGap").toReal() + 1, "held at the end, the strip left room empty at its start");
         check(saveGrab(window, output.filePath(u"type-strip-drag-scroll.png"_s)), "the window did not render");
     }, 2000);
     const QStringList last = order();
     check(moves == 3 && last.indexOf(u"文档"_s) > 6, "文档 did not go towards the end");
     check(last.size() == count && last.first() == u"不限", "a chip was lost or 不限 moved");
     check(strip->property("firstChip").toInt() > 0, "the drop scrolled back to the start");
+    QQuickItem* dropped = chipOf(strip->property("chips").toList().value(last.indexOf(u"文档"_s)).toMap().value(u"type"_s).toInt());
+    check(dropped && dropped->property("whole").toBool(), "文档, let go at the end, is not in view");
     laidOut("scrolled and dropped");
     check(loops == 0, "a binding loop while dragging");
     window->hide();
