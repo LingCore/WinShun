@@ -84,8 +84,10 @@ CaptureEditor::CaptureEditor(QObject* parent)
         if (!m_model.gestureActive())
             m_pressed = false;
     });
+    // panelChanged: the tool's width or colour, which its tip at the pointer shows (GitHub #461).
     for (const auto change : {&AnnotationModel::toolChanged, &AnnotationModel::gestureChanged,
-             &AnnotationModel::editingChanged, &AnnotationModel::selectionChanged, &AnnotationModel::pickingChanged})
+             &AnnotationModel::editingChanged, &AnnotationModel::selectionChanged, &AnnotationModel::pickingChanged,
+             &AnnotationModel::panelChanged})
         connect(&m_model, change, this, &CaptureEditor::refreshCursor);
     setMetrics(m_windowLogical, m_dpr);
 }
@@ -391,11 +393,13 @@ void CaptureEditor::showNotice(const QString& text)
     emit noticeChanged();
 }
 
-void CaptureEditor::setCursor(int shape)
+void CaptureEditor::setCursor(int shape, qreal brushSize, QRgb brushColor)
 {
-    if (shape == m_cursor)
+    if (shape == m_cursor && brushSize == m_brushSize && brushColor == m_brushColor)
         return;
     m_cursor = shape;
+    m_brushSize = brushSize;
+    m_brushColor = brushColor;
     emit cursorChanged();
 }
 
@@ -728,7 +732,10 @@ void CaptureEditor::hoverAt(QPoint image)
     }
     m_model.pointerAt(image);
     const int shape = m_model.cursorAt(image);
-    setCursor(shape >= 0 ? shape : Qt::ArrowCursor);
+    // The tool's tip, as wide as its stroke is on the screen at this zoom.
+    const AnnotationModel::BrushTip tip = m_model.brushTipAt(image);
+    setCursor(shape >= 0 ? shape : Qt::ArrowCursor,
+        tip.width > 0 ? annot::toImagePx(tip.width, m_model.dpr()) * m_zoom : 0, tip.color);
 }
 
 void CaptureEditor::refreshCursor()
@@ -909,6 +916,7 @@ void CaptureEditor::zoomTo(double zoom, std::optional<QPoint> anchor)
     m_fit = false;
     viewMoved();
     relayout();
+    refreshCursor(); // the tool's tip is as wide as its stroke at the new zoom
 }
 
 void CaptureEditor::zoomBySteps(int steps, std::optional<QPoint> anchor)

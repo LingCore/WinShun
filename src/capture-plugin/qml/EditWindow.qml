@@ -123,24 +123,33 @@ Window {
             color: Theme.track
         }
 
-        MouseArea { // under the picture's own boxes (the text, the number): their presses stay with them
-            id: mouse
+        // The overlay's cross and I-beam, and the pen's tip in place of the cross (GitHub #461).
+        CapturePointer {
             anchors.fill: parent
-            hoverEnabled: true
-            acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
-            cursorShape: window.editor.cursorShape
-            onPressed: (m) => window.editor.mousePressed(view.x + m.x, view.y + m.y, m.button, m.modifiers)
-            onPositionChanged: (m) => window.editor.mouseMoved(view.x + m.x, view.y + m.y, m.modifiers)
-            onReleased: (m) => window.editor.mouseReleased(view.x + m.x, view.y + m.y, m.button)
-            onEntered: window.editor.mouseMoved(view.x + mouseX, view.y + mouseY, Qt.NoModifier)
-            onExited: window.editor.mouseLeft()
-            onDoubleClicked: (m) => {
-                if (m.button === Qt.LeftButton)
-                    window.editor.mouseDoubleClicked(view.x + m.x, view.y + m.y)
-            }
-            onWheel: (w) => {
-                window.editor.wheeled(view.x + w.x, view.y + w.y, w.angleDelta.y, w.angleDelta.x, w.modifiers)
-                w.accepted = true
+            shape: window.editor.cursorShape
+            dpr: window.dpr
+            brushSize: window.editor.brushSize
+            brushColor: window.editor.brushColor
+
+            MouseArea { // under the picture's own boxes (the text, the number): their presses stay with them
+                id: mouse
+                anchors.fill: parent
+                hoverEnabled: true
+                acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
+                cursorShape: undefined // inherit CapturePointer's
+                onPressed: (m) => window.editor.mousePressed(view.x + m.x, view.y + m.y, m.button, m.modifiers)
+                onPositionChanged: (m) => window.editor.mouseMoved(view.x + m.x, view.y + m.y, m.modifiers)
+                onReleased: (m) => window.editor.mouseReleased(view.x + m.x, view.y + m.y, m.button)
+                onEntered: window.editor.mouseMoved(view.x + mouseX, view.y + mouseY, Qt.NoModifier)
+                onExited: window.editor.mouseLeft()
+                onDoubleClicked: (m) => {
+                    if (m.button === Qt.LeftButton)
+                        window.editor.mouseDoubleClicked(view.x + m.x, view.y + m.y)
+                }
+                onWheel: (w) => {
+                    window.editor.wheeled(view.x + w.x, view.y + w.y, w.angleDelta.y, w.angleDelta.x, w.modifiers)
+                    w.accepted = true
+                }
             }
         }
 

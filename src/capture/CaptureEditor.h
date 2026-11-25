@@ -96,6 +96,10 @@ class CaptureEditor : public QObject {
     // What would be exported: the crop's size.
     Q_PROPERTY(QString sizeText READ sizeText NOTIFY sizeTextChanged FINAL)
     Q_PROPERTY(int cursorShape READ cursorShape NOTIFY cursorChanged FINAL)
+    // The round tip of the tool under the pointer, screen pixels across at this zoom (0: none),
+    // and its colour: the pointer shows it in place of the cross (CapturePointer, GitHub #461).
+    Q_PROPERTY(qreal brushSize READ brushSize NOTIFY cursorChanged FINAL)
+    Q_PROPERTY(QColor brushColor READ brushColor NOTIFY cursorChanged FINAL)
     // A word for the user (the Esc that gave up the changes); empty when none.
     Q_PROPERTY(QString notice READ notice NOTIFY noticeChanged FINAL)
 
@@ -253,6 +257,8 @@ public:
     QString zoomText() const;
     QString sizeText() const;
     int cursorShape() const { return m_cursor; }
+    qreal brushSize() const { return m_brushSize; }
+    QColor brushColor() const { return QColor::fromRgba(m_brushColor); }
     QString notice() const { return m_notice; }
     // The viewport in device px (window coordinates) and the picture's top
     // left in it: what the tests and the placing of the window read.
@@ -336,7 +342,7 @@ private:
     void showNotice(const QString& text);
     QPoint deviceInViewport(qreal x, qreal y) const;
     QPoint imageAt(QPoint viewportDevice) const;
-    void setCursor(int shape);
+    void setCursor(int shape, qreal brushSize = 0, QRgb brushColor = 0);
     void hoverAt(QPoint image);
     void refreshCursor();
     QByteArray packProject();
@@ -400,6 +406,8 @@ private:
     QPoint m_panOrigin;
     int m_wheelZoom = 0; // wheel not yet a whole notch (touchpads)
     int m_cursor = Qt::ArrowCursor;
+    qreal m_brushSize = 0;
+    QRgb m_brushColor = 0;
     std::optional<QPoint> m_hoverImage;
     QElapsedTimer m_clock;
     QString m_notice;

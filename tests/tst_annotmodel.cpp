@@ -719,6 +719,61 @@ private slots:
         QCOMPARE(m.document().items[0].points, (QList<QPointF> {QPointF(100.5, 100.5)}));
     }
 
+    // GitHub #461: a click with the pen or the freehand marker is a dot of its width.
+    void penClickIsADot()
+    {
+        Rig rig;
+        AnnotationModel& m = rig.model;
+        m.setTool(toolIndex(Kind::Pen));
+        click(m, QPoint(100, 100));
+        QCOMPARE(m.itemCount(), 1);
+        QCOMPARE(m.document().items[0].kind, Kind::Pen);
+        QCOMPARE(m.document().items[0].points, (QList<QPointF> {QPointF(100.5, 100.5)}));
+        // It is there to be seen: as wide as the pen, round its point.
+        const QRectF dot = annot::bounds(m.document(), m.document().items[0]);
+        QVERIFY(dot.contains(QPointF(100.5, 100.5)));
+        QVERIFY(dot.width() >= m.document().items[0].style.width);
+        QVERIFY(m.canUndo());
+        m.undo();
+        QCOMPARE(m.itemCount(), 0);
+        // A hand that shook under the drag start: still one point, where it was pressed.
+        drag(m, QPoint(200, 150), QPoint(201, 150));
+        QCOMPARE(m.itemCount(), 1);
+        QCOMPARE(m.document().items[0].points, (QList<QPointF> {QPointF(200.5, 150.5)}));
+        // The freehand marker too; its line and rectangle are shapes, a click makes none.
+        m.setTool(toolIndex(Kind::Marker));
+        click(m, QPoint(300, 100));
+        QCOMPARE(m.itemCount(), 2);
+        QCOMPARE(m.document().items[1].kind, Kind::Marker);
+        QCOMPARE(m.document().items[1].points.size(), 1);
+    }
+
+    // GitHub #461: the pointer shows the tip of the pen, the marker and the brush redaction.
+    void brushTipFollowsTheTool()
+    {
+        Rig rig;
+        AnnotationModel& m = rig.model;
+        const QPoint at(100, 100);
+        for (const Kind kind : {Kind::Rect, Kind::Ellipse, Kind::Arrow, Kind::Line, Kind::Number, Kind::Redact})  {
+            m.setTool(toolIndex(kind));
+            QCOMPARE(m.brushTipAt(at).width, 0); // a cross, a box redaction: no round tip
+        }
+        m.setTool(toolIndex(Kind::Pen));
+        const AnnotationModel::BrushTip pen = m.brushTipAt(at);
+        QCOMPARE(pen.width, m.styles().tool(Kind::Pen).width);
+        QCOMPARE(qAlpha(pen.color), 255);
+        QCOMPARE(pen.color & 0xFFFFFF, m.styles().tool(Kind::Pen).color & 0xFFFFFF);
+        m.setTool(toolIndex(Kind::Marker));
+        const AnnotationModel::BrushTip marker = m.brushTipAt(at);
+        QCOMPARE(marker.width, m.styles().tool(Kind::Marker).width);
+        QVERIFY(qAlpha(marker.color) < 255); // see-through, as its ink
+        // Over what was just drawn (selected: a press moves it) there is no tip.
+        m.setTool(toolIndex(Kind::Pen));
+        stroke(m, {QPoint(200, 200), QPoint(240, 200), QPoint(280, 200)});
+        QCOMPARE(m.brushTipAt(QPoint(240, 200)).width, 0);
+        QCOMPARE(m.brushTipAt(at).width, pen.width);
+    }
+
     void undoRedoTenSteps()
     {
         Rig rig;

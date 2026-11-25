@@ -475,6 +475,8 @@ Window {
         z: -1
         shape: overlay.screenModel.cursorShape
         dpr: overlay.dpr
+        brushSize: overlay.screenModel.brushSize // the pen's tip in place of the cross (GitHub #461)
+        brushColor: overlay.screenModel.brushColor
 
         MouseArea {
             anchors.fill: parent

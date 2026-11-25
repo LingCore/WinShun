@@ -171,6 +171,18 @@ public:
     // capture's changes); `stylesChanged()` tells whether any changed.
     const annot::StyleMemory& styles() const { return m_styles; }
     bool stylesChanged() const { return m_stylesChanged; }
+    // The round tip a press at `p` would draw with, for the pointer to show
+    // beforehand (GitHub #461): the pen's, the freehand marker's (see-through
+    // as its ink) and the brush redaction's (it has no colour of its own:
+    // grey). `width` in logical px as StyleMemory keeps it; 0: none, another
+    // tool or a place where a press does something else (a handle, a selected
+    // object, the eyedropper). panelChanged() tells of a new width or colour.
+    struct BrushTip {
+        int width = 0;
+        QRgb color = 0;
+        bool operator==(const BrushTip&) const = default;
+    };
+    BrushTip brushTipAt(QPoint p) const;
     // Smart redaction: how the text of the selection is read, the rules to
     // find, and whether to scan on its own (SmartRedact.h). The scan starts
     // 300 ms after the selection (the crop, in the editor) stops changing.

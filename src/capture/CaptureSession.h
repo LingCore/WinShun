@@ -66,6 +66,10 @@ class CaptureScreen : public QObject {
     Q_PROPERTY(QString color READ color NOTIFY cursorChanged FINAL) // "#RRGGBB" under the cursor
     Q_PROPERTY(QString colorText READ colorText NOTIFY cursorChanged FINAL) // the same in the chosen format (HEX, RGB, HSL)
     Q_PROPERTY(int cursorShape READ cursorShape NOTIFY cursorChanged FINAL)
+    // The round tip of the tool under the pointer, screen pixels across (0: none), and its colour:
+    // the pointer shows it in place of the cross (CapturePointer, GitHub #461).
+    Q_PROPERTY(qreal brushSize READ brushSize NOTIFY cursorChanged FINAL)
+    Q_PROPERTY(QColor brushColor READ brushColor NOTIFY cursorChanged FINAL)
     Q_PROPERTY(QString flash READ flash NOTIFY flashChanged FINAL) // a word by the magnifier ("已复制 #…")
     // A word for the user by the selection ("已放弃这次的标注 · Ctrl+Z 恢复"); empty when none.
     Q_PROPERTY(QString notice READ notice NOTIFY noticeChanged FINAL)
@@ -99,6 +103,8 @@ public:
     QString color() const { return m_color; }
     QString colorText() const { return m_colorText; }
     int cursorShape() const { return m_cursorShape; }
+    qreal brushSize() const { return m_brushSize; }
+    QColor brushColor() const { return QColor::fromRgba(m_brushColor); }
     QString flash() const { return m_flash; }
     QString notice() const { return m_notice; }
 
@@ -129,7 +135,7 @@ private:
     friend class CaptureSession;
     void setState(const QRect& hover, const QRect& selection, bool dimmed, bool adjusting, bool magnifierShown,
         bool home = false, const QRect& annotationArea = {});
-    void setCursor(bool here, QPoint at, int shape);
+    void setCursor(bool here, QPoint at, int shape, qreal brushSize = 0, QRgb brushColor = 0);
     void setFlash(const QString& text);
     void setNotice(const QString& text);
     QSize toPhysical(qreal width, qreal height) const;
@@ -159,6 +165,8 @@ private:
     QRgb m_rgb = 0;
     ColorFormat m_colorFormat = ColorFormat::Hex;
     int m_cursorShape = Qt::CrossCursor;
+    qreal m_brushSize = 0;
+    QRgb m_brushColor = 0;
     QString m_flash;
     QString m_notice;
 };
@@ -548,7 +556,8 @@ private:
     void refreshKeyHints();
     void hintInput(); // a move, a key, the wheel, a tool: KeyHintPolicy::input
     qint64 hintNow() const { return m_hintClock.elapsed(); }
-    int cursorShapeAt(int screen, QPoint p) const;
+    // `tool`: whether the shape is the annotations' (their tool's, an object's), not the selection's.
+    int cursorShapeAt(int screen, QPoint p, bool* tool = nullptr) const;
     Pick hovered() const; // what a click would pick now: the hover, else the screen under the cursor
     int reach(int screen) const; // how near a handle a press takes it, physical
     int dragStart(int screen) const; // how far a press moves before it is a drag
