@@ -114,6 +114,22 @@ static SortOrder columnOrder(Launcher::Sort sort)
 
 namespace {
 
+// A plugin's link into Win顺's settings: "winshun:settings" is its own card,
+// "winshun:settings/plugin/<id>" another plugin's (capability settingsLinks:
+// the local models' row opening Translate's card). The card's plugin, or
+// empty for a link that is not one (handed to the shell as before).
+QString settingsCardOf(const QString& url, const QString& own)
+{
+    if (url.compare(u"winshun:settings", Qt::CaseInsensitive) == 0)
+        return own;
+    if (url.startsWith(ws::kPluginSettingsCommand, Qt::CaseInsensitive)) {
+        const QString id = url.mid(ws::kPluginSettingsCommand.size());
+        if (plugin::validPluginId(id))
+            return id;
+    }
+    return {};
+}
+
 // Files 内容 reads at once. Opening a file waits for the antivirus to scan
 // it, so throughput grows well past the processor count: about 2x at 16
 // threads over 6, and little more beyond 32 (measured with Defender).
@@ -4683,7 +4699,7 @@ void Launcher::refreshKeyHints()
                     second = p.actions[1].title;
                 }
             } else {
-                enter = p.openKind == PluginRow::OpenKind::Url ? (p.openTarget.compare(u"winshun:settings", Qt::CaseInsensitive) == 0 ? tr("打开设置") : tr("打开网址"))
+                enter = p.openKind == PluginRow::OpenKind::Url ? (!settingsCardOf(p.openTarget, p.pluginId).isEmpty() ? tr("打开设置") : tr("打开网址"))
                     : p.openKind == PluginRow::OpenKind::Path ? tr("打开")
                     : !p.searchQuery.isEmpty()                ? tr("搜索")
                     : plugin::isHintRow(*r)                   ? tr("进入")
@@ -8407,9 +8423,10 @@ void Launcher::performPlugin(const SearchResult& result, Action action)
         }
         case PluginRow::OpenKind::Url: {
             // "winshun:settings": Win顺's own settings at the plugin's card
-            // (a row saying what to set up); never handed to the shell.
-            if (p.openTarget.compare(u"winshun:settings", Qt::CaseInsensitive) == 0) {
-                emit pluginSettingsRequested(p.pluginId);
+            // (a row saying what to set up), or another plugin's
+            // (settingsCardOf); never handed to the shell.
+            if (const QString card = settingsCardOf(p.openTarget, p.pluginId); !card.isEmpty()) {
+                emit pluginSettingsRequested(card);
                 emit dismissRequested();
                 return;
             }
@@ -8555,8 +8572,10 @@ void Launcher::applyEffects(const QString& pluginId, const QList<ws::plugin::Eff
             shell::copyText(e.text);
             break;
         case plugin::Effect::Kind::Open:
-            if (e.open.kind == plugin::Open::Kind::Url && e.open.target.compare(u"winshun:settings", Qt::CaseInsensitive) == 0) {
-                const QString card = !pluginId.isEmpty() ? pluginId : (m_keyword ? m_keyword->pluginId : QString());
+            if (e.open.kind == plugin::Open::Kind::Url
+                && !settingsCardOf(e.open.target, u"-"_s).isEmpty()) { // "-": any card, its own named below
+                const QString own = !pluginId.isEmpty() ? pluginId : (m_keyword ? m_keyword->pluginId : QString());
+                const QString card = settingsCardOf(e.open.target, own);
                 if (!card.isEmpty())
                     emit pluginSettingsRequested(card); // its own card (see performPlugin)
             } else if (pluginOpenAllowed(pluginId, e.open)) {

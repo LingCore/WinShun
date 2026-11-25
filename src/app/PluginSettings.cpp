@@ -1227,7 +1227,22 @@ void PluginSettings::pickFolderSetting(const QString& id, const QString& key)
 void PluginSettings::pickFileSetting(const QString& id, const QString& key)
 {
     const HWND owner = m_editor->m_window ? reinterpret_cast<HWND>(m_editor->m_window->winId()) : nullptr;
-    const QString file = shell::pickFile(owner, tr("选择文件"), {});
+    // The kinds the setting names first ("模型文件（.gguf）"), every file after.
+    std::vector<std::pair<QString, QString>> filters;
+    const plugin::Entry* e = m_host ? m_host->catalog().find(id) : nullptr;
+    if (e && e->manifest) {
+        for (const plugin::Setting& s : e->manifest->settings) {
+            if (s.key != key || s.extensions.isEmpty())
+                continue;
+            QStringList patterns;
+            for (const QString& extension : s.extensions)
+                patterns << u"*."_s + extension;
+            const QString title = s.title.pick(m_locale);
+            filters.emplace_back(title.isEmpty() ? patterns.join(u"; "_s) : title, patterns.join(u';'));
+            filters.emplace_back(tr("所有文件"), u"*.*"_s);
+        }
+    }
+    const QString file = shell::pickFile(owner, tr("选择文件"), filters);
     if (!file.isEmpty())
         setSettingValue(id, key, QDir::toNativeSeparators(file));
 }

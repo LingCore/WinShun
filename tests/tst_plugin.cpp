@@ -4657,6 +4657,40 @@ private slots:
         QCOMPARE(m->settings.front().multiline, multiline);
     }
 
+    // A file's kinds for the picker (0.49.0): lower case, without the dot.
+    void fileExtensions_data()
+    {
+        QTest::addColumn<QString>("type");
+        QTest::addColumn<QString>("fields");
+        QTest::addColumn<QStringList>("extensions");
+        QTest::addColumn<QString>("error");
+        QTest::newRow("gguf") << u"file"_s << uR"("extensions":["gguf"])"_s << QStringList {u"gguf"_s} << QString();
+        QTest::newRow("dots and case") << u"file"_s << uR"("extensions":[".GGUF","onnx"])"_s << QStringList {u"gguf"_s, u"onnx"_s} << QString();
+        QTest::newRow("not written") << u"file"_s << QString() << QStringList() << QString();
+        QTest::newRow("on a folder") << u"folder"_s << uR"("extensions":["gguf"])"_s << QStringList() << u"settings[0].extensions 只用于 file"_s;
+        QTest::newRow("a pattern") << u"file"_s << uR"("extensions":["*.gguf"])"_s << QStringList()
+                                   << u"settings[0].extensions 里要是扩展名"_s;
+        QTest::newRow("empty") << u"file"_s << uR"("extensions":["."])"_s << QStringList() << u"settings[0].extensions 里要是扩展名"_s;
+    }
+    void fileExtensions()
+    {
+        QFETCH(QString, type);
+        QFETCH(QString, fields);
+        QFETCH(QStringList, extensions);
+        QFETCH(QString, error);
+        const QString json = uR"({"manifest":1,"id":"a.b","name":"X","version":"1","settings":[{"key":"t","type":"%1","title":"T"%2}],"commands":[{"id":"c","run":{"folder":"C:\\"}}]})"_s
+                                 .arg(type, fields.isEmpty() ? QString() : u","_s + fields);
+        QString failed;
+        const std::optional<Manifest> m = Manifest::parse(json.toUtf8(), &failed);
+        if (!error.isEmpty()) {
+            QVERIFY(!m);
+            QVERIFY2(failed.contains(error), qPrintable(failed));
+            return;
+        }
+        QVERIFY2(m, qPrintable(failed));
+        QCOMPARE(m->settings.front().extensions, extensions);
+    }
+
     // A setting only the plugin's own window edits (0.41.0): "hidden", for the
     // four types whose value the plugin may send; false is always fine.
     void hiddenSetting_data()

@@ -282,7 +282,7 @@ std::optional<Runtime> readRuntime(const QJsonValue& value, Check& check)
         r.start = StartWhen::Eager;
     else
         check.fail(u"runtime.start 要是 lazy 或 eager"_s);
-    r.memoryMB = intField(o, u"memoryMB"_s, 512, 64, 2048, where, check);
+    r.memoryMB = intField(o, u"memoryMB"_s, 512, 64, 16384, where, check); // 16 GB: a local model on the GPU counts its video memory too
     const QString sandbox = stringField(o, u"sandbox"_s, where, check);
     if (sandbox.isEmpty() || sandbox == u"normal")
         r.sandbox = SandboxLevel::Normal;
@@ -583,6 +583,18 @@ Setting readSetting(const QJsonValue& value, int index, Check& check)
         else if (hidden.toBool() && s.type != u"text" && s.type != u"number" && s.type != u"bool" && s.type != u"choice")
             check.fail(where + u".hidden 只用于 text、number、bool、choice"_s);
         s.hidden = hidden.toBool();
+    }
+    if (o.contains(u"extensions"_s)) {
+        if (s.type != u"file")
+            check.fail(where + u".extensions 只用于 file"_s);
+        s.extensions = stringList(o.value(u"extensions"_s), where + u".extensions"_s, check);
+        for (QString& e : s.extensions) {
+            e = e.toLower();
+            if (e.startsWith(u'.'))
+                e.remove(0, 1);
+            if (e.isEmpty() || e.size() > 16 || !std::ranges::all_of(e, [](QChar c) { return c.isLetterOrNumber() || c == u'_' || c == u'-'; }))
+                check.fail(where + u".extensions 里要是扩展名，比如 \"gguf\""_s);
+        }
     }
     if (s.type == u"number") { // its range, step and unit (GitHub #359); on other types they mean nothing
         const auto number = [&](const QString& name) -> std::optional<double> {
