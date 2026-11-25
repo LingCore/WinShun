@@ -382,6 +382,8 @@ bool Server::handshake(Connection& conn)
             : kCapabilityDialogNavBesideOnly;
         if (canStartClipboardDisplay(conn.pid))
             ok.capabilities |= kCapabilityClipboardDisplay;
+        if (canStartCaptureSurface(*this, conn.pid))
+            ok.capabilities |= kCapabilityCaptureSurface;
     }
     encode(w, ok);
     return conn.channel.write(w.finish(Type::HelloOk), m_options.writeTimeoutMs);
@@ -420,6 +422,9 @@ void Server::serve(std::shared_ptr<Connection> conn)
                 break;
             case Type::OpenClipboardDisplay:
                 serveClipboardDisplay(*this, *conn, payload);
+                break;
+            case Type::OpenCaptureSurface:
+                serveCaptureSurface(*this, *conn, payload);
                 break;
             default:
                 log::write(L"pid %lu: unknown request %u", conn->pid, static_cast<unsigned>(type));

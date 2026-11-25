@@ -1,5 +1,6 @@
 #include "InputListener.h"
 
+#include "CaptureSurfaceProtocol.h"
 #include "DialogNav.h"
 #include "KeyListener.h"
 #include "KeyListenerProtocol.h"
@@ -92,6 +93,7 @@ std::set<DWORD> listeners;
 std::set<DWORD> navigators;
 std::set<DWORD> pasters;
 std::set<DWORD> displays;
+std::set<DWORD> captureSurfaces;
 struct Claim {
     Claim(std::set<DWORD>& registry, DWORD pid)
         : registry(registry)
@@ -532,6 +534,63 @@ bool mayNavigateDialogs(const Server& server, DWORD pid)
 bool canStartClipboardDisplay(DWORD pid)
 {
     return requesterIsWinShun(pid) && svcloc::pathProtected(processImagePath(pid));
+}
+
+bool canStartCaptureSurface(const Server& server, DWORD pid)
+{
+    return mayNavigateDialogs(server, pid) && svcloc::pathProtected(ownImagePath());
+}
+
+void serveCaptureSurface(Server& server, Connection& conn, std::span<const std::byte> payload)
+{
+    using namespace volproto;
+    Reader r(payload);
+    std::uint32_t pluginPid = 0;
+    std::uint64_t fullScreenHwnd = 0;
+    std::wstring pipe;
+    if (!r.u32(pluginPid) || !r.u64(fullScreenHwnd) || !r.string(pipe) || !r.done()
+        || !pluginPid || !fullScreenHwnd || !capsurface::isValidPipeName(pipe, pluginPid)) {
+        replyError(conn, ERROR_INVALID_PARAMETER, L"invalid capture surface request", 1000);
+        return;
+    }
+    if (!server.options().keyListener || !canStartCaptureSurface(server, conn.pid)) {
+        replyError(conn, ERROR_ACCESS_DENIED, L"capture surface requires the protected WinShun service and WinShun UI", 1000);
+        return;
+    }
+    const Claim claim(captureSurfaces, conn.pid);
+    if (!claim.held) {
+        replyError(conn, ERROR_BUSY, L"capture surface already leased", 1000);
+        return;
+    }
+    const UniqueHandle job(::CreateJobObjectW(nullptr, nullptr));
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits {};
+    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_ACTIVE_PROCESS;
+    limits.BasicLimitInformation.ActiveProcessLimit = 1;
+    UniqueHandle child;
+    DWORD childPid = 0;
+    const wchar_t* operation = L"create capture surface job";
+    const std::wstring args = L"--capture-surface " + std::to_wstring(pluginPid)
+        + L" " + std::to_wstring(fullScreenHwnd) + L" " + pipe;
+    if (!job.valid() || !::SetInformationJobObject(job.get(), JobObjectExtendedLimitInformation, &limits, sizeof limits)
+        || !launchSessionHelper(conn, args, job.get(), child, childPid, operation, false)) {
+        const DWORD error = ::GetLastError();
+        log::write(L"capture surface for pid %lu (plugin %lu): %ls failed (%lu)", conn.pid, pluginPid, operation, error);
+        replyError(conn, error, operation, 1000);
+        return;
+    }
+    Writer w;
+    w.u32(childPid);
+    if (!conn.channel.write(w.finish(Type::CaptureSurfaceReady), 1000))
+        return;
+    log::write(L"capture surface %lu for pid %lu (plugin %lu)", childPid, conn.pid, pluginPid);
+    Type type {};
+    std::vector<std::byte> next;
+    while (conn.channel.read(type, next, keyproto::kLeaseMs, conn.abort)) {
+        if (type != Type::CaptureSurfacePing || !next.empty()
+            || ::WaitForSingleObject(child.get(), 0) != WAIT_TIMEOUT
+            || !reply(conn, Type::CaptureSurfacePing, 1000))
+            break;
+    }
 }
 
 void serveClipboardDisplay(Server& server, Connection& conn, std::span<const std::byte> payload)

@@ -454,6 +454,33 @@ private slots:
         }
     }
 
+    void captureSurfaceRefusedForOthers()
+    {
+        for (const bool malformed : {false, true}) {
+            RawClient raw;
+            QVERIFY(raw.connect(m_pipe));
+            volproto::Type reply {};
+            std::vector<std::byte> payload;
+            QVERIFY(raw.hello(volproto::kMajor, reply, payload));
+            QCOMPARE(reply, volproto::Type::HelloOk);
+            volproto::HelloOk ok;
+            QVERIFY(decode(payload, ok));
+            QVERIFY(!(ok.capabilities & volproto::kCapabilityCaptureSurface));
+            const DWORD pid = ::GetCurrentProcessId();
+            volproto::Writer writer;
+            writer.u32(pid);
+            writer.u64(0x1234);
+            writer.string(malformed ? std::wstring(L"untrusted\\pipe")
+                : L"WinShun.CaptureSurface." + std::to_wstring(pid) + L".0123456789abcdef0123456789abcdef");
+            QVERIFY(raw.channel.write(writer.finish(volproto::Type::OpenCaptureSurface), 5000));
+            QVERIFY(raw.channel.read(reply, payload, 5000));
+            QCOMPARE(reply, volproto::Type::Error);
+            volproto::Error error;
+            QVERIFY(decode(payload, error));
+            QCOMPARE(error.code, std::uint32_t(malformed ? ERROR_INVALID_PARAMETER : ERROR_ACCESS_DENIED));
+        }
+    }
+
     void keyListenerForAnyClient()
     {
         // The UIAccess double-tap listener, unlike dialog navigation, is for

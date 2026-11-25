@@ -240,6 +240,44 @@ bool putsBack(CaptureSession::Action action)
     }
 }
 
+// Actions that open a Band-1 window (pin, OCR/QR panel, long capture,
+// recording, or quick-pick bubbles) which would be buried behind a Band-8
+// full-screen Store app if it stayed in full screen. Copy, direct Save,
+// Cancel, OcrCopy and Delay leave the full-screen player completely untouched.
+bool needsDesktopBand(CaptureSession::Action action, bool hasQuickPurpose)
+{
+    if (action == CaptureSession::Action::Cancel)
+        return false;
+    if (hasQuickPurpose)
+        return true;
+    using Action = CaptureSession::Action;
+    switch (action) {
+    case Action::Pin:
+    case Action::CopyPin:
+    case Action::Ocr:
+    case Action::OcrSearch:
+    case Action::OcrWeb:
+    case Action::OcrTranslate:
+    case Action::Qr:
+    case Action::Long:
+    case Action::Record:
+        return true;
+    default:
+        return false;
+    }
+}
+
+const char* closeReasonName(capsurface::CloseReason reason)
+{
+    switch (reason) {
+    case capsurface::CloseReason::Requested: return "requested";
+    case capsurface::CloseReason::Deactivated: return "deactivated";
+    case capsurface::CloseReason::FullScreenGone: return "full-screen-gone";
+    case capsurface::CloseReason::Error: return "error";
+    }
+    return "other";
+}
+
 } // namespace
 
 Capture::Capture(QQmlEngine* engine, Callbacks callbacks, QObject* parent)
@@ -322,6 +360,12 @@ Capture::Capture(QQmlEngine* engine, Callbacks callbacks, QObject* parent)
     connect(&m_fullScreenWait, &QTimer::timeout, this, &Capture::fullScreenTick);
     m_putBackWait.setInterval(10ms);
     connect(&m_putBackWait, &QTimer::timeout, this, &Capture::putBackTick);
+    m_exitFullScreenWait.setInterval(10ms);
+    connect(&m_exitFullScreenWait, &QTimer::timeout, this, &Capture::exitFullScreenTick);
+    m_surface = std::make_unique<CaptureSurfaceBridge>(this);
+    connect(m_surface.get(), &CaptureSurfaceBridge::ready, this, &Capture::onSurfaceReady);
+    connect(m_surface.get(), &CaptureSurfaceBridge::failed, this, &Capture::onSurfaceFailed);
+    connect(m_surface.get(), &CaptureSurfaceBridge::closedExternally, this, &Capture::onSurfaceClosedExternally);
     m_hideTimeout.setSingleShot(true);
     m_hideTimeout.setInterval(kHideTimeout);
     connect(&m_hideTimeout, &QTimer::timeout, this, &Capture::hideAll);
@@ -350,6 +394,7 @@ Capture::Capture(QQmlEngine* engine, Callbacks callbacks, QObject* parent)
 
 Capture::~Capture()
 {
+    stopSurface();
     m_session.end();
     destroyOverlays();
 }
@@ -561,12 +606,17 @@ void Capture::start(QuickPurpose purpose)
     // flyout in front stays in the picture (wanted), and is closed after.
     const HWND foreground = ::GetForegroundWindow();
     const bool flyout = win::isShellFlyout(foreground);
-    // A Store app in full screen stays in the picture too, and goes out of
-    // full screen for the overlays to come over it (fullScreenTick).
+    // A Store app in full screen stays in the picture too: normally covered
+    // directly by a Band-2 UIAccess DWM mirror surface (m_surface) without
+    // changing the player's state, falling back to Win+Shift+Enter only when
+    // the service is unavailable.
     const bool fullScreen = !flyout && fullScreenStoreApp(foreground);
     m_fullScreenWait.stop();
     m_putBackWait.stop(); // a capture right after one that put an app back: this one's
+    m_exitFullScreenWait.stop();
+    stopSurface();
     m_putBack = false;
+    m_exitFullScreenOnHide = false;
     m_fullScreen = nullptr;
     m_fullScreenSent = false;
     m_fullScreenMs = -1;
@@ -662,6 +712,33 @@ void Capture::start(QuickPurpose purpose)
     if (fullScreen) {
         m_fullScreen = foreground;
         m_fullScreenClock.start();
+        if (m_callbacks.openCaptureSurface && m_callbacks.closeCaptureSurface && m_surface) {
+            POINT cursor {};
+            ::GetCursorPos(&cursor);
+            const HMONITOR fsMon = ::MonitorFromWindow(foreground, MONITOR_DEFAULTTONEAREST);
+            std::vector<CaptureSurfaceBridge::Target> targets;
+            int cursorTarget = -1;
+            int fsTarget = -1;
+            for (const Overlay& overlay : m_overlays) {
+                if (!overlay.window || overlay.model->image().isNull())
+                    continue;
+                const int idx = static_cast<int>(targets.size());
+                const QRect rect = overlay.model->rect();
+                if (rect.contains(cursor.x, cursor.y))
+                    cursorTarget = idx;
+                if (overlay.monitor == fsMon)
+                    fsTarget = idx;
+                targets.push_back({overlay.window, rect, overlay.model->dpr()});
+            }
+            const int activeIndex = cursorTarget >= 0 ? cursorTarget : (fsTarget >= 0 ? fsTarget : 0);
+            if (!targets.empty()
+                && m_surface->start(foreground, std::move(targets), activeIndex, m_callbacks.openCaptureSurface,
+                    m_callbacks.closeCaptureSurface)) {
+                m_usingSurface = true;
+                show();
+                return;
+            }
+        }
         m_state = State::Waiting;
         m_fullScreenWait.start();
         return;
@@ -758,6 +835,105 @@ void Capture::putBackTick()
     m_putBackSentMs = now;
 }
 
+void Capture::exitFullScreenTick()
+{
+    const HWND app = m_fullScreen;
+    const auto done = [this] {
+        m_exitFullScreenWait.stop();
+        m_fullScreen = nullptr;
+    };
+    if (m_state != State::Idle || !app || !::IsWindow(app) || windowBand(app) == kDesktopBand) {
+        done();
+        return;
+    }
+    if (m_fullScreenClock.elapsed() >= kFullScreenWaitMs) {
+        done();
+        return;
+    }
+    if (::GetForegroundWindow() != app || modifiersDown())
+        return;
+    sendFullScreenSwitch();
+    done();
+}
+
+void Capture::stopSurface()
+{
+    m_usingSurface = false;
+    if (m_surface)
+        m_surface->stop();
+}
+
+void Capture::onSurfaceReady(const std::vector<HWND>&)
+{
+    if (m_state != State::Showing || !m_usingSurface)
+        return;
+    m_fullScreenMs = m_fullScreenClock.elapsed();
+    const QString program = m_fullScreen ? foreground::programOf(m_fullScreen) : QString();
+    diagnostics::record(u"capture-full-screen-app"_s, {{u"program"_s, program},
+        {u"band"_s, static_cast<qint64>(m_fullScreen ? windowBand(m_fullScreen) : 0)},
+        {u"mode"_s, u"surface"_s}, {u"left_full_screen"_s, false}, {u"ms"_s, m_fullScreenMs}});
+    startWatch();
+    m_reported = true;
+    m_upClock.start();
+    m_upFaults = static_cast<qint64>(pageFaults() - m_faultsBefore);
+    qInfo().noquote() << u"Screen capture: overlay up %1 ms after the hotkey (grab %2 ms: %3; %4 windows listed in %5 ms; session begun at %7 ms, windows shown at %8 ms; %9 page faults; over full-screen %10 via UIAccess surface in %6 ms)"_s
+                             .arg(m_clock.elapsed())
+                             .arg(m_grabMs)
+                             .arg(m_grabReport)
+                             .arg(m_snapshot.windows().size())
+                             .arg(m_listMs - m_grabMs)
+                             .arg(m_fullScreenMs)
+                             .arg(m_beginMs)
+                             .arg(m_showMs)
+                             .arg(m_upFaults)
+                             .arg(program);
+    if (POINT at {}; ::GetCursorPos(&at) && pointerOverOverlay(at))
+        ::SetCursorPos(at.x, at.y);
+    warmed();
+    afterUp();
+}
+
+void Capture::onSurfaceFailed(const QString& reason, unsigned long error)
+{
+    if (!m_usingSurface)
+        return;
+    stopSurface();
+    if (m_state != State::Showing && m_state != State::Waiting)
+        return;
+    const QString program = m_fullScreen ? foreground::programOf(m_fullScreen) : QString();
+    qInfo().noquote() << u"Screen capture: UIAccess surface unavailable over %1 (%2, error %3); falling back to Win+Shift+Enter"_s
+                             .arg(program, reason)
+                             .arg(error);
+    diagnostics::record(u"capture-full-screen-app"_s, {{u"program"_s, program},
+        {u"band"_s, static_cast<qint64>(m_fullScreen ? windowBand(m_fullScreen) : 0)},
+        {u"mode"_s, u"surface-fallback"_s}, {u"reason"_s, reason}, {u"error"_s, static_cast<qint64>(error)}});
+    // Hide Band-1 overlays cleanly before the Win+Shift+Enter fallback path
+    // takes the player out of full screen and calls show() afresh.
+    for (Overlay& overlay : m_overlays) {
+        if (overlay.window && overlay.window->isVisible())
+            overlay.window->hide();
+        if (overlay.window && overlay.cloaked)
+            win::setCloaked(overlay.window, false);
+        overlay.cloaked = false;
+    }
+    m_state = State::Waiting;
+    m_fullScreenSent = false;
+    m_fullScreenClock.restart();
+    m_fullScreenWait.start();
+}
+
+void Capture::onSurfaceClosedExternally(capsurface::CloseReason reason)
+{
+    if (!m_usingSurface)
+        return;
+    stopSurface();
+    if (m_state != State::Showing && m_state != State::Waiting)
+        return;
+    qInfo().noquote() << u"Screen capture: UIAccess surface closed (%1); ending capture"_s.arg(
+        QString::fromLatin1(closeReasonName(reason)));
+    m_session.act(static_cast<int>(CaptureSession::Action::Cancel));
+}
+
 void Capture::show()
 {
     m_state = State::Showing;
@@ -779,7 +955,11 @@ void Capture::show()
         overlay.cloaked = true;
         overlay.warming = 0;
         win::setCloaked(overlay.window, true); // until its first frame with the picture
+        if (m_usingSurface)
+            overlay.window->setProperty("_q_showWithoutActivating", true);
         overlay.window->show();
+        if (m_usingSurface)
+            overlay.window->setProperty("_q_showWithoutActivating", QVariant());
         if (rect.contains(cursor.x, cursor.y)) {
             under = overlay.window;
             underIndex = overlay.model->index();
@@ -794,7 +974,7 @@ void Capture::show()
             }
         }
     }
-    if (under) {
+    if (under && !m_usingSurface) {
         win::bringToFront(under); // the keys: Esc, Enter, the arrows
         under->requestActivate();
     }
@@ -803,7 +983,8 @@ void Capture::show()
         m_session.pointerMove(underIndex, underAt); // the hover and the magnifier before the mouse moves
     if (m_quickPurpose != QuickPurpose::None) // where the pointer is, at the top: what this capture is for
         m_session.notify(quickNotice());
-    startWatch();
+    if (!m_usingSurface)
+        startWatch();
     // Nothing more here: the first frame is drawn when this returns to the
     // event loop, and what is done before that is time with no overlay.
 }
@@ -858,7 +1039,11 @@ HWND rootAt(POINT at)
 
 bool Capture::isOverlay(HWND root) const
 {
-    return root && std::ranges::any_of(m_overlays, [root](const Overlay& o) {
+    if (!root)
+        return false;
+    if (m_surface && m_surface->isSurfaceHwnd(root))
+        return true;
+    return std::ranges::any_of(m_overlays, [root](const Overlay& o) {
         return o.window && reinterpret_cast<HWND>(o.window->winId()) == root;
     });
 }
@@ -1037,6 +1222,13 @@ void Capture::frameDrawn(QQuickWindow* window)
     overlay->cloaked = false;
     win::setCloaked(window, false);
     if (!m_reported && std::ranges::none_of(m_overlays, [](const Overlay& o) { return o.window && o.window->isVisible() && o.cloaked; })) {
+        if (m_usingSurface) {
+            // Band-1 overlays have rendered and uncloaked behind the Band-8 app;
+            // the Band-2 UIAccess surface can now bind its DWM thumbnails and reveal.
+            if (m_surface)
+                m_surface->setOverlaysReady();
+            return;
+        }
         m_reported = true;
         m_upClock.start();
         m_upFaults = static_cast<qint64>(pageFaults() - m_faultsBefore);
@@ -1094,6 +1286,27 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
         const auto selected = std::ranges::find(m_overlays, home, [](const Overlay& o) { return o.model->index(); });
         if (selected == m_overlays.end() || !selected->window)
             return;
+        if (m_usingSurface) {
+            // IFileSaveDialog is a Band-1 modal dialog: it would open hidden
+            // behind the Band-8 player unless we release the Band-2 mirror and
+            // take the player out of full screen first.
+            stopSurface();
+            if (m_fullScreen && ::IsWindow(m_fullScreen) && windowBand(m_fullScreen) != kDesktopBand) {
+                QElapsedTimer wait;
+                wait.start();
+                while (wait.elapsed() < 400 && (::GetForegroundWindow() != m_fullScreen || modifiersDown()))
+                    ::Sleep(10);
+                if (::GetForegroundWindow() == m_fullScreen && !modifiersDown()) {
+                    sendFullScreenSwitch();
+                    m_fullScreenSent = true;
+                    wait.restart();
+                    while (wait.elapsed() < 500 && windowBand(m_fullScreen) != kDesktopBand)
+                        ::Sleep(10);
+                }
+            }
+            win::bringToFront(selected->window);
+            selected->window->requestActivate();
+        }
         const State before = std::exchange(m_state, State::ChoosingSave);
         // Show() disables its owner. Disable the other overlays too, so a
         // second monitor cannot change the selection while the picker is open.
@@ -1118,11 +1331,18 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
         }
         m_session.rememberSelection(m_session.virtualRect(screen, rect));
     }
+    const bool wasSurface = m_usingSurface;
+    // Close the Band-2 mirror BEFORE clearing overlay images so the DWM
+    // thumbnail never flashes a cleared frame over the full-screen video.
+    stopSurface();
     m_flyoutWait.stop();
     m_flyout = nullptr;
     m_fullScreenWait.stop();
+    m_exitFullScreenWait.stop();
     m_putBack = m_fullScreen && m_fullScreenSent && putsBack(action);
-    if (!m_putBack)
+    m_exitFullScreenOnHide = wasSurface && m_fullScreen && !m_fullScreenSent
+        && needsDesktopBand(action, quickPurpose != QuickPurpose::None);
+    if (!m_putBack && !m_exitFullScreenOnHide)
         m_fullScreen = nullptr;
     QImage picture;
     QByteArray project;
@@ -1568,6 +1788,9 @@ void Capture::hideAll()
         m_putBackSent = 0;
         m_putBackReadyMs = -1;
         m_putBackWait.start(); // once Windows has given the app the foreground back
+    } else if (std::exchange(m_exitFullScreenOnHide, false)) {
+        m_fullScreenClock.restart();
+        m_exitFullScreenWait.start(); // a Band-1 pin/OCR/long/recording window needs Band 8 cleared
     }
     if (m_callbacks.ended)
         m_callbacks.ended();

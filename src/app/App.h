@@ -61,6 +61,7 @@ class ClipImportJob;
 class ClipStore;
 class Clipboard;
 class ClipboardDisplay;
+class ServiceCaptureSurface;
 class OcrPackage;
 class PluginCommands;
 class PluginSettings;
@@ -963,6 +964,7 @@ private:
     std::unique_ptr<Placement> m_clipPlacement; // likewise for the clipboard window
     std::unique_ptr<WindowFrame> m_clipFrame;
     std::unique_ptr<ClipboardDisplay> m_clipDisplay;
+    std::unique_ptr<ServiceCaptureSurface> m_captureSurface;
     bool m_clipDisplayWanted = false;
     bool m_clipDisplayProbe = false;
     std::unique_ptr<win::TextCaret> m_textCaret; // where another program's caret is: the clipboard opens there

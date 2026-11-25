@@ -121,6 +121,7 @@ qt_add_executable(WinShun WIN32
     platform/Integrity.cpp platform/Integrity.h
     platform/KeyListener.cpp platform/KeyListener.h
     platform/PieDrop.cpp platform/PieDrop.h
+    platform/ServiceCaptureSurface.cpp platform/ServiceCaptureSurface.h
     platform/ServiceDialogNav.cpp platform/ServiceDialogNav.h
     platform/ServicePaste.cpp platform/ServicePaste.h
     platform/ServiceKeyListener.cpp platform/ServiceKeyListener.h

@@ -96,6 +96,7 @@ qt_add_qml_module(WinShunCaptureApp
         ${app_dir}/SavedWindowSize.cpp ${app_dir}/SavedWindowSize.h
         ${app_dir}/HotkeyRule.h
         ../capture/Capture.cpp ../capture/Capture.h
+        ../capture/CaptureSurfaceBridge.cpp ../capture/CaptureSurfaceBridge.h
         ../capture/DisplayPulse.cpp ../capture/DisplayPulse.h
         ../capture/CaptureImage.cpp ../capture/CaptureImage.h
         ../capture/CapturePointer.cpp ../capture/CapturePointer.h

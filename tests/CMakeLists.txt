@@ -800,6 +800,19 @@ add_test(NAME tst_capture COMMAND tst_capture)
 set_tests_properties(tst_capture PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# The Band-2 UIAccess capture surface protocol and plugin-side bridge.
+qt_add_executable(tst_capturesurface tst_capturesurface.cpp
+    ${PROJECT_SOURCE_DIR}/src/capture/CaptureSurfaceBridge.cpp
+    ${PROJECT_SOURCE_DIR}/src/capture/CaptureSurfaceBridge.h)
+target_include_directories(tst_capturesurface PRIVATE
+    ${PROJECT_SOURCE_DIR}/src/capture ${PROJECT_SOURCE_DIR}/src/app ${PROJECT_SOURCE_DIR}/src/core)
+target_link_libraries(tst_capturesurface PRIVATE winshun_options Qt6::Quick Qt6::Test user32 advapi32)
+set_target_properties(tst_capturesurface PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
+add_test(NAME tst_capturesurface COMMAND tst_capturesurface)
+set_tests_properties(tst_capturesurface PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software"
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # The live loupe and the picture area's native alpha cursor, without App or user data.
 qt_add_executable(tst_captureui tst_captureui.cpp
     ${PROJECT_SOURCE_DIR}/src/capture/CaptureImage.cpp
