@@ -26,6 +26,10 @@ bool checkOptimizationSettings(QQuickWindow* window, SettingsEditor* editor, con
 bool checkClipboardAlignment(QQmlEngine* engine, const QDir& output, bool flipped);
 bool checkSearchExperience(QQmlEngine* engine, const QDir& output);
 bool checkSearchExperienceSettings(QQuickWindow* window, SettingsEditor* editor, const QDir& output);
+// A plugin's 使用说明 as it is read (--plugin-readme-reading [--readme <file>]):
+// laid out by ReadingStyle, text under the scroll bar's drag wherever it goes,
+// and every frame of a wheel's glide on the same device-pixel phase.
+bool checkPluginReadmeReading(QQuickWindow* window, SettingsEditor* editor, const QDir& output, const QString& readme);
 bool checkLogoPositionSettings(QQuickWindow* window, SettingsEditor* editor, const QDir& output);
 bool checkDialogRuleSettings(QQuickWindow* window, SettingsEditor* editor, const QDir& output, const QString& fixture);
 // The 捐赠 button moved to the 拾穗计划 page and back (GitHub #402).

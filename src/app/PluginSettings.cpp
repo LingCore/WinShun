@@ -1562,7 +1562,12 @@ void PluginSettings::openReadme(const QString& id)
         return;
     const auto document = readme::load(e->dir);
     if (!document.error.isEmpty()) { setMessage(document.error); return; }
-    emit readmeRequested(pluginName(id), document.html);
+    QVariantMap about {{u"name"_s, pluginName(id)}};
+    if (const PluginListModel::Card* c = m_list.card(id)) {
+        about.insert(u"icon"_s, c->icon);
+        about.insert(u"version"_s, c->version);
+    }
+    emit readmeRequested(about, document.html);
 }
 
 void PluginSettings::openReadmeLink(const QString& link)
