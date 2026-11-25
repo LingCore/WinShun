@@ -8942,8 +8942,9 @@ bool checkClipboardPinFiles(QQmlEngine* engine, const QDir& output)
 // 设置快捷键… on one entry, 更改快捷键（keys）… and 去掉快捷键 once it has
 // some, nothing on several picked; 设置快捷键 asks the settings for it
 // (hotkeyRequested), 去掉快捷键 takes the keys away and leaves it pinned.
-// A temporary history; the native clipboard untouched.
-bool checkClipboardEntryHotkey(QQmlEngine* engine, const QDir& output)
+// A temporary history; the native clipboard untouched. With poster (the
+// --entry-hotkey-poster flag): clipboard-hotkeys-poster.png after.
+bool checkClipboardEntryHotkey(QQmlEngine* engine, const QDir& output, bool poster)
 {
     QTemporaryDir temporary;
     ClipStore store(temporary.filePath(u"history"_s));
@@ -9005,13 +9006,18 @@ bool checkClipboardEntryHotkey(QQmlEngine* engine, const QDir& output)
     check(model.data(model.index(mail), ClipModel::HotkeyRole).toString() == u"Ctrl+Alt+1"_s
             && model.data(model.index(plain), ClipModel::HotkeyRole).toString().isEmpty(),
         "the rows do not say their keys");
-    // The keys in the badge, in the row as drawn.
+    // The keys in the badge, in the rows as drawn (the current row shows its buttons there instead).
+    auto* entries = visualNamed(window->contentItem(), u"clipboardEntries"_s);
+    if (!entries) { check(false, "production clipboard list missing"); return false; }
+    entries->setProperty("currentIndex", plain);
+    settle(window);
     const std::function<bool(QQuickItem*, const QString&)> shows = [&shows](QQuickItem* item, const QString& words) {
         if (item->isVisible() && item->inherits("QQuickText") && item->property("text").toString() == words)
             return true;
         return std::ranges::any_of(item->childItems(), [&](QQuickItem* child) { return shows(child, words); });
     };
-    check(shows(window->contentItem(), u"Ctrl+Alt+1"_s), "the row's badge does not show its keys");
+    check(shows(window->contentItem(), u"Ctrl+Alt+1"_s) && shows(window->contentItem(), u"Ctrl+Alt+D"_s),
+        "the rows' badges do not show their keys");
     check(texts(plain).contains(Clipboard::tr("设置快捷键…")) && !texts(plain).contains(Clipboard::tr("去掉快捷键")),
         "an entry without keys is not offered 设置快捷键…");
     check(texts(mail).contains(Clipboard::tr("更改快捷键（%1）…").arg(u"Ctrl+Alt+1"_s))
@@ -9048,6 +9054,32 @@ bool checkClipboardEntryHotkey(QQmlEngine* engine, const QDir& output)
     check(removed && removed->hotkey.isEmpty() && removed->group == ClipStore::kPinned, "去掉快捷键 did not take the keys away, or unpinned it");
     check(listChanged == 1 && clipboard.entryHotkeys().size() == 1 && clipboard.entryHotkeys().front().first == addressId,
         "the shortcuts to register were not said again");
+    if (poster) { // the 0.47.0 poster: what a person keeps keys for, among what they copied lately
+        std::vector<qint64> shown;
+        for (const auto& clip : store.clips()) shown.push_back(clip.id);
+        store.remove(shown);
+        struct Entry { ClipKind kind; QString text, source, note, keys; };
+        const Entry rows[] { // oldest first
+            {ClipKind::Text, u"SELECT region, SUM(amount) FROM sales GROUP BY region;"_s, u"记事本"_s, {}, {}},
+            {ClipKind::Text, u"上海市浦东新区张江路 88 号 3 号楼 502 室"_s, u"微信"_s, u"收件地址"_s, u"Ctrl+Alt+3"_s},
+            {ClipKind::Link, u"https://github.com/LingCore/WinShun"_s, u"浏览器"_s, {}, {}},
+            {ClipKind::Text, u"demo@example.com"_s, u"浏览器"_s, u"工作邮箱"_s, u"Ctrl+Alt+2"_s},
+            {ClipKind::Text, u"会议纪要：周五前确认年度报告，补齐销售图表。"_s, u"记事本"_s, {}, {}},
+            {ClipKind::Text, u"收到，我马上处理，稍后给您回复。"_s, u"微信"_s, {}, u"Ctrl+Alt+1"_s},
+            {ClipKind::Text, u"第三季度销售额：华东 428 万，华南 395 万。"_s, u"Excel"_s, {}, {}},
+        };
+        qint64 at = now - 600000;
+        for (const Entry& row : rows) {
+            const qint64 id = store.add(ClipCapture {.kind = row.kind, .text = row.text, .source = row.source}, at += 60000);
+            if (!row.note.isEmpty()) store.setNote(id, row.note, 0);
+            if (!row.keys.isEmpty()) store.setHotkey(id, row.keys);
+        }
+        clipboard.handleShown();
+        QMetaObject::invokeMethod(page, "focusSearch");
+        entries->setProperty("currentIndex", 0); // the newest, without keys: every badge in sight
+        settle(window);
+        check(saveGrab(window, output.filePath(u"clipboard-hotkeys-poster.png"_s)), "the poster did not render");
+    }
     check(!watcher.running(), "fixture must never start the native clipboard writer");
     window->hide();
     say(u"clipboard entry hotkey: badge shows the keys, menu sets/changes/removes them (one entry only), removing keeps it pinned; native clipboard untouched"_s);
@@ -11680,7 +11712,7 @@ int runResults(const QStringList& args)
     if (args.contains(u"--clipboard-paste-plain"_s))
         return checkClipboardPastePlain(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-entry-hotkey"_s))
-        return checkClipboardEntryHotkey(&engine, out) ? std::min(g_warnings, 100) : 4;
+        return checkClipboardEntryHotkey(&engine, out, args.contains(u"--entry-hotkey-poster"_s)) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-picture-view"_s))
         return checkClipboardPictureView(&engine, out, valueAfter(args, u"--gallery-image")) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-select"_s))
