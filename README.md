@@ -201,6 +201,14 @@ winget install LingCore.WinShun
 
 ### 最近更新
 
+**0.48.0**
+
+- 💾 **剪贴板历史备份与还原**：存成一个 ZIP，换电脑或重装后还原；🔢 “文件”的**类型标签显示数量**，每种类型找到多少个一眼可见。
+- 🈶 增强文字识别可加装**读日文的较大模型**，也能用自己下载的模型；🗂️ 收藏圆盘在文件夹上停一下**展开子文件夹**（#463）；🎥 录屏控制条按住空白处就能拖。
+- 🛠️ **改进** 全部图标按容器排版、间距统一，选项标签改为小圆角；插件“使用说明”拖滚动条不再空白。
+
+详见 [0.48.0 发布说明](docs/release-notes/v0.48.0.md)。
+
 **0.47.0**
 
 - ⌨️ 剪贴板里常用的一条能**设自己的快捷键**，在任何程序里一按就粘贴它；📋 可以**保留重复项**，同样的内容再复制一次也记一条（和 Ditto 一样）。
@@ -595,6 +603,14 @@ Standard and portable packages install enhanced text recognition on demand. Open
 </details>
 
 ### What's new
+
+**0.48.0**
+
+- 💾 **Back up and restore the clipboard history** as one ZIP, for a new PC or a reinstall; 🔢 the **type chips in Files show counts**: how many matches each type has.
+- 🈶 Enhanced OCR can add **a larger model that reads Japanese**, or take a model you downloaded; 🗂️ resting on a folder in the drop pie **opens its subfolders** (#463); 🎥 the recording bar moves from any empty place.
+- 🛠️ **Improved** every icon is laid out by its container with consistent gaps, chips take a small corner radius; a plugin's 使用说明 no longer goes blank after a scroll bar drag.
+
+See the [0.48.0 release notes](docs/release-notes/v0.48.0.md).
 
 **0.47.0**
 
