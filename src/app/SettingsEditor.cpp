@@ -159,6 +159,12 @@ void SettingsEditor::useOcrPackage(OcrPackage* package)
         if (!file.isEmpty())
             m_ocrPackage->preciseModel()->installFile(file);
     });
+    connect(package->preciseModel(), &OcrModel::ownRequested, this, [this] {
+        const QString file = shell::pickFile(nullptr, OcrModel::tr("选择自己的识别模型（PP-OCR 的 rec 模型，ONNX）"),
+            {{OcrModel::tr("识别模型"), u"*.onnx"_s}});
+        if (!file.isEmpty())
+            m_ocrPackage->preciseModel()->useOwnFile(file);
+    });
 }
 
 SettingsEditor::SettingsEditor(const Settings& settings, const QString& runningRenderer, QObject* parent)

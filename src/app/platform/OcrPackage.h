@@ -44,6 +44,13 @@ Model preciseSpec();
 QString installPrecise(const QByteArray& model, const Model& spec, const std::atomic_bool& cancelled);
 // Empty, or why it is still there (a reader has it open).
 QString removePrecise();
+
+// A reading model of the user's own (OcrFiles: ocr::ownModel): the file
+// picked is tried (PaddleOcr::tryReadingModel, with the .txt of its name
+// beside it as its dictionary when it has no characters of its own), then
+// copied in whole. Empty, or why not in words for the user.
+QString installOwn(const QString& file, const QString& programFolder, const std::atomic_bool& cancelled);
+QString removeOwn();
 }
 
 // The larger reading model in the settings: fetched, installed and removed.
@@ -57,9 +64,12 @@ class OcrModel : public QObject {
     Q_PROPERTY(double progress READ progress NOTIFY changed FINAL)
     Q_PROPERTY(QString status READ status NOTIFY changed FINAL)
     Q_PROPERTY(QString downloadSize READ downloadSize CONSTANT FINAL)
+    // The user's own reading model in use, by its file's name; else empty.
+    Q_PROPERTY(QString ownName READ ownName NOTIFY changed FINAL)
 
 public:
-    explicit OcrModel(QObject* parent = nullptr, download::Fetcher fetcher = {}, ocr::Model spec = ocr::preciseSpec());
+    explicit OcrModel(QObject* parent = nullptr, download::Fetcher fetcher = {}, ocr::Model spec = ocr::preciseSpec(),
+        const QString& programFolder = {});
     ~OcrModel() override;
     bool installed() const { return m_installed; }
     bool busy() const { return m_busy; }
@@ -70,17 +80,24 @@ public:
     Q_INVOKABLE void cancel();
     Q_INVOKABLE void installLocal();
     Q_INVOKABLE void remove();
+    QString ownName() const { return m_ownName; }
+    Q_INVOKABLE void chooseOwn(); // asks for the file (ownRequested)
+    Q_INVOKABLE void removeOwn();
+    void useOwnFile(const QString& file); // tried, then copied in and used
     void installFile(const QString& file); // the .onnx file itself, fetched by hand
     void refresh(); // another window, or the screenshot plugin, installed or removed it
 
 signals:
     void changed();
     void localRequested();
+    void ownRequested();
 
 private:
     void start(const QString& source);
     download::Fetcher m_fetcher;
     ocr::Model m_spec;
+    QString m_programFolder;
+    QString m_ownName;
     bool m_installed = false;
     bool m_busy = false;
     double m_progress = 0;

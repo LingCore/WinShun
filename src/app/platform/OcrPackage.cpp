@@ -1,6 +1,7 @@
 #include "OcrPackage.h"
 
 #include "OcrFiles.h"
+#include "PaddleOcr.h"
 #include "Http.h"
 
 #include <QCoreApplication>
@@ -188,12 +189,69 @@ QString removePrecise()
     return {};
 }
 
+QString installOwn(const QString& file, const QString& programFolder, const std::atomic_bool& cancelled)
+{
+    const QFileInfo picked(file);
+    if (!picked.isFile() || picked.size() <= 0 || picked.size() > (512ll << 20))
+        return tr("这个文件不能用作识别模型。");
+    if (ocr::folder(programFolder).isEmpty())
+        return tr("请先安装增强文字识别。");
+    // Its characters: in the model, else the .txt of its name beside it.
+    QString dictionary;
+    QString why;
+    if (!PaddleOcr::tryReadingModel(programFolder, file, {}, &why)) {
+        const QString beside = picked.absolutePath() + u'/' + picked.completeBaseName() + u".txt"_s;
+        if (why != u"no characters in the reading model")
+            return tr("这个文件不能用作识别模型：它不是 PP-OCR 的文字识别（rec）模型。");
+        if (!QFileInfo(beside).isFile())
+            return tr("这个模型里没有字典。把它的字典文件改成同名的 %1，和模型放在同一个文件夹里再选。").arg(QFileInfo(beside).fileName());
+        if (!PaddleOcr::tryReadingModel(programFolder, file, beside, &why))
+            return tr("这个模型和旁边的字典 %1 对不上（字数不符），或不是 PP-OCR 的文字识别（rec）模型。").arg(QFileInfo(beside).fileName());
+        dictionary = beside;
+    }
+    if (cancelled.load())
+        return tr("已取消。");
+    const QString root = componentsRoot();
+    if (!QDir().mkpath(root))
+        return tr("无法保存这个模型，请检查磁盘空间。");
+    QLockFile lock(root + u"/ocr-model-install.lock"_s);
+    if (!lock.tryLock(0))
+        return tr("另一个窗口正在安装模型，请稍后再试。");
+    QTemporaryDir staged(root + u"/ocr-own-XXXXXX"_s);
+    QSaveFile receipt(staged.filePath(u".ready"_s));
+    const QByteArray name = picked.fileName().toUtf8();
+    if (!staged.isValid() || !QFile::copy(file, staged.filePath(u"model.onnx"_s))
+        || (!dictionary.isEmpty() && !QFile::copy(dictionary, staged.filePath(u"dictionary.txt"_s)))
+        || !receipt.open(QIODevice::WriteOnly) || receipt.write(name) != name.size() || !receipt.commit())
+        return tr("无法保存这个模型，请检查磁盘空间。");
+    const QString destination = ownFolder();
+    if (QFileInfo::exists(destination) && !QDir(destination).removeRecursively())
+        return tr("原来的模型正在使用，请关闭识别窗口后重试。");
+    if (!QDir().rename(staged.path(), destination))
+        return tr("无法保存这个模型，请检查磁盘空间。");
+    staged.setAutoRemove(false);
+    return {};
+}
+
+QString removeOwn()
+{
+    const QString folder = ownFolder();
+    if (!QFileInfo::exists(folder))
+        return {};
+    QFile::remove(folder + u"/.ready"_s); // no reader takes it from here on
+    if (!ownModel().file.isEmpty())
+        return tr("原来的模型正在使用，请关闭识别窗口后重试。");
+    QDir(folder).removeRecursively();
+    return {};
+}
+
 } // namespace ocr
 
-OcrModel::OcrModel(QObject* parent, download::Fetcher fetcher, ocr::Model spec)
+OcrModel::OcrModel(QObject* parent, download::Fetcher fetcher, ocr::Model spec, const QString& programFolder)
     : QObject(parent)
     , m_fetcher(std::move(fetcher))
     , m_spec(std::move(spec))
+    , m_programFolder(programFolder.isEmpty() ? QCoreApplication::applicationDirPath() : programFolder)
 {
     QDir().mkpath(ocr::componentsRoot());
     m_watcher.addPath(ocr::componentsRoot());
@@ -217,12 +275,52 @@ void OcrModel::refresh()
     // The components folder alone is watched: the model's own folder comes
     // and goes whole, and a watch on it would hold it open against that.
     const bool installed = !ocr::preciseModel().isEmpty();
-    if (m_installed != installed) {
+    const QString ownName = ocr::ownModel().name;
+    if (m_installed != installed || m_ownName != ownName) {
         m_installed = installed;
+        m_ownName = ownName;
         if (!m_busy)
             m_status.clear();
         emit changed();
     }
+}
+
+void OcrModel::chooseOwn()
+{
+    emit ownRequested();
+}
+
+void OcrModel::removeOwn()
+{
+    if (m_busy || m_ownName.isEmpty())
+        return;
+    const QString error = ocr::removeOwn();
+    refresh();
+    m_status = error;
+    emit changed();
+}
+
+void OcrModel::useOwnFile(const QString& file)
+{
+    if (m_busy)
+        return;
+    m_busy = true;
+    m_progress = 0;
+    m_status = tr("正在检查这个模型…");
+    m_cancel = std::make_shared<std::atomic_bool>(false);
+    emit changed();
+    m_worker = std::jthread([self = QPointer(this), file, folder = m_programFolder, cancel = m_cancel] {
+        const QString error = ocr::installOwn(file, folder, *cancel);
+        if (self)
+            QMetaObject::invokeMethod(self, [self, error] {
+                if (!self)
+                    return;
+                self->m_busy = false;
+                self->refresh();
+                self->m_status = error;
+                emit self->changed();
+            }, Qt::QueuedConnection);
+    });
 }
 
 void OcrModel::download()
@@ -315,7 +413,7 @@ OcrPackage::OcrPackage(QObject* parent, const QString& programFolder, download::
     : QObject(parent)
     , m_programFolder(programFolder.isEmpty() ? QCoreApplication::applicationDirPath() : programFolder)
     , m_fetcher(std::move(fetcher))
-    , m_precise(new OcrModel(this, m_fetcher))
+    , m_precise(new OcrModel(this, m_fetcher, ocr::preciseSpec(), m_programFolder))
 {
     QDir().mkpath(ocr::componentsRoot());
     m_watcher.addPath(ocr::componentsRoot());

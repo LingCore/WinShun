@@ -61,6 +61,26 @@ QString preciseModel()
     return model.isFile() && model.size() > 0 ? model.absoluteFilePath() : QString();
 }
 
+QString ownFolder()
+{
+    return QDir(componentsRoot()).filePath(QString(kOwnVersion));
+}
+
+OwnModel ownModel()
+{
+    const QString folder = ownFolder();
+    QFile receipt(folder + u"/.ready"_s); // the name where the user had it
+    if (!receipt.open(QIODevice::ReadOnly))
+        return {};
+    const QString name = QString::fromUtf8(receipt.read(1024)).trimmed();
+    const QFileInfo model(folder + u"/model.onnx"_s);
+    if (name.isEmpty() || !model.isFile() || model.size() == 0)
+        return {};
+    const QFileInfo dictionary(folder + u"/dictionary.txt"_s);
+    return {model.absoluteFilePath(), dictionary.isFile() ? dictionary.absoluteFilePath() : QString(), name,
+        u"own-%1-%2"_s.arg(name).arg(model.size())};
+}
+
 QString folder(const QString& programFolder)
 {
     if (const QString installed = installedFolder(); !installed.isEmpty())

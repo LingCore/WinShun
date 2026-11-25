@@ -106,6 +106,8 @@ bool windowsReadsBetter()
             const std::wstring_view t = tag;
             if (t.starts_with(L"zh"))
                 return false;
+            if (!ocr::ownModel().file.isEmpty())
+                return false; // the user's own model: chosen for their language
             if (t.starts_with(L"ja"))
                 return ocr::preciseModel().isEmpty();
             if (t.starts_with(L"ko"))
@@ -222,6 +224,8 @@ QString TextRecognizer::engine() const
 {
     if (!m_paddle)
         return u"windows"_s;
+    if (const ocr::OwnModel own = ocr::ownModel(); !own.file.isEmpty())
+        return own.id;
     return ocr::preciseModel().isEmpty() ? u"ppocr-v6-tiny"_s : u"ppocr-v6-small"_s;
 }
 

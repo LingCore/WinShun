@@ -25,4 +25,19 @@ inline constexpr auto kPreciseModel = u"PP-OCRv6_rec_small.onnx";
 QString preciseFolder(); // where it is installed, there or not
 QString preciseModel(); // the model's file when it is installed, else empty
 
+// A reading model of the user's own choosing (another PP-OCR recognition
+// model as ONNX: a larger one, another language's), copied here by the
+// settings after a trial reading. Before the larger and the tiny one for
+// every reader. Its characters are in the model (RapidOCR's files), or in
+// the dictionary copied with it (PaddleOCR's own exports: one a line).
+inline constexpr auto kOwnVersion = u"ocr-own-rec";
+struct OwnModel {
+    QString file; // empty: none
+    QString dictionary; // empty: in the model
+    QString name; // the file's name where the user had it, to show
+    QString id; // differs with the file: what read a picture (TextRecognizer::engine)
+};
+QString ownFolder();
+OwnModel ownModel();
+
 } // namespace ws::ocr

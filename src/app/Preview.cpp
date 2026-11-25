@@ -15538,6 +15538,38 @@ int runRuntime(const QStringList& args)
                     report.insert(u"precise_removed"_s, !larger->installed() && ocr::preciseModel().isEmpty());
                     report.insert(u"precise_removed_button"_s, preciseButton->property("text").toString());
                 }
+                // --ocr-own <a reading model of the user's>: tried and taken
+                // through the row's model, named in the row, removed by its button.
+                if (const QString mine = valueAfter(args, u"--ocr-own"); !mine.isEmpty()) {
+                    auto* preciseRow = qobject_cast<QQuickItem*>(visualNamed(window->contentItem(), u"preciseOcrRow"_s));
+                    auto* preciseButton = qobject_cast<QQuickItem*>(visualNamed(window->contentItem(), u"preciseOcrButton"_s));
+                    auto* ownButton = qobject_cast<QQuickItem*>(visualNamed(window->contentItem(), u"chooseOwnOcrModel"_s));
+                    OcrModel* larger = model->preciseModel();
+                    if (!preciseRow || !preciseButton || !ownButton)
+                        return 4;
+                    QMetaObject::invokeMethod(window, "goTo", Q_ARG(QVariant, QVariant::fromValue(preciseRow)));
+                    settle(window, 3);
+                    report.insert(u"own_offer_button"_s, ownButton->property("text").toString());
+                    QElapsedTimer waiting;
+                    waiting.start();
+                    larger->useOwnFile(mine);
+                    while (larger->busy() && waiting.elapsed() < 60000)
+                        pump(20);
+                    settle(window, 3);
+                    const QRectF inRow = ownButton->mapRectToItem(preciseRow, QRectF(QPointF(), ownButton->size()));
+                    report.insert(u"own_ms"_s, waiting.elapsed());
+                    report.insert(u"own_name"_s, larger->ownName());
+                    report.insert(u"own_status"_s, larger->status());
+                    report.insert(u"own_text"_s, preciseRow->property("description").toString());
+                    report.insert(u"own_button"_s, preciseButton->property("text").toString());
+                    report.insert(u"own_change_button"_s, ownButton->property("text").toString());
+                    report.insert(u"own_buttons_inside_row"_s, QRectF(QPointF(-1, -1), preciseRow->size() + QSizeF(2, 2)).contains(inRow));
+                    if (!saveGrab(window, out.filePath(u"ocr-own.png"_s)))
+                        return 4;
+                    QMetaObject::invokeMethod(preciseButton, "clicked");
+                    settle(window, 3);
+                    report.insert(u"own_removed"_s, larger->ownName().isEmpty() && ocr::ownModel().file.isEmpty());
+                }
                 report.insert(u"ocr_attempts"_s, attempts);
             } else {
             QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, window->property("pluginsPage")), Q_ARG(QVariant, QVariant(0)));

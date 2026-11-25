@@ -71,6 +71,12 @@ public:
     ~PaddleOcr();
     // Reads with the larger model (ocr::preciseModel), not the tiny one.
     bool precise() const;
+    // Reads with the user's own model (ocr::ownModel).
+    bool own() const;
+    // A file the user picked as their reading model: loaded as one and a
+    // line read with it. False with why (not a model, no characters in it and
+    // no dictionary given, not a PP-OCR recognition model) in `error`.
+    static bool tryReadingModel(const QString& programFolder, const QString& file, const QString& dictionary, QString* error);
 
     // One string per line of text, top to bottom: the pieces found side by
     // side put together, with a space where there is a gap or Latin writing.
@@ -92,6 +98,8 @@ public:
 
 private:
     PaddleOcr();
+    struct Trial;
+    static std::unique_ptr<PaddleOcr> load(const QString& programFolder, int threads, QString* error, const Trial* trial);
     bool find(const QImage& image, QList<OcrPiece>* found, bool chars, QString* error, const OcrOptions& options);
     struct Impl;
     std::unique_ptr<Impl> d;
