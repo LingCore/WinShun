@@ -3611,6 +3611,13 @@ private slots:
         QVERIFY(gallery::fitsFilter(words, u" Text  translate "_s)); // each word, in any order
         QVERIFY(!gallery::fitsFilter(words, u"translate 截图"_s)); // one of them nowhere
         QVERIFY(!gallery::fitsFilter(words, u"ocr"_s));
+        // 不感兴趣 (GitHub #442): away from the list as it opens, found by typing, alone in its own view.
+        QVERIFY(gallery::listsHidden(false, false, false));
+        QVERIFY(!gallery::listsHidden(true, false, false));
+        QVERIFY(gallery::listsHidden(true, false, true));
+        QVERIFY(gallery::listsHidden(true, true, false));
+        QVERIFY(!gallery::listsHidden(false, true, false));
+        QVERIFY(!gallery::listsHidden(false, true, true));
         // A plugin of someone else's repository: there, even with no homepage.
         QCOMPARE(gallery::issuesAddress(u"harafuhub/winshun-outlook"_s, {}), gh + u"harafuhub/winshun-outlook/issues"_s);
         QCOMPARE(gallery::issuesAddress(u"iuuuuuuuu/winshun-screenshot-translate"_s, gh + u"iuuuuuuuu/winshun-screenshot-translate"_s),

@@ -160,6 +160,43 @@ private slots:
         QCOMPARE(settings.logoRightClick, u"menu"_s);
     }
 
+    // GitHub #433: the search box's Logo can be switched off; on by default.
+    void searchLogoPreference()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.load();
+        QVERIFY(settings.searchLogo);
+        settings.searchLogo = false;
+        QVERIFY(settings.saveChecked());
+        ws::Settings restored;
+        restored.load();
+        QVERIFY(!restored.searchLogo);
+    }
+
+    // GitHub #442: the library's plugins put away as 不感兴趣 are kept, each once.
+    void pluginGalleryHiddenRoundTrip()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.load();
+        QVERIFY(settings.pluginGalleryHidden.isEmpty());
+        settings.pluginGalleryHidden = {u"a.one"_s, u"b.two"_s, u"a.one"_s};
+        QVERIFY(settings.saveChecked());
+        ws::Settings restored;
+        restored.load();
+        QCOMPARE(restored.pluginGalleryHidden, QStringList({u"a.one"_s, u"b.two"_s}));
+        restored.pluginGalleryHidden.clear();
+        QVERIFY(restored.saveChecked());
+        ws::Settings emptied;
+        emptied.load();
+        QVERIFY(emptied.pluginGalleryHidden.isEmpty());
+    }
+
     void startupArgumentsRoundTrip()
     {
         const QStringList original {u"--profile"_s, u"F:\\中文 profile\\"_s, u"--background"_s,

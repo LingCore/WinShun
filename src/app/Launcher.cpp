@@ -888,6 +888,13 @@ void Launcher::setLogoRightClick(const QString& action)
     emit logoRightClickChanged();
 }
 
+void Launcher::setSearchLogo(bool on)
+{
+    if (m_searchLogo == on) return;
+    m_searchLogo = on;
+    emit searchLogoChanged();
+}
+
 void Launcher::rememberQuery()
 {
     // A plugin's keyword too ("= 3*7", GitHub #395), unless its command keeps

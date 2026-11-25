@@ -421,6 +421,19 @@ void PluginSettings::setDeveloperMode(bool on)
     emit developerModeChanged();
 }
 
+const QStringList& PluginSettings::galleryHidden() const
+{
+    return m_editor->m_settings.pluginGalleryHidden;
+}
+
+void PluginSettings::setGalleryHidden(const QStringList& ids)
+{
+    if (m_editor->m_settings.pluginGalleryHidden == ids)
+        return;
+    m_editor->m_settings.pluginGalleryHidden = ids;
+    m_editor->commit();
+}
+
 int PluginSettings::residentLimit() const
 {
     return m_editor->m_settings.pluginMaxResident;

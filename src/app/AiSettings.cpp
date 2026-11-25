@@ -808,6 +808,9 @@ std::vector<Entry> buildCatalog()
         e.field = &Settings::terminalCommand;
         add(std::move(e));
     }
+    add(boolean({"Launcher/SearchLogo", QT_TRANSLATE_NOOP("AiSettings", "搜索框显示 Logo"), "results", 2,
+                    "The Logo at the left end of the search box. Off: a plainer box; drag it by the small bar at its top, open the settings with Ctrl+, or the tray icon, and a pinned box shows a pin at its right end."},
+        &Settings::searchLogo));
     add(boolean({"Launcher/ClearOnOpen", QT_TRANSLATE_NOOP("AiSettings", "每次打开时清空搜索"), "results", 2,
                     "Each time the search box opens nothing is typed and the scope is 全部, instead of keeping the last words selected."},
         &Settings::clearOnOpen));

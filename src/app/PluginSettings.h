@@ -224,6 +224,9 @@ public:
     void setLogFilter(const QString& id);
     bool developerMode() const;
     void setDeveloperMode(bool on);
+    // The library's plugins put away as 不感兴趣 (Settings::pluginGalleryHidden, GitHub #442), for PluginGallery.
+    const QStringList& galleryHidden() const;
+    void setGalleryHidden(const QStringList& ids);
     int residentLimit() const;
     void setResidentLimit(int limit);
     QString restrictedNote() const { return m_restrictedNote; }

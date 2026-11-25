@@ -5391,6 +5391,46 @@ bool checkSearchLogo(QQmlEngine* engine, const QDir& output)
             check(rangeHint && !rangeHint->property("label").toString().isEmpty() && !rangeHint->isVisible(),
                 mode + u"footer omits the duplicated scope-switch hint"_s);
         }
+        // GitHub #433: the Logo switched off. The words start where its left
+        // edge was and nothing there moves the window; the grip still does;
+        // a pinned box says so by a key before the scopes, a click on which unpins.
+        {
+            const qreal logoInk = logo->mapToScene({logo->property("inkInset").toReal(), 0}).x();
+            const QPointF logoSpot = logo->mapToScene({logo->width() / 2, logo->height() / 2});
+            const qreal fieldEnd = field->mapToScene({field->width(), 0}).x();
+            launcher.setSearchLogo(false);
+            settle(window);
+            auto* pinKey = visualNamed(window->contentItem(), panel ? u"panelPinKey"_s : u"searchPinKey"_s);
+            check(!logo->isVisible() && std::abs(field->mapToScene({0, 0}).x() - logoInk) < 0.01,
+                mode + u"Logo off: the words start where the Logo's left edge was"_s);
+            check(hit(logoSpot) == HTCLIENT && modeGrip && hit(modeGrip->mapToScene({modeGrip->width() / 2, modeGrip->height() / 2})) == HTCAPTION,
+                mode + u"Logo off: its place is the field's, the grip still moves the window"_s);
+            check(pinKey && !pinKey->isVisible() && std::abs(field->mapToScene({field->width(), 0}).x() - fieldEnd) < 0.01,
+                mode + u"Logo off, not pinned: no key more, the field as wide to the right"_s);
+            check(saveGrab(window, output.filePath(panel ? u"logo-panel-off.png"_s : u"logo-box-off.png"_s)), mode + u"Logo off screenshot"_s);
+            launcher.setPinned(true);
+            settle(window);
+            if (pinKey && scopes) {
+                const QRectF pinRect = pinKey->mapRectToScene(QRectF(0, 0, pinKey->width(), pinKey->height()));
+                check(pinKey->isVisible() && pinRect.right() <= scopes->mapToScene({0, 0}).x() - 5.99
+                        && field->mapToScene({field->width(), 0}).x() <= pinRect.left() - 7.99,
+                    mode + u"Logo off, pinned: the pin key stands between the field and the scopes"_s);
+                check(saveGrab(window, output.filePath(panel ? u"logo-panel-off-pinned.png"_s : u"logo-box-off-pinned.png"_s)),
+                    mode + u"Logo off pinned screenshot"_s);
+                const QPointF at = pinRect.center();
+                QMouseEvent pinPress(QEvent::MouseButtonPress, at, window->mapToGlobal(at), Qt::LeftButton, Qt::LeftButton, {});
+                QCoreApplication::sendEvent(window, &pinPress);
+                QMouseEvent pinRelease(QEvent::MouseButtonRelease, at, window->mapToGlobal(at), Qt::LeftButton, {}, {});
+                QCoreApplication::sendEvent(window, &pinRelease);
+                settle(window);
+                check(!launcher.pinned() && !pinKey->isVisible(), mode + u"Logo off: a click on the pin key unpins"_s);
+            }
+            launcher.setPinned(false);
+            launcher.setSearchLogo(true);
+            settle(window);
+            check(logo->isVisible() && field->mapToScene({0, 0}).x() > logoInk + logo->property("inkInset").toReal(),
+                mode + u"Logo back on: where it was, the words after it"_s);
+        }
         if (!panel) {
             launcher.setPureSearch(true);
             launcher.setQuery({});

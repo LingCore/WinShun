@@ -46,6 +46,7 @@ Rectangle {
     required property bool pluginEnabled // the installed copy is currently enabled
     required property bool settingsWindow // the installed copy opens its own standalone settings window
     required property string morePermissions // what the list's version asks for besides, named
+    required property bool hidden // put away as 不感兴趣 (GitHub #442): on show while typed for, or in the view of those
 
     property real dpr: 0 // the window's, passed by a host that has it (GitHub #111)
     readonly property real pixelRatio: dpr > 0 ? dpr : Screen.devicePixelRatio
@@ -56,6 +57,7 @@ Rectangle {
         : installed && !pluginEnabled ? qsTr("已停用")
         : stage === "bundled" ? qsTr("自带")
         : stage === "installed" || (stage === "app" && installed) ? qsTr("已安装")
+        : hidden ? qsTr("不感兴趣")
         : ""
     // Where 主页 leads, for its tip: "github.com" of "https://github.com/…".
     readonly property string homepageHost: homepage.replace(/^https?:\/\/([^\/?#]+).*$/i, "$1")
@@ -283,7 +285,7 @@ Rectangle {
     Item {
         id: footer
 
-        readonly property bool hasLinks: entry.homepage.length > 0 || entry.hasReadme || entry.hasNotes
+        readonly property bool hasLinks: entry.homepage.length > 0 || entry.hasReadme || entry.hasNotes || hideButton.visible
         readonly property bool hasActions: entry.hasSettingsAction || entry.hasPrimaryAction
         readonly property bool stacked: hasLinks && hasActions
             && (linksRow.x + linksRow.implicitWidth + 8 + actionsRow.implicitWidth > width)
@@ -355,6 +357,26 @@ Rectangle {
                     target: notesHover.hovered ? notesButton : null
                     dpr: entry.pixelRatio
                     text: qsTr("%1 更新内容").arg(entry.version)
+                }
+            }
+            FlatButton { // 不感兴趣 (GitHub #442): out of the list, one not installed; again: back in it
+                id: hideButton
+                dpr: entry.pixelRatio
+                objectName: "pluginHide-" + entry.pluginId
+                visible: !entry.installed && !entry.busy
+                implicitWidth: 28
+                implicitHeight: 28
+                flat: true
+                opacity: hideHover.hovered || activeFocus ? 1 : 0.55
+                glyph: entry.hidden ? "ph:eye" : "ph:eye-slash"
+                Accessible.name: entry.hidden ? qsTr("恢复显示") : qsTr("不感兴趣")
+                onClicked: entry.gallery.setHidden(entry.pluginId, !entry.hidden)
+                HoverHandler { id: hideHover }
+                HoverTip {
+                    target: hideHover.hovered ? hideButton : null
+                    dpr: entry.pixelRatio
+                    maxWidth: 320
+                    text: entry.hidden ? qsTr("恢复显示在插件库里") : qsTr("不感兴趣：不再显示在插件库里，以后可以找回")
                 }
             }
         }

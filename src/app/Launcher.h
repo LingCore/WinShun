@@ -72,6 +72,8 @@ class Launcher : public QObject {
     Q_PROPERTY(bool queryHistoryEnabled READ queryHistoryEnabled NOTIFY historyChanged FINAL)
     Q_PROPERTY(QString historyKeys READ historyKeys NOTIFY historyChanged FINAL)
     Q_PROPERTY(QString logoRightClick READ logoRightClick NOTIFY logoRightClickChanged FINAL)
+    // The Logo at the search box's left end (Settings::searchLogo, GitHub #433).
+    Q_PROPERTY(bool searchLogo READ searchLogo NOTIFY searchLogoChanged FINAL)
     Q_PROPERTY(ws::ResultModel* results READ results CONSTANT FINAL)
     // Settings::favoriteTiles: with nothing typed in 全部, the favorites'
     // rows are the first tileRows rows, drawn as tiles over the list
@@ -665,6 +667,8 @@ public:
     void setHistoryKeys(const QString& keys);
     QString logoRightClick() const { return m_logoRightClick; }
     void setLogoRightClick(const QString& action);
+    bool searchLogo() const { return m_searchLogo; }
+    void setSearchLogo(bool on);
     Q_INVOKABLE bool navigateQueryHistory(int direction);
     Q_INVOKABLE void recallQuery(int index);
     Q_INVOKABLE void removeQuery(int index);
@@ -955,6 +959,7 @@ signals:
     void historyChanged();
     void queryHistoryChanged();
     void logoRightClickChanged();
+    void searchLogoChanged();
     void contentIndexChanged();
     void contentIndexRequested(bool on);
     void frequentAppsChanged();
@@ -1306,6 +1311,7 @@ private:
     bool m_mergeFileScope = false;
     QString m_historyKeys = QStringLiteral("ctrl");
     QString m_logoRightClick = QStringLiteral("menu");
+    bool m_searchLogo = true;
     ResultModel m_results;
     ResultModel m_tiles; // the favorites as tiles (setFavoriteTiles); empty otherwise
     bool m_favoriteTilesOn = false;

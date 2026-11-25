@@ -59,6 +59,10 @@ SettingsSection {
             if (gallerySection.gallery.updatesOnly)
                 gallerySection.closeDetail()
         }
+        function onHiddenOnlyChanged() {
+            if (gallerySection.gallery.hiddenOnly)
+                gallerySection.closeDetail()
+        }
     }
 
     SettingRow { // what the install said: not seen on the 已安装 tab from here
@@ -271,7 +275,9 @@ SettingsSection {
 
                 InputBox {
                     id: filterBox
-                    width: Math.min(parent.width - (updatesChip.visible ? updatesChip.width + parent.spacing : 0), 320)
+                    width: Math.min(parent.width - (updatesChip.visible ? updatesChip.width + parent.spacing : 0)
+                                    - (hiddenChip.visible ? hiddenChip.width + parent.spacing : 0)
+                                    - (hiddenButton.visible ? hiddenButton.width + parent.spacing : 0), 320)
                     implicitHeight: 32
                     placeholder: qsTr("筛选：名称、关键字、说明")
                     text: gallerySection.gallery.filter
@@ -282,6 +288,26 @@ SettingsSection {
                     visible: gallerySection.gallery.updatesOnly
                     text: qsTr("只看可更新")
                     onRemoveClicked: gallerySection.gallery.updatesOnly = false
+                }
+                // 不感兴趣 (GitHub #442): how many were put away; a click lists
+                // those alone, where each can be brought back.
+                Chip {
+                    id: hiddenChip
+                    objectName: "galleryHiddenChip"
+                    visible: gallerySection.gallery.hiddenOnly
+                    text: qsTr("只看不感兴趣的")
+                    onRemoveClicked: gallerySection.gallery.hiddenOnly = false
+                }
+                FlatButton {
+                    id: hiddenButton
+                    objectName: "galleryHiddenButton"
+                    dpr: gallerySection.dpr
+                    visible: gallerySection.gallery.hiddenCount > 0 && !gallerySection.gallery.hiddenOnly
+                    implicitHeight: 32
+                    flat: true
+                    glyph: "ph:eye-slash"
+                    text: qsTr("不感兴趣的 %1 个").arg(gallerySection.gallery.hiddenCount)
+                    onClicked: gallerySection.gallery.hiddenOnly = true
                 }
             },
             // The entries, some 4 ms each: made a few at a time between frames
@@ -314,7 +340,10 @@ SettingsSection {
             Text {
                 visible: !gallerySection.detailOpen && gallerySection.gallery.count > 0 && gallerySection.gallery.shownCount === 0
                 width: parent.width
-                text: gallerySection.gallery.updatesOnly && filterBox.text.trim().length === 0 ? qsTr("插件都是最新的")
+                text: filterBox.text.trim().length > 0 ? qsTr("没有找到“%1”").arg(filterBox.text.trim())
+                    : gallerySection.gallery.updatesOnly ? qsTr("插件都是最新的")
+                    : gallerySection.gallery.hiddenOnly ? qsTr("这里没有可更新的") // both views at once
+                    : gallerySection.gallery.hiddenCount > 0 ? qsTr("剩下的插件都标了不感兴趣")
                     : qsTr("没有找到“%1”").arg(filterBox.text.trim())
                 textFormat: Text.PlainText
                 color: Theme.subtext

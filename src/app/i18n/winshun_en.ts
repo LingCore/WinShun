@@ -1653,6 +1653,10 @@
         <source>粘贴为纯文本的快捷键</source>
         <translation>Paste as plain text shortcut</translation>
     </message>
+    <message>
+        <source>搜索框显示 Logo</source>
+        <translation>Show the Logo in the search box</translation>
+    </message>
 </context>
 <context>
     <name>AppearancePreview</name>
@@ -4593,6 +4597,22 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
         <source>设置与管理</source>
         <translation>Settings and management</translation>
     </message>
+    <message>
+        <source>不感兴趣</source>
+        <translation>Not interested</translation>
+    </message>
+    <message>
+        <source>恢复显示</source>
+        <translation>Show again</translation>
+    </message>
+    <message>
+        <source>恢复显示在插件库里</source>
+        <translation>Show it in the library again</translation>
+    </message>
+    <message>
+        <source>不感兴趣：不再显示在插件库里，以后可以找回</source>
+        <translation>Not interested: leaves the library list; you can bring it back later</translation>
+    </message>
 </context>
 <context>
     <name>PluginGallerySection</name>
@@ -4675,6 +4695,22 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
     <message>
         <source>只安装你需要的功能。下载后先核对文件，安装并启用时会先列出它要的权限，同意后即可使用。</source>
         <translation>Install the features you need. Downloads are checked before installation. Review the permissions to install and enable a plugin.</translation>
+    </message>
+    <message>
+        <source>只看不感兴趣的</source>
+        <translation>Not interested only</translation>
+    </message>
+    <message>
+        <source>不感兴趣的 %1 个</source>
+        <translation>Not interested: %1</translation>
+    </message>
+    <message>
+        <source>这里没有可更新的</source>
+        <translation>Nothing to update here</translation>
+    </message>
+    <message>
+        <source>剩下的插件都标了不感兴趣</source>
+        <translation>The remaining plugins are all marked not interested</translation>
     </message>
 </context>
 <context>
@@ -10070,6 +10106,18 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>剪贴板里也换成纯文本。不记录剪贴板历史时也能用</source>
         <translation>The clipboard keeps the plain text too. Works with the clipboard history off</translation>
+    </message>
+    <message>
+        <source>搜索框显示 Logo</source>
+        <translation>Show the Logo in the search box</translation>
+    </message>
+    <message>
+        <source>关掉后搜索框更简洁：拖顶部的小横条移动窗口，按 Ctrl+, 或点托盘图标打开设置，钉住时搜索框右边显示图钉</source>
+        <translation>Off for a plainer search box: drag the small bar at the top to move the window, press Ctrl+, or click the tray icon for the settings, and a pin shows at the right of the box while it is pinned</translation>
+    </message>
+    <message>
+        <source>Logo;图标;简洁;隐藏;搜索框;logo;icon;hide;minimal</source>
+        <translation>logo;icon;plain;hide;search box;minimal</translation>
     </message>
 </context>
 <context>

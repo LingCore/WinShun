@@ -30,6 +30,10 @@ Item {
     // box's bar too.
     readonly property bool scopeKey: bar.folderMode || (bar.launcher.scopeButton && !bar.panelMode && !bar.inBox)
     readonly property bool pureKeys: bar.launcher.pureSearch && !bar.panelMode && !bar.folderMode && !bar.inBox
+    // The Logo at the left end (GitHub #433: off for a plainer box). Without
+    // it the words start where it was drawn, the grip alone moves the window,
+    // and a pinned box says so by the pin key at the right, as over the taskbar box.
+    readonly property bool logoShown: launcher.searchLogo
     readonly property bool menuOpen: headerMenu.item !== null && headerMenu.item.visible
     readonly property string positionAction: panelMode && launcher.logoRightClick === "top" ? "center" : launcher.logoRightClick
     readonly property string positionActionLabel: positionAction === "top" ? qsTr("回到靠上位置")
@@ -271,12 +275,13 @@ Item {
         objectName: bar.panelMode ? "panelSearchLogo" : "searchLogo"
 
         readonly property bool pointed: visible && contains(mapFromItem(null, bar.frame.pointer))
+        readonly property real inkInset: (width - Theme.searchIconSize) / 2 // from its edge to the Logo's
         readonly property bool checked: bar.launcher.pinned
         readonly property string help: qsTr("左键：设置 · 中键：%1\n右键：%2 · 拖动：移动窗口\n双击横条：展开／收回搜索面板")
             .arg(checked ? qsTr("取消保持显示") : qsTr("保持显示"))
             .arg(bar.positionActionLabel)
 
-        visible: !bar.inBox
+        visible: !bar.inBox && bar.logoShown
         anchors.left: parent.left
         // Its icon where the style puts the field's icon (iconInset, from the
         // field's left edge); 14 in a style that says nothing (fluent).
@@ -350,10 +355,11 @@ Item {
         // field's left edge), never nearer the logo than 6; 8 after the logo
         // in a style that says nothing (fluent).
         readonly property real styleStart: fieldPart.out("leadingInset", 0)
-        anchors.left: handle.right
-        anchors.leftMargin: styleStart > 0 ? Theme.snap(Math.max(6, Theme.fieldInset + styleStart - handle.x - handle.width), bar.dpr) : 8
-        anchors.right: bar.minimal ? bar.right : regexChip.visible ? regexChip.left : fuzzyChip.visible ? fuzzyChip.left : bar.scopeKey ? compactScope.left : tabs.left
-        anchors.rightMargin: regexChip.visible || fuzzyChip.visible ? 8 : 12
+        anchors.left: bar.logoShown ? handle.right : handle.left
+        anchors.leftMargin: !bar.logoShown ? handle.inkInset // where the Logo's left edge was
+            : styleStart > 0 ? Theme.snap(Math.max(6, Theme.fieldInset + styleStart - handle.x - handle.width), bar.dpr) : 8
+        anchors.right: bar.minimal ? bar.right : boxPin.visible && !bar.inBox ? boxPin.left : bar.firstKey.left
+        anchors.rightMargin: boxPin.visible || regexChip.visible || fuzzyChip.visible ? 8 : 12
         height: bar.height - grip.y - 2 * grip.height
         y: grip.y + grip.height
         verticalAlignment: TextInput.AlignVCenter
@@ -622,12 +628,15 @@ Item {
 
     // The logo, and the pin badge on it, are not there over the taskbar box:
     // a pinned window shows this chip left of the expand button, a click
-    // unpins. Nothing while it is not pinned.
+    // unpins. Nothing while it is not pinned. The same in a box whose Logo
+    // is switched off (GitHub #433): there it is the first of the keys.
+    readonly property Item firstKey: regexChip.visible ? regexChip : fuzzyChip.visible ? fuzzyChip : bar.scopeKey ? compactScope : tabs
     Item {
         id: boxPin
+        objectName: bar.panelMode ? "panelPinKey" : "searchPinKey"
 
-        visible: bar.inBox && bar.launcher.pinned
-        anchors.right: expand.left
+        visible: bar.launcher.pinned && (bar.inBox || (!bar.logoShown && !bar.minimal))
+        anchors.right: bar.inBox ? expand.left : bar.firstKey.left
         anchors.rightMargin: 6
         y: bar.onPixel((bar.height - height) / 2)
         width: height

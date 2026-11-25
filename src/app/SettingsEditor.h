@@ -237,6 +237,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool appsTab READ appsTab WRITE setAppsTab NOTIFY changed FINAL)
     Q_PROPERTY(QString queryHistoryKeys READ queryHistoryKeys WRITE setQueryHistoryKeys NOTIFY changed FINAL)
     Q_PROPERTY(QString logoRightClick READ logoRightClick WRITE setLogoRightClick NOTIFY changed FINAL)
+    Q_PROPERTY(bool searchLogo READ searchLogo WRITE setSearchLogo NOTIFY changed FINAL)
     Q_PROPERTY(bool favoritesOnStart READ favoritesOnStart WRITE setFavoritesOnStart NOTIFY changed FINAL)
     Q_PROPERTY(bool favoriteTiles READ favoriteTiles WRITE setFavoriteTiles NOTIFY changed FINAL)
     Q_PROPERTY(bool clearOnOpen READ clearOnOpen WRITE setClearOnOpen NOTIFY changed FINAL)
@@ -1240,6 +1241,8 @@ public:
     void setQueryHistoryKeys(const QString& keys);
     QString logoRightClick() const { return m_settings.logoRightClick; }
     void setLogoRightClick(const QString& action);
+    bool searchLogo() const { return m_settings.searchLogo; }
+    void setSearchLogo(bool on);
     void setPluginBuiltinsExpanded(bool expanded);
     OcrPackage* ocrPackage() const { return m_ocrPackage; }
     void useOcrPackage(OcrPackage* package); // before the settings window is created

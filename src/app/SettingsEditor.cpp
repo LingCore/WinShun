@@ -1044,6 +1044,14 @@ void SettingsEditor::setLogoRightClick(const QString& action)
     commit();
 }
 
+void SettingsEditor::setSearchLogo(bool on)
+{
+    if (m_settings.searchLogo == on)
+        return;
+    m_settings.searchLogo = on;
+    commit();
+}
+
 void SettingsEditor::setShortcutAgain(const QString& what)
 {
     if (m_settings.shortcutAgain == what || (what != u"close" && what != u"panel"))

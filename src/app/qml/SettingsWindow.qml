@@ -5363,7 +5363,22 @@ Window {
                 note: qsTr("在搜索框按 Tab、Shift+Tab 切换“全部”“文件”“内容”；Ctrl+Tab 在“文件”里切换文件类型，在“内容”里切换文件夹。")
 
                 SettingRow {
+                    objectName: "searchLogoRow"
+                    title: qsTr("搜索框显示 Logo")
+                    description: qsTr("关掉后搜索框更简洁：拖顶部的小横条移动窗口，按 Ctrl+, 或点托盘图标打开设置，钉住时搜索框右边显示图钉")
+                    keywords: qsTr("Logo;图标;简洁;隐藏;搜索框;logo;icon;hide;minimal").split(";")
+
+                    ToggleSwitch {
+                        objectName: "searchLogoSwitch"
+                        dpr: window.dpr
+                        checked: window.editor.searchLogo
+                        onToggled: (on) => window.editor.searchLogo = on
+                    }
+                }
+
+                SettingRow {
                     objectName: "logoRightClickRow"
+                    visible: window.editor.searchLogo // nothing to click without it
                     title: qsTr("右键 Logo 的行为")
                     description: qsTr("“靠上”模式下，展开的搜索面板会居中")
                     keywords: qsTr("右键;Logo;位置;归位;靠上;居中;拖动;logo;position").split(";")

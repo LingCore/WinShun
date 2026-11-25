@@ -1736,6 +1736,60 @@ bool checkPluginGallerySettings(QQuickWindow* window, SettingsEditor* editor, co
         }
     }
 
+    // 6b. 不感兴趣 (GitHub #442): the eye on a tile puts a plugin not installed
+    // away, kept in the settings; typing finds it all the same; the count by
+    // the filter lists those alone, where the eye brings it back.
+    {
+        auto* hide = item(window->contentItem(), u"pluginHide-probe.uninstalled"_s);
+        auto* hideInstalled = item(window->contentItem(), u"pluginHide-probe.manifest"_s);
+        auto* hiddenButton = item(window->contentItem(), u"galleryHiddenButton"_s);
+        auto* hiddenChip = item(window->contentItem(), u"galleryHiddenChip"_s);
+        auto* hiddenStatus = item(window->contentItem(), u"pluginStatus-probe.uninstalled"_s);
+        check(hide && hide->isVisible() && hideInstalled && !hideInstalled->isVisible()
+                && hiddenButton && !hiddenButton->isVisible() && hiddenChip && !hiddenChip->isVisible() && gallery->hiddenCount() == 0,
+            u"only a plugin not installed offers 不感兴趣; nothing by the filter before one is put away"_s);
+        if (hide && hiddenButton && hiddenChip && hiddenStatus) {
+            const int all = gallery->shownCount();
+            const QRectF hideRect = hide->mapRectToScene(QRectF(0, 0, hide->width(), hide->height()));
+            const QRectF installRect = uninstalledAction->mapRectToScene(QRectF(0, 0, uninstalledAction->width(), uninstalledAction->height()));
+            check(!hideRect.intersects(installRect), u"不感兴趣 and 安装 do not overlap on the tile"_s);
+            QMetaObject::invokeMethod(hide, "clicked");
+            settle(window);
+            Settings saved;
+            saved.load();
+            check(saved.pluginGalleryHidden == QStringList {u"probe.uninstalled"_s} && gallery->hiddenCount() == 1
+                    && gallery->shownCount() == all - 1 && !uninstalledAction->isVisible()
+                    && hiddenButton->isVisible() && hiddenButton->property("text").toString().contains(u"1"_s),
+                u"不感兴趣 puts the tile away, saves it and shows the count by the filter"_s);
+            check(window->grabWindow().save(output.filePath(u"gallery-hidden-count.png"_s)), u"capture the 不感兴趣 count by the filter"_s);
+            gallery->setFilter(u"未安装"_s);
+            settle(window);
+            check(uninstalledAction->isVisible() && hiddenStatus->property("text").toString().contains(u"不感兴趣"_s),
+                u"a plugin put away is still found by typing for it, and says so"_s);
+            gallery->setFilter({});
+            settle(window);
+            QMetaObject::invokeMethod(hiddenButton, "clicked");
+            settle(window);
+            check(gallery->hiddenOnly() && gallery->shownCount() == 1 && uninstalledAction->isVisible()
+                    && hiddenChip->isVisible() && !hiddenButton->isVisible(),
+                u"the count lists the plugins put away alone"_s);
+            check(window->grabWindow().save(output.filePath(u"gallery-hidden-only.png"_s)), u"capture the 不感兴趣 view"_s);
+            QMetaObject::invokeMethod(hide, "clicked");
+            settle(window);
+            Settings restored;
+            restored.load();
+            check(restored.pluginGalleryHidden.isEmpty() && gallery->hiddenCount() == 0 && !gallery->hiddenOnly()
+                    && gallery->shownCount() == all && !hiddenChip->isVisible() && !hiddenButton->isVisible(),
+                u"the eye brings the last one back, and the whole list with it"_s);
+            // Installed all the same: never away.
+            gallery->setHidden(u"probe.manifest"_s, true);
+            settle(window);
+            check(gallery->hiddenCount() == 0 && gallery->shownCount() == all, u"an installed plugin is never put away"_s);
+            gallery->setHidden(u"probe.manifest"_s, false);
+            settle(window);
+        }
+    }
+
     // 7. Removing an open plugin closes the in-place detail card automatically.
     QMetaObject::invokeMethod(manifestBtn, "clicked");
     settle(window);
@@ -2089,6 +2143,24 @@ bool checkLogoPositionSettings(QQuickWindow* window, SettingsEditor* editor, con
     check(start.x() >= 0 && start.x() + choices->width() <= row->width() + 1,
         u"translated position choices fit inside the settings row"_s);
     check(window->grabWindow().save(output.filePath(u"logo-position-settings.png"_s)), u"capture logo position settings"_s);
+    // GitHub #433: the Logo's own switch above it; off, there is nothing to right-click.
+    auto* logoSwitch = item(window->contentItem(), u"searchLogoSwitch"_s);
+    check(editor->searchLogo() && logoSwitch && logoSwitch->isVisible() && logoSwitch->property("checked").toBool(),
+        u"the search box shows its Logo by default, with a switch for it"_s);
+    if (logoSwitch) {
+        QMetaObject::invokeMethod(logoSwitch, "toggled", Q_ARG(bool, false));
+        settle(window);
+        Settings off;
+        off.load();
+        check(!off.searchLogo && !editor->searchLogo() && !logoSwitch->property("checked").toBool() && !row->isVisible(),
+            u"switching the Logo off is saved and puts the right-click row away"_s);
+        check(window->grabWindow().save(output.filePath(u"logo-off-settings.png"_s)), u"capture the Logo switched off"_s);
+        QMetaObject::invokeMethod(logoSwitch, "toggled", Q_ARG(bool, true));
+        settle(window);
+        Settings on;
+        on.load();
+        check(on.searchLogo && editor->searchLogo() && row->isVisible(), u"switching the Logo back on restores the row"_s);
+    }
     QMetaObject::invokeMethod(choices, "activated", Q_ARG(int, 0));
     editor->setLogoRightClick(u"invalid"_s);
     check(editor->logoRightClick() == u"menu", u"settings editor rejects unknown logo actions"_s);

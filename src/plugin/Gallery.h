@@ -88,6 +88,14 @@ QString issuesAddress(const QString& repo, const QString& homepage);
 // aside, is somewhere in `words`, the lower-cased text the plugin is found
 // by. Nothing typed fits them all.
 bool fitsFilter(const QString& words, const QString& filter);
+// Whether the library lists a plugin the user put away as 不感兴趣 (GitHub
+// #442; `hidden`: put away and not installed). Away from the list as it
+// opens; found again by typing for it; `hiddenOnly` (the 不感兴趣 view)
+// lists those alone, to bring one back.
+constexpr bool listsHidden(bool hidden, bool hiddenOnly, bool filtering)
+{
+    return hiddenOnly ? hidden : !hidden || filtering;
+}
 // The page of `repo` on GitHub, for a 主页 when the plugin gives none;
 // empty when it is no repository, or the library's own (which holds
 // packages, not their code).

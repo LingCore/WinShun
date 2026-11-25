@@ -113,6 +113,7 @@ QVariant PluginGalleryModel::data(const QModelIndex& index, int role) const
     case InstalledRole: return r.installed;
     case PluginEnabledRole: return r.pluginEnabled;
     case SettingsWindowRole: return r.settingsWindow;
+    case HiddenRole: return r.hidden;
     }
     return {};
 }
@@ -126,7 +127,7 @@ QHash<int, QByteArray> PluginGalleryModel::roleNames() const
         {ProgressRole, "progress"}, {ProblemRole, "problem"}, {ShownRole, "shown"}, {StagedRole, "staged"},
         {MorePermissionsRole, "morePermissions"}, {HasReadmeRole, "hasReadme"}, {ReadmeBusyRole, "readmeBusy"}, {HasNotesRole, "hasNotes"},
         {InstalledRole, "installed"}, {PluginEnabledRole, "pluginEnabled"}, {SettingsWindowRole, "settingsWindow"},
-        {ReviewLabelRole, "reviewLabel"}, {UnreviewedRole, "unreviewed"}};
+        {ReviewLabelRole, "reviewLabel"}, {UnreviewedRole, "unreviewed"}, {HiddenRole, "hidden"}};
 }
 
 void PluginGalleryModel::setRows(std::vector<Row> rows)
@@ -176,6 +177,7 @@ void PluginGalleryModel::setRows(std::vector<Row> rows)
         differs(old.installed != now.installed, InstalledRole);
         differs(old.pluginEnabled != now.pluginEnabled, PluginEnabledRole);
         differs(old.settingsWindow != now.settingsWindow, SettingsWindowRole);
+        differs(old.hidden != now.hidden, HiddenRole);
         old = std::move(now);
         const QModelIndex at = index(static_cast<int>(i));
         if (!roles.isEmpty())
@@ -274,6 +276,33 @@ void PluginGallery::setUpdatesOnly(bool on)
         return;
     m_updatesOnly = on;
     emit updatesOnlyChanged();
+    rebuild();
+}
+
+int PluginGallery::hiddenCount() const
+{
+    return static_cast<int>(std::ranges::count_if(m_list.rows(), [](const PluginGalleryModel::Row& r) { return r.hidden; }));
+}
+
+void PluginGallery::setHiddenOnly(bool on)
+{
+    if (m_hiddenOnly == on)
+        return;
+    m_hiddenOnly = on;
+    emit hiddenOnlyChanged();
+    rebuild();
+}
+
+void PluginGallery::setHidden(const QString& id, bool hidden)
+{
+    QStringList ids = m_settings->galleryHidden();
+    if (id.isEmpty() || ids.contains(id) == hidden)
+        return;
+    if (hidden)
+        ids.append(id);
+    else
+        ids.removeAll(id);
+    m_settings->setGalleryHidden(ids);
     rebuild();
 }
 
@@ -505,8 +534,22 @@ void PluginGallery::rebuild()
             rows.push_back(std::move(r));
         }
     }
-    for (PluginGalleryModel::Row& r : rows)
-        r.shown = gallery::fitsFilter(r.words, m_filter) &&(!m_updatesOnly || (m_preview ? r.updatable : r.needsYou));
+    // 不感兴趣 (GitHub #442): away from the list, never one that is installed all the same.
+    const QStringList& away = m_settings->galleryHidden();
+    const bool filtering = !m_filter.trimmed().isEmpty();
+    bool anyHidden = false;
+    for (PluginGalleryModel::Row& r : rows) {
+        r.hidden = !r.installed && away.contains(r.id);
+        anyHidden = anyHidden || r.hidden;
+    }
+    if (m_hiddenOnly && !anyHidden) { // the last one brought back: the whole list again
+        m_hiddenOnly = false;
+        emit hiddenOnlyChanged();
+    }
+    for (PluginGalleryModel::Row& r : rows) {
+        r.shown = gallery::fitsFilter(r.words, m_filter) && (!m_updatesOnly || (m_preview ? r.updatable : r.needsYou))
+            && gallery::listsHidden(r.hidden, m_hiddenOnly, filtering);
+    }
     m_list.setRows(std::move(rows));
     emit listChanged();
     if (const int count = updateCount(); count != m_announcedCount) {

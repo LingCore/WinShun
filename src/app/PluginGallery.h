@@ -62,7 +62,8 @@ public:
         bool busy = false; // being downloaded
         double progress = 0; // 0–1
         QString problem; // why the last install from here did not happen
-        bool shown = true; // fits the filter (and, with updatesOnly, has a newer version to go to)
+        bool shown = true; // fits the filter (and, with updatesOnly, has a newer version to go to), and not put away
+        bool hidden = false; // put away as 不感兴趣 and not installed (GitHub #442)
         bool updatable = false; // the user's copy, not Win顺's own and not a copy in development, with a newer version in the list
         bool needsYou = false; // ... and the background service counts it (badge, 插件 page notice): what 只看可更新 shows
         bool allUpdate = false; // ... and 全部更新 may do it: nothing staged, no new permissions, not a copy in development
@@ -106,6 +107,7 @@ public:
         InstalledRole,
         PluginEnabledRole,
         SettingsWindowRole,
+        HiddenRole,
     };
 
     using QAbstractListModel::QAbstractListModel;
@@ -133,6 +135,9 @@ class PluginGallery : public QObject {
     Q_PROPERTY(QString filter READ filter WRITE setFilter NOTIFY filterChanged FINAL)
     // Only the plugins with a newer version (the tray line and the badge lead here).
     Q_PROPERTY(bool updatesOnly READ updatesOnly WRITE setUpdatesOnly NOTIFY updatesOnlyChanged FINAL)
+    // 不感兴趣 (GitHub #442): how many the user put away, and the view of those alone, to bring one back.
+    Q_PROPERTY(int hiddenCount READ hiddenCount NOTIFY listChanged FINAL)
+    Q_PROPERTY(bool hiddenOnly READ hiddenOnly WRITE setHiddenOnly NOTIFY hiddenOnlyChanged FINAL)
     // The tab is on show: the list is read from the copy kept, and fetched
     // when this run has not fetched it lately.
     Q_PROPERTY(bool active READ active WRITE setActive NOTIFY activeChanged FINAL)
@@ -161,6 +166,9 @@ public:
     void setFilter(const QString& filter);
     bool updatesOnly() const { return m_updatesOnly; }
     void setUpdatesOnly(bool on);
+    int hiddenCount() const;
+    bool hiddenOnly() const { return m_hiddenOnly; }
+    void setHiddenOnly(bool on);
     void setUpdates(PluginUpdates* updates); // the background updates hear each list fetched here
     bool active() const { return m_active; }
     void setActive(bool on);
@@ -177,6 +185,7 @@ public:
     bool updateFailed() const { return !m_updateFailures.isEmpty(); }
 
     Q_INVOKABLE void refresh(); // 刷新
+    Q_INVOKABLE void setHidden(const QString& id, bool hidden); // 不感兴趣, 恢复显示: kept in the settings
     Q_INVOKABLE void install(const QString& id); // 安装, 更新到
     Q_INVOKABLE void installAndEnable(const QString& id); // the library's explicit install-and-enable action
     Q_INVOKABLE void cancel(const QString& id); // the download
@@ -209,6 +218,7 @@ signals:
     void listChanged();
     void filterChanged();
     void updatesOnlyChanged();
+    void hiddenOnlyChanged();
     void activeChanged();
     void stateChanged();
     void updateCountChanged();
@@ -243,6 +253,7 @@ private:
     bool m_problemIsConnection = false;
     QString m_filter;
     bool m_updatesOnly = false;
+    bool m_hiddenOnly = false;
     int m_announcedCount = -1; // updateCount() as last announced
     bool m_updatingAll = false;
     QStringList m_updateQueue;
