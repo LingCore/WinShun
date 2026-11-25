@@ -47,8 +47,11 @@ inline bool makeJunction(const QString& link, const QString& target)
     std::memcpy(data->names, substitute.c_str(), (substitute.size() + 1) * sizeof(wchar_t));
     std::memcpy(reinterpret_cast<std::byte*>(data->names) + data->printOffset, targetPath.c_str(),
         (targetPath.size() + 1) * sizeof(wchar_t));
-    const HANDLE handle = ::CreateFileW(linkPath.c_str(), GENERIC_WRITE, 0, nullptr, OPEN_EXISTING,
-        FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+    // Shared with whoever looks at the new folder meanwhile (an index under
+    // test, listing it as it is made): opened for itself alone, this failed
+    // now and then with a sharing violation.
+    const HANDLE handle = ::CreateFileW(linkPath.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, nullptr);
     if (handle == INVALID_HANDLE_VALUE)
         return false;
     DWORD returned = 0;
