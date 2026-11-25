@@ -1244,6 +1244,11 @@ void Clipboard::onWritten(bool ok)
         m_focusTimer.start();
         return;
     }
+    // Minimized (a game that left full screen for the clipboard, GitHub #452):
+    // the window goes first, so nothing is over the game as it comes back and
+    // takes full screen again.
+    if (::IsIconic(m_pasteWindow))
+        emit dismissRequested();
     paste::activate(m_pasteWindow); // the clipboard window loses the focus and goes (App)
     m_frontClock.invalidate();
     m_focusTimer.start();
@@ -1919,10 +1924,14 @@ void Clipboard::dismiss()
         emit keysReleased();
         return;
     }
-    if (m_field.item && !m_pasting && !m_returnTimer.isActive())
+    if (m_field.item && !m_pasting && !m_returnTimer.isActive()) {
         returnToField({});
-    else
-        emit dismissRequested();
+        return;
+    }
+    const HWND back = m_targetLeft && !m_pasting ? paste::usableTarget(m_target) : nullptr;
+    emit dismissRequested();
+    if (back && ::IsIconic(back))
+        paste::activate(back); // the game that left full screen for it: in front again
 }
 
 void Clipboard::turnOn()
