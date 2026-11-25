@@ -884,6 +884,40 @@ public:
     const std::string& pluginDir() const { return m_pluginDir; }
     const std::string& dataDir() const { return m_dataDir; }
     bool chinese() const { return m_locale != "en"; }
+    // What this Win顺 can do for a plugin (initialize's capabilities).
+    const Json& capabilities() const { return m_capabilities; }
+
+    // Global shortcuts held by Win顺 for this plugin (the "ui" permission, a
+    // resident plugin; docs/plugins.md, register_hotkeys): `keys` as the
+    // settings' recorder writes them ("Win+Ctrl+T", "F8"), all of the
+    // plugin's at once, {} to let them go. A press comes back as hotkey().
+    // Win顺 lets them go while the user records a shortcut and when the
+    // plugin stops. The keys that could not be had, each with Windows' error
+    // code (taken by another program: 1409); every key when this Win顺 is too
+    // old to hold them (capabilities().hostHotkeys). From the thread in
+    // serve(): initialized(), settingsChanged().
+    std::map<std::string, long long> registerHotkeys(const std::vector<std::string>& keys)
+    {
+        Json::Array list;
+        for (const std::string& key : keys)
+            list.push_back(key);
+        std::map<std::string, long long> refused;
+        if (!m_capabilities["hostHotkeys"].toBool()) {
+            for (const std::string& key : keys)
+                refused[key] = ERROR_NOT_SUPPORTED;
+            return refused;
+        }
+        notify("winshun/hotkeys", Json::Object {{"keys", Json(list)}});
+        const Json answer = tool("register_hotkeys", Json::Object {{"keys", Json(std::move(list))}});
+        if (answer.has("error")) {
+            for (const std::string& key : keys)
+                refused[key] = ERROR_NOT_SUPPORTED;
+            return refused;
+        }
+        for (const auto& [key, code] : answer["errors"].toObject())
+            refused[key] = code.toInt();
+        return refused;
+    }
 
     // Notifications to Win顺, at any time and from any thread (the lines go
     // out one at a time).
@@ -1009,6 +1043,9 @@ protected:
     // The host asks the plugin to open its own settings window. The request is
     // answered immediately; a plugin may hand window creation to its GUI thread.
     virtual void showSettings() {}
+    // A shortcut of registerHotkeys() was pressed: `key` as it was given.
+    // Win顺 allows the plugin a window of its own in front for it.
+    virtual void hotkey(const std::string& key) { (void)key; }
     // An item made withDetails() shown in the content pane or the preview
     // (GitHub #202): Json::Object {{"text", …}} or {{"file", a file in
     // dataDir()}}. Without it (nullopt): "method not found", and the pane
@@ -1134,6 +1171,7 @@ private:
             m_appearance = params["appearance"];
             m_pluginDir = params["pluginDir"].toString();
             m_dataDir = params["dataDir"].toString();
+            m_capabilities = params["capabilities"];
             answer(Json::Object {{"protocolVersion", "1"}, {"name", name()}});
             initialized();
         } else if (method == "query") {
@@ -1183,6 +1221,8 @@ private:
                 m_theme = params["theme"].toString();
             m_appearance = params;
             appearanceChanged();
+        } else if (method == "hotkey") {
+            hotkey(params["key"].toString());
         } else if (method == "showSettings") {
             showSettings();
             answer(Json::Object {});
@@ -1211,6 +1251,7 @@ private:
     std::string m_locale = "zh";
     std::string m_theme = "light";
     Json m_appearance;
+    Json m_capabilities;
     std::string m_pluginDir;
     std::string m_dataDir;
 };

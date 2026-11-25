@@ -25,7 +25,7 @@
 ## 进阶能力速查
 
 - **内容检索提供者**：命令声明 `contentSearch: true` 即可接收 `trigger: "content"` 与目录/日期/大小/排除等 `filters`，返回原文件 `open.path` 与命中摘要；动作数组严格按 `Enter`、`Ctrl+Enter`、`Shift+Enter` 顺序排列（`key` 仅用于显示）。详见 [内容检索提供者](../../docs/plugins.md#内容检索提供者)。
-- **宿主热键注册**：常驻界面插件在 `initialize.capabilities.hostHotkeys == true` 时，可通过 `winshun/tool` 调用 `register_hotkeys`（`{keys: ["F1"]}`）并处理 `hotkey` 通知；先用 `winshun/hotkeys` 声明保留键，录键时发空数组暂释，需 `ui` 权限（不提权）。详见 [插件文档](../../docs/plugins.md)。
+- **宿主热键注册**：常驻界面插件在 `initialize.capabilities.hostHotkeys == true` 时，可通过 `winshun/tool` 调用 `register_hotkeys`（`{keys: ["F1"]}`）并处理 `hotkey` 通知；先用 `winshun/hotkeys` 声明保留键，录键时发空数组暂释，需 `ui` 权限（不提权）。C++ SDK（`winshun.h`）已封装：`registerHotkeys({"Win+Ctrl+T"})` 一次给出全部快捷键并返回没注册上的键和 Windows 错误码，按下时回调 `hotkey(key)`，`capabilities()` 是 `initialize` 的能力表（`winshun.topmost` 即如此）。详见 [插件文档](../../docs/plugins.md)。
 - **原生共享 Qt 运行时**（最低 Win顺 0.22.0）：可在 `runtime` 中声明 `"qt": "host", "qtVersion": "6.12.0"` 复用宿主的 Qt Core/Gui/Qml/Quick、Basic Controls 和 Layouts（仅普通权限、MSVC x64 Release，不与 `elevated` 同用，不要混入其他 Qt 运行时）。详见 [共享 Qt 契约](../../docs/plugins.md)。
 - **C++ 异步查询**：C++ SDK 支持重写 `queryAsync(const Query&, std::function<void(Json)>)`（默认同步调用 `queryResult`）。异步实现须在协议线程快照设置与语言、保证恰好回复一次、处理 `cancel(queryId)`、在 `shuttingDown()` 及派生类析构中 join 工作线程；工作线程可调用 `partial()` 流式推送结果。
 
