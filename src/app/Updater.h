@@ -114,6 +114,7 @@ public:
     // is always shown (found()), even a skipped one.
     Q_INVOKABLE void check(bool manual);
     Q_INVOKABLE void openDownloadPage(); // the release's page on lcstp.com (never another site)
+    Q_INVOKABLE void openDownloads(); // the downloads on lcstp.com: the package by hand, when updating here failed
     Q_INVOKABLE void skip(); // no more reminders for this version; manual checks still show it
     Q_INVOKABLE void install(); // download, check and install the newer version
     Q_INVOKABLE void cancelInstall(); // while downloading
@@ -121,6 +122,9 @@ public:
     // Asks the service for userCounts, when the page showing them opens; at
     // most once in ten minutes. A failure leaves the counts as they were.
     Q_INVOKABLE void fetchUserCounts();
+    // --preview-settings --update-failed: a newer version (`notes` its
+    // release notes) whose install failed, blocked here or not; no network.
+    void showFailedForPreview(const QString& version, const QString& notes, bool blocked);
 
 signals:
     void changed();
@@ -134,6 +138,13 @@ signals:
 private:
     enum class Stage { Idle, Downloading, Verifying, Installing };
     struct Job; // a download and check under way
+    // What the check of a downloaded package found: nothing in `why` when it
+    // is good. `blocked`: the trouble was on this computer (the file held,
+    // removed or refused, as security software does), not in the package.
+    struct Verdict {
+        QString why;
+        bool blocked = false;
+    };
 
     void checkIfDue();
     void finishCheck(int status, const QByteArray& body, unsigned long error, const QString& etag, bool manual);
@@ -144,8 +155,9 @@ private:
     void fail(const QString& problem);
     void startDownload(const std::shared_ptr<Job>& job);
     void fallBackToFull(const std::shared_ptr<Job>& job, const QString& why);
-    void downloaded(const std::shared_ptr<Job>& job, bool ok, bool cancelled, const QString& why);
-    void verified(const std::shared_ptr<Job>& job, const QString& why);
+    void downloaded(const std::shared_ptr<Job>& job, const update::DownloadResult& result);
+    void verified(const std::shared_ptr<Job>& job, const Verdict& verdict);
+    void failBlocked();
     void runSetup(const std::shared_ptr<Job>& job);
     void runPortableSwap(const std::shared_ptr<Job>& job);
     void updateWithScoop();

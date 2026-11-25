@@ -72,6 +72,23 @@ bool reservedName(const QString& part)
     return base.size() == 4 && (base.startsWith(u"COM"_s) || base.startsWith(u"LPT"_s)) && base[3].isDigit();
 }
 
+// `from` renamed to `to`, replacing it; a hold on either waited out (see
+// transientHold) while `keepGoing` says so. 0, else Windows' reason.
+DWORD replaceFile(const QString& from, const QString& to, const std::function<bool()>& keepGoing)
+{
+    const std::wstring source = QDir::toNativeSeparators(from).toStdWString();
+    const std::wstring target = QDir::toNativeSeparators(to).toStdWString();
+    const auto deadline = std::chrono::steady_clock::now() + kHoldWait;
+    for (;;) {
+        if (::MoveFileExW(source.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING))
+            return 0;
+        const DWORD error = ::GetLastError();
+        if (!transientHold(error) || std::chrono::steady_clock::now() >= deadline || !keepGoing())
+            return error;
+        ::Sleep(250);
+    }
+}
+
 } // namespace
 
 Kind installKind(const QString& appDir, bool portable)
@@ -146,36 +163,63 @@ bool folderWritable(const QString& folder)
     return true;
 }
 
-QString fileVersion(const QString& path)
+QString fileVersion(const QString& path, unsigned long* error)
 {
     const std::wstring file = QDir::toNativeSeparators(path).toStdWString();
+    const auto failed = [error](DWORD code) {
+        if (error)
+            *error = code;
+        return QString();
+    };
+    if (error)
+        *error = 0;
     DWORD ignored = 0;
     const DWORD size = ::GetFileVersionInfoSizeW(file.c_str(), &ignored);
     if (size == 0)
-        return {};
+        return failed(::GetLastError());
     QByteArray data(static_cast<qsizetype>(size), Qt::Uninitialized);
     if (!::GetFileVersionInfoW(file.c_str(), 0, size, data.data()))
-        return {};
+        return failed(::GetLastError());
     VS_FIXEDFILEINFO* info = nullptr;
     UINT length = 0;
     if (!::VerQueryValueW(data.data(), L"\\", reinterpret_cast<void**>(&info), &length) || !info
         || length < sizeof(VS_FIXEDFILEINFO) || info->dwSignature != VS_FFI_SIGNATURE)
-        return {};
+        return failed(ERROR_RESOURCE_TYPE_NOT_FOUND);
     return u"%1.%2.%3.%4"_s.arg(HIWORD(info->dwFileVersionMS))
         .arg(LOWORD(info->dwFileVersionMS))
         .arg(HIWORD(info->dwFileVersionLS))
         .arg(LOWORD(info->dwFileVersionLS));
 }
 
-bool HeldFile::open(const QString& path)
+bool transientHold(unsigned long error)
+{
+    return error == ERROR_SHARING_VIOLATION || error == ERROR_LOCK_VIOLATION || error == ERROR_ACCESS_DENIED;
+}
+
+bool blockedOnThisComputer(unsigned long error)
+{
+    return transientHold(error) || error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND
+        || error == ERROR_VIRUS_INFECTED || error == ERROR_VIRUS_DELETED;
+}
+
+bool HeldFile::open(const QString& path, std::chrono::milliseconds wait, const std::atomic<bool>* cancel)
 {
     close();
-    const HANDLE file = ::CreateFileW(reinterpret_cast<const wchar_t*>(QDir::toNativeSeparators(path).utf16()),
-        GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
-    if (file == INVALID_HANDLE_VALUE)
-        return false;
-    m_handle = file;
-    return true;
+    const std::wstring file = QDir::toNativeSeparators(path).toStdWString();
+    const auto deadline = std::chrono::steady_clock::now() + wait;
+    for (;;) {
+        const HANDLE handle = ::CreateFileW(file.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+            FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
+        if (handle != INVALID_HANDLE_VALUE) {
+            m_handle = handle;
+            m_error = 0;
+            return true;
+        }
+        m_error = ::GetLastError();
+        if (!transientHold(m_error) || std::chrono::steady_clock::now() >= deadline || (cancel && cancel->load()))
+            return false;
+        ::Sleep(250);
+    }
 }
 
 void HeldFile::close()
@@ -244,7 +288,8 @@ DownloadResult download(const release::Asset& asset, const QStringList& urls, co
         QFile::remove(partial);
         QFile file(partial);
         if (!file.open(QIODevice::WriteOnly | QIODevice::NewOnly)) {
-            result.failures.append(u"%1: cannot write %2"_s.arg(url, QDir::toNativeSeparators(partial)));
+            result.failures.append(u"%1: cannot write %2 (%3)"_s.arg(url, QDir::toNativeSeparators(partial), file.errorString()));
+            result.blocked = true;
             return result; // the same for every source
         }
         QCryptographicHash hash(QCryptographicHash::Sha256);
@@ -300,10 +345,20 @@ DownloadResult download(const release::Asset& asset, const QStringList& urls, co
             result.failures.append(url + u": "_s + why);
             continue;
         }
-        QFile::remove(target);
-        if (!QFile::rename(partial, target)) {
+        bool stopped = false;
+        const DWORD moveError = replaceFile(partial, target, [&] {
+            stopped = progress && !progress(asset.size, asset.size);
+            return !stopped;
+        });
+        if (moveError != 0) {
             QFile::remove(partial);
-            result.failures.append(u"%1: cannot rename to %2"_s.arg(url, QDir::toNativeSeparators(target)));
+            if (stopped) {
+                result.cancelled = true;
+                return result;
+            }
+            result.failures.append(
+                u"%1: cannot rename to %2 (error %3)"_s.arg(url, QDir::toNativeSeparators(target)).arg(moveError));
+            result.blocked = blockedOnThisComputer(moveError);
             return result;
         }
         result.ok = true;
@@ -333,8 +388,10 @@ bool safeEntryName(const QString& name)
     return true;
 }
 
-QString unpackPortable(const QByteArray& zip, const QString& stage)
+QString unpackPortable(const QByteArray& zip, const QString& stage, bool* writeFailed)
 {
+    if (writeFailed)
+        *writeFailed = false;
     if (QFileInfo::exists(stage))
         return u"the stage folder already exists"_s;
     mz_zip_archive archive {};
@@ -408,8 +465,13 @@ QString unpackPortable(const QByteArray& zip, const QString& stage)
         return u"no WinShun.exe in the package"_s;
 
     QDir root(stage);
+    const auto cannotWrite = [writeFailed](const QString& why) {
+        if (writeFailed)
+            *writeFailed = true;
+        return why;
+    };
     if (!QDir().mkpath(stage))
-        return u"cannot create %1"_s.arg(QDir::toNativeSeparators(stage));
+        return cannotWrite(u"cannot create %1"_s.arg(QDir::toNativeSeparators(stage)));
     const QString rootPath = QFileInfo(stage).absoluteFilePath() + u'/';
     const auto fail = [&](const QString& why) {
         QDir(stage).removeRecursively();
@@ -422,21 +484,26 @@ QString unpackPortable(const QByteArray& zip, const QString& stage)
             return fail(u"entry outside the folder: %1"_s.arg(relative));
         if (e.directory) {
             if (!QDir().mkpath(target))
-                return fail(u"cannot create %1"_s.arg(relative));
+                return fail(cannotWrite(u"cannot create %1"_s.arg(relative)));
             continue;
         }
         if (!QDir().mkpath(QFileInfo(target).absolutePath()))
-            return fail(u"cannot create the folder of %1"_s.arg(relative));
+            return fail(cannotWrite(u"cannot create the folder of %1"_s.arg(relative)));
         size_t size = 0;
         void* data = mz_zip_reader_extract_to_heap(&archive, e.index, &size, 0); // checks the CRC
         if (!data)
             return fail(u"cannot unpack %1"_s.arg(relative));
+        if (static_cast<qint64>(size) != e.size) {
+            mz_free(data);
+            return fail(u"%1 is not the size its entry says"_s.arg(relative));
+        }
         QFile out(target);
-        const bool written = static_cast<qint64>(size) == e.size && out.open(QIODevice::NewOnly)
-            && out.write(static_cast<const char*>(data), static_cast<qint64>(size)) == static_cast<qint64>(size);
+        const bool written = out.open(QIODevice::NewOnly)
+            && out.write(static_cast<const char*>(data), static_cast<qint64>(size)) == static_cast<qint64>(size)
+            && out.flush();
         mz_free(data);
-        if (!written || !out.flush())
-            return fail(u"cannot write %1"_s.arg(relative));
+        if (!written)
+            return fail(cannotWrite(u"cannot write %1 (%2)"_s.arg(relative, out.errorString())));
     }
     return {};
 }

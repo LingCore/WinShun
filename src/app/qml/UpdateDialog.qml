@@ -16,6 +16,28 @@ Item {
 
     property bool copied: false // the Scoop command was copied
 
+    // A link in the dialog's words: accent coloured, underlined under the pointer.
+    component LinkText: Text {
+        id: link
+        signal clicked()
+
+        color: Theme.accent
+        font.pixelSize: Theme.fontCaption
+        font.underline: area.containsMouse
+        Accessible.role: Accessible.Link
+        Accessible.name: text
+        Accessible.onPressAction: link.clicked()
+
+        MouseArea {
+            id: area
+            anchors.fill: parent
+            anchors.margins: -4
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: link.clicked()
+        }
+    }
+
     function show() {
         copied = false
         open = true
@@ -41,10 +63,12 @@ Item {
 
     Item {
         id: card
+        objectName: "updateCard"
 
         readonly property bool newer: dialog.updater.available
         readonly property string stage: dialog.updater.installStage // "" when nothing is under way
         readonly property bool cancellable: stage === "downloading"
+        readonly property bool failed: newer && stage === "" && dialog.updater.installProblem.length > 0
 
         anchors.centerIn: parent
         width: Math.min(520, parent.width - 48)
@@ -109,6 +133,7 @@ Item {
                         wrapMode: Text.Wrap
                     }
                     Text {
+                        objectName: "updateText"
                         width: parent.width
                         visible: text.length > 0
                         text: dialog.updater.checking ? ""
@@ -282,20 +307,22 @@ Item {
                 }
             }
 
-            Text { // the full notes, on lcstp.com
+            Row {
                 visible: card.newer
-                text: qsTr("查看完整说明")
-                color: Theme.accent
-                font.pixelSize: Theme.fontCaption
-                font.underline: linkArea.containsMouse
+                spacing: 20
 
-                MouseArea {
-                    id: linkArea
-                    anchors.fill: parent
-                    anchors.margins: -4
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
+                LinkText { // the full notes, on lcstp.com
+                    text: qsTr("查看完整说明")
                     onClicked: dialog.updater.openDownloadPage()
+                }
+                LinkText { // updating here failed: the package by hand
+                    objectName: "updateManual"
+                    visible: card.failed && !dialog.updater.scoop
+                    text: qsTr("打开下载页")
+                    onClicked: {
+                        dialog.updater.openDownloads()
+                        dialog.close()
+                    }
                 }
             }
 
@@ -304,6 +331,7 @@ Item {
                 height: primary.implicitHeight
 
                 FlatButton { // not reminded of this version again; still shown when asked
+                    objectName: "updateSkip"
                     dpr: dialog.dpr
                     visible: card.newer && !dialog.updater.skipped && card.stage === ""
                     anchors.left: parent.left
@@ -321,6 +349,7 @@ Item {
                     spacing: 8
 
                     FlatButton {
+                        objectName: "updateLater"
                         dpr: dialog.dpr
                         role: "dialog"
                         visible: !dialog.updater.checking && (card.stage === "" || card.cancellable)
@@ -340,6 +369,7 @@ Item {
                     FlatButton {
                         dpr: dialog.dpr
                         id: primary
+                        objectName: "updatePrimary"
                         role: "dialog"
                         highlighted: true
                         enabled: !card.newer || card.stage === ""
@@ -347,6 +377,7 @@ Item {
                             : card.newer ? "" : "" // Download
                         text: card.newer ? (dialog.updater.scoop
                                 ? (dialog.updater.scoopRuns ? qsTr("用 Scoop 更新") : dialog.copied ? qsTr("已复制") : qsTr("复制命令"))
+                                : card.failed ? qsTr("重试")
                                 : dialog.updater.portable ? qsTr("下载并更新") : qsTr("下载并安装"))
                             : dialog.updater.checking ? qsTr("关闭")
                             : dialog.updater.problem.length > 0 ? qsTr("重试")

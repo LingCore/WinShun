@@ -11,6 +11,7 @@
 
 #include <QCryptographicHash>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -611,6 +612,100 @@ private slots:
         QVERIFY(QFile::remove(path));
     }
 
+    // Security software reads a new program file for a moment, holding it
+    // with writing allowed: the hold is waited out, not taken for a bad
+    // package (what turned a good 0.48.0 download into "没有通过检查").
+    void heldFileWaitsOutAScan()
+    {
+        QTemporaryDir dir;
+        const QString path = dir.filePath(u"setup.exe"_s);
+        writeFile(path, "package bytes");
+        const HANDLE scanner = ::CreateFileW(reinterpret_cast<const wchar_t*>(QDir::toNativeSeparators(path).utf16()),
+            GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, 0, nullptr);
+        QVERIFY(scanner != INVALID_HANDLE_VALUE);
+        std::thread done([scanner] {
+            ::Sleep(700);
+            ::CloseHandle(scanner);
+        });
+        QElapsedTimer clock;
+        clock.start();
+        update::HeldFile held;
+        const bool opened = held.open(path, std::chrono::seconds(10));
+        const qint64 waited = clock.elapsed();
+        done.join();
+        QVERIFY(opened);
+        QVERIFY2(waited >= 500, qPrintable(QString::number(waited)));
+        QCOMPARE(held.error(), 0ul);
+        QCOMPARE(held.sha256(), sha256("package bytes"));
+    }
+
+    void heldFileSaysWhyItCouldNotHold()
+    {
+        QTemporaryDir dir;
+        const QString path = dir.filePath(u"setup.exe"_s);
+        writeFile(path, "package bytes");
+        const HANDLE scanner = ::CreateFileW(reinterpret_cast<const wchar_t*>(QDir::toNativeSeparators(path).utf16()),
+            GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+        QVERIFY(scanner != INVALID_HANDLE_VALUE);
+        const auto release = qScopeGuard([scanner] { ::CloseHandle(scanner); });
+        update::HeldFile held;
+        QElapsedTimer clock;
+        clock.start();
+        QVERIFY(!held.open(path, std::chrono::milliseconds(600)));
+        QVERIFY(clock.elapsed() >= 500); // tried for the time given
+        QCOMPARE(held.error(), static_cast<unsigned long>(ERROR_SHARING_VIOLATION));
+        QVERIFY(update::blockedOnThisComputer(held.error()));
+        // Cancelled (Win顺 quitting): no more waiting.
+        std::atomic<bool> cancel {true};
+        clock.restart();
+        QVERIFY(!held.open(path, std::chrono::seconds(10), &cancel));
+        QVERIFY(clock.elapsed() < 2000);
+        // Taken away (deleted or quarantined): said at once.
+        clock.restart();
+        QVERIFY(!held.open(dir.filePath(u"gone.exe"_s), std::chrono::seconds(10)));
+        QVERIFY(clock.elapsed() < 2000);
+        QCOMPARE(held.error(), static_cast<unsigned long>(ERROR_FILE_NOT_FOUND));
+        QVERIFY(update::blockedOnThisComputer(held.error()));
+        QVERIFY(update::blockedOnThisComputer(ERROR_VIRUS_INFECTED));
+        QVERIFY(update::blockedOnThisComputer(ERROR_VIRUS_DELETED));
+        QVERIFY(!update::blockedOnThisComputer(ERROR_RESOURCE_TYPE_NOT_FOUND)); // no version resource: the package
+        // A file without a version: no Windows error to blame, the package's own fault.
+        const QString plain = dir.filePath(u"plain.exe"_s);
+        writeFile(plain, "not a program");
+        unsigned long error = 0;
+        QVERIFY(update::fileVersion(plain, &error).isEmpty());
+        QVERIFY(error != 0);
+        QVERIFY2(!update::blockedOnThisComputer(error), qPrintable(QString::number(error)));
+        QVERIFY(update::fileVersion(dir.filePath(u"gone.exe"_s), &error).isEmpty());
+        QCOMPARE(error, static_cast<unsigned long>(ERROR_FILE_NOT_FOUND));
+    }
+
+    // The download's rename waits out a scan of the file it replaces.
+    void downloadWaitsOutAHeldTarget()
+    {
+        const QByteArray good("the new package");
+        FakeServer server({{"/good", {200, good}}});
+        release::Asset asset;
+        asset.size = good.size();
+        asset.sha256 = QString::fromLatin1(sha256(good));
+        QTemporaryDir dir;
+        const QString target = dir.filePath(u"setup.exe"_s);
+        writeFile(target, "an old download");
+        const HANDLE scanner = ::CreateFileW(reinterpret_cast<const wchar_t*>(QDir::toNativeSeparators(target).utf16()),
+            GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr); // no FILE_SHARE_DELETE
+        QVERIFY(scanner != INVALID_HANDLE_VALUE);
+        std::thread done([scanner] {
+            ::Sleep(700);
+            ::CloseHandle(scanner);
+        });
+        const update::DownloadResult result = update::download(asset, {server.url("/good")}, target, {});
+        done.join();
+        QVERIFY2(result.ok, qPrintable(result.failures.join(u'\n')));
+        QVERIFY(!result.blocked);
+        QCOMPARE(readFile(target), good);
+        QVERIFY(!QFile::exists(target + u".partial"_s));
+    }
+
     // A Scoop copy has a data folder too (persist), but is updated by Scoop, not by a swap.
     void scoopCopyIsNotPortable()
     {
@@ -643,9 +738,16 @@ private slots:
         const QString flat = dir.filePath(u"flat"_s);
         QCOMPARE(update::unpackPortable(makeZip({{"WinShun.exe", "x"}, {"a.dll", "y"}}), flat), QString());
         QVERIFY(QFileInfo::exists(flat + u"/a.dll"_s));
-        // No program in it: refused.
-        QVERIFY(!update::unpackPortable(makeZip({{"WinShun/other.exe", "x"}}), dir.filePath(u"none"_s)).isEmpty());
+        // No program in it: refused, the package's fault.
+        bool writeFailed = true;
+        QVERIFY(!update::unpackPortable(makeZip({{"WinShun/other.exe", "x"}}), dir.filePath(u"none"_s), &writeFailed).isEmpty());
         QVERIFY(!QFileInfo::exists(dir.filePath(u"none"_s)));
+        QVERIFY(!writeFailed);
+        // A good package that cannot be written here (a file where a folder goes;
+        // security software refusing a new program file is alike): this computer's.
+        writeFile(dir.filePath(u"blocker"_s), "a file");
+        QVERIFY(!update::unpackPortable(makeZip({{"WinShun.exe", "x"}}), dir.filePath(u"blocker/stage"_s), &writeFailed).isEmpty());
+        QVERIFY(writeFailed);
     }
 
     void refusesPathTraversal_data()

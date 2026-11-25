@@ -5,7 +5,7 @@ class QDir;
 class QQuickWindow;
 class QString;
 
-namespace ws { class SettingsEditor; }
+namespace ws { class SettingsEditor; class Updater; }
 
 namespace ws::preview {
 bool checkPureSearch(QQmlEngine* engine, const QDir& output);
@@ -34,4 +34,8 @@ bool checkLogoPositionSettings(QQuickWindow* window, SettingsEditor* editor, con
 bool checkDialogRuleSettings(QQuickWindow* window, SettingsEditor* editor, const QDir& output, const QString& fixture);
 // The 捐赠 button moved to the 拾穗计划 page and back (GitHub #402).
 bool checkDonatePlace(QQuickWindow* window, SettingsEditor* editor, const QDir& output);
+// The update dialog after a failed install (--update-failed): blocked here
+// (security software) and a package that did not check out, each with its
+// words, 打开下载页 and 重试, the buttons in one row inside the card.
+bool checkUpdateFailed(QQuickWindow* window, Updater* updater, const QDir& output);
 }

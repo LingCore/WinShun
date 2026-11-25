@@ -6,6 +6,7 @@
 #include <QString>
 #include <QStringList>
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <functional>
@@ -74,8 +75,22 @@ struct ElevationWait {
 // on a read-only share: not). Tried with a file that is gone at once.
 bool folderWritable(const QString& folder);
 
-// The fixed file version of an executable ("0.15.0.0"); empty when it has none.
-QString fileVersion(const QString& path);
+// The fixed file version of an executable ("0.15.0.0"); empty when it has
+// none or it could not be read (`error`: Windows' reason then, else 0).
+QString fileVersion(const QString& path, unsigned long* error = nullptr);
+
+// A file just written (a download, an unpacked program) is read by the
+// security software for a moment, which can keep it from being opened
+// exclusively, renamed or replaced: these errors are waited out.
+bool transientHold(unsigned long error);
+// The errors that say something on this computer took the file away or
+// kept us from it (deleted or quarantined, reported as infected, still held
+// after the wait): security software, as good as always, not a bad package.
+bool blockedOnThisComputer(unsigned long error);
+
+// How long a hold on a file just written is waited out: an antivirus that
+// unpacks an installer to look inside, or asks its cloud, takes seconds.
+inline constexpr std::chrono::milliseconds kHoldWait = std::chrono::seconds(30);
 
 // A downloaded package, held open for reading with writing and deleting
 // refused (by anyone, us included) from its check until it has been used:
@@ -87,9 +102,14 @@ public:
     HeldFile(const HeldFile&) = delete;
     HeldFile& operator=(const HeldFile&) = delete;
 
-    bool open(const QString& path);
+    // Opens `path`, closing what was open. While something else has it open
+    // for writing or deleting (transientHold), tried again until `wait` has
+    // passed or `cancel` is set; error() then says why it is not open.
+    bool open(const QString& path, std::chrono::milliseconds wait = kHoldWait,
+        const std::atomic<bool>* cancel = nullptr);
     void close();
     bool isOpen() const { return m_handle != nullptr; }
+    unsigned long error() const { return m_error; }
     qint64 size() const;
     // Lowercase hex SHA-256 of the whole file, and, with `bytes`, the file
     // itself (at most `maxBytes`); empty when it could not be read.
@@ -97,19 +117,24 @@ public:
 
 private:
     void* m_handle = nullptr;
+    unsigned long m_error = 0;
 };
 
 // Downloads `asset` to `target`, from each of `urls` in turn until one
 // gives exactly its bytes: streamed into "<target>.partial", hashed on the
 // way, then its size and SHA-256 compared with the asset's, and only then
-// renamed to `target`. A source that fails (no answer, not 2xx, wrong size
-// or digest, a mirror slower than ~16 KB/s after half a minute) is deleted
-// and the next tried; the mirrors are third parties, GitHub comes last.
+// renamed to `target`, a hold on either waited out (kHoldWait). A source
+// that fails (no answer, not 2xx, wrong size or digest, a mirror slower
+// than ~16 KB/s after half a minute) is deleted and the next tried; the
+// mirrors are third parties, GitHub comes last.
 // `progress` hears the bytes of the current source; false cancels.
 // Blocking: on a worker thread.
 struct DownloadResult {
     bool ok = false;
     bool cancelled = false;
+    // Not the sources: the file could not be written or renamed here (held
+    // or removed by security software, a full disk), the same for each.
+    bool blocked = false;
     QStringList failures; // "<url>: why", one per source tried
 };
 using DownloadProgress = std::function<bool(qint64 received, qint64 total)>;
@@ -123,8 +148,10 @@ DownloadResult download(const release::Asset& asset, const QStringList& urls, co
 // link, no encryption, names unique without regard to case; and limits on
 // the count and sizes. The single folder the files sit in (release.ps1
 // zips "WinShun\") is dropped, and its "data" left out: the user's stays.
-// Empty on success, else why (the stage is removed again).
-QString unpackPortable(const QByteArray& zip, const QString& stage);
+// Empty on success, else why (the stage is removed again); `writeFailed`
+// set when the package was fine but a folder or file could not be written
+// (security software refusing a new program file, a full disk).
+QString unpackPortable(const QByteArray& zip, const QString& stage, bool* writeFailed = nullptr);
 
 // Whether `name` (an entry's, '/' or '\' separated) is safe to write under
 // a folder. Exposed for the tests.

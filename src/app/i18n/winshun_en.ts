@@ -4872,6 +4872,10 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
         <translation>User guide</translation>
     </message>
     <message>
+        <source>使用说明 · %1</source>
+        <translation>User guide · %1</translation>
+    </message>
+    <message>
         <source>关闭（Esc / Q）</source>
         <translation>Close (Esc / Q)</translation>
     </message>
@@ -17914,6 +17918,10 @@ Content index: %5</translation>
     <message>
         <source>下载的安装包没有通过检查（已删除），没有安装。请重试。</source>
         <translation>The downloaded package didn’t pass the check (it was deleted) and wasn’t installed. Try again.</translation>
+    </message>
+    <message>
+        <source>更新已经下载好，但被这台电脑上的程序拦下了（多半是安全软件删除、隔离或一直占着它），这次没有更新，旧版本照常可用。可以在安全软件里放行后重试，或打开下载页手动下载。</source>
+        <translation>The update was downloaded, but a program on this PC stopped it (most likely security software that deleted, quarantined or kept hold of it), so nothing was updated and this version still works. Allow it in your security software and try again, or download it from the download page.</translation>
     </message>
     <message>
         <source>安装程序没能启动，旧版本照常可用。请重试。</source>

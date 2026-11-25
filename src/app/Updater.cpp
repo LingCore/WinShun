@@ -488,6 +488,25 @@ void Updater::openDownloadPage()
     shell::openUrl(release::releasePage(m_release ? m_release->pageUrl : QString()));
 }
 
+void Updater::openDownloads()
+{
+    shell::openUrl(QString::fromLatin1(kDownloadsPage));
+}
+
+void Updater::showFailedForPreview(const QString& version, const QString& notes, bool blocked)
+{
+    release::Info info;
+    info.version = version;
+    info.notes = notes;
+    m_release = info;
+    m_kind = update::Kind::AllUsers;
+    emit changed();
+    if (blocked)
+        failBlocked();
+    else
+        fail(tr("下载的安装包没有通过检查（已删除），没有安装。请重试。"));
+}
+
 void Updater::skip()
 {
     if (!m_release)
@@ -611,7 +630,7 @@ void Updater::startDownload(const std::shared_ptr<Job>& job)
             });
         QMetaObject::invokeMethod(qApp, [self, job, result] {
             if (self)
-                self->downloaded(job, result.ok, result.cancelled, result.failures.join(u'\n'));
+                self->downloaded(job, result);
         }, Qt::QueuedConnection);
     });
 }
@@ -644,33 +663,56 @@ void Updater::cancelInstall()
     setStage(Stage::Idle); // the worker ends by itself and cleans up after it
 }
 
-void Updater::downloaded(const std::shared_ptr<Job>& job, bool ok, bool cancelled, const QString& why)
+void Updater::downloaded(const std::shared_ptr<Job>& job, const update::DownloadResult& result)
 {
-    if (job != m_job || job->cancel || cancelled) {
+    if (job != m_job || job->cancel || result.cancelled) {
         QFile::remove(job->file);
         return;
     }
-    if (!ok && job->delta) {
+    const QString why = result.failures.join(u'\n');
+    if (!result.ok && job->delta) {
         fallBackToFull(job, why);
         return;
     }
-    if (!ok) {
+    if (!result.ok) {
         qWarning().noquote() << u"Update download failed:\n"_s + why;
-        fail(tr("下载没有成功：几个下载地址都连不上，或下载到的文件没有通过校验（已删除）。请检查网络后重试。"));
+        if (result.blocked)
+            failBlocked();
+        else
+            fail(tr("下载没有成功：几个下载地址都连不上，或下载到的文件没有通过校验（已删除）。请检查网络后重试。"));
         return;
     }
     m_received = m_total;
     setStage(Stage::Verifying);
     QThreadPool::globalInstance()->start([self = QPointer(this), job] {
         // Checked again on the file as it is now, held so that it stays so.
-        QString why;
+        // A new program file is read by the security software first, which
+        // may hold it for a while (waited out) or take it away.
+        Verdict verdict;
+        const auto refused = [&verdict](const QString& what, unsigned long error) {
+            verdict.why = u"%1 (Windows error %2)"_s.arg(what).arg(error);
+            verdict.blocked = update::blockedOnThisComputer(error);
+        };
+        const auto checkVersion = [&](const QString& file, const QString& what) {
+            unsigned long error = 0;
+            const QString version = update::fileVersion(file, &error);
+            if (version.isEmpty() && error != 0)
+                refused(u"cannot read the version of %1"_s.arg(what), error);
+            else if (!release::sameVersion(version, job->release.version))
+                verdict.why = u"%1 is version %2, not %3"_s.arg(what, version, job->release.version);
+        };
         QByteArray bytes;
         const bool portable = job->kind == update::Kind::Portable;
-        if (!job->held.open(job->file))
-            why = u"cannot hold the file"_s;
-        else if (job->held.sha256(portable || job->delta ? &bytes : nullptr, kMaxPackageBytes) != job->asset.sha256.toLatin1())
-            why = u"SHA-256 differs"_s;
-        if (why.isEmpty() && job->delta) {
+        if (!job->held.open(job->file, update::kHoldWait, &job->cancel)) {
+            refused(u"cannot hold the file"_s, job->held.error());
+        } else if (const QByteArray digest = job->held.sha256(portable || job->delta ? &bytes : nullptr, kMaxPackageBytes);
+                   digest != job->asset.sha256.toLatin1()) {
+            // Right when it was downloaded: unreadable now is this computer's doing.
+            verdict.blocked = digest.isEmpty();
+            verdict.why = digest.isEmpty() ? u"cannot read the file"_s
+                                           : u"SHA-256 is %1, not %2"_s.arg(QString::fromLatin1(digest), job->asset.sha256);
+        }
+        if (verdict.why.isEmpty() && job->delta) {
             // The new version's files from the ones here and the patches,
             // each checked (UpdateDelta.h); held for Setup until it ends.
             job->held.close();
@@ -680,32 +722,27 @@ void Updater::downloaded(const std::shared_ptr<Job>& job, bool ok, bool cancelle
             if (portable) {
                 if (QFileInfo::exists(job->stage) && !helperRunning())
                     QDir(job->stage).removeRecursively(); // left by an update that did not finish
-                why = update::delta::apply(bytes, appDir(), job->stage, options);
-                if (why.isEmpty()) {
-                    const QString version = update::fileVersion(job->stage + u"\\WinShun.exe"_s);
-                    if (!release::sameVersion(version, job->release.version))
-                        why = u"WinShun.exe is version %1, not %2"_s.arg(version, job->release.version);
-                }
+                verdict.why = update::delta::apply(bytes, appDir(), job->stage, options);
+                if (verdict.why.isEmpty())
+                    checkVersion(job->stage + u"\\WinShun.exe"_s, u"WinShun.exe"_s);
             } else {
                 QDir(job->deltaDir).removeRecursively();
                 options.setupTarget = job->deltaDir + u"\\WinShun-setup.exe"_s;
                 options.hold = &job->holds;
                 if (job->kind == update::Kind::CurrentUser)
                     options.skip = {u"WinShunService.exe"_s}; // Setup leaves it out for the user alone
-                why = update::delta::apply(bytes, appDir(), job->deltaDir + u"\\payload"_s, options);
-                if (why.isEmpty()) {
+                verdict.why = update::delta::apply(bytes, appDir(), job->deltaDir + u"\\payload"_s, options);
+                if (verdict.why.isEmpty()) {
                     job->file = options.setupTarget;
-                    const QString version = update::fileVersion(job->file);
-                    if (!release::sameVersion(version, job->release.version))
-                        why = u"Setup is version %1, not %2"_s.arg(version, job->release.version);
+                    checkVersion(job->file, u"Setup"_s);
                 }
             }
             bytes.clear();
-            if (job->cancel && why.isEmpty())
-                why = u"cancelled"_s;
-            QMetaObject::invokeMethod(qApp, [self, job, why] {
+            if (job->cancel && verdict.why.isEmpty())
+                verdict.why = u"cancelled"_s;
+            QMetaObject::invokeMethod(qApp, [self, job, verdict] {
                 if (self)
-                    self->verified(job, why);
+                    self->verified(job, verdict);
             }, Qt::QueuedConnection);
             return;
         }
@@ -716,34 +753,30 @@ void Updater::downloaded(const std::shared_ptr<Job>& job, bool ok, bool cancelle
         // could name their own). They are not signed yet, so nothing is
         // checked here: what makes them trustworthy is https to lcstp.com,
         // the SHA-256 it gave and the version below.
-        if (why.isEmpty() && !portable) {
-            const QString version = update::fileVersion(job->file);
-            if (!release::sameVersion(version, job->release.version))
-                why = u"Setup is version %1, not %2"_s.arg(version, job->release.version);
-        }
-        if (why.isEmpty() && portable) {
+        if (verdict.why.isEmpty() && !portable)
+            checkVersion(job->file, u"Setup"_s);
+        if (verdict.why.isEmpty() && portable) {
             if (QFileInfo::exists(job->stage) && !helperRunning())
                 QDir(job->stage).removeRecursively(); // left by an update that did not finish
-            why = update::unpackPortable(bytes, job->stage);
+            bool writeFailed = false;
+            verdict.why = update::unpackPortable(bytes, job->stage, &writeFailed);
+            verdict.blocked = writeFailed;
             bytes.clear();
             job->held.close();
             QFile::remove(job->file); // unpacked: no longer needed
-            if (why.isEmpty()) {
-                const QString version = update::fileVersion(job->stage + u"\\WinShun.exe"_s);
-                if (!release::sameVersion(version, job->release.version))
-                    why = u"WinShun.exe is version %1, not %2"_s.arg(version, job->release.version);
-            }
+            if (verdict.why.isEmpty())
+                checkVersion(job->stage + u"\\WinShun.exe"_s, u"WinShun.exe"_s);
         }
-        if (job->cancel && why.isEmpty())
-            why = u"cancelled"_s;
-        QMetaObject::invokeMethod(qApp, [self, job, why] {
+        if (job->cancel && verdict.why.isEmpty())
+            verdict.why = u"cancelled"_s;
+        QMetaObject::invokeMethod(qApp, [self, job, verdict] {
             if (self)
-                self->verified(job, why);
+                self->verified(job, verdict);
         }, Qt::QueuedConnection);
     });
 }
 
-void Updater::verified(const std::shared_ptr<Job>& job, const QString& why)
+void Updater::verified(const std::shared_ptr<Job>& job, const Verdict& verdict)
 {
     const auto discard = [job] {
         job->holds.clear();
@@ -758,14 +791,17 @@ void Updater::verified(const std::shared_ptr<Job>& job, const QString& why)
         discard();
         return;
     }
-    if (!why.isEmpty() && job->delta) {
-        fallBackToFull(job, why);
+    if (!verdict.why.isEmpty() && job->delta) {
+        fallBackToFull(job, verdict.why);
         return;
     }
-    if (!why.isEmpty()) {
-        qWarning().noquote() << "Update check of the package failed:" << why;
+    if (!verdict.why.isEmpty()) {
+        qWarning().noquote() << "Update check of the package failed:" << verdict.why;
         discard();
-        fail(tr("下载的安装包没有通过检查（已删除），没有安装。请重试。"));
+        if (verdict.blocked)
+            failBlocked();
+        else
+            fail(tr("下载的安装包没有通过检查（已删除），没有安装。请重试。"));
         return;
     }
     setStage(Stage::Installing);
@@ -773,6 +809,15 @@ void Updater::verified(const std::shared_ptr<Job>& job, const QString& why)
         runPortableSwap(job);
     else
         runSetup(job);
+}
+
+// The package was right, but something on this computer took it away or
+// kept Win顺 from it: as good as always security software, to which a new
+// unsigned program from the internet is suspect. Retrying can do (a scan
+// that took longer than kHoldWait); else the package by hand.
+void Updater::failBlocked()
+{
+    fail(tr("更新已经下载好，但被这台电脑上的程序拦下了（多半是安全软件删除、隔离或一直占着它），这次没有更新，旧版本照常可用。可以在安全软件里放行后重试，或打开下载页手动下载。"));
 }
 
 void Updater::runSetup(const std::shared_ptr<Job>& job)
@@ -791,16 +836,21 @@ void Updater::runSetup(const std::shared_ptr<Job>& job)
         job->kind == update::Kind::AllUsers ? u"/ALLUSERS"_s : u"/CURRENTUSER"_s, quoted(log));
     setPending(job->release.version);
     update::rememberElevation(Settings::dataDir(), integrity::processElevated()); // #363
-    auto setup = std::make_shared<win32::UniqueHandle>(shell::startUnelevated(QDir::toNativeSeparators(job->file).toStdWString(), args.toStdWString()));
+    shell::StartFailure failure;
+    auto setup = std::make_shared<win32::UniqueHandle>(
+        shell::startUnelevated(QDir::toNativeSeparators(job->file).toStdWString(), args.toStdWString(), {}, &failure));
     if (!setup->valid()) {
-        qWarning() << "Update: Setup did not start" << ::GetLastError();
+        qWarning() << "Update: Setup did not start:" << (failure.step ? failure.step : "?") << "error" << failure.error;
         setPending({});
         job->held.close();
         job->holds.clear();
         QFile::remove(job->file);
         if (!job->deltaDir.isEmpty())
             QDir(job->deltaDir).removeRecursively();
-        fail(tr("安装程序没能启动，旧版本照常可用。请重试。"));
+        if (update::blockedOnThisComputer(failure.error))
+            failBlocked(); // refused to run (ERROR_VIRUS_INFECTED, ACCESS_DENIED by a policy or security software)
+        else
+            fail(tr("安装程序没能启动，旧版本照常可用。请重试。"));
         return;
     }
     // A Setup that fails after it has closed Win顺 starts nothing: the

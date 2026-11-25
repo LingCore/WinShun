@@ -19,6 +19,7 @@
 #include "SettingsEditor.h"
 #include "SystemCatalog.h"
 #include "SystemTheme.h"
+#include "Updater.h"
 #include "WindowFrame.h"
 #include "platform/ClipboardWatcher.h"
 #include "platform/DialogJump.h"
@@ -2452,6 +2453,60 @@ bool checkDonatePlace(QQuickWindow* window, SettingsEditor* editor, const QDir& 
     }
     check(!window->isActive(), u"the probe leaves desktop focus untouched"_s);
     QFile report(output.filePath(u"donate-place.json"_s));
+    if (!report.open(QIODevice::WriteOnly))
+        return false;
+    report.write(QJsonDocument(QJsonObject {{u"passed"_s, check.passed}, {u"checks"_s, check.rows}}).toJson());
+    return check.passed;
+}
+
+bool checkUpdateFailed(QQuickWindow* window, Updater* updater, const QDir& output)
+{
+    Checks check;
+    const auto wait = [window](int ms) {
+        QElapsedTimer clock;
+        clock.start();
+        while (clock.elapsed() < ms)
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+        settle(window);
+    };
+    QQuickItem* root = window->contentItem();
+    auto* card = item(root, u"updateCard"_s);
+    auto* text = item(root, u"updateText"_s);
+    auto* skip = item(root, u"updateSkip"_s);
+    auto* manual = item(root, u"updateManual"_s);
+    auto* later = item(root, u"updateLater"_s);
+    auto* primary = item(root, u"updatePrimary"_s);
+    check(card && text && skip && manual && later && primary, u"the dialog's words and buttons are there"_s);
+    if (!card || !text || !skip || !manual || !later || !primary)
+        return false;
+    const auto left = [card](QQuickItem* button) { return button->mapToItem(card, QPointF(0, 0)).x(); };
+    const auto right = [card](QQuickItem* button) { return button->mapToItem(card, QPointF(button->width(), 0)).x(); };
+    const auto top = [card](QQuickItem* button) { return button->mapToItem(card, QPointF(0, 0)).y(); };
+    const qreal margin = 24; // UpdateDialog's content.x
+    QString problems[2];
+    for (const bool blocked : {true, false}) {
+        const QString which = blocked ? u"blocked"_s : u"mismatch"_s;
+        updater->showFailedForPreview(u"9.9.0"_s, u"这一版改进了更新：安装包被安全软件拦下时说清楚原因，并给出下载页。"_s, blocked);
+        QMetaObject::invokeMethod(window, "showUpdateDialog");
+        wait(400); // past the dialog's fade
+        problems[blocked ? 0 : 1] = text->property("text").toString();
+        check(!problems[blocked ? 0 : 1].isEmpty() && problems[blocked ? 0 : 1] == updater->installProblem(),
+            u"%1: the dialog says why it was not installed"_s.arg(which));
+        check(manual->isVisible() && later->isVisible() && primary->isVisible() && skip->isVisible(),
+            u"%1: 打开下载页, 以后再说 and 重试 are offered, 跳过 too"_s.arg(which));
+        check(primary->property("text").toString() == QCoreApplication::translate("UpdateDialog", "重试"),
+            u"%1: the main button says 重试"_s.arg(which));
+        check(left(skip) >= margin - 0.5 && right(primary) <= card->width() - margin + 0.5,
+            u"%1: the buttons stay inside the card (%2..%3 of %4)"_s.arg(which).arg(left(skip)).arg(right(primary)).arg(card->width()));
+        check(right(skip) + 8 <= left(later) + 0.5,
+            u"%1: 跳过这个版本 and 以后再说 keep apart (%2 / %3)"_s.arg(which).arg(right(skip)).arg(left(later)));
+        check(qAbs(top(skip) - top(later)) < 0.5 && qAbs(top(later) - top(primary)) < 0.5, u"%1: the buttons in one row"_s.arg(which));
+        check(left(manual) >= margin - 0.5 && right(manual) <= card->width() - margin + 0.5 && top(manual) < top(skip) - 8,
+            u"%1: 打开下载页 is a link above the buttons, inside the card (%2..%3)"_s.arg(which).arg(left(manual)).arg(right(manual)));
+        check(window->grabWindow().save(output.filePath(u"update-failed-%1.png"_s.arg(which))), u"capture %1"_s.arg(which));
+    }
+    check(problems[0] != problems[1], u"blocked here and a bad package read differently"_s);
+    QFile report(output.filePath(u"update-failed.json"_s));
     if (!report.open(QIODevice::WriteOnly))
         return false;
     report.write(QJsonDocument(QJsonObject {{u"passed"_s, check.passed}, {u"checks"_s, check.rows}}).toJson());

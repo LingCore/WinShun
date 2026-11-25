@@ -26,6 +26,7 @@
 
 - **应用内更新后回到管理员身份（#400）**：`App::elevateOnceUpdated` 原先只要窗口开着就无限静默等待且不记日志 → 逻辑收口至 `update::ElevationWait`：等升级助手最多 10 分钟，结束后无窗即重启，窗口刚关等 2 秒，窗口持续开满 1 分钟则发通知“Win顺 已更新”供点击提权重启（设置开着带 `--settings`）；记录 `elevation-after-update-waiting` 与 `elevation-after-update`，发布前用 `tools/verify-installed-upgrade.ps1 -Mode InApp` 实测完整链路。
 - **便携版管理员直读升级回滚（#274）**：旧版升级助手 `WinShunUpdate.exe` 只等它启动的初始进程建好 `MessageWindow`，新版若启动即自行提权并退出初始进程，旧助手会误判失败并换回旧版 → 新版见到互斥量 `Local\WinShun.Updating` 存在时留在初始进程/原权限完成启动，等助手退出后再由 `App::elevateOnceUpdated` 提权；任何启动自交接逻辑都须顾及外部等待者，且修在助手里的逻辑要到下个版本才生效。
+- **安全软件扫描新下载被当成“安装包没通过检查”（0.48.0 用户反馈）**：下载与 SHA-256 都对，但改名为 `.exe` 的瞬间安全软件会带写/删权限打开它扫描，`HeldFile` 原先只用 `FILE_SHARE_READ` 打开一次，遇 `ERROR_SHARING_VIOLATION` 就判失败、删包并报“没有通过检查” → 新文件的独占打开、改名替换一律经 `update::transientHold()`（`ACCESS_DENIED`/`SHARING_VIOLATION`/`LOCK_VIOLATION`）等最多 `kHoldWait`（30 秒，可被取消）；仍失败、文件不见（被删/隔离）或报 `ERROR_VIRUS_INFECTED`/`DELETED` 时（`blockedOnThisComputer()`）提示“被这台电脑上的程序拦下了”并给“打开下载页”，只有哈希或版本资源真不对才说“没有通过检查”；日志写明 Windows 错误码与实际哈希/版本。同类“刚写完就打开或改名”的代码都要这样等。
 - **`RUNASADMIN` 兼容标记导致错误 740（#68 / #274 / #111）**：`HKCU`/`HKLM\...\AppCompatFlags\Layers` 含 `RUNASADMIN` 时，普通权限 `CreateProcess`/`CreateProcessWithTokenW` 一律报 740 → 安装器 `PrepareToInstall` 先 `RemoveRunAsAdmin`（仅删该词）；升级助手 `start()` 遇 740 回退 `ShellExecuteEx`（用户取消 UAC 返回 `ERROR_CANCELLED` 时保留新版）；必须普通权限运行的自身助手（如拖放圆盘）由 `shell::startUnelevated` 遇 740 且目标在本目录时注入 `__COMPAT_LAYER=RunAsInvoker` + `WINSHUN_AS_INVOKER`，`main()` 首行 `shell::dropInvokerLayer()` 用 `_wputenv_s` 清除两者防传给孙进程（绝不对外部程序套用）。
 
 ### Scoop 打包与更新
