@@ -500,6 +500,17 @@ private slots:
         QCOMPARE(fallenShortFps(2, 10'000, 15), 1);
     }
 
+    // The quantizer given next to each quality: the one NVIDIA's encoder
+    // works out from the quality by itself, lower for each picture quality.
+    void quantizerByQuality()
+    {
+        QCOMPARE(quantizer(70), 25);
+        QCOMPARE(quantizer(80), 22);
+        QCOMPARE(quantizer(90), 19);
+        QCOMPARE(quantizer(100), 16);
+        QCOMPARE(quantizer(0), 46);
+    }
+
     // An encoder that takes no quality gets a bitrate: more for each
     // quality, more for a higher rate, within what a level allows.
     void bitrateByQuality()
@@ -514,12 +525,17 @@ private slots:
         QVERIFY(videoBitrate(size, 60, 80) > videoBitrate(size, 30, 80));
         QVERIFY(videoBitrate(size, 60, 80) < videoBitrate(size, 30, 80) * 2); // frames closer together differ less
         QVERIFY(videoBitrate(size, 15, 80) < videoBitrate(size, 30, 80));
-        QCOMPARE(videoBitrate(QSize(3840, 2160), 60, 100), 60'000'000);
+        QCOMPARE(videoBitrate(size, 30, 80), 18'662'400); // Cap's default: 0.3 bits a pixel
+        QCOMPARE(videoBitrate(QSize(3840, 2160), 60, 100), 100'000'000);
         QCOMPARE(videoBitrate(QSize(16, 16), 15, 0), 500'000);
 
         QTemporaryDir temporary;
         QVERIFY(temporary.isValid());
-        qint64 bytes[2] {};
+        // The mode is said outright with the rate (an encoder left to itself
+        // picks its own, and AMD's then does not keep to the rate). The
+        // sample's picture hardly moves: at these rates both files hold all
+        // of it, so it is the rates asked for that are compared.
+        int asked[2] {};
         for (int i = 0; i < 2; ++i) {
             Options options;
             options.path = temporary.filePath(u"bitrate-%1.mp4"_s.arg(i));
@@ -531,11 +547,13 @@ private slots:
             std::jthread worker([&] { result = sample(options, 600); });
             worker.join();
             QVERIFY2(result.error.isEmpty(), qPrintable(result.error));
-            QVERIFY2(result.rate.startsWith(u"bitrate "), qPrintable(result.rate));
+            asked[i] = videoBitrate(options.region.size(), options.fps, options.quality) / 1000;
+            // Mode 1: eAVEncCommonRateControlMode_PeakConstrainedVBR.
+            QVERIFY2(result.rate.startsWith(u"bitrate %1 kbps, peak %2 (encoder holds: mode 1, "_s.arg(asked[i]).arg(asked[i] / 2 * 3)),
+                qPrintable(result.rate));
             QVERIFY(!lastFrame(result.path, options.region.size(), 1).isNull());
-            bytes[i] = result.bytes;
         }
-        QVERIFY2(bytes[1] > bytes[0], qPrintable(u"%1, %2"_s.arg(bytes[0]).arg(bytes[1])));
+        QVERIFY2(asked[1] >= asked[0] * 6, qPrintable(u"%1, %2"_s.arg(asked[0]).arg(asked[1])));
     }
 
     // What the panel's 画质 choices come to, on small dark, coloured and
@@ -572,7 +590,9 @@ private slots:
             worker.join();
             QVERIFY2(result.error.isEmpty(), qPrintable(result.error));
             QCOMPARE(result.scale, scale);
-            QCOMPARE(result.rate, u"quality %1"_s.arg(quality));
+            // The quality and its quantizer both, and what the encoder says it holds.
+            QVERIFY2(result.rate.startsWith(u"quality %1, QP %2 (encoder holds: mode 3, "_s.arg(quality).arg(quantizer(quality))),
+                qPrintable(result.rate));
             const QImage frame = lastFrame(result.path, size, scale);
             QVERIFY(!frame.isNull());
             close = {scale == 1 ? brightnessCloseness(result.path, backdrop) : 0, colourCloseness(frame, backdrop)};

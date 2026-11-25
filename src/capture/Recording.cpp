@@ -26,6 +26,7 @@
 #include <d3d10_1.h>
 #include <d3d11.h>
 #include <dxgi1_6.h>
+#include <icodecapi.h>
 #include <mfapi.h>
 #include <mferror.h>
 #include <mfidl.h>
@@ -129,11 +130,19 @@ QImage sampleBackdrop(QSize size)
 
 int videoBitrate(QSize size, int fps, int quality)
 {
-    // 0.06 bits a pixel at quality 70, twice that for every 10 more. Frames
-    // closer together differ less: the rate counts by its square root.
-    const double perPixel = 0.06 * std::pow(2.0, (std::clamp(quality, 0, 100) - 70) / 10.0);
-    const double frames = 30 * std::sqrt(std::clamp(fps, 1, 60) / 30.0);
-    return int(std::clamp(double(size.width()) * size.height() * frames * perPixel, 500'000.0, 60'000'000.0));
+    // What Cap (github.com/CapSoftware/Cap) records a screen at: 0.15 bits a
+    // pixel for its smallest files, 0.3 by default, 1 at its best. Here 0.15
+    // at quality 70 and twice that for every 10 more, up to 1. Frames closer
+    // together differ less: past 30 a second each one more counts for 0.6.
+    const double perPixel = std::min(1.0, 0.15 * std::pow(2.0, (std::clamp(quality, 0, 100) - 70) / 10.0));
+    const int rate = std::clamp(fps, 1, 60);
+    const double frames = rate > 30 ? 30 + (rate - 30) * 0.6 : 30 * std::sqrt(rate / 30.0);
+    return int(std::clamp(double(size.width()) * size.height() * frames * perPixel, 500'000.0, 100'000'000.0));
+}
+
+int quantizer(int quality)
+{
+    return std::clamp(qRound(46 - 0.3 * quality), 0, 51);
 }
 
 int sharpScale(QSize region, int fps)
@@ -270,6 +279,12 @@ public:
             check(create(D3D11_CREATE_DEVICE_BGRA_SUPPORT), "D3D11 device");
         if (auto threading = context.try_as<ID3D10Multithread>())
             threading->SetMultithreadProtected(TRUE); // MF's encoder may use this device on its own threads
+        // Whose graphics card this is: its encoder is the one a GPU recording gets.
+        winrt::com_ptr<IDXGIAdapter> owner;
+        DXGI_ADAPTER_DESC described {};
+        if (const auto dxgi = device.try_as<IDXGIDevice>(); dxgi && SUCCEEDED(dxgi->GetAdapter(owner.put()))
+            && SUCCEEDED(owner->GetDesc(&described)))
+            vendor = described.VendorId;
         if (video) {
             UINT token = 0;
             check(::MFCreateDXGIDeviceManager(&token, manager.put()), "DXGI device manager");
@@ -297,6 +312,7 @@ public:
     winrt::com_ptr<ID3D11DeviceContext> context;
     winrt::com_ptr<IMFDXGIDeviceManager> manager; // with D3D11 video only
     bool video = false;
+    unsigned vendor = 0; // PCI: 0x10DE NVIDIA, 0x1002 AMD, 0x8086 Intel
 };
 
 class Converter {
@@ -313,7 +329,7 @@ public:
         desc.InputHeight = UINT(input.height());
         desc.OutputWidth = UINT(output.width());
         desc.OutputHeight = UINT(output.height());
-        desc.Usage = D3D11_VIDEO_USAGE_PLAYBACK_NORMAL;
+        desc.Usage = D3D11_VIDEO_USAGE_OPTIMAL_QUALITY; // as Cap: a driver may trade the picture for speed otherwise
         check(m_device->CreateVideoProcessorEnumerator(&desc, m_enumerator.put()), "video processor enumeration");
         check(m_device->CreateVideoProcessor(m_enumerator.get(), 0, m_processor.put()), "video processor");
         const RECT source {0, 0, input.width(), input.height()};
@@ -421,6 +437,29 @@ private:
     winrt::com_ptr<ID2D1Bitmap1> m_bitmap;
 };
 
+// For the log: what the encoder itself says it encodes by, after it was
+// asked. What it was asked for is not proof: an encoder may accept a value
+// and not go by it.
+QString held(ICodecAPI* encoder)
+{
+    if (!encoder) return {};
+    const auto value = [&](const GUID& property) {
+        VARIANT held;
+        ::VariantInit(&held);
+        QString text = u"-"_s; // not told
+        if (SUCCEEDED(encoder->GetValue(&property, &held))) {
+            if (held.vt == VT_UI4) text = QString::number(held.ulVal);
+            else if (held.vt == VT_UI8) text = QString::number(held.ullVal & 0xffff);
+        }
+        ::VariantClear(&held);
+        return text;
+    };
+    // Not the bitrate: NVIDIA's answers with a default of its own while
+    // encoding at the one it was given.
+    return u" (encoder holds: mode %1, quality %2, QP %3)"_s.arg(value(CODECAPI_AVEncCommonRateControlMode),
+        value(CODECAPI_AVEncCommonQuality), value(CODECAPI_AVEncVideoEncodeQP));
+}
+
 class Writer {
 public:
     // `size`: the video's, even.
@@ -437,10 +476,19 @@ public:
             attributes.get(), m_writer.put()), "open MP4");
         const auto out = videoType(MFVideoFormat_H264, m_size, options.fps);
         check(out->SetUINT32(MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_High), "H.264 high profile");
+        // AMD's encoder goes by a bitrate from the start, as Cap has it do:
+        // its quality mode is not to be relied on (Chromium keeps off it on
+        // AMD too), and it keeps to a bitrate only where the mode is said
+        // outright (measured by others on RX 6800 XT and 6900 XT: with the
+        // output type's bitrate alone it wrote twice as much).
+        const bool byBitrate = options.bitrateOnly || (hardware && graphics.vendor == 0x1002);
+        const int bitrate = videoBitrate(m_size, options.fps, options.quality);
         // Required when negotiating the output type. Quality mode, once
         // accepted, controls the actual bitrate rather than this estimate.
-        const int bitrate = videoBitrate(m_size, options.fps, options.quality);
-        check(out->SetUINT32(MF_MT_AVG_BITRATE, UINT32(bitrate)), "video bitrate");
+        // The estimate stays what recordings in quality mode have always
+        // been negotiated with (0.06 bits a pixel at quality 70).
+        const int estimate = byBitrate ? bitrate : std::min(bitrate / 5 * 2, 60'000'000);
+        check(out->SetUINT32(MF_MT_AVG_BITRATE, UINT32(estimate)), "video bitrate");
         check(m_writer->AddStream(out.get(), &m_video), "MP4 video stream");
         const auto in = videoType(MFVideoFormat_NV12, m_size, options.fps);
         LONG stride = 0;
@@ -448,14 +496,47 @@ public:
         m_stride = UINT32(stride);
         if (!hardware)
             check(in->SetUINT32(MF_MT_DEFAULT_STRIDE, m_stride), "software NV12 row stride");
-        winrt::com_ptr<IMFAttributes> encoding;
-        check(::MFCreateAttributes(encoding.put(), 3), "encoding parameters");
-        check(encoding->SetUINT32(CODECAPI_AVEncCommonRateControlMode, eAVEncCommonRateControlMode_Quality), "quality mode");
-        check(encoding->SetUINT32(CODECAPI_AVEncCommonQuality, UINT32(options.quality)), "video quality");
-        check(encoding->SetUINT32(CODECAPI_AVEncMPVGOPSize, UINT32(options.fps * 2)), "keyframe interval");
-        HRESULT negotiated = options.bitrateOnly ? E_NOTIMPL : m_writer->SetInputMediaType(m_video, in.get(), encoding.get());
-        rate = u"quality %1"_s.arg(options.quality);
+        // Quality mode is a fixed quantizer, and encoders differ in where they
+        // take it from. The system's software encoder goes by the quality and
+        // ignores a quantizer; NVIDIA's goes by the quantizer, and works one
+        // out from the quality only where none is given (measured: 46 − 0.3 ×
+        // quality). One that does neither would encode every picture quality
+        // at its own default, so both are given, and they say the same.
+        const int quantizer = recording::quantizer(options.quality);
+        const auto parameters = [&](bool withQuantizer) {
+            winrt::com_ptr<IMFAttributes> encoding;
+            check(::MFCreateAttributes(encoding.put(), 4), "encoding parameters");
+            check(encoding->SetUINT32(CODECAPI_AVEncCommonRateControlMode, eAVEncCommonRateControlMode_Quality), "quality mode");
+            check(encoding->SetUINT32(CODECAPI_AVEncCommonQuality, UINT32(options.quality)), "video quality");
+            check(encoding->SetUINT32(CODECAPI_AVEncMPVGOPSize, UINT32(options.fps * 2)), "keyframe interval");
+            if (withQuantizer) // the low 16 bits: the quantizer of every kind of frame
+                check(encoding->SetUINT64(CODECAPI_AVEncVideoEncodeQP, UINT64(quantizer)), "video quantizer");
+            return encoding;
+        };
+        HRESULT negotiated = E_NOTIMPL;
+        if (!byBitrate) {
+            negotiated = m_writer->SetInputMediaType(m_video, in.get(), parameters(true).get());
+            rate = u"quality %1, QP %2"_s.arg(options.quality).arg(quantizer);
+            if (FAILED(negotiated)) { // one that refuses the quantizer outright
+                negotiated = m_writer->SetInputMediaType(m_video, in.get(), parameters(false).get());
+                rate = u"quality %1"_s.arg(options.quality);
+            }
+        }
         if (FAILED(negotiated)) { // a vendor may only implement bitrate-based VBR
+            // Said outright, as Cap does for each vendor's encoder: left to
+            // itself an encoder picks its own mode (NVIDIA's: constant).
+            // Still pictures take far less than the rate; moving ones may
+            // take half as much again.
+            winrt::com_ptr<IMFAttributes> encoding;
+            check(::MFCreateAttributes(encoding.put(), 4), "encoding parameters");
+            check(encoding->SetUINT32(CODECAPI_AVEncCommonRateControlMode, eAVEncCommonRateControlMode_PeakConstrainedVBR), "bitrate mode");
+            check(encoding->SetUINT32(CODECAPI_AVEncCommonMeanBitRate, UINT32(bitrate)), "mean bitrate");
+            check(encoding->SetUINT32(CODECAPI_AVEncCommonMaxBitRate, UINT32(bitrate / 2 * 3)), "peak bitrate");
+            check(encoding->SetUINT32(CODECAPI_AVEncMPVGOPSize, UINT32(options.fps * 2)), "keyframe interval");
+            negotiated = m_writer->SetInputMediaType(m_video, in.get(), encoding.get());
+            rate = u"bitrate %1 kbps, peak %2"_s.arg(bitrate / 1000).arg(bitrate / 2000 * 3);
+        }
+        if (FAILED(negotiated)) { // as the encoder is, with the output type's bitrate
             negotiated = m_writer->SetInputMediaType(m_video, in.get(), nullptr);
             rate = u"bitrate %1 kbps"_s.arg(bitrate / 1000);
         }
@@ -495,6 +576,8 @@ public:
                     if (SUCCEEDED(attrs->GetStringLength(MFT_ENUM_HARDWARE_URL_Attribute, &length)))
                         actualHardware = true;
                 }
+                if (category == MFT_CATEGORY_VIDEO_ENCODER)
+                    rate += held(transform.try_as<ICodecAPI>().get());
             }
         }
         if (encoder.isEmpty())

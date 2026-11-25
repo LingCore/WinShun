@@ -120,9 +120,16 @@ int sharpScale(QSize region, int fps);
 // 0 where it kept up.
 int fallenShortFps(quint64 frames, qint64 elapsedMs, int fps);
 
+// The H.264 quantizer (0–51, lower is closer to the screen) that goes with an
+// encoder quality: 25, 22, 19 and 16 for kQualities. NVIDIA's encoder works
+// out the same one from the quality; it is given outright for an encoder
+// that does not (see Writer).
+int quantizer(int quality);
+
 // Bits per second for an encoder that takes no quality (a vendor's that only
 // implements bitrate-based VBR): more for a higher quality, so that the
-// panel's choices still differ there.
+// panel's choices still differ there. As much as Cap records at: 9, 19, 37
+// and 62 Mbps for 1920 × 1080 at 30 frames a second.
 int videoBitrate(QSize size, int fps, int quality);
 
 // Full-range BGRA to studio-range BT.709 NV12, as the GPU's video processor
