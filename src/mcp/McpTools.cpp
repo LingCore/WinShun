@@ -1691,13 +1691,15 @@ void ToolHost::addTools()
                           "and documents (Word, Excel, PowerPoint, PDF, WPS). Several words must all occur in the file; "
                           "a \"quoted phrase\" is found as written; a line of code is found as it is; a|b finds files "
                           "with either word; regex:EXPR is a regular expression (PCRE, any case, matched within a "
-                          "line; regex=true makes every word one). An expression with some fixed text in it (three "
+                          "line; regex=true makes every word one). An unquoted ext:py;js or *.md among the words is no "
+                          "text to find: only files of those types or names are read (\"*.md\" in quotes is text; not "
+                          "with regex=true). An expression with some fixed text in it (three "
                           "letters or more, or Chinese) is fast; one without (\\d+) has to read every file. Each match comes "
                           "with the matching line (or page, slide, sheet row) and a snippet. Slower than search_files: "
                           "returns what it found when timeout_ms runs out (complete=false). Files on network shares and "
                           "in WSL are found only where the user turned on their content search in Win顺's settings."_s;
     content.inputSchema = object(
-        {{u"query"_s, typed("string", u"Words that must all occur, a \"quoted phrase\", a|b for either, regex:EXPR, or a line of code"_s)},
+        {{u"query"_s, typed("string", u"Words that must all occur, a \"quoted phrase\", a|b for either, regex:EXPR, or a line of code; ext:py;js or *.md to read only such files"_s)},
             {u"regex"_s, boolean(u"Every word of the query is a regular expression (a space still parts them; quote one that has spaces)"_s, false)},
             {u"limit"_s, integer(u"How many matching files at most"_s, 1, kMaxContent, kDefaultContent)},
             {u"timeout_ms"_s, integer(u"How long to search before returning what was found"_s, kMinTimeoutMs, kMaxTimeoutMs, kDefaultTimeoutMs)},

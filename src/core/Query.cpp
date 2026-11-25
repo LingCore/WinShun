@@ -402,9 +402,58 @@ qsizetype folderPathAt(const QString& text, qsizetype from, QString& path)
     return 0;
 }
 
+// A word that says which files to read (ContentQuery::files): "ext:py",
+// "*.md", "报告*.docx", "!*.min.js".
+bool isFileWord(QStringView word)
+{
+    if (word.size() > 4 && word.startsWith(u"ext:", Qt::CaseInsensitive))
+        return true;
+    if (word.size() > 1 && word.startsWith(u'!'))
+        word = word.sliced(1);
+    static constexpr QStringView kNotInNames = u"<>:\"|/\\";
+    return word.contains(u'*') && word.contains(u'.')
+        && std::ranges::none_of(word, [](QChar c) { return kNotInNames.contains(c); })
+        && std::ranges::any_of(word, [](QChar c) { return c != u'*' && c != u'?' && c != u'.'; }); // "*.*" is every file
+}
+
+ContentQuery splitContentFolders(const QString& text, bool regexMode);
+
 } // namespace
 
 ContentQuery splitContentQuery(const QString& text, bool regexMode)
+{
+    QStringList files;
+    QString rest;
+    if (!regexMode) {
+        // Taken out with the space after each: what is left may be a line of
+        // code, searched for as it is.
+        qsizetype kept = 0;
+        for (const Piece& p : pieces(text)) {
+            const QStringView word = QStringView(text).sliced(p.start, p.end - p.start);
+            if (p.quoted || !isFileWord(word))
+                continue;
+            files.append(word.toString());
+            rest += QStringView(text).sliced(kept, p.start - kept);
+            kept = p.end;
+            while (kept < text.size() && text[kept].isSpace())
+                ++kept;
+        }
+        rest += QStringView(text).sliced(kept);
+    }
+    if (files.isEmpty()) {
+        ContentQuery query = splitContentFolders(text, regexMode);
+        query.withoutFiles = text;
+        return query;
+    }
+    ContentQuery query = splitContentFolders(rest, false);
+    query.files = std::move(files);
+    query.withoutFiles = rest.trimmed();
+    return query;
+}
+
+namespace {
+
+ContentQuery splitContentFolders(const QString& text, bool regexMode)
 {
     ContentQuery query;
     if (text.trimmed().isEmpty()) {
@@ -501,6 +550,8 @@ ContentQuery splitContentQuery(const QString& text, bool regexMode)
     query.words = words.trimmed();
     return query;
 }
+
+} // namespace
 
 std::optional<std::uint64_t> parseSizeValue(QStringView s, std::uint64_t bareUnit)
 {

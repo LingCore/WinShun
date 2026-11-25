@@ -9712,6 +9712,35 @@ bool checkContentKinds(QQmlEngine* qml, const QDir& output)
     check(run([&] { launcher.chooseFileType(-1); }), "不限 did not search again");
     check(launcher.contentFileTypes().isEmpty() && names() == (QStringList {u"牛蛙.md"_s, u"牛蛙.txt"_s}),
         "不限 did not give every kind back");
+
+    // The files typed among the words ("牛蛙 *.md", "ext:txt;py 牛蛙"): only
+    // those are read, nor others counted as passed over; the strip shows
+    // what was understood first, on, and a click on it takes the words out
+    // of the box. In quotes it is text to find.
+    check(run([&] { launcher.setQuery(u"牛蛙 *.md"_s); }) && names() == QStringList {u"牛蛙.md"_s}, "\"*.md\" typed did not narrow 内容");
+    check(firstChip().value(u"type"_s).toString() == u"files" && firstChip().value(u"name"_s).toString() == u"*.md",
+        "the strip does not show the files typed first");
+    check(!otherTypesOffered(), "the .py file was offered while narrowed to *.md");
+    auto* typedChip = visualNamed(window->contentItem(), u"searchTypeChipfiles"_s);
+    check(typedChip && typedChip->property("active").toBool() && typedChip->property("glyph").toString().size() > 0,
+        "the strip's chip of the files typed is not on, with its icon");
+    check(launcher.folderHint() == u"或在词后加“文件夹名/”", "the hint still offers what was typed");
+    check(anyChip() && !anyChip()->property("active").toBool(), "the strip's 不限 shows on while files are typed");
+    check(saveGrab(window, output.filePath(u"content-files.png"_s)), "the window did not render");
+    check(run([&] { launcher.setQuery(u"ext:txt;py 牛蛙"_s); }) && names() == QStringList {u"牛蛙.txt"_s} && otherTypesOffered(),
+        "\"ext:txt;py\" typed did not narrow 内容 to those types");
+    check(run([&] { launcher.setQuery(u"牛蛙 !*.txt"_s); }) && names() == QStringList {u"牛蛙.md"_s}, "\"!*.txt\" typed did not leave the .txt out");
+    check(run([&] { launcher.chooseFolderChip(QString()); }) && launcher.query() == u"牛蛙" && anyChip() && anyChip()->property("active").toBool(),
+        "the strip's 不限 did not take the files typed out of the box");
+    check(run([&] { launcher.setQuery(u"牛蛙 !*.txt"_s); }), "the files typed again did not search");
+    check(run([&] { launcher.chooseFolderChip(u"files"_s); }) && launcher.query() == u"牛蛙"
+            && names() == (QStringList {u"牛蛙.md"_s, u"牛蛙.txt"_s}) && firstChip().value(u"type"_s).toString().isEmpty(),
+        "the chip of the files typed did not take them out of the box");
+    check(launcher.folderHint().contains(u"*.docx"_s), "the hint does not say a type can be typed");
+    check(run([&] { launcher.setQuery(u"牛蛙 \"*.md\""_s); }) && names().isEmpty() && firstChip().value(u"type"_s).toString().isEmpty(),
+        "a quoted \"*.md\" was taken for files, not text");
+    check(run([&] { launcher.setQuery(u"牛蛙"_s); }), "the words alone did not search again");
+
     launcher.chooseFileType(Launcher::kFoldersChip);
     check(launcher.scope() == Launcher::Folders, "文件夹 in 内容 is not 文件夹's scope");
     window->hide();

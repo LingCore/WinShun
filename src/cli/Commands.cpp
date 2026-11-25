@@ -45,14 +45,16 @@ const Command kCommands[] = {
         {L"ws grep <文字> [选项]", L"ws grep <text> [options]"},
         {L"几个词都要出现在文件里；\"引号\" 里是整个短语，一行代码照原样找。\n"
          L"\"马上|立即\" 是有一个就行；regex: 开头的词是正则表达式（在一行之内匹配，不分大小写）。\n"
+         L"词里的 ext:py;js 或 *.md 不是要找的字：只读这些类型或名字的文件。\n"
          L"每个结果一行：路径:行号:那一行；文档写页 p3、幻灯片 s2、表格 [表名]r12。\n"
          L"比按名字找慢：到 --timeout 就停，给出已经找到的。",
             L"All words must occur in the file; \"quotes\" keep a phrase together, a line of code is found as it is.\n"
             L"\"now|soon\" is either of them; a word that starts with regex: is a regular expression (within a line, any case).\n"
+            L"ext:py;js or *.md among the words is no text to find: only files of those types or names are read.\n"
             L"One result a line: path:line:the line; documents give the page p3, slide s2 or sheet row [Sheet]r12.\n"
             L"Slower than finding by name: it stops at --timeout with what it found."},
-        {L"ws grep \"第三季度 销售额\" -n 20\nws grep \"TODO\" --in . --timeout 10s\nws grep \"regex:合同编号[A-Z]\\d+\"",
-            L"ws grep \"quarterly revenue\" -n 20\nws grep \"TODO\" --in . --timeout 10s\nws grep \"regex:invoice-\\d{4}\""},
+        {L"ws grep \"第三季度 销售额\" -n 20\nws grep \"TODO ext:py;js\" --in . --timeout 10s\nws grep \"regex:合同编号[A-Z]\\d+\"",
+            L"ws grep \"quarterly revenue\" -n 20\nws grep \"TODO ext:py;js\" --in . --timeout 10s\nws grep \"regex:invoice-\\d{4}\""},
         kGrepOptions, true, runGrep},
     {L"recent", {L"最近改过的文件，最新的在前", L"Files changed lately, newest first"}, {L"ws recent [选项]", L"ws recent [options]"},
         {L"不接查询词：--days 限定天数，--in 限定文件夹，--ext 限定类型，--folders 列文件夹。",

@@ -5182,6 +5182,7 @@ constexpr QStringView kPickPrefix = u"pick:"; // one of those the name typed sta
 constexpr QStringView kMissingChip = u"missing"; // a place not in the index: nothing to choose
 constexpr QStringView kTypedChip = u"typed"; // a folder typed, not made out yet
 constexpr QStringView kTypePrefix = u"type:"; // a kind of file 内容 is narrowed to (m_contentTypes): taken off when clicked
+constexpr QStringView kFilesChip = u"files"; // the files named among the words ("*.py"): those words go when clicked
 constexpr QStringView kFolderDot = u"#E8B84A"; // as the strip's 文件夹 in 文件
 
 // The last few names of each path, as many as tell them apart (up to
@@ -5283,8 +5284,16 @@ QVariantList Launcher::folderChips() const
             {u"tip"_s, tr("只搜%1中的文字，点一下取消").arg(kind.name)}, {u"dot"_s, QString()}, {u"kind"_s, type},
             {u"extensions"_s, kind.extensions.join(u' ')}});
     }
-    // A folder named among the words: that one, or the ones it stands for.
+    // The files named among the words ("ext:py", "*.md"): on as a kind is,
+    // so that what was typed is seen to be understood; a click takes the
+    // words out of the box.
     const ContentQuery typed = splitContentQuery(searchText(), m_regexMode);
+    if (!typed.files.isEmpty()) {
+        chips.append(QVariantMap {{u"type"_s, kFilesChip.toString()}, {u"name"_s, typed.files.join(u' ')},
+            {u"tip"_s, tr("只搜名字符合 %1 的文件，点一下取消。要搜这几个字本身，给它加上引号").arg(typed.files.join(u' '))},
+            {u"dot"_s, QString()}, {u"kind"_s, -1}, {u"glyph"_s, u"ph:funnel"_s}});
+    }
+    // A folder named among the words: that one, or the ones it stands for.
     if (!typed.folders.empty()) {
         const ContentFolderSpec& spec = typed.folders.front();
         const QString label = spec.path.isEmpty() ? spec.names.join(u'\\') : spec.path;
@@ -5366,7 +5375,9 @@ QString Launcher::folderHint() const
     }
     if (m_regexMode || !splitContentQuery(searchText(), m_regexMode).folders.empty())
         return {}; // in regex mode "abc/" is an expression: the folders below are the way
-    return tr("或在词后加“文件夹名/”");
+    if (!splitContentQuery(searchText(), m_regexMode).files.isEmpty())
+        return tr("或在词后加“文件夹名/”");
+    return tr("或在词后加“文件夹名/”、“*.docx”");
 }
 
 QString Launcher::contentWords() const
@@ -5428,9 +5439,17 @@ void Launcher::chooseFolderChip(const QString& key)
         setContentTypes(std::move(types));
         return;
     }
+    if (key == kFilesChip) { // the files typed: those words out of the box, the rest as it is
+        setQuery(splitContentQuery(m_query, m_regexMode).withoutFiles);
+        return;
+    }
     if (key.isEmpty() && !m_contentTypes.isEmpty()) { // 不限: in all files, of any kind
         m_contentTypes.clear();
         emit fileTypeChanged();
+    }
+    if (key.isEmpty()) { // and of any name: the files typed go as well
+        if (const ContentQuery typed = splitContentQuery(m_query, m_regexMode); !typed.files.isEmpty())
+            setQuery(typed.withoutFiles);
     }
     chooseFolder(key);
 }
@@ -5466,7 +5485,7 @@ void Launcher::cycleFolderChip(int delta)
     QStringList keys;
     for (const QVariant& c : folderChips()) {
         const QString key = c.toMap()[u"type"_s].toString();
-        if (key != kMissingChip && key != kTypedChip && !key.startsWith(kTypePrefix)) // the folders, not the kinds
+        if (key != kMissingChip && key != kTypedChip && key != kFilesChip && !key.startsWith(kTypePrefix)) // the folders, not the kinds
             keys.append(key);
     }
     if (keys.size() < 2)
@@ -8026,6 +8045,7 @@ void Launcher::startPluginQuery(const QString& text, std::optional<KeywordMode> 
     const bool kinds = m_scope == Content && !m_keyword;
     m_merge->setContentKinds(kinds ? contentTypeExtensions() : QStringList(),
         kinds && m_contentFolder.isEmpty() && m_folderFilter.isEmpty() ? contentTypeFolders() : QStringList());
+    m_merge->setContentFiles(kinds ? splitContentQuery(text, m_regexMode).files : QStringList());
     // The keywords offered as rows are 全部's (matchKeyword): in 文件 and 文件夹 they could not be run.
     m_merge->begin(id, text, m_keyword ? m_keyword->pluginId : QString(), m_keyword ? m_keyword->commandId : QString(),
         m_scope == Content, m_scope == All || m_panel);

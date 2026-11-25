@@ -319,17 +319,19 @@ Item {
                     required property int index
                     required property var modelData
                     // 内容 narrowed to a kind of file (Launcher.folderChips' `kind`, GitHub #447):
-                    // on, with 文件's icon and colour for it; a click takes it off.
+                    // on, with 文件's icon and colour for it; a click takes it off. So is the
+                    // chip of the files typed ("*.py"): `kind` -1 (no colour), its own `glyph`.
                     readonly property bool kindChip: strip.folders && modelData.kind !== undefined
-                    // 不限 in 内容 is off while it is narrowed to kinds: a click takes them off too.
+                    // 不限 in 内容 is off while it is narrowed to kinds or to files typed (the
+                    // chips before it, each with a `kind`): a click takes them off too.
                     readonly property bool active: kindChip || (!strip.folders && !strip.apps && modelData.type >= 0
                         ? strip.launcher.scope === Launcher.Files && strip.launcher.selectedFileTypes.includes(modelData.type)
                         : modelData.type === strip.current
-                          && !(strip.folders && modelData.type === "" && strip.launcher.contentFileTypes.length > 0))
+                          && !(strip.folders && modelData.type === "" && strip.chips[0].kind !== undefined))
                     // 不限: in 内容 the chip without a folder's dot (Launcher.folderChips).
                     readonly property bool isAll: strip.apps || kindChip ? false : strip.folders ? !modelData.dot : modelData.type === -1
                     // The mode changes before the delegate model is replaced.
-                    readonly property string glyph: kindChip ? strip.typeGlyph((modelData.extensions ?? "").split(" "))
+                    readonly property string glyph: kindChip ? (modelData.glyph ?? strip.typeGlyph((modelData.extensions ?? "").split(" ")))
                         : strip.folders ? (isAll ? "" : strip.folderGlyph) : (modelData.glyph ?? "")
                     readonly property int hue: kindChip ? modelData.kind : strip.folders ? (isAll ? -1 : -2) : (modelData.hue ?? -1)
                     // A line after 不限 (the first, or the first after the kinds), and after the last kind.

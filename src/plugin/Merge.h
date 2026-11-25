@@ -27,6 +27,7 @@
 
 #include "Catalog.h"
 #include "Items.h"
+#include "Query.h"
 #include "SearchTypes.h"
 
 #include <QString>
@@ -34,6 +35,7 @@
 
 #include <cstdint>
 #include <map>
+#include <optional>
 
 namespace ws::plugin {
 
@@ -98,6 +100,11 @@ public:
     // file (a mail) does not. The providers are told so too (`filters`);
     // this holds for one that does not listen. Empty: any. Kept until set again.
     void setContentKinds(QStringList extensions, QStringList folders);
+    // 内容 narrowed to files named among its words (ContentQuery::files:
+    // "ext:py", "*.md"): a content provider's row goes in only when its file
+    // fits them, as the scan's own; a row with no file does not. Empty: any.
+    // Kept until set again.
+    void setContentFiles(const QStringList& files);
 
     // A query begins: earlier answers are dropped. With `keywordPlugin`
     // and `keywordCommand`, keyword mode for that command. `text` as typed
@@ -164,6 +171,7 @@ private:
     QString m_prefixHintText = QStringLiteral("按 Tab 补全；Enter 直接进入");
     QStringList m_contentExtensions; // setContentKinds: folded, no dot
     QStringList m_contentFolders; // ... ending in "\"
+    std::optional<NameMatcher> m_contentFiles; // setContentFiles
     bool contentKindFits(const PluginRow& row) const;
     std::uint64_t m_queryId = 0;
     QString m_text;

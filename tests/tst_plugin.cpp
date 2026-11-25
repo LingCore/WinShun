@@ -769,6 +769,18 @@ private slots:
         QCOMPARE(answer(2), (QStringList {u"牛蛙.JPG"_s}));
         merge.setContentKinds({}, {});
         QCOMPARE(answer(3).size(), 5);
+        // The files named among the words ("牛蛙 *.png", "牛蛙 ext:docx"),
+        // by themselves and with a kind.
+        merge.setContentFiles({u"*.png"_s});
+        QCOMPARE(answer(4), (QStringList {u"牛蛙.png"_s}));
+        merge.setContentFiles({u"ext:docx;jpg"_s, u"!*.jpg"_s});
+        QCOMPARE(answer(5), (QStringList {u"牛蛙.docx"_s}));
+        merge.setContentKinds({u"jpg"_s, u"png"_s}, {});
+        merge.setContentFiles({u"牛*.j*"_s});
+        QCOMPARE(answer(6), (QStringList {u"牛蛙.JPG"_s}));
+        merge.setContentKinds({}, {});
+        merge.setContentFiles({});
+        QCOMPARE(answer(7).size(), 5);
     }
 
     // GitHub #202: in 内容, a provider's row with no file stays when it says

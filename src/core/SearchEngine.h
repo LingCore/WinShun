@@ -85,6 +85,7 @@ struct ContentScope {
     static constexpr qsizetype kListed = 50;
     std::vector<Place> places;
     QString words; // what it looks for, after the folders came out
+    QStringList files; // the files it is narrowed to, as typed (ContentQuery::files)
     friend bool operator==(const ContentScope&, const ContentScope&) = default;
 };
 

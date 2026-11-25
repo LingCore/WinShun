@@ -3155,6 +3155,52 @@ private slots:
     }
 
     // Folders named among the words of a content search (ContentFolderSpec).
+    // The files a content search is narrowed to, named among its words
+    // (ContentQuery::files): "ext:py", "*.md".
+    void contentFileWords()
+    {
+        const auto split = [](const QString& text, bool regex = false) { return ws::splitContentQuery(text, regex); };
+        ws::ContentQuery q = split(u"年度报告 *.docx"_s);
+        QCOMPARE(q.words, u"年度报告 "_s);
+        QCOMPARE(q.files, QStringList {u"*.docx"_s});
+        QCOMPARE(q.withoutFiles, u"年度报告"_s);
+        QCOMPARE(q.fileCondition(), u"*.docx"_s);
+        q = split(u"ext:py;js TODO fix"_s); // the ; is no sign of code here
+        QCOMPARE(q.words, u"TODO fix"_s);
+        QCOMPARE(q.files, QStringList {u"ext:py;js"_s});
+        q = split(u"EXT:PDF 合同 报告*.pdf !*.bak.pdf"_s);
+        QCOMPARE(ws::contentTerms(q.words), QStringList {u"合同"_s});
+        QCOMPARE(q.files, (QStringList {u"EXT:PDF"_s, u"报告*.pdf"_s, u"!*.bak.pdf"_s}));
+        QCOMPARE(q.withoutFiles, u"合同"_s);
+        // With a folder named too, in any order.
+        q = split(u"年度报告 *.docx abc/"_s);
+        QCOMPARE(q.words, u"年度报告"_s);
+        QCOMPARE(q.files, QStringList {u"*.docx"_s});
+        QCOMPARE(q.folders.size(), std::size_t {1});
+        QCOMPARE(q.folders[0].typed, u"abc/"_s);
+        // A line of code is still searched for as it is, without them.
+        q = split(u"printf(x) *.c"_s);
+        QCOMPARE(ws::contentTerms(q.words), QStringList {u"printf(x)"_s});
+        QCOMPARE(q.files, QStringList {u"*.c"_s});
+        q = split(u"if (a) *.c return b;"_s);
+        QCOMPARE(ws::contentTerms(q.words), QStringList {u"if (a) return b;"_s});
+        // What is something to find: quoted, no dot, no name, every file, a
+        // path, text with a ? in it, "ext:" alone; and in regex mode all of it.
+        for (const QString& text : {u"年度报告 \"*.docx\""_s, u"**重点** 报告"_s, u"a*b"_s, u"报告 *.*"_s, u"报告 src/*.py"_s,
+                 u"怎么办? 报告.docx"_s, u"ext: 报告"_s, u"glob(\"*.py\")"_s}) {
+            q = split(text);
+            QVERIFY2(q.files.isEmpty(), qPrintable(text));
+            QCOMPARE(q.withoutFiles, text);
+        }
+        q = split(u"TODO ext:py"_s, true);
+        QVERIFY(q.files.isEmpty());
+        QCOMPARE(q.words, u"TODO ext:py"_s);
+        // Alone: nothing to find yet.
+        q = split(u"*.py"_s);
+        QVERIFY(q.words.trimmed().isEmpty());
+        QCOMPARE(q.files, QStringList {u"*.py"_s});
+    }
+
     void contentFolderSpecs()
     {
         using Spec = ws::ContentFolderSpec;
@@ -11797,52 +11843,6 @@ private slots:
         const SearchResults rows = spy.first().at(1).value<SearchResults>();
         QVERIFY(rows.size() >= 2);
         QCOMPARE(rows.first().name, u"GJ Notes"_s);
-    }
-
-    void switchPlaceSearch()
-    {
-        const PlaceList places = switchPlaces();
-        const auto hits = [&](const QString& text, const QStringList& history = {}) {
-            const ParsedQuery query = ws::parseQuery(text);
-            const NameMatcher matcher(query);
-            return searchPlaces(places, query, matcher, history);
-        };
-        const auto names = [&](const QString& text, const QStringList& history = {}) {
-            QStringList out;
-            for (const PlaceHit& hit : hits(text, history))
-                out.append(places[hit.index].name);
-            return out;
-        };
-
-        // The switch is the one row of its concept: the page with the same command gives way.
-        QCOMPARE(names(u"蓝牙"_s), QStringList {u"蓝牙"_s});
-        QCOMPARE(names(u"bluetooth"_s), QStringList {u"蓝牙"_s});
-        QCOMPARE(names(u"深色"_s), QStringList {u"深色模式"_s});
-        QCOMPARE(names(u"深色模式"_s), QStringList {u"深色模式"_s});
-        QCOMPARE(names(u"音量"_s), QStringList {u"音量"_s});
-        QCOMPARE(names(u"静音"_s), QStringList {u"音量"_s});
-        QCOMPARE(names(u"wifi"_s), QStringList {u"WLAN"_s});
-        QCOMPARE(names(u"无线网络"_s), QStringList {u"WLAN"_s});
-        QCOMPARE(names(u"唤醒"_s), QStringList {u"保持唤醒"_s});
-        QCOMPARE(names(u"隐藏文件"_s), QStringList {u"显示隐藏的文件"_s});
-        QCOMPARE(names(u"扩展名"_s), QStringList {u"显示文件扩展名"_s});
-        // What the pages keep is still theirs.
-        QCOMPARE(names(u"蓝牙耳机"_s), QStringList {u"蓝牙和其他设备"_s});
-        QCOMPARE(names(u"扬声器"_s).value(0), u"声音"_s); // (the Control Panel's sound dialog too)
-        QVERIFY(!names(u"扬声器"_s).contains(u"音量"_s));
-        QCOMPARE(names(u"文件夹选项"_s), QStringList {u"文件夹选项"_s});
-        QCOMPARE(names(u"强调色"_s), QStringList {u"颜色"_s});
-        QCOMPARE(names(u"夜间模式"_s), QStringList {u"夜灯"_s}); // Windows' name for the night light, not dark mode
-        // Two switches with one command are two rows.
-        const QStringList both = names(u"显示"_s);
-        QVERIFY(both.contains(u"显示隐藏的文件"_s) && both.contains(u"显示文件扩展名"_s));
-        // A page the query names better than it names the switch stays, above it.
-        {
-            PlaceInfo page;
-            page.name = u"abc"_s;
-            page.key = u"k/page"_s;
-            page.command = u"x:one"_s;
-            PlaceInfo sw;
 
         // The whole name by its initials or pinyin ("gj", "guanji": 关机;
         // "cq": 重启, a keyword) is asked for (PlaceHit::entire); part of a
@@ -11928,6 +11928,52 @@ private slots:
         QVERIFY2(listed.indexOf(u"电影"_s) >= 0 && listed.indexOf(u"电影"_s) < listed.indexOf(u"关机"_s), qPrintable(listed.join(u", ")));
         listed = order(u"sp"_s);
         QVERIFY2(listed.indexOf(u"视频"_s) >= 0 && listed.indexOf(u"视频"_s) < listed.indexOf(u"锁定屏幕"_s), qPrintable(listed.join(u", ")));
+    }
+
+    void switchPlaceSearch()
+    {
+        const PlaceList places = switchPlaces();
+        const auto hits = [&](const QString& text, const QStringList& history = {}) {
+            const ParsedQuery query = ws::parseQuery(text);
+            const NameMatcher matcher(query);
+            return searchPlaces(places, query, matcher, history);
+        };
+        const auto names = [&](const QString& text, const QStringList& history = {}) {
+            QStringList out;
+            for (const PlaceHit& hit : hits(text, history))
+                out.append(places[hit.index].name);
+            return out;
+        };
+
+        // The switch is the one row of its concept: the page with the same command gives way.
+        QCOMPARE(names(u"蓝牙"_s), QStringList {u"蓝牙"_s});
+        QCOMPARE(names(u"bluetooth"_s), QStringList {u"蓝牙"_s});
+        QCOMPARE(names(u"深色"_s), QStringList {u"深色模式"_s});
+        QCOMPARE(names(u"深色模式"_s), QStringList {u"深色模式"_s});
+        QCOMPARE(names(u"音量"_s), QStringList {u"音量"_s});
+        QCOMPARE(names(u"静音"_s), QStringList {u"音量"_s});
+        QCOMPARE(names(u"wifi"_s), QStringList {u"WLAN"_s});
+        QCOMPARE(names(u"无线网络"_s), QStringList {u"WLAN"_s});
+        QCOMPARE(names(u"唤醒"_s), QStringList {u"保持唤醒"_s});
+        QCOMPARE(names(u"隐藏文件"_s), QStringList {u"显示隐藏的文件"_s});
+        QCOMPARE(names(u"扩展名"_s), QStringList {u"显示文件扩展名"_s});
+        // What the pages keep is still theirs.
+        QCOMPARE(names(u"蓝牙耳机"_s), QStringList {u"蓝牙和其他设备"_s});
+        QCOMPARE(names(u"扬声器"_s).value(0), u"声音"_s); // (the Control Panel's sound dialog too)
+        QVERIFY(!names(u"扬声器"_s).contains(u"音量"_s));
+        QCOMPARE(names(u"文件夹选项"_s), QStringList {u"文件夹选项"_s});
+        QCOMPARE(names(u"强调色"_s), QStringList {u"颜色"_s});
+        QCOMPARE(names(u"夜间模式"_s), QStringList {u"夜灯"_s}); // Windows' name for the night light, not dark mode
+        // Two switches with one command are two rows.
+        const QStringList both = names(u"显示"_s);
+        QVERIFY(both.contains(u"显示隐藏的文件"_s) && both.contains(u"显示文件扩展名"_s));
+        // A page the query names better than it names the switch stays, above it.
+        {
+            PlaceInfo page;
+            page.name = u"abc"_s;
+            page.key = u"k/page"_s;
+            page.command = u"x:one"_s;
+            PlaceInfo sw;
             sw.name = u"开关"_s;
             sw.key = u"k/switch"_s;
             sw.command = u"X:ONE"_s;
@@ -14257,6 +14303,28 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(complete, 15'000);
         QCOMPARE(results.size(), qsizetype(1));
         QCOMPARE(results[0].path, profile + u"\\needle.txt"_s);
+        // The files named among the words (ContentQuery::files): only those
+        // are read, and the scope says which were asked for.
+        request.conditions.clear();
+        const auto found = [&](const QString& text) {
+            complete = false;
+            results.clear();
+            request.text = text;
+            asked = engine.submit(request);
+            [&] { QTRY_VERIFY_WITH_TIMEOUT(complete, 15'000); }();
+            return results.size();
+        };
+        QCOMPARE(found(u"needle *.txt"_s), qsizetype(3));
+        QCOMPARE(scope.files, QStringList {u"*.txt"_s});
+        QCOMPARE(scope.words.trimmed(), u"needle"_s);
+        QCOMPARE(found(u"ext:txt needle"_s), qsizetype(3));
+        QCOMPARE(found(u"needle nee*.txt"_s), qsizetype(3));
+        QCOMPARE(found(u"needle ext:md"_s), qsizetype(0));
+        QCOMPARE(found(u"needle *.md"_s), qsizetype(0));
+        QCOMPARE(found(u"needle !nee*.txt"_s), qsizetype(0));
+        QCOMPARE(found(u"needle *.txt docs/"_s), qsizetype(2));
+        QCOMPARE(found(u"needle \"*.txt\""_s), qsizetype(0)); // quoted: looked for in the files
+        QVERIFY(scope.files.isEmpty());
     }
 
     // A pass that looks only at the files the Lookout lists (changed since

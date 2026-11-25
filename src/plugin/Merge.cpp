@@ -430,13 +430,24 @@ void Merge::setContentKinds(QStringList extensions, QStringList folders)
     m_contentFolders = std::move(folders);
 }
 
+void Merge::setContentFiles(const QStringList& files)
+{
+    const ParsedQuery query = parseQuery(files.join(u' '));
+    if (query.isEmpty() || !query.error.isEmpty())
+        m_contentFiles.reset();
+    else
+        m_contentFiles.emplace(query, false);
+}
+
 bool Merge::contentKindFits(const PluginRow& row) const
 {
-    if (m_contentExtensions.isEmpty() && m_contentFolders.isEmpty())
+    if (m_contentExtensions.isEmpty() && m_contentFolders.isEmpty() && !m_contentFiles)
         return true;
     const QString file = rowFile(row);
     if (file.isEmpty())
         return false; // a mail is no picture nor document
+    if (m_contentFiles && m_contentFiles->matchPath(file, false) < 0)
+        return false;
     if (!m_contentExtensions.isEmpty()) {
         const qsizetype dot = file.lastIndexOf(u'.');
         if (dot <= file.lastIndexOf(u'\\') || !m_contentExtensions.contains(file.sliced(dot + 1).toCaseFolded()))

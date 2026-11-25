@@ -141,16 +141,30 @@ struct ContentFolderSpec {
     friend bool operator==(const ContentFolderSpec&, const ContentFolderSpec&) = default;
 };
 
+// Which files a content search reads, named among its words as a name search
+// names them (QueryTerm), never quoted:
+//
+//   年度报告 ext:docx    only in files of that type ("ext:py;js": of these)
+//   年度报告 *.docx      the same; "报告*.docx": so named, "!*.min.js": none so named
+//
+// A word with a * needs a dot as well ("*.py"): "**重点**" and "a*b" are
+// what to find. In quotes ("*.py") any of them is.
 struct ContentQuery {
     QString words; // the rest: what to find in the files (contentTerms)
     std::vector<ContentFolderSpec> folders;
+    QStringList files; // as typed: "ext:py", "*.md"; a file is read when it fits every one
+    QString withoutFiles; // the text as typed with those taken out; the text itself when there are none
+
+    // `files` as one query for parseQuery: a condition on the files read.
+    QString fileCondition() const { return files.join(u' '); }
 };
 
-// What a content search was typed as: its words, and the folders named
-// among them (ContentFolderSpec). A line of code is all words: "a/" or
-// "/usr/bin" in it are what it says. So are regular expressions
-// (`regexMode`, as contentPattern takes it: "\d+/" is one), after a folder
-// given by its path at the start.
+// What a content search was typed as: its words, the folders named among
+// them (ContentFolderSpec) and the files it is narrowed to (`files`). A line
+// of code is all words but for those: "a/" or "/usr/bin" in it are what it
+// says. So are regular expressions (`regexMode`, as contentPattern takes it:
+// "\d+/" and "ext:py" are each one), after a folder given by its path at the
+// start.
 ContentQuery splitContentQuery(const QString& text, bool regexMode = false);
 
 // `regexTerms`: every term is a regular expression, as if each had regex:

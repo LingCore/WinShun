@@ -14709,6 +14709,14 @@ Content index: %5</translation>
         <translation>or add “folder/” after the words</translation>
     </message>
     <message>
+        <source>或在词后加“文件夹名/”、“*.docx”</source>
+        <translation>or add “folder/” or “*.docx” after the words</translation>
+    </message>
+    <message>
+        <source>只搜名字符合 %1 的文件，点一下取消。要搜这几个字本身，给它加上引号</source>
+        <translation>Only files named %1 are searched; click to remove. To search for that text itself, put it in quotes</translation>
+    </message>
+    <message>
         <source>这一行没有可预览的文件</source>
         <translation>Nothing to preview on this row</translation>
     </message>
