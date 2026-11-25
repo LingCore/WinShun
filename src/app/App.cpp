@@ -1619,7 +1619,7 @@ bool App::createClipWindow()
     m_clipDisplay = std::make_unique<ClipboardDisplay>(m_clipboard.get(), window, m_clipPlacement.get(), m_clipDisplayProbe);
     window->setProperty("displayController", QVariant::fromValue<QObject*>(m_clipDisplay.get()));
     connect(m_clipDisplay.get(), &ClipboardDisplay::geometryEdited, m_clipPlacement.get(), &Placement::adoptDisplayGeometry);
-    connect(m_clipDisplay.get(), &ClipboardDisplay::focusLost, this, [this] { hideClipboard(); });
+    connect(m_clipDisplay.get(), &ClipboardDisplay::focusLost, this, [this] { hideClipboard(true, "display-lost-focus"); });
     connect(m_clipDisplay.get(), &ClipboardDisplay::lost, this, [this] {
         if (!m_clipDisplayWanted || !m_clipWindow) return;
         m_clipDisplayWanted = false;
@@ -1654,7 +1654,7 @@ bool App::createClipWindow()
                         win::bringToFront(m_clipWindow);
                     return;
                 }
-                hideClipboard();
+                hideClipboard(true, "inactive");
             }, Qt::QueuedConnection);
     });
     m_clipReveal.setWindow(window, 150ms, [this] { uncloakClipboard(); });
@@ -6353,6 +6353,11 @@ void App::showClipboard()
         QQuickItem* field = focusedField();
         m_clipboard->setField(field, field && field->window() == m_settingsWindow ? tr("输入框") : tr("搜索框"));
         const HWND foreground = ::GetForegroundWindow();
+        // What it opens over, for "clipboard-hidden": a game in exclusive full
+        // screen leaves it for any window shown, and what its leaving does to
+        // the front is told from the package (GitHub #452).
+        const ForegroundFacts over = foreground::facts();
+        m_clipOver = {::GetTickCount64(), over.coversMonitor, over.exclusiveFullScreen};
         m_clipboard->setTarget(foreground);
         m_clipboard->setPinned(false); // as it opens, whatever closed it last (a close of Qt's own)
         m_clipboard->setActive(true); // under the launcher's search box, it folds its rows away (Main.qml)
@@ -6486,7 +6491,7 @@ bool App::startKeyRouting(HWND target)
     callbacks.clickedAway = [this, post](HWND hit) { // as a menu; not a click on a copied file's preview (a document's handler)
         post([this, hit] {
             if (!m_clipboard->filePreview()->owns(hit))
-                hideClipboard();
+                hideClipboard(true, "clicked-away");
         });
     };
     callbacks.foregroundChanged = [this, post](HWND window) { post([this, window] { routedForeground(window); }); };
@@ -6609,7 +6614,7 @@ void App::routedForeground(HWND window)
             ::SetForegroundWindow(m_keyRouterTarget);
         return;
     }
-    hideClipboard(); // another program in front: as a menu
+    hideClipboard(true, "routed-front-moved"); // another program in front: as a menu
 }
 
 bool App::startLauncherRouting()
@@ -7156,10 +7161,10 @@ void App::clipboardFrontMoved()
     if (!front || m_clipboard->filePreview()->owns(front))
         return; // none for a moment, or still the preview's
     m_clipFrontLent = false;
-    hideClipboard();
+    hideClipboard(true, "lent-front-moved");
 }
 
-void App::hideClipboard(bool launcherToo)
+void App::hideClipboard(bool launcherToo, const char* why)
 {
     if (m_clipboard->dragging())
         return;
@@ -7174,6 +7179,18 @@ void App::hideClipboard(bool launcherToo)
         return;
     }
     const bool underLauncher = clipboardUnderLauncher();
+    // Why it went and over what it had opened (GitHub #452: "it shows, then
+    // hides by itself"). No titles, no programs.
+    const HWND target = m_clipboard->target();
+    diagnostics::record(u"clipboard-hidden"_s,
+        {{u"why"_s, QString::fromLatin1(why)},
+            {u"shown_ms"_s, static_cast<qint64>(::GetTickCount64() - m_clipOver.at)},
+            {u"routed"_s, static_cast<bool>(m_keyRouter)},
+            {u"active"_s, m_clipWindow->isActive()},
+            {u"over_full_screen"_s, m_clipOver.fullScreen},
+            {u"over_exclusive"_s, m_clipOver.exclusive},
+            {u"target_minimized"_s, target && ::IsIconic(target)},
+            {u"target_gone"_s, target && !::IsWindow(target)}});
     if (m_clipDisplay) m_clipDisplay->hide();
     m_clipDisplayWanted = false;
     // Out as the launcher goes (弹出动画): a picture of it fades where it was

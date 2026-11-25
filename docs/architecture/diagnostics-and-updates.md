@@ -92,6 +92,7 @@ Win顺 在读取任何设置之前按以下优先级确定目录：
 | `idle-trim` / `key-helper` | `IdleTrim` / `ServiceKeyListener` | 空闲内存交还与保留热页 `keep_mb`（`HotPages`）/`held: resumed`；UIAccess 按键助手状态 |
 | `double-tap-near-miss` / `double-tap-dropped` | `KeyListener` / `TapTeller` | 双击未成立原因与干扰类别、延迟/让位丢弃（合计 ≤30/h，不记具体键） |
 | `clipboard-picture-not-read` / `clipboard-key-routing-*` | `Clipboard` / `KeyRouter` | OCR 连崩跳图尺寸；剪贴板按键转发与未接管原因统计 |
+| `clipboard-hidden` | `App::hideClipboard` | 剪贴板面板每次隐藏的原因 `why`（`asked`/`inactive`/`clicked-away`/`routed-front-moved`/`lent-front-moved`/`display-lost-focus`）、显示了多久 `shown_ms`、是否转发按键、打开时前台是否全屏/独占全屏、目标窗口是否已最小化或消失；不记窗口标题与程序名 |
 
 ## 3. 检查更新、增量包与发布链路
 

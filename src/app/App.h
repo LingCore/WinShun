@@ -321,7 +321,16 @@ private:
     const char* rawInputState() const; // the keyboard's Raw Input registration, for the journal
     // `launcherToo`: and the launcher, when the clipboard was under its
     // search box and the keyboard went elsewhere.
-    void hideClipboard(bool launcherToo = true);
+    // `why`: for the diagnostics ("clipboard-hidden"), in a word.
+    void hideClipboard(bool launcherToo = true, const char* why = "asked");
+    // What the clipboard opened over, and when (GetTickCount64): told with
+    // why it went (GitHub #452).
+    struct ClipOver {
+        std::uint64_t at = 0;
+        bool fullScreen = false; // a window covering its monitor in front
+        bool exclusive = false; // Direct3D's own full screen
+    };
+    ClipOver m_clipOver;
     bool clipboardUnderLauncher() const; // opened from the launcher's search box
     bool clipboardInCharge() const; // shown, the keys its own or through KeyRouter
     // Over another program the clipboard leaves it the focus, its keys come
