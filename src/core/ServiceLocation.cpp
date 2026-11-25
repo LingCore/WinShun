@@ -91,53 +91,6 @@ std::wstring parentOf(const std::wstring& path)
     return path.substr(0, slash);
 }
 
-bool checkOne(const std::wstring& path, Role role, std::wstring* why)
-{
-    PSECURITY_DESCRIPTOR descriptor = nullptr;
-    PSID owner = nullptr;
-    PACL dacl = nullptr;
-    const DWORD error = ::GetNamedSecurityInfoW(path.c_str(), SE_FILE_OBJECT,
-        OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION, &owner, nullptr, &dacl, nullptr, &descriptor);
-    if (error != ERROR_SUCCESS) {
-        if (why)
-            *why = path + L" (cannot read its security, error " + std::to_wstring(error) + L")";
-        return false; // unknown is treated as unsafe
-    }
-    const bool unsafe = writableByNonAdmin(owner, dacl, role);
-    ::LocalFree(descriptor);
-    if (unsafe && why)
-        *why = path;
-    return !unsafe;
-}
-
-} // namespace
-
-bool writableByNonAdmin(PSID owner, PACL dacl, Role role) noexcept
-{
-    // The owner can always rewrite the DACL, so a non-admin owner is unsafe.
-    if (!isAdministrativeSid(owner))
-        return true;
-    if (!dacl)
-        return true; // a NULL DACL grants everyone every right
-    const DWORD watched = role == Role::Object ? kObjectWrite : role == Role::Parent ? kParentWrite : kAncestorWrite;
-    for (WORD i = 0; i < dacl->AceCount; ++i) {
-        void* raw = nullptr;
-        if (!::GetAce(dacl, i, &raw))
-            return true; // cannot read an ACE: assume the worst
-        auto* header = static_cast<ACE_HEADER*>(raw);
-        if (header->AceType != ACCESS_ALLOWED_ACE_TYPE && header->AceType != ACCESS_ALLOWED_CALLBACK_ACE_TYPE)
-            continue; // deny and audit aces do not grant anything
-        if (header->AceFlags & INHERIT_ONLY_ACE)
-            continue; // applies to children, not to this object
-        auto* ace = static_cast<ACCESS_ALLOWED_ACE*>(raw); // SidStart is at the same offset for the callback form
-        if ((ace->Mask & watched) && !isAdministrativeSid(&ace->SidStart))
-            return true;
-    }
-    return false;
-}
-
-namespace {
-
 std::wstring sidText(PSID sid)
 {
     if (!sid || !::IsValidSid(sid))
@@ -150,8 +103,154 @@ std::wstring sidText(PSID sid)
     return out;
 }
 
-// Human-readable detail for logs when a path failed `checkOne(..., role)`.
-std::wstring describeUnsafe(const std::wstring& path, Role role)
+DWORD watchedRights(Role role) noexcept
+{
+    return role == Role::Object ? kObjectWrite : role == Role::Parent ? kParentWrite : kAncestorWrite;
+}
+
+// The first thing wrong with this owner and DACL: what, whose, and the rights
+// in question. No allocation: writableByNonAdmin stays noexcept.
+struct Finding {
+    Weakness::Kind kind = Weakness::Kind::None;
+    PSID sid = nullptr;
+    DWORD mask = 0;
+};
+
+Finding find(PSID owner, PACL dacl, Role role) noexcept
+{
+    using Kind = Weakness::Kind;
+    // The owner can always rewrite the DACL, so a non-admin owner is unsafe.
+    if (!isAdministrativeSid(owner))
+        return {Kind::Owner, owner, 0};
+    if (!dacl)
+        return {Kind::NoAcl, nullptr, 0}; // a NULL DACL grants everyone every right
+    const DWORD watched = watchedRights(role);
+    for (WORD i = 0; i < dacl->AceCount; ++i) {
+        void* raw = nullptr;
+        if (!::GetAce(dacl, i, &raw))
+            return {Kind::Unreadable, nullptr, 0}; // cannot read an ACE: assume the worst
+        auto* header = static_cast<ACE_HEADER*>(raw);
+        if (header->AceType != ACCESS_ALLOWED_ACE_TYPE && header->AceType != ACCESS_ALLOWED_CALLBACK_ACE_TYPE)
+            continue; // deny and audit aces do not grant anything
+        if (header->AceFlags & INHERIT_ONLY_ACE)
+            continue; // applies to children, not to this object
+        auto* ace = static_cast<ACCESS_ALLOWED_ACE*>(raw); // SidStart is at the same offset for the callback form
+        if ((ace->Mask & watched) && !isAdministrativeSid(&ace->SidStart))
+            return {Kind::Rights, &ace->SidStart, ace->Mask};
+    }
+    return {};
+}
+
+Weakness named(const Finding& found, const std::wstring& path)
+{
+    Weakness weak;
+    weak.kind = found.kind;
+    if (found.kind == Weakness::Kind::None)
+        return weak;
+    weak.path = path;
+    weak.mask = found.mask;
+    if (found.kind == Weakness::Kind::Owner || found.kind == Weakness::Kind::Rights)
+        weak.sid = sidText(found.sid);
+    return weak;
+}
+
+// For the log: "C:\ can be changed by a non-administrator (owner S-1-5-21-...)".
+std::wstring describe(const Weakness& weak, const wchar_t* verb)
+{
+    std::wstring detail;
+    switch (weak.kind) {
+    case Weakness::Kind::Owner:
+        detail = L"owner " + weak.sid;
+        break;
+    case Weakness::Kind::Rights: {
+        wchar_t mask[16] {};
+        ::swprintf_s(mask, L"0x%08lX", static_cast<unsigned long>(weak.mask));
+        detail = L"ACE " + weak.sid + L" mask " + mask;
+        break;
+    }
+    case Weakness::Kind::NoAcl:
+        detail = L"null DACL";
+        break;
+    case Weakness::Kind::Unreadable:
+        detail = L"cannot read its security, error " + std::to_wstring(weak.error);
+        break;
+    case Weakness::Kind::None:
+        break;
+    }
+    return weak.path + L" " + verb + (detail.empty() ? std::wstring() : L" (" + detail + L")");
+}
+
+Weakness unreadable(const std::wstring& path, DWORD error)
+{
+    Weakness weak;
+    weak.kind = Weakness::Kind::Unreadable;
+    weak.path = path;
+    weak.error = error;
+    return weak;
+}
+
+// `path` as an Object, the folder it is in as `parentRole`, and every
+// directory above that as an Ancestor: the first of them that is weak.
+Weakness chainWeakness(const std::wstring& path, Role parentRole)
+{
+    if (path.empty())
+        return unreadable(L"(empty path)", ERROR_INVALID_PARAMETER);
+    const std::wstring full = fullPath(path);
+    if (Weakness weak = weaknessOf(full, Role::Object))
+        return weak;
+    Role role = parentRole;
+    for (std::wstring dir = parentOf(full); !dir.empty(); dir = parentOf(dir)) {
+        if (Weakness weak = weaknessOf(dir, role))
+            return weak;
+        role = Role::Ancestor;
+    }
+    return {};
+}
+
+// Every directory strictly above `path` as an Ancestor; `path` itself need
+// not exist. A root has nothing above it to vouch for it: weak.
+Weakness ancestorWeakness(const std::wstring& path)
+{
+    if (path.empty())
+        return unreadable(L"(empty path)", ERROR_INVALID_PARAMETER);
+    const std::wstring full = fullPath(path);
+    std::wstring dir = parentOf(full);
+    if (dir.empty())
+        return unreadable(full, ERROR_PATH_NOT_FOUND);
+    for (; !dir.empty(); dir = parentOf(dir)) {
+        if (Weakness weak = weaknessOf(dir, Role::Ancestor))
+            return weak;
+    }
+    return {};
+}
+
+bool report(const Weakness& weak, std::wstring* why)
+{
+    if (weak && why)
+        *why = weak.path;
+    return !weak;
+}
+
+// "C:\Program Files" in quotes, C:\ bare: a root's closing backslash would
+// escape the quote after it, and a root has no spaces to need one.
+std::wstring commandArgument(const std::wstring& path)
+{
+    return path.find(L' ') == std::wstring::npos ? path : L"\"" + path + L"\"";
+}
+
+} // namespace
+
+bool writableByNonAdmin(PSID owner, PACL dacl, Role role) noexcept
+{
+    return find(owner, dacl, role).kind != Weakness::Kind::None;
+}
+
+Weakness weakness(PSID owner, PACL dacl, Role role)
+{
+    return named(find(owner, dacl, role), {});
+}
+
+Weakness weaknessOf(const std::wstring& path, Role role)
 {
     PSECURITY_DESCRIPTOR descriptor = nullptr;
     PSID owner = nullptr;
@@ -159,58 +258,46 @@ std::wstring describeUnsafe(const std::wstring& path, Role role)
     const DWORD error = ::GetNamedSecurityInfoW(path.c_str(), SE_FILE_OBJECT,
         OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION, &owner, nullptr, &dacl, nullptr, &descriptor);
     if (error != ERROR_SUCCESS)
-        return L"cannot read security (error " + std::to_wstring(error) + L")";
-    std::wstring detail;
-    if (!isAdministrativeSid(owner)) {
-        detail = L"owner " + sidText(owner);
-    } else if (!dacl) {
-        detail = L"null DACL";
-    } else {
-        const DWORD watched = role == Role::Object ? kObjectWrite : role == Role::Parent ? kParentWrite : kAncestorWrite;
-        for (WORD i = 0; i < dacl->AceCount; ++i) {
-            void* raw = nullptr;
-            if (!::GetAce(dacl, i, &raw)) {
-                detail = L"unreadable ACE";
-                break;
-            }
-            auto* header = static_cast<ACE_HEADER*>(raw);
-            if (header->AceType != ACCESS_ALLOWED_ACE_TYPE && header->AceType != ACCESS_ALLOWED_CALLBACK_ACE_TYPE)
-                continue;
-            if (header->AceFlags & INHERIT_ONLY_ACE)
-                continue;
-            auto* ace = static_cast<ACCESS_ALLOWED_ACE*>(raw);
-            if ((ace->Mask & watched) && !isAdministrativeSid(&ace->SidStart)) {
-                wchar_t mask[16] {};
-                ::swprintf_s(mask, L"0x%08lX", static_cast<unsigned long>(ace->Mask));
-                detail = L"ACE " + sidText(&ace->SidStart) + L" mask " + mask;
-                break;
-            }
-        }
-    }
+        return unreadable(path, error); // unknown is treated as unsafe
+    Weakness weak = named(find(owner, dacl, role), path);
     ::LocalFree(descriptor);
-    return detail;
+    return weak;
 }
 
-// `path` as an Object, the folder it is in as `parentRole`, and every
-// directory above that as an Ancestor.
-bool chainProtected(const std::wstring& path, Role parentRole, std::wstring* why)
+std::wstring accountName(const std::wstring& sid)
 {
-    if (path.empty()) {
-        if (why)
-            *why = L"(empty path)";
-        return false;
-    }
-    const std::wstring full = fullPath(path);
-    if (!checkOne(full, Role::Object, why))
-        return false;
-    Role role = parentRole;
-    for (std::wstring dir = parentOf(full); !dir.empty(); dir = parentOf(dir)) {
-        if (!checkOne(dir, role, why))
-            return false;
-        role = Role::Ancestor;
-    }
-    return true;
+    PSID raw = nullptr;
+    if (sid.empty() || !::ConvertStringSidToSidW(sid.c_str(), &raw))
+        return sid;
+    wchar_t name[256] {};
+    wchar_t domain[256] {};
+    DWORD nameSize = static_cast<DWORD>(std::size(name));
+    DWORD domainSize = static_cast<DWORD>(std::size(domain));
+    SID_NAME_USE use {};
+    const bool found = ::LookupAccountSidW(nullptr, raw, name, &nameSize, domain, &domainSize, &use) && name[0];
+    ::LocalFree(raw);
+    return found ? std::wstring(name) : sid; // a deleted account, or a domain's with no controller in reach
 }
+
+std::vector<std::wstring> repairCommands(const Weakness& weak)
+{
+    const std::wstring target = commandArgument(weak.path);
+    switch (weak.kind) {
+    case Weakness::Kind::Owner:
+        return {L"takeown /f " + target + L" /a"};
+    case Weakness::Kind::Rights:
+        // Its inherited entries made its own (the same rights, now editable),
+        // then that account's replaced by read and run.
+        return {L"icacls " + target + L" /inheritance:d", L"icacls " + target + L" /grant:r *" + weak.sid + L":(OI)(CI)(RX)"};
+    case Weakness::Kind::NoAcl:
+    case Weakness::Kind::Unreadable:
+    case Weakness::Kind::None:
+        break;
+    }
+    return {};
+}
+
+namespace {
 
 std::wstring knownServiceDir(REFKNOWNFOLDERID id)
 {
@@ -227,33 +314,17 @@ std::wstring knownServiceDir(REFKNOWNFOLDERID id)
 
 bool pathProtected(const std::wstring& path, std::wstring* why)
 {
-    return chainProtected(path, Role::Parent, why);
+    return report(chainWeakness(path, Role::Parent), why);
 }
 
 bool folderProtected(const std::wstring& dir, std::wstring* why)
 {
-    return chainProtected(dir, Role::Ancestor, why);
+    return report(chainWeakness(dir, Role::Ancestor), why);
 }
 
 bool ancestorsProtected(const std::wstring& path, std::wstring* why)
 {
-    if (path.empty()) {
-        if (why)
-            *why = L"(empty path)";
-        return false;
-    }
-    const std::wstring full = fullPath(path);
-    std::wstring dir = parentOf(full);
-    if (dir.empty()) {
-        if (why)
-            *why = full;
-        return false;
-    }
-    for (; !dir.empty(); dir = parentOf(dir)) {
-        if (!checkOne(dir, Role::Ancestor, why))
-            return false;
-    }
-    return true;
+    return report(ancestorWeakness(path), why);
 }
 
 std::vector<std::wstring> protectedServiceDirs()
@@ -291,31 +362,25 @@ bool inProtectedServiceDir(const std::wstring& path)
     return false;
 }
 
-bool anyProtectedDirUsable(const std::vector<std::wstring>& candidates, std::wstring* firstBadPath)
+bool anyProtectedDirUsable(const std::vector<std::wstring>& candidates, Weakness* firstWeak)
 {
-    std::wstring firstBad;
+    Weakness first;
     for (const std::wstring& dir : candidates) {
         if (dir.empty())
             continue;
-        std::wstring why;
+        // There already: itself and all above it. Not yet: all above it.
         const DWORD attributes = ::GetFileAttributesW(dir.c_str());
-        if (attributes != INVALID_FILE_ATTRIBUTES) {
-            if ((attributes & FILE_ATTRIBUTE_DIRECTORY) && folderProtected(dir, &why))
-                return true;
-            if (firstBad.empty())
-                firstBad = why.empty() ? dir : why;
-            continue;
-        }
-        const std::wstring parent = parentOf(fullPath(dir));
-        const DWORD parentAttrs = parent.empty() ? INVALID_FILE_ATTRIBUTES : ::GetFileAttributesW(parent.c_str());
-        if (parentAttrs != INVALID_FILE_ATTRIBUTES && (parentAttrs & FILE_ATTRIBUTE_DIRECTORY)
-            && ancestorsProtected(dir, &why))
+        const bool absent = attributes == INVALID_FILE_ATTRIBUTES;
+        Weakness weak = absent ? ancestorWeakness(dir) : chainWeakness(dir, Role::Ancestor);
+        if (!weak && !absent && !(attributes & FILE_ATTRIBUTE_DIRECTORY))
+            weak = unreadable(dir, ERROR_DIRECTORY); // a file where the folder would be
+        if (!weak)
             return true;
-        if (firstBad.empty())
-            firstBad = why.empty() ? parent : why;
+        if (!first)
+            first = std::move(weak);
     }
-    if (firstBadPath)
-        *firstBadPath = firstBad;
+    if (firstWeak)
+        *firstWeak = std::move(first);
     return false;
 }
 
@@ -326,12 +391,6 @@ bool ensureProtectedDir(const std::wstring& dir, std::wstring* error)
             *error = L"no folder was given";
         return false;
     }
-    const auto formatUnsafe = [&](const std::wstring& why, Role role, const wchar_t* verb) {
-        std::wstring text = why + L" " + verb;
-        if (const std::wstring detail = describeUnsafe(why, role); !detail.empty())
-            text += L" (" + detail + L")";
-        return text;
-    };
     const DWORD attributes = ::GetFileAttributesW(dir.c_str());
     if (attributes != INVALID_FILE_ATTRIBUTES) {
         if (!(attributes & FILE_ATTRIBUTE_DIRECTORY)) {
@@ -340,24 +399,18 @@ bool ensureProtectedDir(const std::wstring& dir, std::wstring* error)
             return false;
         }
         // It was there already: trust it only if it is actually protected.
-        std::wstring why;
-        if (!folderProtected(dir, &why)) {
-            if (error) {
-                const Role role = ::CompareStringOrdinal(why.c_str(), -1, fullPath(dir).c_str(), -1, TRUE) == CSTR_EQUAL
-                    ? Role::Object
-                    : Role::Ancestor;
-                *error = formatUnsafe(why, role, L"can be changed by a non-administrator");
-            }
+        if (const Weakness weak = chainWeakness(dir, Role::Ancestor)) {
+            if (error)
+                *error = describe(weak, L"can be changed by a non-administrator");
             return false;
         }
         return true;
     }
     // Check ancestors first so we never create a stray folder under an unsafe
     // parent (e.g. a tweaked C:\Program Files).
-    std::wstring why;
-    if (!ancestorsProtected(dir, &why)) {
+    if (const Weakness weak = ancestorWeakness(dir)) {
         if (error)
-            *error = formatUnsafe(why, Role::Ancestor, L"can be changed by a non-administrator");
+            *error = describe(weak, L"can be changed by a non-administrator");
         return false;
     }
     bool created = false;
@@ -398,14 +451,9 @@ bool ensureProtectedDir(const std::wstring& dir, std::wstring* error)
         cleanupIfCreated();
         return false;
     }
-    why.clear();
-    if (!folderProtected(dir, &why)) {
-        if (error) {
-            const Role role = ::CompareStringOrdinal(why.c_str(), -1, fullPath(dir).c_str(), -1, TRUE) == CSTR_EQUAL
-                ? Role::Object
-                : Role::Ancestor;
-            *error = formatUnsafe(why, role, L"is still not protected after creating the folder");
-        }
+    if (const Weakness weak = chainWeakness(dir, Role::Ancestor)) {
+        if (error)
+            *error = describe(weak, L"is still not protected after creating the folder");
         cleanupIfCreated();
         return false;
     }

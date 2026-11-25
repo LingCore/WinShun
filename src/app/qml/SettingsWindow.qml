@@ -4374,14 +4374,54 @@ Window {
                         onClicked: window.editor.uninstallIndexService()
                     }
 
-                    body: Text {
-                        width: parent.width
-                        text: window.editor.indexServiceMessage
-                        textFormat: Text.PlainText
-                        color: Theme.subtext
-                        font.pixelSize: Theme.fontCaption
-                        wrapMode: Text.Wrap
-                    }
+                    body: [
+                        Text {
+                            width: parent.width
+                            text: window.editor.indexServiceMessage
+                            textFormat: Text.PlainText
+                            color: Theme.subtext
+                            font.pixelSize: Theme.fontCaption
+                            lineHeight: 1.3
+                            wrapMode: Text.Wrap
+                        },
+                        // A folder's permissions stopped the install: the
+                        // commands that put them right, to copy (GitHub #426).
+                        Row {
+                            id: serviceRepair
+                            objectName: "indexServiceRepair"
+                            property bool copied: false
+                            width: parent.width
+                            spacing: 8
+                            visible: window.editor.indexServiceRepair.length > 0
+
+                            Text {
+                                width: parent.width - copyServiceRepair.width - parent.spacing
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: window.editor.indexServiceRepair
+                                textFormat: Text.PlainText
+                                color: Theme.text
+                                font.pixelSize: Theme.fontCaption
+                                lineHeight: 1.3
+                                wrapMode: Text.WrapAnywhere
+                            }
+                            FlatButton {
+                                id: copyServiceRepair
+                                dpr: window.dpr
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: serviceRepair.copied ? qsTr("已复制") : qsTr("复制命令")
+                                onClicked: {
+                                    window.editor.copyText(window.editor.indexServiceRepair.replace(/\n/g, "\r\n"))
+                                    serviceRepair.copied = true
+                                    serviceRepairCopied.restart()
+                                }
+                            }
+                            Timer {
+                                id: serviceRepairCopied
+                                interval: 2000
+                                onTriggered: serviceRepair.copied = false
+                            }
+                        }
+                    ]
                 }
 
                 SettingsLinkRow {

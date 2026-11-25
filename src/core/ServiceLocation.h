@@ -50,6 +50,43 @@ enum class Role { Object, Parent, Ancestor };
 // hand-built security descriptors.
 bool writableByNonAdmin(PSID owner, PACL dacl, Role role) noexcept;
 
+// What is wrong with one file or folder, so the settings can say it and how
+// to put it right instead of "restore the default permissions" (GitHub #426).
+struct Weakness {
+    enum class Kind {
+        None, // protected
+        Owner, // owned by an account that is not an administrator's
+        Rights, // an account that is not an administrator's may change it
+        NoAcl, // no DACL at all: everyone, everything
+        Unreadable, // its security cannot be read (or it is not what was expected)
+    };
+    Kind kind = Kind::None;
+    std::wstring path; // the file or folder at fault
+    std::wstring sid; // Owner: its owner; Rights: who may change it ("S-1-5-11")
+    DWORD mask = 0; // Rights: the access that entry grants
+    DWORD error = 0; // Unreadable: the Win32 error
+    explicit operator bool() const noexcept { return kind != Kind::None; }
+};
+
+// The first thing wrong with this owner and DACL, judged as
+// writableByNonAdmin does (its `path` left empty). Pure.
+Weakness weakness(PSID owner, PACL dacl, Role role);
+
+// The same for the file or folder at `path`, read from the disk.
+Weakness weaknessOf(const std::wstring& path, Role role);
+
+// The account a string SID names, without its machine or domain
+// ("Authenticated Users", "fan"); the SID itself where Windows knows no name
+// for it.
+std::wstring accountName(const std::wstring& sid);
+
+// The commands (for an administrator's Command Prompt, in order) that put
+// right what `weak` names and nothing else: a non-administrator owner gives
+// the folder to the Administrators group; an account that may change it keeps
+// reading and running only. Not recursive: the folder itself, and what
+// inherits from it. Empty where there is no safe general command.
+std::vector<std::wstring> repairCommands(const Weakness& weak);
+
 // Reads the owner and DACL of the executable `path` (as an Object), of its
 // folder (as its Parent) and of every directory above it up to the volume root
 // (as Ancestors); false if any is unsafe, or if any one of them cannot be read
@@ -85,8 +122,9 @@ bool inProtectedServiceDir(const std::wstring& path);
 // Read-only check: true if at least one candidate in `candidates` either exists
 // and passes folderProtected(), or does not exist yet while its parent exists
 // and every ancestor passes ancestorsProtected(). Otherwise writes the first
-// offending path to `firstBadPath` (if given) and returns false.
-bool anyProtectedDirUsable(const std::vector<std::wstring>& candidates, std::wstring* firstBadPath = nullptr);
+// thing wrong, the first candidate's, to `firstWeak` (if given) and returns
+// false: putting that one right is enough.
+bool anyProtectedDirUsable(const std::vector<std::wstring>& candidates, Weakness* firstWeak = nullptr);
 
 // Ensures `dir` exists and only administrators / SYSTEM can write to it:
 // creates it (Administrators as owner, Administrators & SYSTEM full control,

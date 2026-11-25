@@ -19,6 +19,10 @@
 
 class QTimer;
 
+namespace ws::svcloc {
+struct Weakness;
+}
+
 namespace ws {
 
 class CliSetup;
@@ -171,6 +175,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool indexServiceInstallable READ indexServiceInstallable NOTIFY indexAccessStateChanged FINAL)
     Q_PROPERTY(bool indexServiceUnsafeLocation READ indexServiceUnsafeLocation NOTIFY indexAccessStateChanged FINAL)
     Q_PROPERTY(QString indexServiceMessage READ indexServiceMessage NOTIFY indexAccessStateChanged FINAL)
+    Q_PROPERTY(QString indexServiceRepair READ indexServiceRepair NOTIFY indexAccessStateChanged FINAL)
     Q_PROPERTY(bool indexServiceUpdatable READ indexServiceUpdatable NOTIFY indexAccessStateChanged FINAL)
     Q_PROPERTY(QString indexServiceVersion READ indexServiceVersion NOTIFY indexAccessStateChanged FINAL)
     // 索引哪些地方 (Settings::indexScope, GitHub #52): auto | drives | folders,
@@ -641,6 +646,7 @@ public:
         bool serviceUnsafeLocation = false; // installed from a user-writable folder (an old portable copy): offer to repair
         bool serviceBusy = false; // --install / --uninstall running
         QString serviceMessage; // how the last install or uninstall went
+        QString serviceRepair; // ... and, where a folder's permissions stopped it, the commands that put them right (a line each)
         bool serviceUpdate = false; // this copy's own service is older than it: one click updates it (ServiceUpdate.h)
         QString serviceVersion; // the running service's, from its last handshake; empty when unknown
         bool foldersInEffect = false; // only the chosen folders are indexed (App::foldersInEffect)
@@ -661,6 +667,10 @@ public:
     bool indexServiceInstallable() const { return m_indexAccessState.serviceInstallable; }
     bool indexServiceUnsafeLocation() const { return m_indexAccessState.serviceUnsafeLocation; }
     QString indexServiceMessage() const { return m_indexAccessState.serviceMessage; }
+    QString indexServiceRepair() const { return m_indexAccessState.serviceRepair; }
+    // Why the service cannot go into a protected folder, said for the user:
+    // which folder, what is wrong with it and who is behind it (GitHub #426).
+    static QString serviceBlockedMessage(const svcloc::Weakness& weak);
     bool indexServiceUpdatable() const { return m_indexAccessState.serviceUpdate; }
     QString indexServiceVersion() const { return m_indexAccessState.serviceVersion; }
     // The app restarts Win顺 as administrator (UAC asks once), installs or

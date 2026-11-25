@@ -5794,6 +5794,10 @@ Double-click grip: expand/collapse search panel</translation>
 <context>
     <name>SettingsWindow</name>
     <message>
+        <source>复制命令</source>
+        <translation>Copy commands</translation>
+    </message>
+    <message>
         <source>搜索“%1”</source>
         <translation>Search “%1”</translation>
     </message>
@@ -11292,10 +11296,6 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Installing the index service failed (error %1)</translation>
     </message>
     <message>
-        <source>无法安装索引服务：系统保护目录（%1）允许普通用户修改，出于安全考虑不能将服务放进去。请恢复目录默认权限后再试。</source>
-        <translation>Cannot install the index service: the protected system folder (%1) can be modified by non-administrators, so placing the service there is blocked for security. Restore its default permissions and try again.</translation>
-    </message>
-    <message>
         <source>更新索引服务失败（错误 %1）</source>
         <translation>Updating the index service failed (error %1)</translation>
     </message>
@@ -16291,6 +16291,18 @@ Content index: %5</translation>
 </context>
 <context>
     <name>ws::SettingsEditor</name>
+    <message>
+        <source>无法安装索引服务：%1 的所有者是“%2”，不是管理员，普通程序也能改动它，服务放进去不安全。把所有者改回管理员组就能装：复制下面的命令，在“命令提示符（管理员）”里运行，再点一次安装。</source>
+        <translation>Cannot install the index service: %1 is owned by “%2”, not by an administrator, so ordinary programs can change it and the service would not be safe there. Give it back to the Administrators group: copy the command below, run it in Command Prompt (Admin), then choose Install again.</translation>
+    </message>
+    <message>
+        <source>无法安装索引服务：“%2”可以修改 %1（正常只有管理员能改），服务放进去不安全。收回这项权限就能装：复制下面的命令，在“命令提示符（管理员）”里运行，再点一次安装。“%2”仍然可以读取和运行里面的程序。</source>
+        <translation>Cannot install the index service: “%2” may change %1 (normally only administrators can), so the service would not be safe there. Take that permission back: copy the commands below, run them in Command Prompt (Admin), then choose Install again. “%2” can still read and run the programs in it.</translation>
+    </message>
+    <message>
+        <source>无法安装索引服务：不能确认 %1 只有管理员能改，服务放进去不安全。请恢复它的默认权限后再试。</source>
+        <translation>Cannot install the index service: %1 could not be confirmed as changeable by administrators only, so the service would not be safe there. Restore its default permissions and try again.</translation>
+    </message>
     <message>
         <source>这个快捷键已用来打开结果，请换一个</source>
         <translation>This shortcut already opens results; choose another</translation>

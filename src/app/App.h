@@ -720,6 +720,7 @@ private:
     bool m_accessTakenFromTask = false; // the mode was taken over from an old elevated task: said in the settings
     bool m_foldersInEffect = false; // only the chosen folders are indexed (foldersInEffect), as last applied
     QString m_serviceMessage; // ... and how installing or uninstalling the service went
+    QString m_serviceRepair; // the commands that let it be installed, when a folder's permissions stopped it
     bool m_serviceBusy = false; // WinShunService.exe --install / --uninstall running
     QString m_indexDir; // where the index files are, '/' separated
     QString m_indexFolder; // the [Index] Folder setting m_indexDir stands for

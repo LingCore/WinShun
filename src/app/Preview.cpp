@@ -7,6 +7,7 @@
 #include "ClipboardAnimationProbe.h"
 #include "LauncherSettingsProbe.h"
 #include "SearchShadowProbe.h"
+#include "ServiceLocation.h"
 #include "PastePlainProbe.h"
 #include "SettingsMotionProbe.h"
 #include "platform/AllocationTrace.h"
@@ -2947,6 +2948,38 @@ int runSettings(const QStringList& args)
         grab(2, u"drives-selected"_s);
         editor->setAllDrives(true);
         check(editor->allDrives(), "restoring all drives failed");
+        return finish(window, saved);
+    }
+
+    // --service-blocked: 搜索范围 › 磁盘 after an install no protected folder
+    // would take (GitHub #426): what is wrong, and the commands to copy.
+    if (args.contains(u"--service-blocked"_s)) {
+        bool saved = true;
+        const auto grab = [&](svcloc::Weakness::Kind kind, const wchar_t* path, const wchar_t* sid, const QString& name) {
+            svcloc::Weakness weak;
+            weak.kind = kind;
+            weak.path = path;
+            weak.sid = sid;
+            SettingsEditor::IndexAccessState state;
+            state.effective = u"walk"_s;
+            state.administrator = state.serviceInstallable = state.portable = true;
+            state.serviceState = u"not_installed"_s;
+            state.serviceMessage = SettingsEditor::serviceBlockedMessage(weak);
+            QStringList commands;
+            for (const std::wstring& command : svcloc::repairCommands(weak))
+                commands.append(QString::fromStdWString(command));
+            state.serviceRepair = commands.join(u'\n');
+            editor->setIndexAccessState(state);
+            QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, QVariant(u"scope"_s)), Q_ARG(QVariant, QVariant(2))); // 搜索范围 › 磁盘
+            settle(window, 3);
+            flick->setProperty("contentY", std::max(0.0, flick->property("contentHeight").toDouble() - flick->property("height").toDouble()));
+            settle(window, 3);
+            saved = saveGrab(window, out.filePath(name)) && saved;
+        };
+        window->resize(args.contains(u"--compact"_s) ? QSize(760, 560) : QSize(920, 720));
+        grab(svcloc::Weakness::Kind::Owner, LR"(C:\)", L"S-1-5-32-545", u"service-blocked-owner.png"_s); // a user's in life; here a name every Windows has
+        grab(svcloc::Weakness::Kind::Rights, LR"(C:\Program Files)", L"S-1-5-11", u"service-blocked-rights.png"_s);
+        grab(svcloc::Weakness::Kind::Unreadable, LR"(C:\Program Files)", L"", u"service-blocked-unknown.png"_s);
         return finish(window, saved);
     }
 

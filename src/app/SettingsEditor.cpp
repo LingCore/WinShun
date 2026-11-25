@@ -13,6 +13,7 @@
 #include "ClipImport.h"
 #include "CliSetup.h"
 #include "ScoopInstall.h"
+#include "ServiceLocation.h"
 #include "CommandLine.h"
 #include "Crawler.h"
 #include "FavoritesSettings.h"
@@ -1131,6 +1132,27 @@ void SettingsEditor::setIndexAccess(const QString& mode)
         return; // not offered: the row leaves it out
     m_settings.indexAccess = mode;
     commit(); // the app restarts Win顺 with other rights, or switches in place (App::applyIndexAccess)
+}
+
+QString SettingsEditor::serviceBlockedMessage(const svcloc::Weakness& weak)
+{
+    const QString folder = QString::fromStdWString(weak.path);
+    const QString account = QString::fromStdWString(svcloc::accountName(weak.sid));
+    switch (weak.kind) {
+    case svcloc::Weakness::Kind::Owner:
+        return tr("无法安装索引服务：%1 的所有者是“%2”，不是管理员，普通程序也能改动它，服务放进去不安全。"
+                  "把所有者改回管理员组就能装：复制下面的命令，在“命令提示符（管理员）”里运行，再点一次安装。")
+            .arg(folder, account);
+    case svcloc::Weakness::Kind::Rights:
+        return tr("无法安装索引服务：“%2”可以修改 %1（正常只有管理员能改），服务放进去不安全。"
+                  "收回这项权限就能装：复制下面的命令，在“命令提示符（管理员）”里运行，再点一次安装。“%2”仍然可以读取和运行里面的程序。")
+            .arg(folder, account);
+    case svcloc::Weakness::Kind::NoAcl:
+    case svcloc::Weakness::Kind::Unreadable:
+    case svcloc::Weakness::Kind::None:
+        break;
+    }
+    return tr("无法安装索引服务：不能确认 %1 只有管理员能改，服务放进去不安全。请恢复它的默认权限后再试。").arg(folder);
 }
 
 void SettingsEditor::setIndexAccessState(const IndexAccessState& state)

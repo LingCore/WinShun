@@ -8674,6 +8674,7 @@ void App::refreshIndexAccess()
     state.serviceUnsafeLocation = state.serviceInstalled && ntfs::ServiceVolumeAccess::registeredInUnsafeLocation();
     state.serviceBusy = m_serviceBusy;
     state.serviceMessage = m_serviceMessage;
+    state.serviceRepair = m_serviceRepair;
     state.serviceUpdate = state.serviceInstalled && !state.serviceUnsafeLocation && serviceUpdateDue();
     state.serviceVersion = m_serviceVersionSeen;
     switch (kind) {
@@ -8730,6 +8731,7 @@ void App::installIndexService(bool install)
 {
     if (m_serviceBusy)
         return;
+    m_serviceRepair.clear();
     // A Scoop copy is registered through its "current" (the service records where it was installed from).
     const QString exe = scoop::stablePath(QCoreApplication::applicationDirPath() + u"/WinShunService.exe"_s);
     if (!QFile::exists(exe)) {
@@ -8756,11 +8758,16 @@ void App::installIndexService(bool install)
                     if (!code) {
                         m_serviceMessage = tr("没有进行：需要管理员权限（在 UAC 里选“是”）");
                     } else if (*code != 0) {
-                        std::wstring badFolder;
+                        // No protected folder would take it: say which folder
+                        // and why, with the commands that put it right.
+                        svcloc::Weakness weak;
                         if (install && *code == ERROR_ACCESS_DENIED && !svcloc::pathProtected(exe.toStdWString())
-                            && !svcloc::anyProtectedDirUsable(svcloc::protectedServiceDirs(), &badFolder)) {
-                            m_serviceMessage = tr("无法安装索引服务：系统保护目录（%1）允许普通用户修改，出于安全考虑不能将服务放进去。请恢复目录默认权限后再试。")
-                                                   .arg(QString::fromStdWString(badFolder));
+                            && !svcloc::anyProtectedDirUsable(svcloc::protectedServiceDirs(), &weak)) {
+                            m_serviceMessage = SettingsEditor::serviceBlockedMessage(weak);
+                            QStringList commands;
+                            for (const std::wstring& command : svcloc::repairCommands(weak))
+                                commands.append(QString::fromStdWString(command));
+                            m_serviceRepair = commands.join(u'\n');
                         } else {
                             m_serviceMessage = (update ? tr("更新索引服务失败（错误 %1）")
                                     : install          ? tr("安装索引服务失败（错误 %1）")
