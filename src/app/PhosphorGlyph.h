@@ -34,9 +34,6 @@ class PhosphorGlyph : public QQuickItem {
     // Where the drawn outline starts on the left, in the parent's (Glyph's) logical pixels: the em is
     // larger than the box, and an icon fills most of it, so the ink can lie outside the box (negative).
     Q_PROPERTY(qreal inkLeft READ inkLeft NOTIFY inkChanged FINAL)
-    // ... and where it ends on the right, likewise (past the box's width): what stands after an icon
-    // keeps its distance from this, not from the box (a camera is wider than a folder).
-    Q_PROPERTY(qreal inkRight READ inkRight NOTIFY inkChanged FINAL)
 
 public:
     explicit PhosphorGlyph(QQuickItem* parent = nullptr);
@@ -54,7 +51,6 @@ public:
     qreal inkScale() const { return m_inkScale; }
     void setInkScale(qreal scale);
     qreal inkLeft() const { return m_inkLeft; }
-    qreal inkRight() const { return m_inkRight; }
 
 signals:
     void changed();
@@ -76,7 +72,6 @@ private:
     QPainterPath m_path; // in the image's device pixels
     int m_pixels = 0;    // the image's side
     qreal m_inkLeft = 0;
-    qreal m_inkRight = 0;
     bool m_dirty = true;
 };
 

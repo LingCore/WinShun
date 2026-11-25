@@ -10033,14 +10033,20 @@ bool checkTypeStripCounts(QQmlEngine* qml, const QDir& output)
         if (!chip || !tag) { check(false, "a chip or its tag is missing"); return false; }
         check(!tag->isVisible(), "a tag shows with no numbers");
         plain.append(chip->width());
-        // The name clear of its icon's ink (wider than the icon's box, and not the same for every icon).
+        // Laid out by the icon's container: an even square, as far from the chip's left edge as from
+        // its top and bottom, the name a fixed gap after it.
         QQuickItem* icon = visualNamed(chip, u"searchTypeChipIcon"_s);
         QQuickItem* name = visualNamed(chip, u"searchTypeChipName"_s);
         if (!icon || !name) { check(false, "a chip's icon or name is missing"); return false; }
         if (icon->isVisible()) {
-            const qreal gap = name->x() - (icon->x() + icon->property("inkRight").toReal());
-            if (gap < 5 || gap > 8) {
-                qWarning("type strip counts regression: chip %d: %.2f between its icon's ink and its name", type, gap);
+            const qreal left = icon->x();
+            const qreal top = icon->y();
+            const qreal bottom = chip->height() - top - icon->height();
+            const qreal gap = name->x() - (left + icon->width());
+            if (icon->width() != 20 || icon->height() != 20 || std::abs(left - top) > 0.01 || std::abs(top - bottom) > 0.7
+                || std::abs(gap - 4) > 0.01) {
+                qWarning("type strip counts regression: chip %d: icon box %.1fx%.1f, %.2f from the left, %.2f from the top, "
+                         "%.2f from the bottom, %.2f before the name", type, icon->width(), icon->height(), left, top, bottom, gap);
                 ok = false;
             }
         }

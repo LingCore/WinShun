@@ -19,6 +19,13 @@ Item {
     // Phosphor icon, whole in one glyph.
     property string overlay
     property real size: 16
+    // The icon's container, when the place it stands in is laid out by one (an even square: 20, 24):
+    // a Phosphor icon's em square is then exactly this box, its ink inside it with the margin its grid
+    // gives every icon, so what stands beside it keeps its distance from the box and never looks at the
+    // ink. 0: sized by `size` as ever, the em larger than the box (Phosphor.h kScale) and its ink
+    // reaching past it.
+    property real container: 0
+    readonly property real boxSize: container > 0 ? container : size
     property color color: Theme.subtext
     // A pressed key's icon, a little smaller (KeySurface's contentScale): the
     // box stays, so nothing beside it moves; a Phosphor icon is drawn afresh
@@ -49,8 +56,8 @@ Item {
 
     // The icon fonts' line box is exactly their em square, so drawn icons
     // line up with the glyphs. A Phosphor icon, drawn larger, stays in its box.
-    implicitWidth: drawn || phosphor || missing ? size : label.implicitWidth
-    implicitHeight: drawn || phosphor || missing ? size : label.implicitHeight
+    implicitWidth: drawn || phosphor || missing ? boxSize : label.implicitWidth
+    implicitHeight: drawn || phosphor || missing ? boxSize : label.implicitHeight
 
     // A Phosphor icon: drawn by PhosphorGlyph, the em's centre on a pixel
     // centre or edge, the same across and down. As text it came out warped:
@@ -60,8 +67,6 @@ Item {
     // Where a Phosphor icon's ink starts, left of the box when the icon fills the em (0 for the others):
     // what to shift a row of icon and words by to put the ink on the edge the words below start at.
     readonly property real inkLeft: phosphorItem.used ? phosphorItem.inkLeft : 0
-    // ... and where it ends, right of the box likewise (the box's width for the others).
-    readonly property real inkRight: phosphorItem.used && phosphorItem.inkRight > 0 ? phosphorItem.inkRight : width
 
     PhosphorGlyph {
         id: phosphorItem
@@ -70,7 +75,7 @@ Item {
         text: used ? icon.phosphor.text : ""
         family: used ? icon.phosphor.family : ""
         color: icon.color
-        em: label.fontInfo.pixelSize // the font's own rounding of the size, as before
+        em: icon.container > 0 ? icon.container : label.fontInfo.pixelSize // the font's own rounding of the size, as before
         inkScale: icon.inkScale
         box: Qt.size(icon.width, icon.height)
     }
