@@ -66,7 +66,9 @@ struct Policy {
     // Win顺's screen capture is on: screenshot_history lists nothing while
     // it is off (and says why).
     bool captureEnabled = false;
-    bool allowDocuments = false; // list_documents: for plugins (winshun:content), not AI clients
+    // list_documents and list_files, which list everything a page at a time:
+    // for plugins (winshun:content, winshun:search), not AI clients.
+    bool allowDocuments = false;
     SettingsMode settingsMode = SettingsMode::Off; // change_settings
     QStringList excludedPaths; // folders AI never sees (%VARS% expanded by setPolicy)
     bool content = true; // search_content: off with the launcher's content search
@@ -425,6 +427,7 @@ private:
     void indexStatus(const std::shared_ptr<Call>& call);
     void readFileText(const std::shared_ptr<Call>& call);
     void listDocuments(const std::shared_ptr<Call>& call);
+    void listFiles(const std::shared_ptr<Call>& call);
     void getSettings(const std::shared_ptr<Call>& call);
     void changeSettings(const std::shared_ptr<Call>& call);
     void applySettings(const std::shared_ptr<Call>& call, SettingsApply apply);

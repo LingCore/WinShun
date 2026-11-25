@@ -84,7 +84,7 @@ QString capped(QString text, qsizetype most)
 std::optional<Permission> permissionFor(const QString& tool)
 {
     if (tool == u"search_files" || tool == u"search_content" || tool == u"recent_files" || tool == u"list_folder"
-        || tool == u"get_file_info")
+        || tool == u"get_file_info" || tool == u"list_files")
         return Permission::WinshunSearch;
     if (tool == u"open_item" || tool == u"show_in_folder")
         return Permission::WinshunOpen;
