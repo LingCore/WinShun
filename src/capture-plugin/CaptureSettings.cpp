@@ -1,5 +1,6 @@
 #include "CaptureSettings.h"
 
+#include "Recorder.h"
 #include "platform/HotkeyText.h"
 #include "platform/Shell.h"
 
@@ -563,10 +564,12 @@ QString CaptureSettings::suggestedPinGroupName() const
     return store.suggestedNewName();
 }
 
-QString CaptureSettings::pickFolder(const QString& title)
+QString CaptureSettings::captureRecordingDefaultFolder() const { return capture::Recorder::defaultFolder(); }
+
+QString CaptureSettings::pickFolder(const QString& title, const QString& start)
 {
     auto* window = qobject_cast<QWindow*>(m_window);
-    return shell::pickFolder(window ? reinterpret_cast<HWND>(window->winId()) : nullptr, title);
+    return shell::pickFolder(window ? reinterpret_cast<HWND>(window->winId()) : nullptr, title, start);
 }
 
 } // namespace ws::captureplugin

@@ -134,11 +134,14 @@ QString Recorder::sizeText() const
     return QLocale().formattedDataSize(m_progress.bytes);
 }
 
+QString Recorder::defaultFolder()
+{
+    return QDir::toNativeSeparators(QDir(QStandardPaths::writableLocation(QStandardPaths::MoviesLocation)).filePath(u"WinShun"_s));
+}
+
 QString Recorder::folder() const
 {
-    return m_preferences.folder.isEmpty()
-        ? QDir::toNativeSeparators(QDir(QStandardPaths::writableLocation(QStandardPaths::MoviesLocation)).filePath(u"WinShun"_s))
-        : m_preferences.folder;
+    return m_preferences.folder.isEmpty() ? defaultFolder() : m_preferences.folder;
 }
 
 QString Recorder::fileName() const { return QFileInfo(m_path).fileName(); }
@@ -601,7 +604,8 @@ void Recorder::close()
 void Recorder::chooseFolder()
 {
     if (m_stage != Ready) return;
-    const QString picked = shell::pickFolder(m_panel ? reinterpret_cast<HWND>(m_panel->winId()) : nullptr, tr("选择录屏保存文件夹"));
+    // Opens where the recordings go now (a folder not made yet: where the dialog was last).
+    const QString picked = shell::pickFolder(m_panel ? reinterpret_cast<HWND>(m_panel->winId()) : nullptr, tr("选择录屏保存文件夹"), folder());
     if (!picked.isEmpty()) { m_preferences.folder = picked; m_error.clear(); remember(); }
 }
 

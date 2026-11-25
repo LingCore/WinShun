@@ -663,8 +663,30 @@ Column {
                             dpr: card.dpr
                             text: qsTr("选择文件夹…")
                             onClicked: {
-                                const chosen = card.editor.pickFolder(qsTr("选择截图保存文件夹"))
+                                const chosen = card.editor.pickFolder(qsTr("选择截图保存文件夹"), card.editor.captureSaveFolder)
                                 if (chosen.length > 0) card.editor.captureSaveFolder = chosen
+                            }
+                        }
+                    }
+                    SettingRow { // the recording panel's 保存到, findable here as well
+                        objectName: "captureRecordingFolderRow"
+                        title: qsTr("录屏保存文件夹")
+                        description: card.editor.captureRecordingFolder.length > 0 ? card.editor.captureRecordingFolder
+                                                                                    : card.editor.captureRecordingDefaultFolder
+
+                        FlatButton {
+                            dpr: card.dpr
+                            text: qsTr("使用默认")
+                            enabled: card.editor.captureRecordingFolder.length > 0
+                            onClicked: card.editor.captureRecordingFolder = ""
+                        }
+                        FlatButton {
+                            dpr: card.dpr
+                            text: qsTr("选择文件夹…")
+                            onClicked: {
+                                const chosen = card.editor.pickFolder(qsTr("选择录屏保存文件夹"), card.editor.captureRecordingFolder.length > 0
+                                    ? card.editor.captureRecordingFolder : card.editor.captureRecordingDefaultFolder)
+                                if (chosen.length > 0) card.editor.captureRecordingFolder = chosen
                             }
                         }
                     }

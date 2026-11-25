@@ -1204,6 +1204,18 @@
         <translation>Use system default</translation>
     </message>
     <message>
+        <source>录屏保存文件夹</source>
+        <translation>Recording folder</translation>
+    </message>
+    <message>
+        <source>使用默认</source>
+        <translation>Use default</translation>
+    </message>
+    <message>
+        <source>选择录屏保存文件夹</source>
+        <translation>Choose recording folder</translation>
+    </message>
+    <message>
         <source>选好就复制</source>
         <translation>Copy as soon as it is picked</translation>
     </message>
