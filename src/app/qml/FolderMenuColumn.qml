@@ -101,26 +101,6 @@ Item {
         Qt.callLater(column.sync)
     }
 
-    // The highlight under an item chosen or pointed at (the style's
-    // rowHighlight, role "menu"). A part that knows the menu (declares
-    // `role`, or `inMenu` as brand's does) draws the item's fill; one that
-    // does not (a list's highlight) leaves it to the menu's own.
-    component MenuHighlight: Hook {
-        id: highlightPart
-        readonly property bool inMenu: item !== null && ("role" in item || "inMenu" in item)
-        part: Theme.rowHighlight
-        hovered: inMenu
-        role: "menu"
-        dpr: column.dpr
-
-        Rectangle {
-            anchors.fill: parent
-            visible: !highlightPart.inMenu
-            radius: Theme.menuItemRadius
-            color: Theme.menuHover
-        }
-    }
-
     ListView {
         id: flick
         objectName: "folderMenuScroll"
@@ -156,6 +136,7 @@ Item {
             visible: flick.currentItem !== null && column.highlighted >= 0
             MenuHighlight {
                 anchors.fill: parent
+                dpr: column.dpr
                 opacity: column.faint ? 0.5 : 1
             }
         }

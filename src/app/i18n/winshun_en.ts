@@ -13307,6 +13307,14 @@ Content index: %5</translation>
         <translation>Items like these can only go into folders on this computer</translation>
     </message>
     <message>
+        <source>正在读取…</source>
+        <translation>Reading…</translation>
+    </message>
+    <message>
+        <source>没有子文件夹</source>
+        <translation>No folders inside</translation>
+    </message>
+    <message>
         <source>收藏圆盘未打开</source>
         <translation>Favorites pie could not open</translation>
     </message>

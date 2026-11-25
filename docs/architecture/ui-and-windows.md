@@ -83,7 +83,7 @@
   - **Directory Opus**（焦点 `dopus.filedisplay`，仅拦字母与无 Shift 数字）；
   - **OneCommander**（钩子初筛 + `ComWorker` UIA 确认 `AutomationId="flb"`，2 s 焦点缓存防侧栏打字卡顿）。
 - **文件夹菜单（`FolderMenu`）**：空白处左键双击 / 中键（`FolderViewHit`）或全局热键（`FolderMenuHotkey`）触发，无焦点弹窗，按键由 `KeyRouter(Policy::Menu)` 路由。
-- **拖放圆盘（`DropPie` / `DropPieHelper`）**：按住文件或拖放途中按扫描码 `0x29` 键触发，每页 8 个文件夹收藏，`Tab` 翻页（动态热键）；管理员主进程自动交由普通权限辅助进程 `DropPieHelper` 运行。`PieDrop` 替换 Qt `IDropTarget`（不用 `IDropTargetHelper`），优先读 `CFSTR_SHELLIDLIST` 防压缩软件同步解压阻塞；磁盘文件走独立 STA `IFileOperation`（支持撤销，返 `DROPEFFECT_NONE` 防源误删），虚拟项转交目标文件夹原生 `IDropTarget`。
+- **拖放圆盘（`DropPie` / `DropPieHelper`）**：按住文件或拖放途中按扫描码 `0x29` 键触发，每页 8 个文件夹收藏，`Tab` 翻页（动态热键）；管理员主进程自动交由普通权限辅助进程 `DropPieHelper` 运行。在胶囊或子文件夹行上停 350 ms 逐级展开子文件夹列（#463，`DropPieColumn.qml`）：计时、菜单瞄准（`kAim` 150 ms）与 `FolderMenu::subfolders` 后台读取同文件夹菜单，列几何与命中、瞄准三角、来处与列之间的凸包在 `PieGeometry`（`tst_piegeometry`）；超长列以上下条带悬停滚动（拖放中没有滚轮）。窗口覆盖所在屏工作区，列出现时不改窗口（可见时改窗口会闪一帧挪位的旧画面），离开圆盘与各列的范围即收起；离屏检查 `--preview-results <dir> --drop-pie-columns`（含模拟 DragOver 的停留、瞄准、滚动与收起）。`PieDrop` 替换 Qt `IDropTarget`（不用 `IDropTargetHelper`），优先读 `CFSTR_SHELLIDLIST` 防压缩软件同步解压阻塞；磁盘文件走独立 STA `IFileOperation`（支持撤销，返 `DROPEFFECT_NONE` 防源误删），虚拟项转交目标文件夹原生 `IDropTarget`。
 - **粘贴为文件（`PasteAsFile`）**：普通权限 `WinShunSearch.exe` 实现，提供右键背景菜单与 `TypeToSearch` 资源管理器/桌面 `Ctrl+V` 拦截（仅 `IsClipboardFormatAvailable` 判断有文本/图片且无文件），自动识别类型与编码落盘并进入 `SVSI_EDIT` 改名。
 - **任务栏集成（`TaskbarSearchBox` & `WinShunSearch.exe`）**：
   - `TaskbarSearchBox` 为 `Shell_TrayWnd` 的 Direct2D 分层子窗（真实输入与 IME 仍在启动器，同步绘制与光标定位），固定停靠在任务栏空端、三档自适应（完整框 / 图标+标签 / 仅图标），兼容 StartAllBack / ExplorerPatcher；采用独立窗口线程、MTA UIA 测量线程（事件驱动防抖）、`DwmFlush` 节拍线程与主线程四线程隔离。

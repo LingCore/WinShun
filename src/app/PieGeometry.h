@@ -4,6 +4,7 @@
 #include <QRect>
 #include <QRectF>
 
+#include <cmath>
 #include <span>
 #include <vector>
 
@@ -76,6 +77,53 @@ struct Hit {
 // within half the gap round it), else the sector whose direction it is in
 // (anywhere within the layout's reach); or outside the pie.
 Hit hitTest(QPointF offset, const Layout& layout, const Metrics& metrics) noexcept;
+
+// The folders inside a chosen folder (GitHub #463): a column beside what it
+// came from (the pie, or a row of the column before), its rows as the folder
+// menu's (FolderMenuColumn). A column too tall for the work area shows what
+// fits, with a strip at its top and one at its bottom that scroll it while
+// the pointer rests on them (the drag's pointer has no wheel). Coordinates
+// are one rectangle's for all: the window's, in logical pixels.
+struct ColumnMetrics {
+    double row = 32; // a row's height (Theme.menuItemHeight)
+    double padding = 4; // round the rows (Theme.menuPadding)
+    double gap = 4; // from what it came from
+    double margin = 8; // kept from the work area's edges
+    double maxHeight = 760; // as the folder menu's
+    double strip() const noexcept { return std::round(row / 2); } // a scroll strip's height
+};
+struct ColumnBox {
+    QRectF rect; // the box, padding and strips in it
+    int side = 1; // +1: on the right of what it came from, -1: on its left
+    int shown = 0; // rows in sight at once
+    bool scrolls = false;
+    // The top of the first row in sight.
+    double rowsTop(const ColumnMetrics& m) const noexcept { return rect.top() + m.padding + (scrolls ? m.strip() : 0); }
+};
+// `rows` rows `width` wide beside `beside` (on `side` when there is room,
+// else on the other; over it against the area's edge when neither has),
+// the first row's middle level with `levelY` as far as the area allows.
+ColumnBox placeColumn(const QRectF& beside, double levelY, int side, double width, int rows, const QRectF& area,
+    const ColumnMetrics& metrics) noexcept;
+enum class ColumnPart { Outside, Box, Row, Up, Down };
+struct ColumnHit {
+    ColumnPart part = ColumnPart::Outside;
+    int row = -1; // Row: which of all its rows
+};
+// What of column `box` is at `point`, its rows from `first` in sight: a row
+// (as wide as the box), a scroll strip, the rest of the box, or outside it.
+ColumnHit hitColumn(QPointF point, const ColumnBox& box, int first, int rows, const ColumnMetrics& metrics) noexcept;
+// `first` within what a column of `rows` showing `shown` at once can scroll to.
+int clampFirst(int first, int rows, int shown) noexcept;
+// Whether `point` is inside the triangle `a`, `b`, `c` or on its edge; never
+// inside one with no area. Menu aim: the pointer still on its way from where
+// it was (`a`) to a column whose near edge runs from `b` to `c`.
+bool inTriangle(QPointF point, QPointF a, QPointF b, QPointF c) noexcept;
+// Whether `point` is inside the smallest convex shape round both `a` and `b`
+// (or on its edge): every straight way from a point of one to a point of the
+// other runs inside it. The pointer on its way from the pie to a column, or
+// from a column to the next, is still on them there.
+bool inHullOf(QPointF point, const QRectF& a, const QRectF& b) noexcept;
 
 // What the drag's source allows (DROPEFFECT_MOVE, DROPEFFECT_COPY), and the
 // keys held.

@@ -211,6 +211,7 @@ set(qml_files
     qml/DialogBarRow.qml
     qml/FolderMenuWindow.qml
     qml/FolderMenuColumn.qml
+    qml/MenuHighlight.qml
     qml/MenuPathTip.qml
     qml/FontPicker.qml
     qml/ChoiceBox.qml
@@ -219,6 +220,7 @@ set(qml_files
     qml/ComboPopup.qml
     qml/ClipGroupPicker.qml
     qml/DropPieWindow.qml
+    qml/DropPieColumn.qml
     qml/SoftShadow.qml
     qml/PreviewWindow.qml
     qml/PreviewBody.qml

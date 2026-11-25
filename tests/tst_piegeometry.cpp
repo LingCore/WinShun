@@ -1,6 +1,7 @@
 // The drop pie's geometry (PieGeometry): the chips round the middle, which
 // sector a direction chooses, moving or copying, where the pie goes near a
-// screen's edges and the window around it.
+// screen's edges and the window around it, and the columns of a folder's
+// folders beside it.
 #include "PieGeometry.h"
 
 #include <QtTest>
@@ -325,6 +326,118 @@ private slots:
         QCOMPARE(clampPage(-1, 30), 0);
         QCOMPARE(turnedPage(2, 9, false), 0); // clamped to the second (last), then round
         QCOMPARE(turnedPage(7, 12, true), 0); // clamped to the second, back to the first
+    }
+
+    // A folder's folders (GitHub #463) beside the pie: right of it with room
+    // there, the first row level with the chip; on the left where the screen
+    // ends; against the edge, over the pie, where neither side has room.
+    void columnBeside()
+    {
+        const ColumnMetrics m; // rows 32, padding 4, gap 4, margin 8, strips 16
+        const QRectF area(0, 0, 1600, 900);
+        const QRectF pie(600, 300, 300, 200);
+        const ColumnBox right = placeColumn(pie, 350, 1, 200, 5, area, m);
+        QCOMPARE(right.side, 1);
+        QVERIFY(!right.scrolls);
+        QCOMPARE(right.shown, 5);
+        QCOMPARE(right.rect, QRectF(904, 350 - 16 - 4, 200, 5 * 32 + 8));
+        QCOMPARE(right.rowsTop(m) + 16, 350.0); // the first row's middle level with the chip
+        // Asked for the left: there.
+        const ColumnBox left = placeColumn(pie, 350, -1, 200, 5, area, m);
+        QCOMPARE(left.side, -1);
+        QCOMPARE(left.rect.right(), 596.0);
+        // No room on the right: the left. No room on the left: the right.
+        QCOMPARE(placeColumn(pie.translated(600, 0), 350, 1, 200, 5, area, m).side, -1);
+        QCOMPARE(placeColumn(pie.translated(-560, 0), 350, -1, 200, 5, area, m).side, 1);
+        // Room on neither side: on the side asked for, against the area's edge.
+        const ColumnBox squeezed = placeColumn(QRectF(100, 300, 1400, 200), 350, 1, 200, 5, area, m);
+        QCOMPARE(squeezed.side, 1);
+        QCOMPARE(squeezed.rect.right(), 1592.0);
+        // Level with a chip near the bottom: moved up, inside the margin.
+        const ColumnBox low = placeColumn(pie, 880, 1, 200, 5, area, m);
+        QCOMPARE(low.rect.bottom(), 892.0);
+        const ColumnBox high = placeColumn(pie, 2, 1, 200, 5, area, m);
+        QCOMPARE(high.rect.top(), 8.0);
+        // An empty folder still has its one row (it says so).
+        QCOMPARE(placeColumn(pie, 350, 1, 200, 0, area, m).shown, 1);
+    }
+
+    // More rows than fit: what fits between the strips, the strips scroll.
+    void columnScrolls()
+    {
+        const ColumnMetrics m;
+        const QRectF area(0, 0, 1600, 500);
+        const ColumnBox box = placeColumn(QRectF(600, 100, 300, 200), 150, 1, 200, 40, area, m);
+        QVERIFY(box.scrolls);
+        // 500 - 16 margins = 484: less padding 8 and strips 32 leaves 444, 13 rows.
+        QCOMPARE(box.shown, 13);
+        QCOMPARE(box.rect.height(), 13 * 32 + 8 + 32.0);
+        QCOMPARE(box.rect.bottom(), 492.0); // level with the chip it would run off the bottom: up, inside the margin
+        // The folder menu's limit holds on a tall screen too.
+        const ColumnBox tall = placeColumn(QRectF(600, 100, 300, 200), 150, 1, 200, 400, QRectF(0, 0, 1600, 2000), m);
+        QVERIFY(tall.rect.height() <= m.maxHeight);
+        QCOMPARE(tall.shown, int((760 - 8 - 32) / 32));
+        QCOMPARE(clampFirst(-3, 40, 13), 0);
+        QCOMPARE(clampFirst(30, 40, 13), 27);
+        QCOMPARE(clampFirst(5, 4, 13), 0);
+    }
+
+    void columnHits()
+    {
+        const ColumnMetrics m;
+        ColumnBox box;
+        box.rect = QRectF(100, 100, 200, 4 * 32 + 8);
+        box.shown = 4;
+        QCOMPARE(hitColumn({99, 150}, box, 0, 4, m).part, ColumnPart::Outside);
+        QCOMPARE(hitColumn({150, 102}, box, 0, 4, m).part, ColumnPart::Box); // the padding above the rows
+        QCOMPARE(hitColumn({150, 104}, box, 0, 4, m).row, 0);
+        QCOMPARE(hitColumn({150, 135.9}, box, 0, 4, m).row, 0);
+        QCOMPARE(hitColumn({150, 136}, box, 0, 4, m).row, 1);
+        QCOMPARE(hitColumn({101, 231}, box, 0, 4, m).row, 3);
+        QCOMPARE(hitColumn({150, 233}, box, 0, 4, m).part, ColumnPart::Box); // the padding below
+        // Fewer rows than places (the one row of an empty folder is no row to drop on).
+        QCOMPARE(hitColumn({150, 140}, box, 0, 1, m).part, ColumnPart::Box);
+        // Scrolled: the strips, and rows counted from the first in sight.
+        box.scrolls = true;
+        box.rect.setHeight(4 * 32 + 8 + 32);
+        QCOMPARE(hitColumn({150, 110}, box, 3, 20, m).part, ColumnPart::Up);
+        QCOMPARE(hitColumn({150, 120}, box, 3, 20, m).row, 3);
+        QCOMPARE(hitColumn({150, 247}, box, 3, 20, m).row, 6);
+        QCOMPARE(hitColumn({150, 249}, box, 3, 20, m).part, ColumnPart::Down);
+    }
+
+    // Menu aim: from where the pointer was, heading into the column's near
+    // edge (here x 300, from y 100 to 300) or not.
+    void aimTriangle()
+    {
+        const QPointF from(200, 200);
+        const QPointF top(300, 100);
+        const QPointF bottom(300, 300);
+        QVERIFY(inTriangle({220, 200}, from, top, bottom)); // straight at it
+        QVERIFY(inTriangle({220, 185}, from, top, bottom)); // up a little on the way
+        QVERIFY(inTriangle({300, 100}, from, top, bottom)); // on a corner
+        QVERIFY(!inTriangle({210, 230}, from, top, bottom)); // down more than across: to a row below
+        QVERIFY(!inTriangle({190, 200}, from, top, bottom)); // back
+        QVERIFY(!inTriangle({310, 200}, from, top, bottom)); // past the edge
+        QVERIFY(!inTriangle({250, 250}, from, from, bottom)); // no area
+    }
+
+    // The way from the pie to a tall column beside it and lower down: on
+    // them, never in the gap under the pie that is near neither.
+    void hullBetween()
+    {
+        const QRectF pie(0, 0, 200, 200);
+        const QRectF column(240, 100, 180, 600);
+        QVERIFY(inHullOf({100, 100}, pie, column)); // in one
+        QVERIFY(inHullOf({300, 600}, pie, column)); // in the other
+        // Halfway from the pie's middle to the column's bottom: under the
+        // pie and left of the column, inside neither.
+        const QPointF halfway = (QPointF(100, 100) + QPointF(330, 680)) / 2;
+        QVERIFY(!pie.contains(halfway) && !column.contains(halfway));
+        QVERIFY(inHullOf(halfway, pie, column));
+        QVERIFY(!inHullOf({20, 600}, pie, column)); // well below the pie: off them
+        QVERIFY(!inHullOf({300, 20}, pie, column)); // above the column's top, past the pie
+        QVERIFY(inHullOf({220, 150}, pie, column)); // the gap between them
     }
 };
 

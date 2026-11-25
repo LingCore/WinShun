@@ -72,8 +72,8 @@ Window {
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus
     color: Theme.menuBackground
     // Each column as wide as its rows want, within these (GitHub #384).
-    readonly property int minWidth: Theme.metrics.level < 2 ? 160 : Theme.metrics.size === "roomy" ? 200 : 180
-    readonly property int maxWidth: Theme.metrics.level < 2 ? 340 : Theme.metrics.size === "roomy" ? 460 : 420
+    readonly property int minWidth: Theme.menuColumnMinWidth
+    readonly property int maxWidth: Theme.menuColumnMaxWidth
     function columnWidth(natural: real): real {
         const width = Math.min(Math.max(natural, minWidth), maxWidth)
         return availableArea.width > 0 ? Math.min(width, availableArea.width - 16) : width

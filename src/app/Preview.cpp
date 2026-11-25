@@ -293,9 +293,20 @@ void writeEdges(QQuickWindow* window, const QString& path)
     walk(window->contentItem(), 0, QString());
 }
 
-bool saveGrab(QQuickWindow* window, const QString& path)
+// `crop` (logical pixels, none: all of it): the device pixels it covers,
+// outwards. A window bigger than what it draws (the drop pie's covers the work
+// area) is cut down to that.
+QRect cropPixels(QQuickWindow* window, const QRectF& crop)
 {
-    const QImage image = window->grabWindow();
+    const qreal dpr = window->devicePixelRatio();
+    return QRectF(crop.topLeft() * dpr, crop.size() * dpr).toAlignedRect();
+}
+
+bool saveGrab(QQuickWindow* window, const QString& path, const QRectF& crop = {})
+{
+    QImage image = window->grabWindow();
+    if (!crop.isEmpty() && !image.isNull())
+        image = image.copy(cropPixels(window, crop).intersected(image.rect()));
     if (g_edges)
         writeEdges(window, path + u".edges.txt"_s);
     const bool saved = !image.isNull() && image.save(path, "PNG");
@@ -11442,11 +11453,14 @@ bool checkDropPiePages(QQmlEngine* engine, const QDir& output)
             settle(window);
             pump(300);
             settle(window, 2);
-            check(saveGrab(window, output.filePath(name + u".png"_s)), name);
+            const QRectF drawn = pie.drawnRect();
+            check(saveGrab(window, output.filePath(name + u".png"_s), drawn), name);
             // Where the middle is in the picture (device pixels), for measuring the dots on its pixels.
             const qreal dpr = window->devicePixelRatio();
-            say(u"%1: hub centre %2,%3 radius %4 (device pixels)"_s.arg(name).arg(window->property("cx").toReal() * dpr)
-                    .arg(window->property("cy").toReal() * dpr).arg(pie.hubRadius() * dpr));
+            const QPoint corner = cropPixels(window, drawn).topLeft();
+            say(u"%1: hub centre %2,%3 radius %4 (device pixels)"_s.arg(name)
+                    .arg(window->property("cx").toReal() * dpr - corner.x())
+                    .arg(window->property("cy").toReal() * dpr - corner.y()).arg(pie.hubRadius() * dpr));
         };
         for (const Shot& shot : shots) {
             pie.previewPage(shot.page, shot.hovered);
@@ -11466,7 +11480,7 @@ bool checkDropPiePages(QQmlEngine* engine, const QDir& output)
             pump(50);
             const qreal turn = window->property("turn").toReal();
             check(pie.page() == 1 && !pie.leavingSectors().isEmpty(), tag + u": a turn"_s);
-            check(saveGrab(window, output.filePath(tag + u"-fade.png"_s)), tag + u"-fade"_s);
+            check(saveGrab(window, output.filePath(tag + u"-fade.png"_s), pie.drawnRect()), tag + u"-fade"_s);
             say(u"drop pie pages: the fade was at %1 when grabbed"_s.arg(turn));
             pump(400);
             check(window->property("turn").toReal() == 1, tag + u": the fade ends"_s);
@@ -11495,6 +11509,262 @@ bool checkDropPiePages(QQmlEngine* engine, const QDir& output)
     return passed;
 }
 
+// --drop-pie-columns: the folders inside a chip's folder, and inside a row's
+// (GitHub #463), as DropPie and DropPieWindow.qml make them, off the screen:
+// a column on the right with the pointer on a row (droppie-columns-right),
+// one further in (-second), one on the left (-left), one too long for the
+// screen scrolled down a way with the pointer on its lower strip (-scroll),
+// and an empty folder's (-empty). `--scale` as for the others.
+bool checkDropPieColumns(QQmlEngine* engine, const QDir& output)
+{
+    bool passed = true;
+    const auto check = [&](bool condition, const QString& what) {
+        if (!condition)
+            say(u"drop pie columns: %1 FAILED"_s.arg(what));
+        passed = passed && condition;
+    };
+    QTemporaryDir temporary;
+    const auto make = [&](const QString& path) {
+        QDir().mkpath(temporary.filePath(path));
+        return QDir::toNativeSeparators(temporary.filePath(path));
+    };
+    // Six chips: 0 above, 1 and 2 on the right, 3 below, 4 and 5 on the left.
+    Favorites favorites(temporary.filePath(u"favorites.json"_s));
+    const QStringList favoriteNames {u"年度报告"_s, u"项目资料"_s, u"照片"_s, u"空文件夹"_s, u"客户合同"_s, u"设计素材"_s};
+    for (const QString& name : favoriteNames)
+        favorites.add({Favorite::Kind::Folder, make(name), name});
+    // As File Explorer orders them: 2 before 10.
+    const QStringList projects {u"2024"_s, u"2025"_s, u"2026"_s, u"客户 A"_s, u"客户 B"_s, u"设计稿"_s, u"归档"_s};
+    for (const QString& name : projects)
+        make(u"项目资料/"_s + name);
+    for (int month = 1; month <= 12; ++month)
+        make(u"项目资料/2026/%1 月"_s.arg(month));
+    for (const QString& name : {u"财务年报"_s, u"季度报告"_s})
+        make(u"年度报告/"_s + name);
+    for (int day = 1; day <= 60; ++day)
+        make(u"照片/2026-03-%1 旅行"_s.arg(day, 2, 10, u'0'));
+    make(u"客户合同/已签"_s);
+    make(u"设计素材/图标"_s);
+
+    piedrop::FileOperations operations;
+    DropPie pie(&favorites, nullptr, &operations, {});
+    QQmlComponent component(engine, u"WinShun"_s, u"DropPieWindow"_s);
+    std::unique_ptr<QObject> object(component.createWithInitialProperties({{u"dropPie"_s, QVariant::fromValue(&pie)}}));
+    auto* window = qobject_cast<QQuickWindow*>(object.get());
+    check(window, component.errorString());
+    if (!window)
+        return false;
+    pie.setWindow(window);
+    QElapsedTimer waiting;
+    waiting.start();
+    while (pie.folderCount() < favoriteNames.size() && waiting.elapsed() < 5000)
+        pump(20);
+    check(pie.folderCount() == favoriteNames.size(), u"its folders"_s);
+    QScreen* primary = QGuiApplication::primaryScreen();
+    const QPoint centre = primary->geometry().center();
+    const qreal scale = primary->devicePixelRatio();
+    const auto open = [&] {
+        pie.preview(POINT {LONG(std::lround(centre.x() * scale)), LONG(std::lround(centre.y() * scale))}, -1);
+        pump(50);
+    };
+    open();
+    const QSize size = window->size();
+    showOffScreen(window);
+    window->resize(size);
+    pump(400);
+    const auto shoot = [&](const QString& name) {
+        settle(window);
+        pump(300);
+        settle(window, 2);
+        check(saveGrab(window, output.filePath(name + u".png"_s), pie.drawnRect()), name);
+    };
+    const auto box = [&](int column) {
+        const QVariantMap item = pie.columns().value(column).toMap();
+        return QRectF(item.value(u"x"_s).toReal(), item.value(u"y"_s).toReal(), item.value(u"width"_s).toReal(),
+            item.value(u"height"_s).toReal());
+    };
+    const auto texts = [&](int column) {
+        QStringList shown;
+        for (const QVariant& row : pie.columns().value(column).toMap().value(u"rows"_s).toList())
+            shown.append(row.toMap().value(u"text"_s).toString());
+        return shown;
+    };
+    const auto chip = [&](int sector) {
+        const QVariantMap item = pie.sectors().value(sector).toMap();
+        return QRectF(pie.centre() + QPointF(item.value(u"x"_s).toReal(), item.value(u"y"_s).toReal()),
+            QSizeF(item.value(u"width"_s).toReal(), pie.chipHeight()));
+    };
+    const QRectF screen(QPointF(0, 0), QSizeF(window->size()));
+
+    // On the right: beside the pie, its first row level with the chip, clear of the line under the chips.
+    check(pie.previewOpen(1), u"right: opened"_s);
+    pie.previewColumnPointer(0, 2);
+    check(pie.columns().size() == 1, u"right: one column"_s);
+    check(texts(0).size() == projects.size() && texts(0).first(3) == projects.first(3),
+        u"right: its rows in File Explorer's order (%1)"_s.arg(texts(0).join(u", ")));
+    check(box(0).left() >= chip(1).right(), u"right: beside the chip"_s);
+    check(!box(0).intersects(pie.statusRect()), u"right: clear of the line under the chips"_s);
+    check(screen.contains(box(0)), u"right: on the screen"_s);
+    check(pie.statusName() == projects[2] && pie.statusDetail().contains(projects[2]), u"right: the line names the row"_s);
+    check(pie.columnStates().value(0).toMap().value(u"target"_s).toBool(), u"right: the row is where they go"_s);
+    shoot(u"droppie-columns-right"_s);
+
+    // Further in: the next beside the first, level with the row it came from.
+    check(pie.previewOpen(2), u"second: opened"_s);
+    pie.previewColumnPointer(1, 5);
+    check(pie.columns().size() == 2, u"second: two columns"_s);
+    check(texts(1).size() == 12 && texts(1).first() == u"1 月"_s && texts(1).at(9) == u"10 月"_s, u"second: 1 to 12"_s);
+    check(box(1).left() >= box(0).right(), u"second: beside the first"_s);
+    check(pie.columnStates().value(0).toMap().value(u"opener"_s).toInt() == 2, u"second: the row it came from shown"_s);
+    shoot(u"droppie-columns-second"_s);
+
+    // A chip on the left: its column on the left.
+    open();
+    check(pie.previewOpen(5), u"left: opened"_s);
+    pie.previewColumnPointer(0, 0);
+    check(box(0).right() <= chip(5).left(), u"left: beside the chip"_s);
+    shoot(u"droppie-columns-left"_s);
+
+    // Too long for the screen: the strips, scrolled.
+    open();
+    check(pie.previewOpen(2), u"scroll: opened"_s);
+    const QVariantMap tall = pie.columns().value(0).toMap();
+    check(tall.value(u"scrolls"_s).toBool() && tall.value(u"shown"_s).toInt() < 60, u"scroll: scrolls"_s);
+    check(screen.contains(box(0)), u"scroll: on the screen"_s);
+    pie.previewColumnPointer(0, -1, 10, 1);
+    const QVariantMap scrolled = pie.columnStates().value(0).toMap();
+    check(scrolled.value(u"first"_s).toInt() == 10 && scrolled.value(u"up"_s).toBool() && scrolled.value(u"down"_s).toBool(),
+        u"scroll: scrolled a way"_s);
+    check(scrolled.value(u"strip"_s).toInt() == 1, u"scroll: the pointer on the lower strip"_s);
+    shoot(u"droppie-columns-scroll"_s);
+
+    // An empty folder: one row that says so, nothing to drop on.
+    open();
+    check(pie.previewOpen(3), u"empty: opened"_s);
+    pie.previewColumnPointer(0, -1);
+    check(texts(0).size() == 1 && pie.columns().value(0).toMap().value(u"rows"_s).toList().value(0).toMap()
+        .value(u"message"_s).toBool(), u"empty: says so"_s);
+    shoot(u"droppie-columns-empty"_s);
+
+    // Driven as a drag drives it: a DragOver at every move, and again every
+    // 50 ms while the pointer is still (OLE's own asking), the pie's timers
+    // and its reading of folders as they are.
+    open();
+    QPointF at = pie.centre();
+    pie.previewPointer(at);
+    const auto moveTo = [&](QPointF to, int steps, const std::function<void()>& each = {}) {
+        const QPointF from = at;
+        for (int i = 1; i <= steps; ++i) {
+            at = from + (to - from) * (double(i) / steps);
+            pie.previewPointer(at);
+            pump(16);
+            if (each)
+                each();
+        }
+    };
+    const auto rest = [&](int ms) {
+        for (int waited = 0; waited < ms; waited += 50) {
+            pie.previewPointer(at);
+            pump(50);
+        }
+    };
+    const auto state = [&](int column) { return pie.columnStates().value(column).toMap(); };
+    const auto rowAt = [&](int column, int row) {
+        const QVariantMap item = pie.columns().value(column).toMap();
+        const double strip = item.value(u"scrolls"_s).toBool() ? item.value(u"strip"_s).toReal() : 0;
+        return QPointF(box(column).left() + 40, box(column).top() + window->property("columnPadding").toReal() + strip
+                + (row - state(column).value(u"first"_s).toInt() + 0.5) * window->property("columnRow").toReal());
+    };
+
+    // Passing over chips opens nothing; resting on one opens its column.
+    moveTo(chip(0).center(), 6);
+    moveTo(chip(1).center(), 6);
+    check(pie.columns().isEmpty() && pie.hovered() == 1, u"drag: passing opens nothing"_s);
+    rest(600);
+    check(pie.columns().size() == 1 && pie.openedSector() == 1 && texts(0).size() == projects.size(),
+        u"drag: resting on a chip opens its column"_s);
+
+    // On the way to a lower row the pointer crosses the next chip's direction:
+    // the chip it came from stays chosen, its column up.
+    bool crossed = false;
+    bool kept = true;
+    const QPointF lower = rowAt(0, 5);
+    moveTo(lower, 14, [&] {
+        crossed = crossed || (!box(0).contains(at) && pie::sectorAt(pie::angleOf(at - pie.centre()), 6) == 2);
+        kept = kept && pie.hovered() != 2 && pie.columns().size() == 1;
+    });
+    check(crossed, u"drag: the way to the row crosses the next chip's direction"_s);
+    check(kept, u"drag: aiming at the column keeps the chip it came from"_s);
+    rest(100);
+    check(state(0).value(u"hovered"_s).toInt() == 5 && state(0).value(u"target"_s).toBool()
+            && pie.statusName() == texts(0).value(5) && pie.previewPointer(at) == DROPEFFECT_COPY,
+        u"drag: on the row, letting go puts them there"_s);
+
+    // Resting on a row opens the next column beside it.
+    moveTo(rowAt(0, 2), 6);
+    rest(600);
+    check(pie.columns().size() == 2 && texts(1).size() == 12 && state(0).value(u"opener"_s).toInt() == 2,
+        u"drag: resting on a row opens its column"_s);
+
+    // Heading for that column but stopping on the row below: the row it came
+    // from stays chosen a moment (kAim), then the one under the pointer is,
+    // and resting there opens its own column (an empty folder's) instead.
+    moveTo(QPointF(at.x() + (box(1).left() - at.x()) / 2, rowAt(0, 3).y()), 4);
+    rest(50);
+    check(state(0).value(u"hovered"_s).toInt() == 2, u"drag: aimed past, the row it came from still chosen"_s);
+    rest(300);
+    check(state(0).value(u"hovered"_s).toInt() == 3, u"drag: stopped, the row under it chosen"_s);
+    rest(500);
+    check(pie.columns().size() == 2 && state(0).value(u"opener"_s).toInt() == 3
+            && pie.columns().value(1).toMap().value(u"rows"_s).toList().value(0).toMap().value(u"message"_s).toBool(),
+        u"drag: its column in place of the other"_s);
+
+    // Back to the middle: the columns go.
+    moveTo(pie.centre(), 12);
+    rest(600);
+    check(pie.columns().isEmpty() && pie.inMiddle() && pie.previewPointer(at) == DROPEFFECT_NONE,
+        u"drag: resting in the middle closes them"_s);
+
+    // A long column scrolls while the pointer rests on its strip.
+    moveTo(chip(2).center(), 8);
+    rest(600);
+    const QVariantMap photos = pie.columns().value(0).toMap();
+    check(photos.value(u"scrolls"_s).toBool(), u"drag: the long column scrolls"_s);
+    const double strip = photos.value(u"strip"_s).toReal();
+    moveTo(QPointF(box(0).center().x(), box(0).bottom() - window->property("columnPadding").toReal() - strip / 2), 10);
+    rest(1000);
+    const int down = state(0).value(u"first"_s).toInt();
+    check(down >= 8 && state(0).value(u"strip"_s).toInt() == 1 && state(0).value(u"up"_s).toBool(),
+        u"drag: resting on the lower strip scrolls it down (%1 rows)"_s.arg(down));
+    moveTo(QPointF(box(0).center().x(), box(0).top() + window->property("columnPadding").toReal() + strip / 2), 10);
+    rest(300);
+    check(state(0).value(u"first"_s).toInt() < down, u"drag: the upper strip scrolls it back"_s);
+
+    // Resting just past a chip, where its column then comes: that folder stays
+    // chosen (letting go still puts them there) until the pointer moves.
+    open();
+    at = pie.centre();
+    pie.previewPointer(at);
+    double right = 0;
+    for (qsizetype i = 0; i < pie.sectors().size(); ++i)
+        right = std::max(right, chip(int(i)).right());
+    moveTo(QPointF(right + 20, chip(1).center().y()), 8);
+    rest(600);
+    check(pie.columns().size() == 1 && box(0).contains(at), u"drag: the column came under the pointer"_s);
+    check(pie.hovered() == 1 && pie.statusName() == favoriteNames[1] && pie.previewPointer(at) == DROPEFFECT_COPY,
+        u"drag: under it, the chip stays chosen"_s);
+    moveTo(at + QPointF(0, 8), 2);
+    check(pie.hovered() == -1 && state(0).value(u"hovered"_s).toInt() >= 0, u"drag: moved, the row under it"_s);
+
+    // Out past the columns' and the chips' reach: it goes.
+    moveTo(QPointF(1, 1), 6);
+    check(!pie.revealed() && pie.columns().isEmpty(), u"drag: leaving it, it goes"_s);
+
+    window->hide();
+    say(u"drop pie columns: %1"_s.arg(passed ? u"passed"_s : u"FAILED"_s));
+    return passed;
+}
+
 // --style-windows: the small windows of every 界面风格 (themes/README.md),
 // each as the app makes it, off the screen: a menu dropped from a button and
 // a field with its caret (style-controls), the screenshot question
@@ -11509,11 +11779,11 @@ bool checkStyleWindows(QQmlEngine* engine, const QDir& output)
             say(u"style windows: %1 FAILED"_s.arg(what));
         passed = passed && condition;
     };
-    const auto shoot = [&](QQuickWindow* window, const QString& name) {
+    const auto shoot = [&](QQuickWindow* window, const QString& name, const QRectF& crop = {}) {
         settle(window);
         pump(300);
         settle(window, 2);
-        check(saveGrab(window, output.filePath(name + u".png"_s)), name);
+        check(saveGrab(window, output.filePath(name + u".png"_s), crop), name);
     };
     const auto evaluate = [](QObject* object, const QString& expression) {
         QQmlExpression run(qmlContext(object), object, expression);
@@ -11746,7 +12016,7 @@ bool checkStyleWindows(QQmlEngine* engine, const QDir& output)
             showOffScreen(window);
             window->resize(size);
             pump(400); // its reveal
-            shoot(window, u"style-droppie"_s);
+            shoot(window, u"style-droppie"_s, pie.drawnRect());
             window->hide();
         }
     }
@@ -11789,6 +12059,8 @@ int runResults(const QStringList& args)
         return checkStyleButtons(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--drop-pie-pages"_s))
         return checkDropPiePages(&engine, out) ? std::min(g_warnings, 100) : 4;
+    if (args.contains(u"--drop-pie-columns"_s))
+        return checkDropPieColumns(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-sizing"_s))
         return checkClipboardInteractions(&engine, out, {}, true) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-file"_s))

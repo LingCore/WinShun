@@ -2,6 +2,7 @@
 
 #include "DropPieText.h"
 #include "Favorites.h"
+#include "FolderMenu.h"
 #include "PieLabels.h"
 #include "SystemCatalog.h"
 #include "platform/Integrity.h"
@@ -13,6 +14,7 @@
 #include <QQuickWindow>
 #include <QScopeGuard>
 #include <QScreen>
+#include <QThreadPool>
 
 #include <shlobj.h>
 
@@ -45,6 +47,23 @@ constexpr double kStatusMin = 280;
 constexpr double kStatusMax = 400;
 // After a page is turned, how far the pointer goes (logical pixels) before a chip of the new page is chosen.
 constexpr double kTurnSlop = 4;
+// The columns (GitHub #463), timed as the folder menu's (FolderMenuWindow):
+// resting this long on a folder opens its column, or closes those after it;
+// a folder slower to read than kSlow has its column say so meanwhile; on the
+// way to a column the pointer passes what lies there, chosen only if it
+// stops kAim there (menu aim).
+constexpr auto kDwell = 350ms;
+constexpr auto kSlow = 200ms;
+constexpr auto kAim = 150ms;
+constexpr auto kScrollStep = 60ms; // a row at a time while the pointer rests on a strip
+constexpr qsizetype kMaxRows = 500; // folders listed in a column, the first in order (FolderMenu::subfolders)
+// A row as the folder menu's (FolderMenuColumn::rowWidth): its icon, the
+// name, room after it, the arrow of a folder that has a column of its own.
+constexpr double kRowName = 42;
+constexpr double kRowEnd = 26;
+constexpr double kRowArrow = 20;
+constexpr double kColumnGap = 4; // between two columns; the first keeps the chips' gap from the pie
+constexpr double kAimSlop = 6; // the aim's triangle reaches this far past a column's corners
 
 // The screen a physical point is on, as Qt knows it; the primary when none is.
 QScreen* screenAt(POINT pt)
@@ -172,6 +191,19 @@ QFont fontOf(int pixelSize, bool bold = false)
     return font;
 }
 
+// "D:\" + "Work" -> "D:\Work"; "D:\Work" + "2026" -> "D:\Work\2026".
+QString childOf(const QString& folder, const QString& name)
+{
+    return folder.endsWith(u'\\') ? folder + name : folder + u'\\' + name;
+}
+
+// A number the window states (DropPieWindow: from Theme), else `fallback`.
+double windowNumber(const QQuickWindow* window, const char* name, double fallback)
+{
+    const double value = window ? window->property(name).toDouble() : 0;
+    return value > 0 ? value : fallback;
+}
+
 } // namespace
 
 DropPie::DropPie(Favorites* favorites, SystemCatalog* places, piedrop::FileOperations* operations, Notify notify,
@@ -210,6 +242,25 @@ DropPie::DropPie(Favorites* favorites, SystemCatalog* places, piedrop::FileOpera
     });
     m_confirmTimer.setSingleShot(true);
     connect(&m_confirmTimer, &QTimer::timeout, this, [this] { hide("dropped"); });
+    m_dwell.setSingleShot(true);
+    m_dwell.setInterval(kDwell);
+    connect(&m_dwell, &QTimer::timeout, this, &DropPie::dwelt);
+    m_slow.setSingleShot(true);
+    m_slow.setInterval(kSlow);
+    connect(&m_slow, &QTimer::timeout, this, [this] {
+        if (m_pending)
+            showColumn(m_pending->level, m_pending->index, nullptr); // "reading", its rows to come
+    });
+    m_scroll.setInterval(kScrollStep);
+    connect(&m_scroll, &QTimer::timeout, this, &DropPie::scrollColumn);
+    // The pointer stopped where it passed on its way to a column: that is
+    // chosen after all (OLE need not ask again while it is still).
+    m_aim.setSingleShot(true);
+    m_aim.setInterval(kAim);
+    connect(&m_aim, &QTimer::timeout, this, [this] {
+        if (m_open && m_entered && !m_confirming)
+            track(m_lastKeys, m_lastAt);
+    });
     if (m_favorites)
         connect(m_favorites, &Favorites::changed, this, &DropPie::gatherFolders);
     if (m_places)
@@ -346,8 +397,9 @@ void DropPie::open(POINT pt)
     if (!screen || !m_window)
         return;
     m_page = 0; // always at the first page
-    m_awaitMove = false;
+    m_awaitMove = m_keepUntilMove = false;
     m_leaving.clear();
+    resetColumns();
     updateSectors(); // the size may have changed (界面大小)
     const QRect rect = place(screen, pt);
 
@@ -355,16 +407,16 @@ void DropPie::open(POINT pt)
     m_entered = false;
     m_confirming = false;
     m_allowed = DROPEFFECT_MOVE | DROPEFFECT_COPY;
-    m_items.clear();
+    setItems({});
     m_count = 0;
     m_plain = false;
+    m_itemsDrive.clear();
     m_dpr = screen->devicePixelRatio();
     m_warped.invalidate();
-    m_blocks.assign(m_folders.size(), Block::None);
-    for (std::size_t i = 0; i < m_folders.size(); ++i)
-        m_blocks[i] = blockOf(m_folders[i]);
-    m_sameDrive.assign(m_folders.size(), false);
-    m_hit = {};
+    m_lastAt = pt;
+    refreshBlocks();
+    m_spot = {};
+    m_trace.clear();
     m_keys = {};
     m_hovered = m_picked = -1;
     updateSectors();
@@ -403,25 +455,26 @@ void DropPie::preview(POINT pt, int hovered)
     if (!screen || !m_window)
         return;
     m_page = 0;
-    m_awaitMove = false;
+    m_awaitMove = m_keepUntilMove = false;
     m_leaving.clear();
+    resetColumns();
     updateSectors();
     const QRect rect = place(screen, pt);
     m_open = true;
     m_entered = true;
     m_confirming = false;
     m_allowed = DROPEFFECT_MOVE | DROPEFFECT_COPY;
-    m_items.clear();
+    setItems({});
     m_count = 1;
     m_plain = false;
+    m_itemsDrive.clear();
     m_dpr = screen->devicePixelRatio();
-    m_blocks.assign(m_folders.size(), Block::None);
-    for (std::size_t i = 0; i < m_folders.size(); ++i)
-        m_blocks[i] = blockOf(m_folders[i]);
-    m_sameDrive.assign(m_folders.size(), false);
-    m_hit = {};
+    m_lastAt = pt;
+    m_trace.clear();
+    refreshBlocks();
     m_keys = {};
     m_hovered = m_picked = hovered;
+    m_spot = hovered >= 0 ? Spot {0, hovered, Part::Chip} : Spot {0, -1, Part::Middle};
     updateSectors();
     updateTexts();
     emit layoutChanged();
@@ -433,12 +486,65 @@ void DropPie::preview(POINT pt, int hovered)
 void DropPie::previewPage(int page, int hovered)
 {
     m_page = pie::clampPage(page, static_cast<int>(m_folders.size()));
-    m_awaitMove = false;
+    m_awaitMove = m_keepUntilMove = false;
     m_leaving.clear();
+    closeColumnsFrom(0);
     m_hovered = m_picked = hovered;
+    m_spot = hovered >= 0 ? Spot {0, hovered, Part::Chip} : Spot {0, -1, Part::Middle};
     updateSectors();
     updateTexts();
     emit stateChanged();
+}
+
+bool DropPie::previewOpen(int index)
+{
+    const int level = static_cast<int>(m_columns.size());
+    const Spot from {level, index, level == 0 ? Part::Chip : Part::Row};
+    const Folder* folder = folderAt(from);
+    if (!folder || !opens(from))
+        return false;
+    const QStringList names = FolderMenu::subfolders(folder->path, kMaxRows);
+    m_listings.insert(folder->path.toCaseFolded(), names);
+    m_spot = from; // the pointer on what it came from
+    m_hovered = level == 0 ? index : -1;
+    m_picked = level == 0 && m_blocks[folderOf(index)] == Block::None ? index : -1;
+    showColumn(level, index, &names);
+    updateTexts();
+    emit stateChanged();
+    return true;
+}
+
+void DropPie::previewColumnPointer(int column, int row, int first, int strip)
+{
+    if (column < 0 || column >= static_cast<int>(m_columns.size()))
+        return;
+    Column& c = m_columns[static_cast<std::size_t>(column)];
+    c.first = pie::clampFirst(first, static_cast<int>(c.rows.size()), c.box.shown);
+    m_spot = {column + 1, row, strip < 0 ? Part::Up : strip > 0 ? Part::Down : row >= 0 ? Part::Row : Part::Box};
+    if (m_spot.part != Part::Row)
+        m_spot.index = -1;
+    m_hovered = m_picked = -1;
+    updateTexts();
+    emit stateChanged();
+}
+
+DWORD DropPie::previewPointer(QPointF local, DWORD keys)
+{
+    if (!m_open || !takeDropSite())
+        return DROPEFFECT_NONE;
+    RECT rect {};
+    ::GetWindowRect(m_hwnd, &rect);
+    return track(keys, POINT {rect.left + static_cast<LONG>(std::lround(local.x() * m_dpr)),
+                           rect.top + static_cast<LONG>(std::lround(local.y() * m_dpr))});
+}
+
+QRectF DropPie::drawnRect() const
+{
+    QRectF drawn = m_allBounds.translated(m_centre).united(m_statusRect);
+    for (const Column& c : m_columns)
+        drawn = drawn.united(c.box.rect);
+    constexpr double kShadow = 16; // the soft shadows round the chips and the boxes
+    return drawn.adjusted(-kShadow, -kShadow, kShadow, kShadow);
 }
 
 // The window is for every page at once (m_allBounds), so a page of wider
@@ -459,12 +565,15 @@ QRect DropPie::place(QScreen* screen, POINT pt)
     const pie::Placement placement = flipped ? high : low;
     const QRectF statusBox = flipped ? above : below;
     // The pointer inside the window, wherever the pie went: else the drag
-    // never enters it.
+    // never enters it. The whole work area too, for the columns to come in
+    // without the window changing while it is seen (DropPie's class note).
     const QRectF pointer(cursor - placement.centre, QSizeF(1, 1));
-    const QRect rect = pie::windowRect(placement.centre, m_layout.reach.united(statusBox).united(pointer), wholeOf(screen),
-        screen->devicePixelRatio());
+    const QRectF work = area.translated(-placement.centre);
+    const QRect rect = pie::windowRect(placement.centre, m_layout.reach.united(statusBox).united(pointer).united(work),
+        wholeOf(screen), screen->devicePixelRatio());
     m_centre = placement.centre - rect.topLeft();
     m_statusRect = statusBox.translated(m_centre);
+    m_area = area.translated(-QPointF(rect.topLeft())).intersected(QRectF(QPointF(), QSizeF(rect.size())));
     m_warp = placement.warp;
     return rect;
 }
@@ -482,13 +591,17 @@ void DropPie::hide(const char* why)
     m_open = false;
     m_entered = false;
     m_confirming = false;
-    m_items.clear();
+    setItems({});
     m_count = 0;
     m_plain = false;
+    m_itemsDrive.clear();
     m_warp = false;
     m_hovered = m_picked = -1;
-    m_hit = {};
-    m_awaitMove = false;
+    m_spot = {};
+    m_trace.clear();
+    m_aim.stop();
+    m_awaitMove = m_keepUntilMove = false;
+    resetColumns();
     if (m_page != 0 || !m_leaving.isEmpty()) {
         m_page = m_pageNotified = 0; // it opens on the first again; its chips are made then
         m_leaving.clear();
@@ -559,7 +672,12 @@ void DropPie::turnPage(bool back)
     }
     m_page = page;
     m_awaitMove = true;
+    m_keepUntilMove = false;
     m_hovered = m_picked = -1;
+    // Nothing chosen, as for a pointer that has not moved (track); the
+    // columns came from a chip of the page left.
+    m_spot = m_spot.level == 0 ? Spot {0, -1, m_spot.part} : Spot {0, -1, Part::Chip};
+    closeColumnsFrom(0);
     updateSectors(); // tells of the page
     updateTexts();
     emit pageTurned();
@@ -590,7 +708,7 @@ DWORD DropPie::dragEnter(IDataObject* data, DWORD keys, POINT pt, DWORD allowed)
         hide("its items could not be read");
         return DROPEFFECT_NONE;
     }
-    m_items = std::move(items.paths);
+    setItems(std::move(items.paths));
     m_count = items.count;
     m_plain = items.plain;
     QSet<QString> drives;
@@ -598,10 +716,8 @@ DWORD DropPie::dragEnter(IDataObject* data, DWORD keys, POINT pt, DWORD allowed)
         drives.insert(driveOf(QString::fromStdWString(item)));
     // Some without a path (a phone's, a zip file's): not on any drive here.
     const bool oneDrive = drives.size() == 1 && m_items.size() == m_count && !drives.begin()->isEmpty();
-    for (std::size_t i = 0; i < m_folders.size(); ++i) {
-        m_blocks[i] = blockOf(m_folders[i]);
-        m_sameDrive[i] = oneDrive && driveOf(m_folders[i].path) == *drives.begin();
-    }
+    m_itemsDrive = oneDrive ? *drives.begin() : QString();
+    refreshBlocks();
     qInfo().noquote() << u"Drop pie: %1 %2 over it (read from %3) %4 ms after it was asked for"_s.arg(m_count)
                              .arg(m_plain ? u"files"_s : u"items that are not lasting files"_s)
                              .arg(items.fromIdList ? u"the ID list"_s : u"CF_HDROP"_s)
@@ -666,25 +782,31 @@ DWORD DropPie::drop(IDataObject* data, DWORD keys, POINT pt, DWORD /*allowed*/)
     // App::applyDropPie: it waits until this returns.
     m_inDrop = true;
     const auto done = qScopeGuard([this] { m_inDrop = false; });
+    // What the line under the chips says: on the way to a column, the folder
+    // it came from (track keeps it while the aim holds).
     track(keys, pt);
+    m_aim.stop();
     if (!m_open)
         return DROPEFFECT_NONE;
-    if (m_picked < 0) {
-        hide(m_hit.zone == pie::Zone::Dead ? "let go in the middle: nothing done" : "let go off the folders");
+    const Folder* target = targetFolder();
+    if (!target) {
+        hide(m_spot.part == Part::Middle ? "let go in the middle: nothing done" : "let go off the folders");
         return DROPEFFECT_NONE;
     }
-    const Folder folder = m_folders[folderOf(m_picked)];
+    const Folder folder = *target;
+    const int level = m_spot.level;
     // Deleted since the pie opened: refused, and why shown a moment.
     if (!folder.network) {
         const DWORD attributes = ::GetFileAttributesW(reinterpret_cast<const wchar_t*>(folder.path.utf16()));
         if (attributes == INVALID_FILE_ATTRIBUTES || !(attributes & FILE_ATTRIBUTE_DIRECTORY)) {
             m_missing.insert(folder.path.toCaseFolded());
-            for (std::size_t i = 0; i < m_folders.size(); ++i)
-                m_blocks[i] = blockOf(m_folders[i]);
+            refreshBlocks();
             m_picked = -1;
             updateSectors();
             updateTexts();
             m_confirming = true;
+            m_dwell.stop();
+            m_scroll.stop();
             syncPageKeys();
             m_releaseWait.stop();
             emit stateChanged();
@@ -693,7 +815,11 @@ DWORD DropPie::drop(IDataObject* data, DWORD keys, POINT pt, DWORD /*allowed*/)
             return DROPEFFECT_NONE;
         }
     }
-    const bool move = modeOf(m_picked) == pie::Mode::Move;
+    m_dwell.stop(); // nothing more opens or closes while it is shown taken
+    m_scroll.stop();
+    if (level > 0)
+        qInfo().noquote() << u"Drop pie: let go on a folder of column %1"_s.arg(level);
+    const bool move = modeOf(&folder) == pie::Mode::Move;
     const QString failed = move ? tr("没能移动到“%1”").arg(folder.name) : tr("没能复制到“%1”").arg(folder.name);
     DWORD effect = DROPEFFECT_NONE;
     if (m_plain && m_operations) {
@@ -751,16 +877,60 @@ DWORD DropPie::drop(IDataObject* data, DWORD keys, POINT pt, DWORD /*allowed*/)
     return effect;
 }
 
-pie::Hit DropPie::hitAt(POINT pt) const
+// From the window's own corner in physical pixels: Qt's rectangle times the
+// scale is off by a pixel at fractional scales.
+QPointF DropPie::localOf(POINT pt) const
 {
-    if (!m_hwnd)
-        return {};
-    // From the window's own corner in physical pixels: Qt's rectangle times
-    // the scale is off by a pixel at fractional scales.
     RECT rect {};
-    ::GetWindowRect(m_hwnd, &rect);
-    const QPointF local((pt.x - rect.left) / m_dpr, (pt.y - rect.top) / m_dpr);
-    return pie::hitTest(local - m_centre, m_layout, m_metrics);
+    if (!m_hwnd || !::GetWindowRect(m_hwnd, &rect))
+        return {-1e6, -1e6};
+    return {(pt.x - rect.left) / m_dpr, (pt.y - rect.top) / m_dpr};
+}
+
+// The columns over the pie, a later one over an earlier; then the pie; then
+// near a column (as near the chips: still on it); else outside all.
+DropPie::Spot DropPie::spotAt(QPointF local) const
+{
+    const pie::ColumnMetrics metrics = columnMetrics();
+    const int count = static_cast<int>(m_columns.size());
+    for (int level = count; level >= 1; --level) {
+        const Column& column = m_columns[static_cast<std::size_t>(level - 1)];
+        const pie::ColumnHit hit
+            = pie::hitColumn(local, column.box, column.first, static_cast<int>(column.rows.size()), metrics);
+        switch (hit.part) {
+        case pie::ColumnPart::Outside:
+            continue;
+        case pie::ColumnPart::Row:
+            return {level, hit.row, Part::Row};
+        case pie::ColumnPart::Up:
+            return {level, -1, Part::Up};
+        case pie::ColumnPart::Down:
+            return {level, -1, Part::Down};
+        case pie::ColumnPart::Box:
+            return {level, -1, Part::Box};
+        }
+    }
+    const pie::Hit hit = pie::hitTest(local - m_centre, m_layout, m_metrics);
+    if (hit.zone == pie::Zone::Dead)
+        return {0, -1, Part::Middle};
+    if (hit.zone == pie::Zone::Sector)
+        return {0, m_folders.empty() ? -1 : hit.sector, Part::Chip};
+    const double reach = m_metrics.reach;
+    const auto around = [&](int level) {
+        return level == 0 ? m_layout.reach.translated(m_centre)
+                          : m_columns[static_cast<std::size_t>(level - 1)].box.rect.adjusted(-reach, -reach, reach, reach);
+    };
+    for (int level = count; level >= 1; --level) {
+        if (around(level).contains(local))
+            return {level, -1, Part::Box};
+    }
+    // On the way from what a column came from to the column, which may be
+    // well below it: across the gap between them (GitHub #463).
+    for (int level = count; level >= 1; --level) {
+        if (pie::inHullOf(local, around(level - 1), around(level)))
+            return {level, -1, Part::Box};
+    }
+    return {};
 }
 
 // The centre's device pixel, as the window lies (DropPieWindow snaps it to
@@ -773,43 +943,144 @@ POINT DropPie::centreOnScreen() const
         window.top + static_cast<LONG>(std::lround(m_centre.y() * m_dpr))};
 }
 
-pie::Mode DropPie::modeOf(int sector) const noexcept
+pie::Mode DropPie::modeOf(const Folder* folder) const
 {
-    if (sector < 0 || folderOf(sector) >= m_sameDrive.size())
+    if (!folder)
         return pie::Mode::None;
-    return pie::modeFor(m_sameDrive[folderOf(sector)], m_keys, allowed());
+    const bool sameDrive = !m_itemsDrive.isEmpty() && driveOf(folder->path) == m_itemsDrive;
+    return pie::modeFor(sameDrive, m_keys, allowed());
+}
+
+const DropPie::Folder* DropPie::folderAt(const Spot& spot, Block* block) const
+{
+    const Folder* folder = nullptr;
+    Block found = Block::None;
+    if (spot.level == 0 && spot.part == Part::Chip && spot.index >= 0
+        && spot.index < static_cast<int>(m_layout.chips.size())) {
+        const std::size_t at = folderOf(spot.index);
+        if (at < m_folders.size() && at < m_blocks.size()) {
+            folder = &m_folders[at];
+            found = m_blocks[at];
+        }
+    } else if (spot.level >= 1 && spot.level <= static_cast<int>(m_columns.size()) && spot.part == Part::Row) {
+        const Column& column = m_columns[static_cast<std::size_t>(spot.level - 1)];
+        if (spot.index >= 0 && spot.index < static_cast<int>(column.rows.size())) {
+            folder = &column.rows[static_cast<std::size_t>(spot.index)];
+            found = column.blocks[static_cast<std::size_t>(spot.index)];
+        }
+    }
+    if (block)
+        *block = found;
+    return folder;
+}
+
+const DropPie::Folder* DropPie::targetFolder() const
+{
+    Block block = Block::None;
+    const Folder* folder = folderAt(m_spot, &block);
+    return block == Block::None ? folder : nullptr;
+}
+
+bool DropPie::isOpener(const Spot& spot) const noexcept
+{
+    const bool folder = spot.level == 0 ? spot.part == Part::Chip : spot.part == Part::Row;
+    return folder && spot.index >= 0 && spot.level < static_cast<int>(m_columns.size())
+        && m_columns[static_cast<std::size_t>(spot.level)].from == spot.index;
+}
+
+QPointF DropPie::apex(QPointF local) const
+{
+    // Far enough back for the way it goes to be the hand's, not a pixel's jitter.
+    const double enough = 4 * m_scale;
+    for (auto it = m_trace.rbegin(); it != m_trace.rend(); ++it) {
+        if (std::abs(it->x() - local.x()) + std::abs(it->y() - local.y()) >= enough)
+            return *it;
+    }
+    return m_trace.front();
+}
+
+// As menus do (Amazon's "menu aim"): heading from where it was a moment ago
+// into the triangle that ends on the column's near edge, a little past its
+// corners.
+bool DropPie::aiming(QPointF local, const Spot& spot) const
+{
+    if (m_trace.empty() || spot == m_spot || spot.level > m_spot.level || !isOpener(m_spot))
+        return false;
+    const pie::ColumnBox& next = m_columns[static_cast<std::size_t>(m_spot.level)].box;
+    const double edge = next.side > 0 ? next.rect.left() : next.rect.right();
+    const double slop = kAimSlop * m_scale;
+    return pie::inTriangle(local, apex(local), QPointF(edge, next.rect.top() - slop),
+        QPointF(edge, next.rect.bottom() + slop));
 }
 
 DWORD DropPie::track(DWORD keys, POINT pt)
 {
-    pie::Hit hit = hitAt(pt);
+    const QPointF local = localOf(pt);
+    Spot spot = spotAt(local);
     // Just after the pointer went to the middle, moves from before it may
     // still come: taken as the middle, not as leaving.
-    if (hit.zone == pie::Zone::Outside && m_warped.isValid() && m_warped.elapsed() < 300)
-        hit = {pie::Zone::Dead};
-    if (hit.zone == pie::Zone::Outside) {
+    if (spot.part == Part::Outside && m_warped.isValid() && m_warped.elapsed() < 300)
+        spot = {0, -1, Part::Middle};
+    if (spot.part == Part::Outside) {
         hide("the pointer left it");
         return DROPEFFECT_NONE;
     }
     const pie::Keys held {.ctrl = bool(keys & MK_CONTROL), .shift = bool(keys & MK_SHIFT)};
+    m_lastKeys = keys;
     m_lastAt = pt;
     // A page was just turned: the chip the pointer is over is not the one it
-    // chose, so none is chosen until it has moved a little from where it was.
-    if (m_awaitMove && std::hypot(double(pt.x - m_turnedAt.x), double(pt.y - m_turnedAt.y)) >= kTurnSlop * m_dpr)
-        m_awaitMove = false;
-    const int hovered = hit.zone == pie::Zone::Sector && !m_folders.empty() && !m_awaitMove ? hit.sector : -1;
-    const int picked = hovered >= 0 && m_blocks[folderOf(hovered)] == Block::None ? hovered : -1;
-    const bool changed = hit.zone != m_hit.zone || hovered != m_hovered || picked != m_picked || held.ctrl != m_keys.ctrl
+    // chose, so none is until it has moved a little from where it was. A
+    // column came under it (its folder rested on just past the chip): that
+    // folder stays chosen until then.
+    if ((m_awaitMove || m_keepUntilMove)
+        && std::hypot(double(pt.x - m_turnedAt.x), double(pt.y - m_turnedAt.y)) >= kTurnSlop * m_dpr)
+        m_awaitMove = m_keepUntilMove = false;
+    if (m_keepUntilMove)
+        spot = m_spot;
+    else if (m_awaitMove && spot.part == Part::Chip)
+        spot.index = -1;
+    else if (m_awaitMove && spot.part == Part::Row)
+        spot = {spot.level, -1, Part::Box};
+    // On its way to a column the pointer passes over chips or rows it is not
+    // going for: what the column came from stays chosen while the pointer
+    // heads for it, and while it stops there less than kAim; stopped longer,
+    // what it is over is chosen after all (m_aim). OLE asks again with the
+    // pointer still, so a stop is a point that stays, not a lack of asking.
+    const bool moved = m_trace.empty()
+        || std::abs(m_trace.back().x() - local.x()) + std::abs(m_trace.back().y() - local.y()) >= 0.5;
+    bool keep = false;
+    if (spot != m_spot && spot.level <= m_spot.level && isOpener(m_spot))
+        keep = moved ? aiming(local, spot) : m_aim.isActive();
+    if (!keep)
+        m_aim.stop();
+    else if (moved)
+        m_aim.start();
+    if (moved) {
+        m_trace.push_back(local);
+        if (m_trace.size() > 8)
+            m_trace.erase(m_trace.begin());
+    }
+    if (keep)
+        spot = m_spot;
+
+    const int hovered = spot.level == 0 && spot.part == Part::Chip ? spot.index : -1;
+    const int picked = hovered >= 0 && folderOf(hovered) < m_blocks.size() && m_blocks[folderOf(hovered)] == Block::None
+        ? hovered
+        : -1;
+    const bool moving = spot != m_spot;
+    const bool changed = moving || hovered != m_hovered || picked != m_picked || held.ctrl != m_keys.ctrl
         || held.shift != m_keys.shift;
-    m_hit = hit;
+    m_spot = spot;
     m_hovered = hovered;
     m_picked = picked;
     m_keys = held;
+    if (moving)
+        pointerMoved();
     if (changed) {
         updateTexts();
         emit stateChanged();
     }
-    switch (modeOf(picked)) {
+    switch (modeOf(targetFolder())) {
     case pie::Mode::Move:
         return DROPEFFECT_MOVE & m_allowed;
     case pie::Mode::Copy:
@@ -822,7 +1093,7 @@ DWORD DropPie::track(DWORD keys, POINT pt)
 
 QString DropPie::mode() const
 {
-    const pie::Mode mode = modeOf(m_picked);
+    const pie::Mode mode = modeOf(targetFolder());
     return mode == pie::Mode::Move ? u"move"_s : mode == pie::Mode::Copy ? u"copy"_s : QString();
 }
 
@@ -841,21 +1112,21 @@ void DropPie::updateTexts()
         m_statusDetail = tr("在 设置 → 收藏夹 里添加");
         return;
     }
-    if (m_hovered < 0) {
+    Block block = Block::None;
+    const Folder* folder = folderAt(m_spot, &block);
+    if (!folder) {
         m_statusName = tr("朝文件夹拖，松开就放进去");
         m_statusDetail = tr("在中间松开或按 Esc 取消");
         if (m_pages > 1)
             m_statusHint = tr("Tab 下一页");
         return;
     }
-    const Folder& folder = m_folders[folderOf(m_hovered)];
-    m_statusName = folder.name;
-    const Block block = m_blocks[folderOf(m_hovered)];
+    m_statusName = folder->name;
     if (block != Block::None) {
         m_statusDetail = reasonOf(block);
         return;
     }
-    const pie::Mode mode = modeOf(m_hovered);
+    const pie::Mode mode = modeOf(folder);
     const int count = static_cast<int>(m_count);
     if (mode == pie::Mode::Copy) {
         m_statusVerb = count > 1 ? tr("复制 %n 项到", "", count) : tr("复制到");
@@ -868,7 +1139,7 @@ void DropPie::updateTexts()
     }
     const QFontMetricsF fine(fontOf(std::max(12, m_labelPixelSize - 1)));
     const double hintWidth = m_statusHint.isEmpty() ? 0 : fine.horizontalAdvance(m_statusHint) + 12 * m_scale;
-    m_statusDetail = pielabels::elidePath(folder.path, fine, m_statusRect.width() - 2 * kStatusPad * m_scale - hintWidth);
+    m_statusDetail = pielabels::elidePath(folder->path, fine, m_statusRect.width() - 2 * kStatusPad * m_scale - hintWidth);
 }
 
 // ---- the folders -------------------------------------------------------------
@@ -909,7 +1180,6 @@ void DropPie::gatherFolders()
                 hide("the favorites changed");
             m_folders = std::move(folders);
             m_blocks.assign(m_folders.size(), Block::None);
-            m_sameDrive.assign(m_folders.size(), false);
             updateSectors();
         }, Qt::QueuedConnection);
     });
@@ -943,10 +1213,9 @@ void DropPie::checkFolders()
             m_missing = missing;
             if (!m_open || m_blocks.size() != m_folders.size())
                 return;
-            for (std::size_t i = 0; i < m_folders.size(); ++i)
-                m_blocks[i] = blockOf(m_folders[i]);
+            refreshBlocks();
             updateSectors();
-            if (m_hovered >= 0 && m_blocks[folderOf(m_hovered)] != Block::None)
+            if (m_picked >= 0 && m_blocks[folderOf(m_picked)] != Block::None)
                 m_picked = -1;
             updateTexts();
             emit stateChanged();
@@ -956,15 +1225,21 @@ void DropPie::checkFolders()
 
 DropPie::Block DropPie::blockOf(const Folder& folder) const
 {
-    if (m_missing.contains(folder.path.toCaseFolded()))
+    const QString key = folder.path.toCaseFolded();
+    if (m_missing.contains(key))
         return Block::Missing;
-    for (const std::wstring& item : m_items) {
-        const QString path = normalized(QString::fromStdWString(item));
-        if (parentOf(path).compare(folder.path, Qt::CaseInsensitive) == 0)
-            return Block::Source;
-        if (sameOrInside(folder.path, path))
+    // One of them, or inside one: up its few parents, not through every
+    // item (a column's hundreds of rows for thousands of files).
+    for (QString at = key; !at.isEmpty();) {
+        if (m_itemKeys.contains(at))
             return Block::Inside;
+        QString up = parentOf(at);
+        if (up == at)
+            break;
+        at = std::move(up);
     }
+    if (m_itemFolders.contains(key))
+        return Block::Source;
     // Shell items go to the folder's own drop target on this thread, which
     // must not wait on a server.
     if (m_entered && !m_plain && folder.network)
@@ -1085,6 +1360,313 @@ void DropPie::updateSectors()
         m_pages = pages;
         emit pageChanged();
     }
+}
+
+// ---- the columns (GitHub #463) -----------------------------------------------
+
+void DropPie::setItems(std::vector<std::wstring> paths)
+{
+    m_items = std::move(paths);
+    m_itemKeys.clear();
+    m_itemFolders.clear();
+    for (const std::wstring& item : m_items) {
+        const QString path = normalized(QString::fromStdWString(item));
+        m_itemKeys.insert(path.toCaseFolded());
+        m_itemFolders.insert(parentOf(path).toCaseFolded());
+    }
+}
+
+void DropPie::refreshBlocks()
+{
+    m_blocks.resize(m_folders.size());
+    for (std::size_t i = 0; i < m_folders.size(); ++i)
+        m_blocks[i] = blockOf(m_folders[i]);
+    bool changed = false;
+    for (Column& column : m_columns) {
+        column.blocks.resize(column.rows.size());
+        for (std::size_t i = 0; i < column.rows.size(); ++i) {
+            const Block block = blockOf(column.rows[i]);
+            changed = changed || block != column.blocks[i];
+            column.blocks[i] = block;
+        }
+    }
+    if (changed) {
+        updateColumnItems();
+        emit columnsChanged();
+    }
+}
+
+void DropPie::resetColumns()
+{
+    m_dwell.stop();
+    m_slow.stop();
+    m_scroll.stop();
+    m_aim.stop();
+    m_pending.reset();
+    m_listings.clear();
+    m_reading.clear();
+    ++m_opening; // what is still being read is for nothing now
+    if (m_columns.empty() && m_columnItems.isEmpty())
+        return;
+    m_columns.clear();
+    m_columnItems.clear();
+    emit columnsChanged();
+}
+
+// The pointer onto something else: a strip scrolls its column while the
+// pointer stays on it; resting a moment on anything else opens a column, or
+// closes those after it (dwelt).
+void DropPie::pointerMoved()
+{
+    if (m_spot.part == Part::Up || m_spot.part == Part::Down) {
+        m_dwell.stop();
+        if (!m_scroll.isActive())
+            m_scroll.start();
+        return;
+    }
+    m_scroll.stop();
+    m_dwell.start();
+}
+
+void DropPie::dwelt()
+{
+    if (!m_open || m_confirming || m_spot.part == Part::Up || m_spot.part == Part::Down)
+        return;
+    if (isOpener(m_spot)) { // back on what the next column came from: those after that one go
+        closeColumnsFrom(m_spot.level + 1);
+        return;
+    }
+    if (m_pending && m_pending->level == m_spot.level && m_pending->index == m_spot.index)
+        return; // its folders are on their way
+    closeColumnsFrom(m_spot.level);
+    if (opens(m_spot))
+        openColumn(m_spot.level, m_spot.index);
+}
+
+// Not a folder the items are in, nor inside: nothing could go further in.
+bool DropPie::opens(const Spot& spot) const
+{
+    Block block = Block::None;
+    const Folder* folder = folderAt(spot, &block);
+    return folder && (block == Block::None || block == Block::Source);
+}
+
+void DropPie::openColumn(int level, int index)
+{
+    const Folder* folder = folderAt({level, index, level == 0 ? Part::Chip : Part::Row});
+    if (!folder)
+        return;
+    const QString key = folder->path.toCaseFolded();
+    if (const auto known = m_listings.constFind(key); known != m_listings.cend()) {
+        const QStringList names = *known;
+        showColumn(level, index, &names);
+        return;
+    }
+    m_pending = Pending {level, index, folder->path};
+    m_slow.start();
+    if (!m_reading.contains(key)) {
+        m_reading.insert(key);
+        listFolder(folder->path);
+    }
+}
+
+void DropPie::showColumn(int level, int index, const QStringList* names)
+{
+    const Folder* folder = folderAt({level, index, level == 0 ? Part::Chip : Part::Row});
+    if (!folder)
+        return;
+    Column column;
+    column.folder = *folder;
+    column.from = index;
+    if (names)
+        fillColumn(column, *names);
+    else
+        column.message = tr("正在读取…");
+    column.width = columnWidth(column);
+    const std::optional<Pending> reading = names ? std::nullopt : m_pending; // its rows still to come
+    closeColumnsFrom(level);
+    m_pending = reading;
+    m_columns.push_back(std::move(column));
+    layOutColumns();
+    // Come under the pointer where DragOver last had it (OLE asks every so
+    // often while it is still): what it had chosen stays until it moves (track).
+    if (m_entered && m_columns.back().box.rect.contains(localOf(m_lastAt))) {
+        m_keepUntilMove = true;
+        m_turnedAt = m_lastAt;
+    }
+    updateColumnItems();
+    emit columnsChanged();
+    emit stateChanged();
+}
+
+void DropPie::closeColumnsFrom(int level)
+{
+    level = std::max(0, level);
+    if (m_pending && m_pending->level >= level) {
+        m_pending.reset();
+        m_slow.stop();
+    }
+    if (static_cast<int>(m_columns.size()) <= level)
+        return;
+    m_columns.erase(m_columns.begin() + level, m_columns.end());
+    if (m_spot.level > level) { // in one of them: nothing there now, until the pointer is next asked about
+        m_spot = {level, -1, Part::Box};
+        m_scroll.stop();
+        m_aim.stop();
+    }
+    updateColumnItems();
+    emit columnsChanged();
+    emit stateChanged();
+}
+
+// Off the GUI thread (a share may take its time), as the folder menu's: the
+// answer for a showing of the pie that is over is dropped.
+void DropPie::listFolder(const QString& path)
+{
+    QThreadPool::globalInstance()->start([self = QPointer(this), opening = m_opening, path] {
+        QStringList names = FolderMenu::subfolders(path, kMaxRows);
+        QMetaObject::invokeMethod(qApp, [self, opening, path, names = std::move(names)] {
+            if (self && self->m_opening == opening)
+                self->listed(path, names);
+        }, Qt::QueuedConnection);
+    });
+}
+
+void DropPie::listed(const QString& path, const QStringList& names)
+{
+    const QString key = path.toCaseFolded();
+    m_reading.remove(key);
+    m_listings.insert(key, names);
+    if (!m_open || m_confirming || !m_pending || m_pending->path.toCaseFolded() != key)
+        return;
+    const Pending pending = *m_pending;
+    showColumn(pending.level, pending.index, &names);
+}
+
+void DropPie::fillColumn(Column& column, const QStringList& names) const
+{
+    column.rows.clear();
+    column.rows.reserve(static_cast<std::size_t>(names.size()));
+    for (const QString& name : names)
+        column.rows.push_back({childOf(column.folder.path, name), name, column.folder.network});
+    column.blocks.clear();
+    column.blocks.reserve(column.rows.size());
+    for (const Folder& row : column.rows)
+        column.blocks.push_back(blockOf(row));
+    column.message = column.rows.empty() ? tr("没有子文件夹") : QString();
+}
+
+void DropPie::scrollColumn()
+{
+    const int level = m_spot.level;
+    const bool strip = m_spot.part == Part::Up || m_spot.part == Part::Down;
+    if (!strip || level < 1 || level > static_cast<int>(m_columns.size()) || m_confirming) {
+        m_scroll.stop();
+        return;
+    }
+    Column& column = m_columns[static_cast<std::size_t>(level - 1)];
+    const int first = pie::clampFirst(column.first + (m_spot.part == Part::Up ? -1 : 1),
+        static_cast<int>(column.rows.size()), column.box.shown);
+    if (first == column.first) {
+        m_scroll.stop(); // at its end
+        return;
+    }
+    column.first = first;
+    closeColumnsFrom(level); // their rows moved from under them
+    emit stateChanged();
+}
+
+// The first column beside the pie on the side of its chip, its first row
+// level with the chip (clear of the line under the chips); each next beside
+// the one before, level with the row it came from, on the same side while
+// there is room.
+void DropPie::layOutColumns()
+{
+    const pie::ColumnMetrics metrics = columnMetrics();
+    const QRectF pieBox = m_layout.bounds.translated(m_centre);
+    for (std::size_t i = 0; i < m_columns.size(); ++i) {
+        Column& column = m_columns[i];
+        const int rows = std::max(1, static_cast<int>(column.rows.size()));
+        if (i == 0) {
+            const auto from = static_cast<std::size_t>(column.from);
+            const QRectF chip = from < m_layout.chips.size() ? m_layout.chips[from].translated(m_centre) : pieBox;
+            const int side = chip.center().x() < m_centre.x() - 0.5 ? -1 : 1;
+            pie::ColumnMetrics first = metrics;
+            first.gap = m_metrics.chipGap;
+            column.box = pie::placeColumn(pieBox, chip.center().y(), side, column.width, rows, m_area, first);
+            if (column.box.rect.intersects(m_statusRect))
+                column.box = pie::placeColumn(pieBox.united(m_statusRect), chip.center().y(), side, column.width, rows,
+                    m_area, first);
+        } else {
+            const Column& before = m_columns[i - 1];
+            const double levelY = before.box.rowsTop(metrics) + (column.from - before.first + 0.5) * metrics.row;
+            column.box = pie::placeColumn(before.box.rect, levelY, before.box.side, column.width, rows, m_area, metrics);
+        }
+        column.first = pie::clampFirst(column.first, static_cast<int>(column.rows.size()), column.box.shown);
+    }
+}
+
+void DropPie::updateColumnItems()
+{
+    const pie::ColumnMetrics metrics = columnMetrics();
+    QVariantList items;
+    for (const Column& column : m_columns) {
+        QVariantList rows;
+        if (column.rows.empty())
+            rows.append(QVariantMap {{u"text"_s, column.message}, {u"disabled"_s, true}, {u"message"_s, true}});
+        for (std::size_t i = 0; i < column.rows.size(); ++i) {
+            const Block block = column.blocks[i];
+            rows.append(QVariantMap {{u"text"_s, column.rows[i].name}, {u"disabled"_s, block != Block::None},
+                {u"branch"_s, block == Block::None || block == Block::Source}});
+        }
+        const QRectF& box = column.box.rect;
+        items.append(QVariantMap {{u"x"_s, box.x()}, {u"y"_s, box.y()}, {u"width"_s, box.width()},
+            {u"height"_s, box.height()}, {u"scrolls"_s, column.box.scrolls}, {u"shown"_s, column.box.shown},
+            {u"strip"_s, metrics.strip()}, {u"rows"_s, rows}});
+    }
+    m_columnItems = std::move(items);
+}
+
+QVariantList DropPie::columnStates() const
+{
+    QVariantList states;
+    for (std::size_t i = 0; i < m_columns.size(); ++i) {
+        const Column& column = m_columns[i];
+        const bool here = m_spot.level == static_cast<int>(i) + 1;
+        const int hovered = here && m_spot.part == Part::Row ? m_spot.index : -1;
+        const bool target = hovered >= 0 && column.blocks[static_cast<std::size_t>(hovered)] == Block::None;
+        const int strip = !here ? 0 : m_spot.part == Part::Up ? -1 : m_spot.part == Part::Down ? 1 : 0;
+        states.append(QVariantMap {{u"first"_s, column.first}, {u"hovered"_s, hovered}, {u"target"_s, target},
+            {u"opener"_s, i + 1 < m_columns.size() ? m_columns[i + 1].from : -1}, {u"up"_s, column.first > 0},
+            {u"down"_s, column.first + column.box.shown < static_cast<int>(column.rows.size())}, {u"strip"_s, strip}});
+    }
+    return states;
+}
+
+// As the window draws them (DropPieWindow: Theme's menu rows), read off it;
+// as the standard size's without it.
+pie::ColumnMetrics DropPie::columnMetrics() const
+{
+    pie::ColumnMetrics metrics;
+    metrics.row = windowNumber(m_window, "columnRow", std::round(32 * m_scale));
+    metrics.padding = windowNumber(m_window, "columnPadding", 4);
+    metrics.gap = kColumnGap;
+    return metrics;
+}
+
+// As the folder menu's (FolderMenuColumn::rowWidth): its widest row, between
+// its narrowest and widest.
+double DropPie::columnWidth(const Column& column) const
+{
+    const pie::ColumnMetrics metrics = columnMetrics();
+    const QFontMetricsF text(fontOf(static_cast<int>(windowNumber(m_window, "columnTextSize", m_labelPixelSize))));
+    double widest = column.rows.empty() ? kRowName + std::ceil(text.horizontalAdvance(column.message)) + kRowEnd : 0;
+    for (const Folder& row : column.rows)
+        widest = std::max(widest, kRowName + std::ceil(text.horizontalAdvance(row.name)) + kRowEnd + kRowArrow);
+    const double least = windowNumber(m_window, "columnMinWidth", 180);
+    const double most = std::max(least, std::min(windowNumber(m_window, "columnMaxWidth", 420),
+                                            m_area.width() - 2 * metrics.margin));
+    return std::clamp(std::ceil(widest + 2 * metrics.padding), least, most);
 }
 
 } // namespace ws
