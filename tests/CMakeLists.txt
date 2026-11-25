@@ -1353,6 +1353,13 @@ target_include_directories(tst_ocr PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_link_libraries(tst_ocr PRIVATE winshun_options wscapture Qt6::Qml Qt6::Test onnxruntime_headers)
 set_target_properties(tst_ocr PROPERTIES QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
 
+# The larger reading model a user may install (ocr::preciseModel), for the
+# test that reads Japanese with it: fetched once per build folder.
+set(precise_ocr_model "${CMAKE_BINARY_DIR}/ocr-precise/PP-OCRv6_rec_small.onnx")
+if(NOT EXISTS "${precise_ocr_model}")
+    winshun_download("https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.10.0/onnx/PP-OCRv6/rec/PP-OCRv6_rec_small.onnx"
+        "${precise_ocr_model}" "6f327246b50388f3c176ae304bd95767ea6dc0c9ae92153ef8cbe210b3c14884")
+endif()
 qt_add_executable(tst_ocrpackage tst_ocrpackage.cpp
     ${PROJECT_SOURCE_DIR}/src/capture/CaptureOcr.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/OcrPackage.cpp

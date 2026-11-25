@@ -1031,6 +1031,19 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
         if (m_ocrPackage->available())
             m_clipboard->refreshRecognition();
     });
+    // Another reading model (the larger one or the user's own, installed or
+    // removed): the history's pictures are read again by what reads now
+    // (TextRecognizer::engine).
+    const auto readingModel = [this] {
+        const OcrModel* model = m_ocrPackage->preciseModel();
+        return model->ownName() + (model->installed() ? u"|small"_s : u"|tiny"_s);
+    };
+    connect(m_ocrPackage->preciseModel(), &OcrModel::changed, m_clipboard.get(), [this, readingModel, reading = readingModel()]() mutable {
+        if (const QString now = readingModel(); now != reading) { // not its progress or a message
+            reading = now;
+            m_clipboard->refreshRecognition();
+        }
+    });
     connect(m_clipboard.get(), &Clipboard::quickPasteFailed, this,
         [this](const QString& message) { m_messages->showNotification(tr("快捷粘贴"), message); });
     connect(m_clipboard.get(), &Clipboard::saveProblem, this,

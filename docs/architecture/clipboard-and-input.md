@@ -42,8 +42,8 @@
 
 ### 2.4 本地 OCR 与镜像下载
 
-- **`TextRecognizer`**：低优先级线程顺序识别（新图优先、空闲释放），写 `clips.ocr` 供 `ClipMatcher` 拼音搜索，启动 20 s 补扫、切引擎重扫。优先离线 `PaddleOcr`（PP-OCRv6 tiny + ONNX Runtime CPU，共享 `dataDir()/components/ppocr-v6-ort1.30.0-x64`）；日/韩在前、未装或失败退 `Windows.Media.Ocr`。
-- **`OcrFiles` / `OcrPackage`**：`OcrFiles` 仅本地解析；`OcrPackage` 主程序持有、`std::jthread` 析构前退出，按 `resources/ocr/package.json` 验路径/大小/SHA256 全过才原子发布 `.ready`；截图插件经 `WS_COMPONENTS_DIR` 与 `show_ocr_setup` 共享，不增联网权。
+- **`TextRecognizer`**：低优先级线程顺序识别（新图优先、空闲释放），写 `clips.ocr` 供 `ClipMatcher` 拼音搜索，启动 20 s 补扫、切引擎重扫。优先离线 `PaddleOcr`（PP-OCRv6 tiny + ONNX Runtime CPU，共享 `dataDir()/components/ppocr-v6-ort1.30.0-x64`）；装了高精度识别模型（`components/ppocr-v6-rec-small`，PP-OCRv6 small，含日文假名与 15565 个汉字）时所有读者改用它读行，检测模型不变，引擎标识变为 `ppocr-v6-small` 触发重扫；用户自选的识别模型（`components/ocr-own-rec`：`model.onnx`、可选 `dictionary.txt`、`.ready` 记原文件名）排在两者之前，引擎标识 `own-<文件名>-<大小>`，装了它就不再因日/韩在前退 Windows；韩语在前、日语在前且未装高精度模型、未装或失败退 `Windows.Media.Ocr`。
+- **`OcrFiles` / `OcrPackage`**：`OcrFiles` 仅本地解析；`OcrPackage` 主程序持有、`std::jthread` 析构前退出，按 `resources/ocr/package.json` 验路径/大小/SHA256 全过才原子发布 `.ready`；截图插件经 `WS_COMPONENTS_DIR` 与 `show_ocr_setup` 共享，不增联网权。`OcrModel`（`OcrPackage` 的子对象）管高精度识别模型：单个 `.onnx` 直接从 ModelScope 固定版本地址下载（不是 Release 附件，不经 GitHub 镜像），大小与 SHA256 全对才暂存后整目录改名发布 `.ready`；装上即用（`PaddleOcr::load` 按自选 → 高精度 → tiny 加载，前者加载失败退后者并记日志），移除先删 `.ready`。自选模型由 `ocr::installOwn` 在工作线程先 `PaddleOcr::tryReadingModel`（只加载该文件并真读一行；模型元数据无 `character` 时用旁边同名 `.txt` 作字典，字数与输出类别不符即拒绝）通过后才复制进组件目录，失败不动现有模型。
 - **`Download`**：`src/core/Download.*` 统一 GitHub 镜像序（`github-mirrors.txt`：`gh-proxy.com` → `ghfast.top` → 原站）与慢源/校验回退，不套用于带凭据/查询参数 URL、API 或任意站点；`cmake/Download.cmake` 共享同源与 SHA256 替换。
 
 ## 3. 剪贴板窗口、无焦点按键路由与 UIAccess 显示

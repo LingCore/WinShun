@@ -142,8 +142,10 @@ void SettingsEditor::useOcrPackage(OcrPackage* package)
 {
     if (m_ocrPackage == package)
         return;
-    if (m_ocrPackage)
+    if (m_ocrPackage) {
         disconnect(m_ocrPackage, nullptr, this, nullptr);
+        disconnect(m_ocrPackage->preciseModel(), nullptr, this, nullptr);
+    }
     if (m_ocrPackage && m_ocrPackage->parent() == this)
         delete m_ocrPackage;
     m_ocrPackage = package;
@@ -151,6 +153,18 @@ void SettingsEditor::useOcrPackage(OcrPackage* package)
         const QString file = shell::pickFile(nullptr, OcrPackage::tr("选择增强识别包"), {{OcrPackage::tr("增强识别包"), u"*.zip"_s}});
         if (!file.isEmpty())
             m_ocrPackage->installFile(file);
+    });
+    connect(package->preciseModel(), &OcrModel::localRequested, this, [this] {
+        const QString file = shell::pickFile(nullptr, OcrModel::tr("选择高精度模型文件 %1").arg(QString(ocr::kPreciseModel)),
+            {{OcrModel::tr("识别模型"), u"*.onnx"_s}});
+        if (!file.isEmpty())
+            m_ocrPackage->preciseModel()->installFile(file);
+    });
+    connect(package->preciseModel(), &OcrModel::ownRequested, this, [this] {
+        const QString file = shell::pickFile(nullptr, OcrModel::tr("选择自己的识别模型（PP-OCR 的 rec 模型，ONNX）"),
+            {{OcrModel::tr("识别模型"), u"*.onnx"_s}});
+        if (!file.isEmpty())
+            m_ocrPackage->preciseModel()->useOwnFile(file);
     });
 }
 

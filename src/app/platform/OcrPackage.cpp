@@ -1,6 +1,7 @@
 #include "OcrPackage.h"
 
 #include "OcrFiles.h"
+#include "PaddleOcr.h"
 #include "Http.h"
 
 #include <QCoreApplication>
@@ -137,12 +138,282 @@ QString install(const QByteArray& bytes, const QString& root, const Package& spe
     return {};
 }
 
+Model preciseSpec()
+{
+    return {u"https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.10.0/onnx/PP-OCRv6/rec/PP-OCRv6_rec_small.onnx"_s,
+        "6f327246b50388f3c176ae304bd95767ea6dc0c9ae92153ef8cbe210b3c14884", 21234383};
+}
+
+QString installPrecise(const QByteArray& model, const Model& spec, const std::atomic_bool& cancelled)
+{
+    if (spec.size <= 0 || model.size() != spec.size || QCryptographicHash::hash(model, QCryptographicHash::Sha256).toHex() != spec.sha256)
+        return tr("高精度模型未通过校验，请重新下载。");
+    const QString root = componentsRoot();
+    if (!QDir().mkpath(root))
+        return tr("无法创建高精度模型的安装目录。");
+    QLockFile lock(root + u"/ocr-model-install.lock"_s);
+    if (!lock.tryLock(0))
+        return tr("另一个窗口正在安装高精度模型，完成后会自动可用。");
+    QTemporaryDir staged(root + u"/ocr-model-XXXXXX"_s);
+    if (!staged.isValid())
+        return tr("无法创建高精度模型的安装目录。");
+    const auto save = [&](const QString& name, const QByteArray& content) {
+        QSaveFile file(staged.filePath(name));
+        return file.open(QIODevice::WriteOnly) && file.write(content) == content.size() && file.commit();
+    };
+    if (!save(QString(kPreciseModel), model) || !save(u".ready"_s, QString(kPreciseVersion).toUtf8()))
+        return tr("无法保存高精度模型，请检查磁盘空间。");
+    if (cancelled.load())
+        return tr("已取消，稍后可以重新安装。");
+    // What is left of an earlier copy (no receipt, or one being read) out of the way first.
+    const QString destination = preciseFolder();
+    if (QFileInfo::exists(destination) && !QDir(destination).removeRecursively())
+        return tr("高精度模型正在使用，请关闭识别窗口后重试。");
+    if (!QDir().rename(staged.path(), destination))
+        return tr("无法完成高精度模型的安装。");
+    staged.setAutoRemove(false);
+    return {};
+}
+
+QString removePrecise()
+{
+    const QString folder = preciseFolder();
+    if (!QFileInfo::exists(folder))
+        return {};
+    // The receipt first: no reader takes the model from here on, whatever
+    // of the rest a reader still holds open goes with the next removal.
+    QFile::remove(folder + u"/.ready"_s);
+    if (!preciseModel().isEmpty())
+        return tr("高精度模型正在使用，请关闭识别窗口后重试。");
+    QDir(folder).removeRecursively();
+    return {};
+}
+
+QString installOwn(const QString& file, const QString& programFolder, const std::atomic_bool& cancelled)
+{
+    const QFileInfo picked(file);
+    if (!picked.isFile() || picked.size() <= 0 || picked.size() > (512ll << 20))
+        return tr("这个文件不能用作识别模型。");
+    if (ocr::folder(programFolder).isEmpty())
+        return tr("请先安装增强文字识别。");
+    // Its characters: in the model, else the .txt of its name beside it.
+    QString dictionary;
+    QString why;
+    if (!PaddleOcr::tryReadingModel(programFolder, file, {}, &why)) {
+        const QString beside = picked.absolutePath() + u'/' + picked.completeBaseName() + u".txt"_s;
+        if (why != u"no characters in the reading model")
+            return tr("这个文件不能用作识别模型：它不是 PP-OCR 的文字识别（rec）模型。");
+        if (!QFileInfo(beside).isFile())
+            return tr("这个模型里没有字典。把它的字典文件改成同名的 %1，和模型放在同一个文件夹里再选。").arg(QFileInfo(beside).fileName());
+        if (!PaddleOcr::tryReadingModel(programFolder, file, beside, &why))
+            return tr("这个模型和旁边的字典 %1 对不上（字数不符），或不是 PP-OCR 的文字识别（rec）模型。").arg(QFileInfo(beside).fileName());
+        dictionary = beside;
+    }
+    if (cancelled.load())
+        return tr("已取消。");
+    const QString root = componentsRoot();
+    if (!QDir().mkpath(root))
+        return tr("无法保存这个模型，请检查磁盘空间。");
+    QLockFile lock(root + u"/ocr-model-install.lock"_s);
+    if (!lock.tryLock(0))
+        return tr("另一个窗口正在安装模型，请稍后再试。");
+    QTemporaryDir staged(root + u"/ocr-own-XXXXXX"_s);
+    QSaveFile receipt(staged.filePath(u".ready"_s));
+    const QByteArray name = picked.fileName().toUtf8();
+    if (!staged.isValid() || !QFile::copy(file, staged.filePath(u"model.onnx"_s))
+        || (!dictionary.isEmpty() && !QFile::copy(dictionary, staged.filePath(u"dictionary.txt"_s)))
+        || !receipt.open(QIODevice::WriteOnly) || receipt.write(name) != name.size() || !receipt.commit())
+        return tr("无法保存这个模型，请检查磁盘空间。");
+    const QString destination = ownFolder();
+    if (QFileInfo::exists(destination) && !QDir(destination).removeRecursively())
+        return tr("原来的模型正在使用，请关闭识别窗口后重试。");
+    if (!QDir().rename(staged.path(), destination))
+        return tr("无法保存这个模型，请检查磁盘空间。");
+    staged.setAutoRemove(false);
+    return {};
+}
+
+QString removeOwn()
+{
+    const QString folder = ownFolder();
+    if (!QFileInfo::exists(folder))
+        return {};
+    QFile::remove(folder + u"/.ready"_s); // no reader takes it from here on
+    if (!ownModel().file.isEmpty())
+        return tr("原来的模型正在使用，请关闭识别窗口后重试。");
+    QDir(folder).removeRecursively();
+    return {};
+}
+
 } // namespace ocr
+
+OcrModel::OcrModel(QObject* parent, download::Fetcher fetcher, ocr::Model spec, const QString& programFolder)
+    : QObject(parent)
+    , m_fetcher(std::move(fetcher))
+    , m_spec(std::move(spec))
+    , m_programFolder(programFolder.isEmpty() ? QCoreApplication::applicationDirPath() : programFolder)
+{
+    QDir().mkpath(ocr::componentsRoot());
+    m_watcher.addPath(ocr::componentsRoot());
+    connect(&m_watcher, &QFileSystemWatcher::directoryChanged, this, &OcrModel::refresh);
+    refresh();
+}
+
+OcrModel::~OcrModel()
+{
+    if (m_cancel)
+        m_cancel->store(true);
+}
+
+QString OcrModel::downloadSize() const
+{
+    return tr("约 %1 MB").arg((m_spec.size + 999999) / 1000000);
+}
+
+void OcrModel::refresh()
+{
+    // The components folder alone is watched: the model's own folder comes
+    // and goes whole, and a watch on it would hold it open against that.
+    const bool installed = !ocr::preciseModel().isEmpty();
+    const QString ownName = ocr::ownModel().name;
+    if (m_installed != installed || m_ownName != ownName) {
+        m_installed = installed;
+        m_ownName = ownName;
+        if (!m_busy)
+            m_status.clear();
+        emit changed();
+    }
+}
+
+void OcrModel::chooseOwn()
+{
+    emit ownRequested();
+}
+
+void OcrModel::removeOwn()
+{
+    if (m_busy || m_ownName.isEmpty())
+        return;
+    const QString error = ocr::removeOwn();
+    refresh();
+    m_status = error;
+    emit changed();
+}
+
+void OcrModel::useOwnFile(const QString& file)
+{
+    if (m_busy)
+        return;
+    m_busy = true;
+    m_progress = 0;
+    m_status = tr("正在检查这个模型…");
+    m_cancel = std::make_shared<std::atomic_bool>(false);
+    emit changed();
+    m_worker = std::jthread([self = QPointer(this), file, folder = m_programFolder, cancel = m_cancel] {
+        const QString error = ocr::installOwn(file, folder, *cancel);
+        if (self)
+            QMetaObject::invokeMethod(self, [self, error] {
+                if (!self)
+                    return;
+                self->m_busy = false;
+                self->refresh();
+                self->m_status = error;
+                emit self->changed();
+            }, Qt::QueuedConnection);
+    });
+}
+
+void OcrModel::download()
+{
+    const QString given = qEnvironmentVariable("WINSHUN_OCR_MODEL");
+    start(given.isEmpty() ? m_spec.url : given);
+}
+
+void OcrModel::cancel()
+{
+    if (m_cancel && m_busy) {
+        m_cancel->store(true);
+        m_status = tr("正在取消…");
+        emit changed();
+    }
+}
+
+void OcrModel::installLocal()
+{
+    emit localRequested();
+}
+
+void OcrModel::installFile(const QString& file) { start(file); }
+
+void OcrModel::remove()
+{
+    if (m_busy || !m_installed)
+        return;
+    const QString error = ocr::removePrecise();
+    refresh();
+    m_status = error;
+    m_progress = 0;
+    emit changed();
+}
+
+void OcrModel::start(const QString& source)
+{
+    if (m_busy || m_installed)
+        return;
+    m_busy = true;
+    m_progress = 0;
+    m_status = tr("正在下载高精度模型…");
+    m_cancel = std::make_shared<std::atomic_bool>(false);
+    emit changed();
+    m_worker = std::jthread([self = QPointer(this), source, spec = m_spec, cancel = m_cancel, fetcher = m_fetcher] {
+        const auto progress = [self, cancel, spec](qint64 received) {
+            if (cancel->load())
+                return false;
+            if (self)
+                QMetaObject::invokeMethod(self, [self, received, spec] {
+                    if (self) {
+                        self->m_progress = std::min(0.99, static_cast<double>(received) / std::max<qint64>(1, spec.size));
+                        emit self->changed();
+                    }
+                }, Qt::QueuedConnection);
+            return true;
+        };
+        const download::Fetcher web = fetcher ? fetcher : [](const QString& url, qint64 maxBytes, const download::Progress& onProgress) {
+            http::Response response = http::get(url, {}, 15000, maxBytes, http::Session::Own, onProgress);
+            return download::Fetched {response.status, std::move(response.body), response.error};
+        };
+        const auto genuine = [&](const QByteArray& content) {
+            return content.size() == spec.size && QCryptographicHash::hash(content, QCryptographicHash::Sha256).toHex() == spec.sha256;
+        };
+        const download::Fetched fetched = download::fetch(source, spec.size, web, progress, genuine);
+        const QString scheme = QUrl(source).scheme();
+        QString error;
+        if (scheme != u"http" && scheme != u"https" && (fetched.status != 200 || !genuine(fetched.body)))
+            error = tr("这不是高精度模型文件 %1。").arg(QString(ocr::kPreciseModel)); // a file picked by hand
+        else if (fetched.status != 200)
+            error = tr("下载没有完成，请检查网络后重试，或从本地安装模型文件。");
+        else
+            error = ocr::installPrecise(fetched.body, spec, *cancel);
+        if (cancel->load())
+            error = tr("已取消，稍后可以重新安装。");
+        if (self)
+            QMetaObject::invokeMethod(self, [self, error] {
+                if (!self)
+                    return;
+                self->m_busy = false;
+                self->refresh();
+                self->m_status = error;
+                self->m_progress = error.isEmpty() ? 1 : 0;
+                emit self->changed();
+            }, Qt::QueuedConnection);
+    });
+}
 
 OcrPackage::OcrPackage(QObject* parent, const QString& programFolder, download::Fetcher fetcher)
     : QObject(parent)
     , m_programFolder(programFolder.isEmpty() ? QCoreApplication::applicationDirPath() : programFolder)
     , m_fetcher(std::move(fetcher))
+    , m_precise(new OcrModel(this, m_fetcher, ocr::preciseSpec(), m_programFolder))
 {
     QDir().mkpath(ocr::componentsRoot());
     m_watcher.addPath(ocr::componentsRoot());

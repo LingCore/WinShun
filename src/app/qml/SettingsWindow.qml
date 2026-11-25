@@ -7160,6 +7160,11 @@ Window {
                     ocrPackage: window.editor.ocrPackage
                 }
 
+                OcrModelRow {
+                    shown: window.editor.ocrPackage.available
+                    ocrModel: window.editor.ocrPackage.preciseModel
+                }
+
                 SettingRow {
                     // The screenshots the screenshot plugin (winshun.capture)
                     // put in the history, listed by a word in the search box

@@ -27,7 +27,8 @@ CrashedReading takeCrashedReading(const QString& guardFile, const QString& noted
 // By PP-OCRv6 (PaddleOcr: Chinese, English, Latin-script languages), which
 // comes with Win顺. Windows' own recognizer (Windows.Media.Ocr, part of a
 // language's optional features) when the first East Asian language in the
-// user's list is Japanese or Korean, or when PaddleOcr will not load: in
+// user's list is Korean, or Japanese without the larger reading model
+// (ocr::preciseModel), or when PaddleOcr will not load: in
 // that language if it has a recognizer, else in the user's languages as
 // Windows picks. Its Chinese lines come back one word per character; the
 // words are put together again without the spaces between them.
@@ -49,8 +50,10 @@ public:
     bool running() const;
     bool refreshEngine(); // false: finish the current batch before switching engines
 
-    // What reads them ("ppocr-v6-tiny", "windows"): pictures read by another
-    // are read again. Can change once, when PaddleOcr does not load.
+    // What reads them ("ppocr-v6-tiny", "ppocr-v6-small" with the larger
+    // reading model installed, "windows"): pictures read by another are read
+    // again. Changes when PaddleOcr does not load, and when the larger model
+    // is installed or removed.
     QString engine() const;
 
 signals:

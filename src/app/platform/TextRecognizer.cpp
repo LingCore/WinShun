@@ -9,6 +9,7 @@
 #include <winrt/Windows.System.UserProfile.h>
 
 #include "TextRecognizer.h"
+#include "OcrFiles.h"
 
 #include "CrashRecord.h"
 #include "PaddleOcr.h"
@@ -96,15 +97,20 @@ OcrEngine pickEngine()
 }
 
 // Japanese or Korean before any Chinese in the user's languages: read by
-// Windows' recognizer, PP-OCRv6 tiny reads neither.
-bool japaneseOrKoreanFirst()
+// Windows' recognizer. PP-OCRv6 tiny reads neither; the larger reading model
+// (ocr::preciseModel) reads Japanese, so with it only Korean is Windows'.
+bool windowsReadsBetter()
 {
     try {
         for (const winrt::hstring& tag : winrt::Windows::System::UserProfile::GlobalizationPreferences::Languages()) {
             const std::wstring_view t = tag;
             if (t.starts_with(L"zh"))
                 return false;
-            if (t.starts_with(L"ja") || t.starts_with(L"ko"))
+            if (!ocr::ownModel().file.isEmpty())
+                return false; // the user's own model: chosen for their language
+            if (t.starts_with(L"ja"))
+                return ocr::preciseModel().isEmpty();
+            if (t.starts_with(L"ko"))
                 return true;
         }
     } catch (const winrt::hresult_error&) {
@@ -165,7 +171,7 @@ CrashedReading takeCrashedReading(const QString& guardFile, const QString& noted
 
 TextRecognizer::TextRecognizer(QObject* parent)
     : QObject(parent)
-    , m_paddle(PaddleOcr::installed(QCoreApplication::applicationDirPath()) && !japaneseOrKoreanFirst())
+    , m_paddle(PaddleOcr::installed(QCoreApplication::applicationDirPath()) && !windowsReadsBetter())
 {
 }
 
@@ -216,7 +222,11 @@ bool TextRecognizer::running() const
 
 QString TextRecognizer::engine() const
 {
-    return m_paddle ? u"ppocr-v6-tiny"_s : u"windows"_s;
+    if (!m_paddle)
+        return u"windows"_s;
+    if (const ocr::OwnModel own = ocr::ownModel(); !own.file.isEmpty())
+        return own.id;
+    return ocr::preciseModel().isEmpty() ? u"ppocr-v6-tiny"_s : u"ppocr-v6-small"_s;
 }
 
 bool TextRecognizer::refreshEngine()
@@ -224,7 +234,7 @@ bool TextRecognizer::refreshEngine()
     const std::lock_guard lock(m_mutex);
     if (m_running)
         return false;
-    m_paddle = PaddleOcr::installed(QCoreApplication::applicationDirPath()) && !japaneseOrKoreanFirst();
+    m_paddle = PaddleOcr::installed(QCoreApplication::applicationDirPath()) && !windowsReadsBetter();
     return true;
 }
 

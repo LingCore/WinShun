@@ -5,6 +5,7 @@
 #define ORT_API_MANUAL_INIT
 #include <onnxruntime_cxx_api.h>
 
+#include <QDebug>
 #include <QDir>
 #include <QFile>
 #include <QPainter>
@@ -684,6 +685,8 @@ struct PaddleOcr::Impl {
     Ort::Session rec {nullptr};
     std::string detIn, detOut, recIn, recOut;
     QStringList characters; // by the reading model's classes: 0 is none
+    bool precise = false; // rec is the larger reading model
+    bool own = false; // rec is the user's own
     Ort::MemoryInfo memory = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
 
     std::vector<Quad> detect(const QImage& strip);
@@ -706,12 +709,46 @@ void PaddleOcr::setTrace(Trace trace)
     g_trace.store(trace);
 }
 
+bool PaddleOcr::precise() const { return d && d->precise; }
+bool PaddleOcr::own() const { return d && d->own; }
+
+// A reading model to be tried (tryReadingModel): it or nothing.
+struct PaddleOcr::Trial {
+    QString file;
+    QString dictionary;
+};
+
+bool PaddleOcr::tryReadingModel(const QString& programFolder, const QString& file, const QString& dictionary, QString* error)
+{
+    const Trial trial {file, dictionary};
+    const std::unique_ptr<PaddleOcr> reader = load(programFolder, 2, error, &trial);
+    if (!reader)
+        return false;
+    QImage line(360, 64, QImage::Format_RGB32);
+    line.fill(Qt::white);
+    {
+        QPainter painter(&line);
+        QFont font = painter.font();
+        font.setPixelSize(30);
+        painter.setFont(font);
+        painter.setPen(Qt::black);
+        painter.drawText(line.rect(), Qt::AlignCenter, u"Test 2026"_s);
+    }
+    QStringList lines;
+    return reader->read(line, &lines, error); // what it reads is its own business; that it reads is ours
+}
+
+std::unique_ptr<PaddleOcr> PaddleOcr::load(const QString& programFolder, int threads, QString* error)
+{
+    return load(programFolder, threads, error, nullptr);
+}
+
 bool PaddleOcr::installed(const QString& programFolder)
 {
     return !ocr::folder(programFolder).isEmpty();
 }
 
-std::unique_ptr<PaddleOcr> PaddleOcr::load(const QString& programFolder, int threads, QString* error)
+std::unique_ptr<PaddleOcr> PaddleOcr::load(const QString& programFolder, int threads, QString* error, const Trial* trial)
 {
     const QString resolvedFolder = ocr::folder(programFolder);
     if (resolvedFolder.isEmpty()) {
@@ -745,20 +782,59 @@ std::unique_ptr<PaddleOcr> PaddleOcr::load(const QString& programFolder, int thr
             return Ort::Session(impl->env, reinterpret_cast<const wchar_t*>(file.utf16()), options);
         };
         impl->det = open(kDetModel);
-        impl->rec = open(kRecModel);
         Ort::AllocatorWithDefaultOptions allocator;
+        // A reading model and the characters it reads, one per line: in the
+        // model, else in the dictionary beside it; around them "none" first
+        // and the space last. Throws when either is missing.
+        const auto reading = [&](const QString& file, const QString& dictionary) {
+            const QString native = QDir::toNativeSeparators(file);
+            Ort::Session session(impl->env, reinterpret_cast<const wchar_t*>(native.utf16()), options);
+            QStringList characters;
+            if (const Ort::AllocatedStringPtr keys = session.GetModelMetadata().LookupCustomMetadataMapAllocated("character", allocator)) {
+                characters = QString::fromUtf8(keys.get()).split(u'\n');
+            } else {
+                QFile words(dictionary);
+                if (dictionary.isEmpty() || !words.open(QIODevice::ReadOnly))
+                    throw std::runtime_error("no characters in the reading model");
+                characters = QString::fromUtf8(words.readAll()).remove(u'\r').split(u'\n');
+                if (!characters.isEmpty() && characters.constLast().isEmpty())
+                    characters.removeLast();
+            }
+            characters.prepend(QString());
+            characters.append(u" "_s);
+            impl->rec = std::move(session);
+            impl->characters = std::move(characters);
+        };
+        if (trial) {
+            reading(trial->file, trial->dictionary); // it or nothing
+            impl->own = true;
+        } else {
+            // The user's own reading model, else the larger one where it is
+            // installed, else the tiny one; a file gone bad is passed over,
+            // said in the log.
+            if (const ocr::OwnModel own = ocr::ownModel(); !own.file.isEmpty()) {
+                try {
+                    reading(own.file, own.dictionary);
+                    impl->own = true;
+                } catch (const std::exception& e) {
+                    qWarning().noquote() << "Text recognition: the user's own reading model did not load:" << e.what();
+                }
+            }
+            if (const QString precise = ocr::preciseModel(); !impl->own && !precise.isEmpty()) {
+                try {
+                    reading(precise, {});
+                    impl->precise = true;
+                } catch (const std::exception& e) {
+                    qWarning().noquote() << "Text recognition: the larger reading model did not load, the tiny one instead:" << e.what();
+                }
+            }
+            if (!impl->own && !impl->precise)
+                reading(filePath(resolvedFolder, kRecModel, true), {});
+        }
         impl->detIn = impl->det.GetInputNameAllocated(0, allocator).get();
         impl->detOut = impl->det.GetOutputNameAllocated(0, allocator).get();
         impl->recIn = impl->rec.GetInputNameAllocated(0, allocator).get();
         impl->recOut = impl->rec.GetOutputNameAllocated(0, allocator).get();
-        // The characters it reads are in the model, one per line; around
-        // them "none" first and the space last.
-        const Ort::AllocatedStringPtr keys = impl->rec.GetModelMetadata().LookupCustomMetadataMapAllocated("character", allocator);
-        if (!keys)
-            throw std::runtime_error("no characters in the reading model");
-        impl->characters = QString::fromUtf8(keys.get()).split(u'\n');
-        impl->characters.prepend(QString());
-        impl->characters.append(u" "_s);
         ocr->d = std::move(impl);
     } catch (const std::exception& e) {
         if (error)
