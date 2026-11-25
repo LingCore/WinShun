@@ -4551,7 +4551,21 @@ void App::showSettingsNow(const std::function<void(QQuickWindow*)>& at)
                 QCoreApplication::sendEvent(window, &leave);
                 m_contentStatusTimer.stop();
                 m_idleTrim->poke(); // Qt may stay "active" after this close; do not wait for a focus event
+                m_settingsUnload.start(); // not opened again soon: its pages go (SettingsWindow.unloadPages)
+            } else {
+                m_settingsUnload.stop();
             }
+        });
+        // Closed for half a minute: the pages made for that opening are put
+        // away, the window and its first page stay for the next one (as quick
+        // as ever). Opened again sooner, everything is as it was left.
+        m_settingsUnload.setSingleShot(true);
+        m_settingsUnload.setInterval(m_settingsUnloadMs);
+        connect(&m_settingsUnload, &QTimer::timeout, window, [this, window] {
+            if (window->isVisible())
+                return;
+            QMetaObject::invokeMethod(window, "unloadPages");
+            m_idleTrim->poke(); // what was freed and stayed in the working set
         });
     } else if (opening) {
         // Shown again. A hotkey another program held may be free now: tried

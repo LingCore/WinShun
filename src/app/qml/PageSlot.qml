@@ -68,6 +68,26 @@ Item {
         }
     }
 
+    // The page put away (the window was closed a while ago): its memory goes
+    // back, ~20 to 40 MB a page, and it is made again when next needed.
+    // Whether there was one.
+    function unload(): bool {
+        const pending = slot.incubator
+        slot.incubator = null
+        if (pending) { // being made: finished first, an incubator cannot be called off from here
+            pending.forceCompletion()
+            if (!slot.item && pending.status === Component.Ready)
+                slot.item = pending.object as SettingsPage
+        }
+        const page = slot.item
+        if (!page)
+            return false
+        slot.item = null
+        slot.loadMs = -1
+        page.destroy()
+        return true
+    }
+
     function layoutNow(): void {
         if (slot.item)
             slot.item.layoutNow()

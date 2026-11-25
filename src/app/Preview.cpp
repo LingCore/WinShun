@@ -14512,6 +14512,50 @@ bool probeSettingsReopen(App& app, const QStringList& args, const QDir& out, QJs
     check(!(window->windowStates() & Qt::WindowMinimized) && window->isVisible(), u"reopened_not_minimized"_s);
     close(window);
 
+    // Closed a while: the pages made for that opening are put away, all but
+    // the first (SettingsWindow.unloadPages, GitHub #459), and what they held
+    // goes back; the next opening is as any, each page made again when gone to.
+    {
+        const auto commitMb = [] {
+            PROCESS_MEMORY_COUNTERS counters {sizeof counters};
+            GetProcessMemoryInfo(GetCurrentProcess(), &counters, sizeof counters);
+            return static_cast<double>(counters.PagefileUsage) / (1024.0 * 1024.0);
+        };
+        const QString others = u"[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].filter(i => pageItem(i) !== null).length"_s;
+        window = open([&] { app.showSettings(); }, u"all pages"_s);
+        js(window, u"loadAllPages()"_s);
+        pump(1500); // drawn, and what the pages set going has ended
+        check(js(window, others).toInt() == 10 && js(window, u"searchReady"_s).toBool(), u"unload_all_pages_were_made"_s);
+        const double withPages = commitMb();
+        app.setSettingsUnloadAfter(400);
+        close(window);
+        check(js(window, others).toInt() == 10, u"unload_not_at_once"_s); // opened again soon: as it was left
+        guiThreadIdle(2500); // in an event loop that runs: destroy() is a deleteLater, which pump() never carries out
+        const double after = commitMb();
+        check(js(window, others).toInt() == 0 && js(window, u"pageItem(0) !== null && !allPagesLoaded && !searchReady"_s).toBool(),
+            u"unload_pages_put_away"_s);
+        check(runningInWindow(window).isEmpty(), u"unload_leaves_nothing_running"_s);
+        report.insert(u"unload_commit_mb"_s, QJsonObject {{u"with_pages"_s, std::round(withPages)}, {u"after"_s, std::round(after)}});
+        say(u"settings pages put away: commit with all pages %1 MB, after %2 MB"_s.arg(std::round(withPages)).arg(std::round(after)));
+        // Of the ~100 MB of heap blocks the ten pages held (650,000 of them), most
+        // stays the heaps' own, free for what comes next and out of memory once
+        // it was given back; ~38 MB go back to Windows at once (measured at 150%).
+        check(withPages - after > 20, u"unload_gives_memory_back"_s);
+
+        window = open([&] { app.showSettings(); }, u"after pages were put away"_s);
+        check(app.settingsOpening().reused && js(window, u"currentPage === 0 && pageItem(0) !== null"_s).toBool()
+                && js(window, others).toInt() == 0,
+            u"unload_reopened_on_first_page"_s);
+        js(window, u"showPage(keysPage, keysListTab)"_s); // 按键一览, its sections made anew
+        pump(500);
+        check(js(window, u"currentPage === keysPage && pageItem(keysPage) !== null && shortcutModel.count === shortcutSections.length"_s).toBool(),
+            u"unload_page_made_again"_s);
+        js(window, u"loadAllPages()"_s);
+        check(js(window, u"searchReady"_s).toBool() && js(window, others).toInt() == 10, u"unload_search_ready_again"_s);
+        app.setSettingsUnloadAfter(60'000); // not during what follows
+        close(window);
+    }
+
     // More openings, for their times.
     const int more = std::clamp(valueAfter(args, u"--settings-opens", u"5"_s).toInt(), 0, 100);
     for (int i = 0; i < more; ++i) {

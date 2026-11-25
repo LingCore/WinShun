@@ -334,6 +334,28 @@ Window {
     onCurrentPageChanged: if (currentPage === keysPage && currentTab === keysListTab) shortcutsWanted = true
     onCurrentTabChanged: if (currentPage === keysPage && currentTab === keysListTab) shortcutsWanted = true
 
+    // Closed a while ago (App, half a minute after the window was hidden): the
+    // pages made for that opening go, one per turn of the event loop, all but
+    // the first, which the next opening shows. Every page looked at, and all
+    // of them once the search was used, stayed for as long as Win顺 ran:
+    // ~250 MB at 150% (GitHub #459, 587 MB of 窗口和数据 on a larger screen).
+    function unloadPages(): void {
+        if (visible)
+            return
+        for (let i = pageSlots.length - 1; i > 0; --i) {
+            if (pageSlots[i].unload()) {
+                allPagesLoaded = false
+                Qt.callLater(window.unloadPages)
+                return
+            }
+        }
+        if (keysSlot.item === null) { // 按键一览's sections went with their page: made again as on a first opening
+            shortcutsWanted = false
+            shortcutModel.clear()
+        }
+        gc() // the pages' JavaScript side
+    }
+
     // The page if it has been made; null if not (or no such page).
     function pageItem(index: int): SettingsPage {
         return index >= 0 && index < pageSlots.length ? pageSlots[index].item : null

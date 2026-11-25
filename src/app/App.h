@@ -176,6 +176,13 @@ public:
         qint64 firstFrameMs = -1; // -1 until drawn
     };
     const SettingsOpening& settingsOpening() const { return m_settingsOpening; }
+    // How long after the settings window was closed its pages are put away
+    // (half a minute); shorter for a probe that looks at it.
+    void setSettingsUnloadAfter(int ms)
+    {
+        m_settingsUnloadMs = ms;
+        m_settingsUnload.setInterval(ms);
+    }
 
     App();
     ~App() override;
@@ -1089,6 +1096,8 @@ private:
     QTimer m_settingsReload;
     QTimer m_indexOptionsApply; // rebuilding the crawler is costly: batch quick edits
     QTimer m_contentStatusTimer; // while the settings window is open
+    QTimer m_settingsUnload; // once it was closed: its pages put away (SettingsWindow.unloadPages)
+    int m_settingsUnloadMs = 30'000;
     QTimer m_cliTallyTimer; // ws runs many a minute: the status line about it is made once in a while
     QTimer m_darkFrameGuard; // see guardDarkFrames
     QElapsedTimer m_darkFrameWatch;
