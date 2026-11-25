@@ -388,7 +388,13 @@ Item {
 
                     Item {
                         id: body
-                        readonly property real lead: surface.out("leadingInset", 0) > 0 ? surface.out("leadingInset", 0) : (chip.glyph.length > 0 ? 10 : 12) // 0 (a key without a lamp) is no say; 10 with an icon: it then sits as far from the key's edge as the last word does
+                        // The style's own inset (a key with a lamp), 0 for no say.
+                        readonly property real ownLead: surface.out("leadingInset", 0)
+                        // An icon as far from the chip's left edge as from its top and bottom: its ink, not
+                        // its box. The tallest Phosphor icons (a page) are 1.3 of the size asked for; with
+                        // the box at 10 the ink stood 8.7 in and 3.7 down, plain to see on the chosen chip's fill.
+                        readonly property real iconInset: strip.onPixel(Math.max(4, (height - icon.size * 1.3) / 2))
+                        readonly property real lead: ownLead > 0 ? ownLead : chip.glyph.length > 0 ? iconInset : 12
                         width: strip.stepUp(Math.ceil(nameX + labelSize.width + badge.room) + (chip.glyph.length > 0 ? 6 : 12))
                         height: parent.height
 
@@ -396,7 +402,8 @@ Item {
                         // icon's ink reaches past its 16 box, by 3 for a folder and nearly 5 for a camera
                         // (Glyph.inkRight): 4 after the box left the name against the icon, or under it.
                         readonly property int iconGap: 6
-                        readonly property real nameX: chip.glyph.length > 0 ? strip.onPixel(lead + Math.max(icon.width, icon.inkRight) + iconGap) : lead
+                        readonly property real iconX: ownLead > 0 ? lead : strip.onPixel(lead - icon.inkLeft)
+                        readonly property real nameX: chip.glyph.length > 0 ? strip.onPixel(iconX + Math.max(icon.width, icon.inkRight) + iconGap) : lead
 
                         TextMetrics { id: labelSize; font: label.font; text: label.text }
                         TextMetrics { id: countSize; font: countLabel.font; text: countLabel.text }
@@ -418,10 +425,10 @@ Item {
                             id: icon
                             objectName: "searchTypeChipIcon"
                             visible: chip.glyph.length > 0
-                            x: body.lead
+                            x: body.iconX
                             y: strip.onPixel((body.height - height) / 2 + surface.out("contentOffsetY", 0))
                             glyph: chip.glyph
-                            size: 16
+                            size: 14 // its ink some 18 high: room above and below it in the chip, the same as before it
                             color: surface.out("iconColor", chip.active && !chip.isAll ? Theme.accentText
                                                           : area.containsMouse ? Theme.subtext : Theme.faint)
                         }
