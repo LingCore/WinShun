@@ -140,6 +140,8 @@ class Launcher : public QObject {
     Q_PROPERTY(bool showModified READ showModified NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(bool showFileSize READ showFileSize NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(QString folderKeyword READ folderKeyword NOTIFY fileTypesChanged FINAL)
+    // Where 文件夹 stands among the kinds in the strip (Settings::folderChipAt).
+    Q_PROPERTY(int folderChipAt READ folderChipAt NOTIFY fileTypesChanged FINAL)
     // A click on a row only selects it; a double click (or Enter) opens it
     // (Settings::doubleClickToOpen, GitHub #44).
     Q_PROPERTY(bool doubleClickToOpen READ doubleClickToOpen NOTIFY resultOptionsChanged FINAL)
@@ -818,7 +820,9 @@ public:
     void setFileTypeCounts(QVariantList counts);
     // A count as a chip's tag has room for: 9999, then "1万", "1.2万", "35万" ("12k", "1.2M" in English).
     Q_INVOKABLE QString countLabel(qint64 count) const;
-    void setFileTypes(const FileTypes& types); // named (Settings::namedFileTypes)
+    // Named (Settings::namedFileTypes), with 文件夹's place among them (Settings::folderChipAt).
+    void setFileTypes(const FileTypes& types, int folderChipAt = 0);
+    int folderChipAt() const { return m_folderChipAt; }
     void setFolderKeyword(const QString& keyword);
     QString folderKeyword() const { return m_folderKeyword; }
     // 全部 also finds apps, and Windows' settings and switches (Request::apps, places).
@@ -827,9 +831,13 @@ public:
     // (fileTypes); in 文件 (or 文件夹) from any scope.
     static constexpr int kFoldersChip = -2;
     Q_INVOKABLE void chooseFileType(int type);
-    // Ctrl+Tab in 文件: the next chip (Ctrl+Shift+Tab the one before), round (不限, 文件夹, then the kinds).
+    // Ctrl+Tab in 文件: the next chip (Ctrl+Shift+Tab the one before), round (不限, then
+    // 文件夹 and the kinds in the strip's order).
     Q_INVOKABLE void cycleFileType(int delta);
     Q_INVOKABLE void editFileTypes(); // the strip's +: fileTypeSettingsRequested
+    // A chip dragged to another place in the strip, the places counted after 不限:
+    // fileChipMoveRequested, the app changes the setting (Settings::moveStripChip).
+    Q_INVOKABLE void moveFileChip(int from, int to) { emit fileChipMoveRequested(from, to); }
     // The strip's choice, to keep between runs: "folders", a kind's id
     // ("pictures") or "name:<its name>" for one of the user's own, or empty
     // (不限). Set after setFileTypes; in 文件 it applies at once.
@@ -990,6 +998,7 @@ signals:
     void appCountsChanged();
     void webSettingsRequested(); // the settings window, on its 网页搜索 page
     void fileTypeSettingsRequested(); // ... on its 结果列表 page, at the file types
+    void fileChipMoveRequested(int from, int to);
     void fileTypeChanged();
     void galleryChanged();
     void queryErrorChanged();
@@ -1486,6 +1495,8 @@ private:
     int m_currentRow = -1;
     QVariantMap m_keyHints; // see keyHints
     FileTypes m_fileTypes;
+    int m_folderChipAt = 0; // see folderChipAt
+    FileTypes m_countedTypes; // the kinds the last count asked for was made with (onTypeCounts)
     QString m_folderKeyword = QStringLiteral("folder");
     bool m_searchApps = true;
     bool m_searchPlaces = true;

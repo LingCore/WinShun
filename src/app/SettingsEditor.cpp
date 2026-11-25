@@ -2933,16 +2933,15 @@ void SettingsEditor::removeFileType(int index)
     if (index < 0 || index >= m_settings.fileTypes.size())
         return;
     m_settings.fileTypes.removeAt(index);
+    if (index < m_settings.folderChipAt) // 文件夹 stays after the same kind
+        --m_settings.folderChipAt;
     commit();
 }
 
-void SettingsEditor::moveFileType(int index, int delta)
+void SettingsEditor::moveStripChip(int from, int to)
 {
-    const qsizetype to = index + delta;
-    if (index < 0 || index >= m_settings.fileTypes.size() || to < 0 || to >= m_settings.fileTypes.size())
-        return;
-    m_settings.fileTypes.move(index, to);
-    commit();
+    if (m_settings.moveStripChip(from, to))
+        commit();
 }
 
 QVariantList SettingsEditor::quickFilters() const
@@ -3062,6 +3061,7 @@ void SettingsEditor::resetFileTypes()
 {
     m_settings.fileTypes = Settings::defaultFileTypes();
     m_settings.folderKeyword = Settings{}.folderKeyword;
+    m_settings.folderChipAt = Settings{}.folderChipAt;
     commit();
 }
 

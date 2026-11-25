@@ -937,6 +937,16 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     });
     connect(m_launcher.get(), &Launcher::webSettingsRequested, this, &App::showWebSettings);
     connect(m_launcher.get(), &Launcher::fileTypeSettingsRequested, this, &App::showFileTypeSettings);
+    // A chip of the strip dragged to another place: the order of the kinds (and 文件夹) in the settings.
+    connect(m_launcher.get(), &Launcher::fileChipMoveRequested, this, [this](int from, int to) {
+        Settings settings = m_settings;
+        if (!settings.moveStripChip(from, to))
+            return;
+        settings.save();
+        settingsEdited(settings);
+        if (m_settingsEditor)
+            m_settingsEditor->setSettings(m_settings);
+    });
     connect(m_launcher.get(), &Launcher::quickFilterSettingsRequested, this, &App::showQuickFilterSettings);
     connect(m_launcher.get(), &Launcher::favoriteSettingsRequested, this, &App::showFavoriteSettings);
     connect(m_launcher.get(), &Launcher::pluginSettingsRequested, this, &App::showPluginSettings);
@@ -2333,7 +2343,7 @@ void App::applySettings(bool initial)
     m_launcher->setContentOptions(m_settings.contentSearch, m_settings.contentExtensions,
         m_settings.contentSizeLimits(), m_settings.contentInLowPriority, m_settings.contentDocuments);
     m_launcher->setContentIndex(m_settings.contentIndex);
-    m_launcher->setFileTypes(m_settings.namedFileTypes()); // after applyAppearance: the built-in ones' names
+    m_launcher->setFileTypes(m_settings.namedFileTypes(), m_settings.folderChipAt); // after applyAppearance: the built-in ones' names
     m_launcher->setQuickFilters(m_settings.quickFilters);
     applyPlugins();
     if (!initial) {

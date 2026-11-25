@@ -125,6 +125,22 @@ constexpr qsizetype kShownExtensions = 3; // named in the search box and the sta
 // limit for the files asked for after being left out (searchLeftOut "large").
 constexpr std::int64_t kLargestFile = 4096ll << 20;
 
+// The strip's numbers (all, folders, then one for each of `counted`) for the
+// kinds `kinds`: each kind keeps its own wherever it stands now, -1 (no
+// number) for a kind not counted. Empty when there are none.
+QVariantList countsInOrder(const QVariantList& counts, const FileTypes& counted, const FileTypes& kinds)
+{
+    if (counts.size() != counted.size() + 2)
+        return {};
+    QVariantList list {counts[0], counts[1]};
+    list.reserve(kinds.size() + 2);
+    for (const FileType& kind : kinds) {
+        const qsizetype at = counted.indexOf(kind);
+        list.append(at >= 0 ? counts[at + 2] : QVariant(qint64 {-1}));
+    }
+    return list;
+}
+
 // The hints' kinds (leftOutHints), and a drive's root from its kind.
 constexpr QLatin1StringView kLargeHint("large");
 constexpr QLatin1StringView kSystemHint("system");
@@ -3099,9 +3115,11 @@ void Launcher::search(bool more)
     // 文件 (and 文件夹): what is typed counted for each kind on the strip. The
     // numbers there stay until this search's come: no blink at every letter.
     const bool counting = m_typeCounts && (m_scope == Files || m_scope == Folders) && !request.text.trimmed().isEmpty();
+    m_countedTypes.clear();
     if (counting) {
         for (const FileType& type : m_fileTypes)
             request.countTypes.append({type.extensions, type.folder.isEmpty() ? QStringList() : QStringList {type.folder}});
+        m_countedTypes = m_fileTypes;
     }
     m_requestId = m_engine->submit(std::move(request)); // also stops a running content scan
     m_nameRequestId = m_requestId;
@@ -3888,15 +3906,13 @@ void Launcher::onTypeCounts(quint64 id, const NameTypeCounts& counts)
 {
     if (id != m_nameRequestId || id != m_countRequestId)
         return; // superseded
-    // As many as there are kinds now (they may have been edited meanwhile); none: no numbers.
+    // For the kinds as they are now (they may have been edited or moved meanwhile).
     QVariantList list;
-    if (counts.types.size() == m_fileTypes.size()) {
-        list.reserve(counts.types.size() + 2);
-        list << counts.all << counts.folders;
-        for (const qint64 count : counts.types)
-            list << count;
-    }
-    setFileTypeCounts(std::move(list));
+    list.reserve(counts.types.size() + 2);
+    list << counts.all << counts.folders;
+    for (const qint64 count : counts.types)
+        list << count;
+    setFileTypeCounts(countsInOrder(list, m_countedTypes, m_fileTypes));
 }
 
 void Launcher::setFileTypeCounts(QVariantList counts)
@@ -4948,10 +4964,23 @@ QVariantList Launcher::fileTypes() const
     return types;
 }
 
-void Launcher::setFileTypes(const FileTypes& types)
+void Launcher::setFileTypes(const FileTypes& types, int folderChipAt)
 {
-    if (types == m_fileTypes)
+    folderChipAt = std::clamp(folderChipAt, 0, static_cast<int>(types.size()));
+    if (types == m_fileTypes) {
+        if (folderChipAt != m_folderChipAt) { // 文件夹 alone moved: the strip and Ctrl+Tab
+            m_folderChipAt = folderChipAt;
+            emit fileTypesChanged();
+        }
         return;
+    }
+    m_folderChipAt = folderChipAt;
+    // Only put in another order (a chip dragged): the same files, nothing to list again.
+    const bool reordered = types.size() == m_fileTypes.size()
+        && std::ranges::all_of(types, [&](const FileType& type) { return m_fileTypes.contains(type); });
+    // The numbers on the chips go with their kinds; a kind new or edited has none until counted again.
+    const QVariantList counts = countsInOrder(m_fileTypeCounts, m_fileTypes, types);
+    const bool recount = m_countRequestId != 0 && counts.contains(QVariant(qint64 {-1}));
     // The kind chosen stays chosen where it went (moved up, renamed: by its
     // id or name); gone, any kind.
     QStringList chosen;
@@ -4962,6 +4991,7 @@ void Launcher::setFileTypes(const FileTypes& types)
     for (int type : m_contentTypes)
         contentChosen.append(fileTypeKey(m_fileTypes[type]));
     m_fileTypes = types;
+    setFileTypeCounts(counts);
     QList<int> contentTypes;
     for (const QString& key : contentChosen) {
         if (const int type = fileTypeIndex(key); type >= 0)
@@ -4987,8 +5017,9 @@ void Launcher::setFileTypes(const FileTypes& types)
     emit folderChipsChanged(); // 内容's strip names its kinds
     updateQueryPrefix();
     emit scopeChanged(); // the placeholder names the kind
-    // Its extensions changed: listed again (a refresh when they did not).
-    if ((m_fileType >= 0 || (m_scope == Content && (contentMoved || !m_contentTypes.isEmpty()))) && m_window && m_window->isVisible())
+    // Its extensions changed: listed again (a refresh when they did not); counted again for a kind without its number.
+    if (!reordered && (m_fileType >= 0 || recount || (m_scope == Content && (contentMoved || !m_contentTypes.isEmpty())))
+        && m_window && m_window->isVisible())
         search();
 }
 
@@ -5162,9 +5193,10 @@ void Launcher::chooseFileType(int type)
 
 void Launcher::cycleFileType(int delta)
 {
-    QList<int> chips {-1, kFoldersChip};
+    QList<int> chips {-1};
     for (int i = 0; i < m_fileTypes.size(); ++i)
         chips.append(i);
+    chips.insert(1 + m_folderChipAt, kFoldersChip);
     const int at = std::max(0, static_cast<int>(chips.indexOf(m_scope == Folders ? kFoldersChip : m_scope == All ? -1 : m_fileType)));
     const int count = static_cast<int>(chips.size());
     chooseFileType(chips[((at + delta) % count + count) % count]);

@@ -801,6 +801,30 @@ bool Settings::hotkeyAllowed(const QString& shortcut)
     return hotkeys::allowed(shortcut);
 }
 
+bool Settings::moveStripChip(int from, int to)
+{
+    const int count = static_cast<int>(fileTypes.size()) + 1; // the kinds and 文件夹
+    if (from < 0 || from >= count || to < 0 || to >= count || from == to)
+        return false;
+    // The places in order: -1 for 文件夹, a kind's index otherwise.
+    QList<int> places;
+    places.reserve(count);
+    for (int i = 0; i < fileTypes.size(); ++i)
+        places.append(i);
+    places.insert(std::clamp(folderChipAt, 0, count - 1), -1);
+    places.move(from, to);
+    FileTypes moved;
+    moved.reserve(fileTypes.size());
+    for (int i = 0; i < count; ++i) {
+        if (places[i] < 0)
+            folderChipAt = i;
+        else
+            moved.append(fileTypes[places[i]]);
+    }
+    fileTypes = std::move(moved);
+    return true;
+}
+
 FileTypes Settings::namedFileTypes() const
 {
     FileTypes types = fileTypes;
@@ -1317,6 +1341,8 @@ void Settings::load()
             typeKeywords.insert(type.keyword);
     }
 
+    folderChipAt = std::clamp(readOrDefault(s, u"Results/FolderChipAt"_s, d.folderChipAt), 0, static_cast<int>(fileTypes.size()));
+
     quickFilters = readQuickFilters(s, typeKeywords);
     shares = readShares(s);
     networkVerifyHours = std::clamp(readOrDefault(s, u"Network/VerifyHours"_s, d.networkVerifyHours), 0, 24 * 7);
@@ -1496,6 +1522,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Results/ShowFileSize"_s, showFileSize);
     s.setValue(u"Results/TypeCounts"_s, typeCounts);
     s.setValue(u"Results/FolderKeyword"_s, folderKeyword);
+    s.setValue(u"Results/FolderChipAt"_s, folderChipAt);
     s.setValue(u"Results/DoubleClickToOpen"_s, doubleClickToOpen);
     s.setValue(u"Results/ClickPreviews"_s, clickPreviews);
     s.setValue(u"Results/DefaultSystemMenu"_s, defaultSystemMenu);

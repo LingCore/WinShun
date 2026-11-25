@@ -36,10 +36,11 @@ Item {
     readonly property var typeChips: {
         if (fileChips.length > 0)
             return fileChips
-        const list = [{ type: -1, name: qsTr("不限") }, { type: -2, name: qsTr("文件夹"), keyword: launcher.folderKeyword }]
+        const list = [{ type: -1, name: qsTr("不限") }]
         const types = launcher.fileTypes
         for (let i = 0; i < types.length; ++i)
             list.push({ type: i, name: types[i].name, keyword: types[i].keyword })
+        list.splice(1 + Math.min(launcher.folderChipAt, types.length), 0, { type: -2, name: qsTr("文件夹"), keyword: launcher.folderKeyword })
         return list
     }
     function typeActive(type) {

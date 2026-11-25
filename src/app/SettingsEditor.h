@@ -363,6 +363,8 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QVariantList quickFilters READ quickFilters NOTIFY changed FINAL)
     Q_PROPERTY(bool fileTypesDefault READ fileTypesDefault NOTIFY changed FINAL)
     Q_PROPERTY(QString folderKeyword READ folderKeyword NOTIFY changed FINAL)
+    // Where 文件夹 stands among them in the strip (Settings::folderChipAt).
+    Q_PROPERTY(int folderChipAt READ folderChipAt NOTIFY changed FINAL)
     // Counts the sites' icons that arrived: a binding on webIconUrl() reads it
     // to be asked again (without the list made anew, and a form open in it lost).
     Q_PROPERTY(int siteIconsArrived READ siteIconsArrived NOTIFY siteIconArrived FINAL)
@@ -1055,7 +1057,10 @@ public:
 
     QVariantList webShortcuts() const;
     QVariantList fileTypes() const;
-    bool fileTypesDefault() const { return m_settings.fileTypes == Settings::defaultFileTypes() && m_settings.folderKeyword == u"folder"; }
+    bool fileTypesDefault() const
+    {
+        return m_settings.fileTypes == Settings::defaultFileTypes() && m_settings.folderKeyword == u"folder" && m_settings.folderChipAt == 0;
+    }
     // Each returns what is wrong ("已有这个类型"), empty when done.
     Q_INVOKABLE QString addFileType(const QString& name, const QString& extensions);
     Q_INVOKABLE QString renameFileType(int index, const QString& name);
@@ -1064,8 +1069,10 @@ public:
     Q_INVOKABLE QString setFileTypeFolder(int index, const QString& text);
     Q_INVOKABLE QString chooseFileTypeFolder(int index);
     QString folderKeyword() const { return m_settings.folderKeyword; }
+    int folderChipAt() const { return m_settings.folderChipAt; }
     Q_INVOKABLE void removeFileType(int index);
-    Q_INVOKABLE void moveFileType(int index, int delta); // up (-1) or down (1) the strip
+    // A chip of the strip after 不限 (文件夹 or a kind) to another place (Settings::moveStripChip).
+    Q_INVOKABLE void moveStripChip(int from, int to);
     Q_INVOKABLE void resetFileTypes();
     // The search panel's quick filters: [{name, query}]. Each returns what
     // is wrong ("已有这个名字", a query that cannot be read), empty when done.

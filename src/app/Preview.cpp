@@ -147,6 +147,13 @@
 
 using namespace Qt::StringLiterals;
 
+QT_BEGIN_NAMESPACE
+// QtGui's own, exported for QTest (qtestmouse.h): mouse input through
+// QGuiApplication, as the system's comes.
+Q_GUI_EXPORT void qt_handleMouseEvent(QWindow* window, const QPointF& local, const QPointF& global, Qt::MouseButtons state,
+    Qt::MouseButton button, QEvent::Type type, Qt::KeyboardModifiers mods, int timestamp);
+QT_END_NAMESPACE
+
 namespace ws::preview {
 
 // Clipboard's paste as far as what it would put on the clipboard
@@ -210,6 +217,20 @@ void pump(int ms)
     do
         QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
     while (timer.elapsed() < ms);
+}
+
+// The left button pressed, moved with or let go at `at` (in the window), as
+// the system's mouse comes: through QGuiApplication, which gives the point
+// its press position and keeps its grabs. A QMouseEvent sent to the window
+// has no press position, so a DragHandler takes the press itself for a drag
+// already made from (0, 0) and loses it to the MouseArea under it.
+void systemMouse(QWindow* window, QEvent::Type type, QPointF at)
+{
+    static int timestamp = 0;
+    timestamp += type == QEvent::MouseButtonRelease ? 1000 : 16; // a press after a release is no double click
+    const Qt::MouseButtons buttons = type == QEvent::MouseButtonRelease ? Qt::NoButton : Qt::LeftButton;
+    qt_handleMouseEvent(window, at, window->mapToGlobal(at), buttons, type == QEvent::MouseMove ? Qt::NoButton : Qt::LeftButton,
+        type, Qt::NoModifier, timestamp);
 }
 
 // A window off the screen gets no resize or expose from Windows, so its
@@ -3076,17 +3097,55 @@ int runSettings(const QStringList& args)
             auto* input = visualNamed(window->contentItem(), u"fileTypeFolder_0"_s);
             check(input && input->isVisible(), "点击范围按钮未展开路径输入框");
         }
-        for (int i = 0; i <= csv; ++i) {
+        // The rows in the strip's order, 文件夹 among the kinds (csv + 1 kinds and it).
+        const std::function<void(QQuickItem*, QQuickItem*)> inside = [&](QQuickItem* row, QQuickItem* item) {
+            for (auto* child : item->childItems()) {
+                if (!child->isVisible())
+                    continue;
+                check(child->mapToItem(row, QPointF(child->width(), 0)).x() <= row->width() + 0.5, "类型或范围控件超出卡片宽度");
+                inside(row, child);
+            }
+        };
+        for (int i = 0; i <= csv + 1; ++i) {
             auto* row = visualNamed(window->contentItem(), u"fileTypeRow_%1"_s.arg(i));
             check(row != nullptr, "文件类型行不存在");
-            if (row) {
-                for (auto* child : row->childItems()) {
-                    if (child->isVisible())
-                        check(child->x() + child->width() <= row->width() + 0.5, "类型或范围控件超出卡片宽度");
-                }
-            }
+            if (row)
+                inside(row, row);
         }
         bool saved = saveGrab(window, out.filePath(u"file-types-top.png"_s));
+        // 文件夹 by its handle two rows down, past 文档 and 图片; then 上移 one back.
+        check(editor->folderChipAt() == 0, "文件夹 is not first");
+        if (auto* first = visualNamed(window->contentItem(), u"fileTypeRow_0"_s); first) {
+            // Its bottom to the third row's (文档's is taller, with its range open).
+            auto* third = visualNamed(window->contentItem(), u"fileTypeRow_2"_s);
+            const qreal by = third ? third->y() + third->height() - first->y() - first->height() : 0;
+            const QPointF grip = first->mapToScene(QPointF(12, 16));
+            systemMouse(window, QEvent::MouseButtonPress, grip);
+            for (int i = 1; i <= 20; ++i) {
+                systemMouse(window, QEvent::MouseMove, grip + QPointF(0, by * i / 20));
+                QCoreApplication::processEvents();
+            }
+            pump(200);
+            settle(window, 2);
+            saved = saveGrab(window, out.filePath(u"file-types-drag.png"_s)) && saved;
+            systemMouse(window, QEvent::MouseButtonRelease, grip + QPointF(0, by));
+            settle(window, 3);
+            check(by > 0 && editor->folderChipAt() == 2, "文件夹's handle did not move it two rows down");
+            check(editor->fileTypes().value(0).toMap().value(u"name"_s).toString() == u"文档", "dragging 文件夹 moved a kind");
+        }
+        editor->moveStripChip(2, 1); // its 上移
+        check(editor->folderChipAt() == 1 && !editor->fileTypesDefault(), "上移 did not move 文件夹, or the order counts as the default");
+        editor->moveStripChip(3, 0); // a kind to the top, 文件夹 after it as before
+        check(editor->fileTypes().value(0).toMap().value(u"name"_s).toString() == u"视频" && editor->folderChipAt() == 2,
+            "moving a kind to the top did not keep 文件夹 where it was");
+        editor->removeFileType(0); // 视频 gone: 文件夹 stays after 文档
+        check(editor->folderChipAt() == 1, "removing a kind before 文件夹 did not keep it after the same kind");
+        editor->resetFileTypes();
+        check(editor->folderChipAt() == 0, "恢复默认 did not put 文件夹 first");
+        check(editor->addFileType(u"工作 CSV"_s, u"csv"_s).isEmpty() && editor->setFileTypeKeyword(csv, u"cw"_s).isEmpty()
+                && editor->setFileTypeFolder(csv, u"H:\\__work__"_s).isEmpty(),
+            "putting the range example back failed");
+        settle(window, 3);
         // The quick filters, below the types on the same tab.
         check(editor->quickFilters().isEmpty(), "quick filters: some before any was added");
         check(!editor->addQuickFilter(u" "_s, u"ext:pdf"_s).isEmpty(), "quick filters: one with no name was accepted");
@@ -10096,6 +10155,207 @@ bool checkTypeStripCounts(QQmlEngine* qml, const QDir& output)
     return ok;
 }
 
+// --preview-results <dir> --type-strip-drag: 文件's chips held and dragged with
+// the mouse, as the user does it. 文件夹 and the kinds go anywhere after 不限
+// (Launcher.moveFileChip, applied as the app applies it: Settings::moveStripChip,
+// then setFileTypes); the others make way while one is dragged; the kind chosen
+// and the numbers stay with their kinds; Ctrl+Tab goes in the new order; a press
+// without a drag is still a click; 不限 stays first; with more kinds than room,
+// one held at the end scrolls the strip on.
+bool checkTypeStripDrag(QQmlEngine* qml, const QDir& output)
+{
+    static QtMessageHandler counted = nullptr;
+    static int loops = 0;
+    loops = 0;
+    counted = qInstallMessageHandler([](QtMsgType type, const QMessageLogContext& context, const QString& message) {
+        if (message.contains(u"Binding loop detected"_s))
+            ++loops;
+        counted(type, context, message);
+    });
+    const auto restore = qScopeGuard([] { qInstallMessageHandler(counted); });
+    QTemporaryDir temporary;
+    IndexService index(temporary.filePath(u"index"_s), IndexService::Options{});
+    AppCatalog apps;
+    SystemCatalog places;
+    apps.setApps(std::make_shared<const AppList>());
+    places.setPlaces(std::make_shared<const PlaceList>());
+    History history(temporary.filePath(u"history.tsv"_s));
+    SearchEngine search(&index, &apps, &places);
+    Launcher launcher(&index, &apps, &places, &search, &history);
+    Settings settings;
+    for (const auto& [name, extension] : {std::pair {u"文档"_s, u"docx"_s}, {u"图片"_s, u"jpg"_s}, {u"视频"_s, u"mp4"_s},
+             {u"音频"_s, u"mp3"_s}, {u"压缩包"_s, u"zip"_s}})
+        settings.fileTypes.append(FileType {name, {extension}});
+    int moves = 0;
+    QObject::connect(&launcher, &Launcher::fileChipMoveRequested, &launcher, [&](int from, int to) {
+        ++moves;
+        if (settings.moveStripChip(from, to))
+            launcher.setFileTypes(settings.fileTypes, settings.folderChipAt);
+    });
+    launcher.setFileTypes(settings.fileTypes, settings.folderChipAt);
+    ClipStore store(temporary.filePath(u"clipboard"_s));
+    if (!store.open(QDateTime::currentMSecsSinceEpoch())) return false;
+    ClipboardWatcher watcher({}, {});
+    Clipboard clipboard(&store, &watcher);
+    Placement placement(temporary.filePath(u"state.ini"_s), u"Launcher"_s);
+    WindowFrame frame(false);
+    QQmlComponent component(qml, u"WinShun"_s, u"Main"_s);
+    std::unique_ptr<QObject> object(component.createWithInitialProperties({
+        {u"launcher"_s, QVariant::fromValue(&launcher)}, {u"clipboard"_s, QVariant::fromValue(&clipboard)},
+        {u"frame"_s, QVariant::fromValue(&frame)}, {u"placement"_s, QVariant::fromValue(&placement)}}));
+    auto* window = qobject_cast<QQuickWindow*>(object.get());
+    if (!window) { say(component.errorString()); return false; }
+    window->create();
+    launcher.setWindow(window);
+    frame.setWindow(window);
+    placement.setWindow(window);
+    showOffScreen(window);
+    bool ok = true;
+    const auto check = [&](bool condition, const char* reason) {
+        ok = condition && ok;
+        if (!condition) qWarning("type strip drag regression: %s", reason);
+    };
+    auto* strip = visualNamed(window->contentItem(), u"searchTypeStrip"_s);
+    if (!strip) { check(false, "there is no strip"); return false; }
+    launcher.setScope(Launcher::Files);
+    launcher.toggleFileType(1); // 图片
+    settle(window);
+    // all, folders, then 文档 图片 视频 音频 压缩包
+    launcher.setFileTypeCounts({QVariant(100), QVariant(7), QVariant(10), QVariant(11), QVariant(12), QVariant(13), QVariant(14)});
+    settle(window);
+
+    const auto chipOf = [&](int type) { return visualNamed(window->contentItem(), u"searchTypeChip%1"_s.arg(type)); };
+    const auto countOn = [&](int type) {
+        QQuickItem* chip = chipOf(type);
+        QQuickItem* tag = chip ? visualNamed(chip, u"searchTypeChipCount"_s) : nullptr;
+        return tag ? tag->property("count").toInt() : -100;
+    };
+    const auto order = [&] {
+        QStringList names;
+        for (const QVariant& chip : strip->property("chips").toList())
+            names.append(chip.toMap().value(u"name"_s).toString());
+        return names;
+    };
+    const auto centre = [&](QQuickItem* item) { return item->mapToScene(QPointF(item->width() / 2, item->height() / 2)); };
+    // Pressed on the chip, moved sideways by `by` (inside the window) a few
+    // pixels at a time, held `hold` ms, `midway` before it is let go; then
+    // the glide into its place.
+    const auto drag = [&](QQuickItem* chip, qreal by, const std::function<void()>& midway, int hold = 0) {
+        const QPointF from = centre(chip);
+        by = std::clamp(from.x() + by, 2.0, window->width() - 2.0) - from.x();
+        systemMouse(window, QEvent::MouseButtonPress, from);
+        const int steps = std::max(1, static_cast<int>(std::abs(by) / 4));
+        for (int i = 1; i <= steps; ++i) {
+            systemMouse(window, QEvent::MouseMove, from + QPointF(by * i / steps, 0));
+            QCoreApplication::processEvents();
+        }
+        pump(250 + hold); // the others make way
+        settle(window, 2);
+        if (midway)
+            midway();
+        systemMouse(window, QEvent::MouseButtonRelease, from + QPointF(by, 0));
+        pump(300);
+        settle(window, 2);
+    };
+    // The chips shown side by side as they rest: none over another, the gaps
+    // between the kinds the row's, each on a whole device pixel.
+    // (Scrolling, the room left is shared out between the gaps: as wide each.)
+    const qreal dpr = window->effectiveDevicePixelRatio();
+    const auto laidOut = [&](const char* when) {
+        const QVariantList chips = strip->property("chips").toList();
+        qreal right = -1;
+        qreal gap = strip->property("scrolls").toBool() ? -1 : 4;
+        for (int i = 0; i < chips.size(); ++i) {
+            QQuickItem* chip = chipOf(chips.at(i).toMap().value(u"type"_s).toInt());
+            if (!chip || !chip->property("whole").toBool())
+                continue;
+            const qreal left = chip->mapToScene(QPointF(0, 0)).x();
+            if (right >= 0 && i > 1 && gap < 0)
+                gap = left - right;
+            if (right >= 0 && (left < right - 0.5 || (i > 1 && std::abs(left - right - gap) > 0.6))) {
+                qWarning("type strip drag regression: %s: chip %d starts at %.2f, the one before ends at %.2f", when, i, left, right);
+                ok = false;
+            }
+            check(std::abs(left * dpr - std::round(left * dpr)) < 0.01, "a chip is not on a whole device pixel");
+            check(chip->property("way").toReal() == 0 && !chip->property("dragged").toBool(), "a chip still makes way or is dragged");
+            right = left + chip->width();
+        }
+    };
+    laidOut("at the start");
+    check(order() == QStringList({u"不限"_s, u"文件夹"_s, u"文档"_s, u"图片"_s, u"视频"_s, u"音频"_s, u"压缩包"_s}), "the strip does not start 不限, 文件夹");
+
+    // 文件夹 past 文档 and 图片: those two make way while it is held.
+    QQuickItem* documents = chipOf(0);
+    QQuickItem* pictures = chipOf(1);
+    drag(chipOf(-2), documents->width() + pictures->width() + 8, [&] {
+        check(strip->property("dragFrom").toInt() == 1 && strip->property("dragTo").toInt() == 3, "the strip does not know what is dragged where");
+        check(documents->property("makeWay").toReal() < 0 && pictures->property("makeWay").toReal() < 0
+                && chipOf(2)->property("makeWay").toReal() == 0,
+            "文档 and 图片 do not make way for 文件夹, or 视频 does");
+        check(saveGrab(window, output.filePath(u"type-strip-drag.png"_s)), "the window did not render");
+    });
+    check(moves == 1 && order() == QStringList({u"不限"_s, u"文档"_s, u"图片"_s, u"文件夹"_s, u"视频"_s, u"音频"_s, u"压缩包"_s}),
+        "文件夹 did not go after 图片");
+    check(settings.folderChipAt == 2 && launcher.folderChipAt() == 2, "the settings do not have 文件夹 after 图片");
+    check(strip->property("dragFrom").toInt() == -1, "the drag did not end");
+    check(launcher.scope() == Launcher::Files && launcher.selectedFileTypes() == QList<int> {1}, "the drag changed what is chosen");
+    laidOut("文件夹 dropped");
+    check(saveGrab(window, output.filePath(u"type-strip-dropped.png"_s)), "the window did not render");
+
+    // 压缩包 dragged far to the left: first after 不限, no further; the kinds' own order with it.
+    drag(chipOf(4), -1000, {});
+    check(moves == 2 && order() == QStringList({u"不限"_s, u"压缩包"_s, u"文档"_s, u"图片"_s, u"文件夹"_s, u"视频"_s, u"音频"_s}),
+        "压缩包 did not go first after 不限");
+    check(settings.fileTypes.value(0).name == u"压缩包" && settings.folderChipAt == 3, "the settings do not have 压缩包 first");
+    check(launcher.selectedFileTypes() == QList<int> {2}, "图片 was not still chosen where it went");
+    check(countOn(0) == 14 && countOn(2) == 11 && countOn(-2) == 7 && countOn(-1) == 100, "the numbers did not go with their kinds");
+    laidOut("压缩包 dropped");
+
+    // A press without a drag is a click: 视频 chosen too.
+    QQuickItem* videos = chipOf(3);
+    systemMouse(window, QEvent::MouseButtonPress, centre(videos));
+    systemMouse(window, QEvent::MouseButtonRelease, centre(videos));
+    settle(window);
+    check(moves == 2 && launcher.selectedFileTypes() == (QList<int> {2, 3}), "a click on a chip did not choose it");
+    // 不限 does not move: dragged a little it is clicked; far, nothing.
+    drag(chipOf(-1), 300, {});
+    check(moves == 2 && order().first() == u"不限", "不限 moved");
+    // Ctrl+Tab in the strip's order.
+    launcher.chooseFileType(-1);
+    QList<int> stops;
+    for (int i = 0; i < 7; ++i) {
+        launcher.cycleFileType(1);
+        stops.append(launcher.scope() == Launcher::Folders ? Launcher::kFoldersChip : launcher.fileType());
+    }
+    check(stops == QList<int>({0, 1, 2, Launcher::kFoldersChip, 3, 4, -1}), "Ctrl+Tab does not go in the strip's order");
+    settle(window);
+
+    // More kinds than room: one held at the right end scrolls the chips on, and goes there.
+    for (const auto& [name, extension] : {std::pair {u"表格"_s, u"xlsx"_s}, {u"演示"_s, u"pptx"_s}, {u"PDF"_s, u"pdf"_s},
+             {u"程序"_s, u"exe"_s}, {u"代码"_s, u"cpp"_s}, {u"文本"_s, u"txt"_s}, {u"电子书"_s, u"epub"_s}, {u"设计稿"_s, u"psd"_s},
+             {u"字体"_s, u"ttf"_s}})
+        settings.fileTypes.append(FileType {name, {extension}});
+    launcher.setFileTypes(settings.fileTypes, settings.folderChipAt);
+    launcher.chooseFileType(0);
+    settle(window);
+    check(strip->property("scrolls").toBool() && strip->property("firstChip").toInt() == 0, "the strip does not scroll, or does not start at 不限");
+    const int count = static_cast<int>(strip->property("chips").toList().size());
+    drag(chipOf(1), 2000, [&] { // 文档
+        check(strip->property("firstChip").toInt() > 0, "held at the end, the chips did not scroll on");
+        check(chipOf(1)->property("whole").toBool() && chipOf(1)->opacity() == 1, "the chip dragged was hidden");
+        check(saveGrab(window, output.filePath(u"type-strip-drag-scroll.png"_s)), "the window did not render");
+    }, 2000);
+    const QStringList last = order();
+    check(moves == 3 && last.indexOf(u"文档"_s) > 6, "文档 did not go towards the end");
+    check(last.size() == count && last.first() == u"不限", "a chip was lost or 不限 moved");
+    check(strip->property("firstChip").toInt() > 0, "the drop scrolled back to the start");
+    laidOut("scrolled and dropped");
+    check(loops == 0, "a binding loop while dragging");
+    window->hide();
+    say(u"type strip drag: 文件夹 and the kinds reordered by the mouse (%1)"_s.arg(SystemTheme::uiStyle()));
+    return ok;
+}
+
 bool checkTypeStripScroll(QQmlEngine* qml, const QDir& output)
 {
     static QtMessageHandler counted = nullptr;
@@ -12101,6 +12361,8 @@ int runResults(const QStringList& args)
         return checkContentKinds(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--type-strip-scroll"_s))
         return checkTypeStripScroll(&engine, out) ? std::min(g_warnings, 100) : 4;
+    if (args.contains(u"--type-strip-drag"_s))
+        return checkTypeStripDrag(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--type-strip-counts"_s)) // by its own checks: the empty index's first searches may warn of being slow on a busy PC
         return checkTypeStripCounts(&engine, out) ? 0 : 4;
     if (args.contains(u"--clipboard-crashed-reading"_s)) // its warning when it gives up is expected

@@ -6,7 +6,8 @@ import WinShun
 // Under the search box in 文件: the kinds of file it narrows to, as chips
 // (不限, 文件夹, then 文档, 图片… as the settings have them), and + for the
 // settings. Ctrl+Tab goes along them (Launcher.cycleFileType), a chip's tooltip
-// lists its extensions. In 内容 the folders it looks in instead
+// lists its extensions; held and dragged, a chip after 不限 goes to another
+// place (Launcher.moveFileChip, the settings' order). In 内容 the folders it looks in instead
 // (Launcher.folderChips: 不限 and the favorite folders, or those a folder
 // named among the words stands for), + for the favorites, and after them a
 // few words on naming one (Launcher.folderHint); at the right end the
@@ -59,11 +60,10 @@ Item {
         default: return "" // Document
         }
     }
+    // 不限, then the kinds with 文件夹 where the settings put it (Launcher.folderChipAt).
     // hueIndex (Hook): -1 不限, -2 文件夹 (and a folder chip in 内容), 0.. the kinds in this order.
     readonly property var fileChips: {
-        const list = [{ type: -1, name: qsTr("不限"), tip: launcher.mergeFileScope ? qsTr("所有应用、文件和文件夹") : qsTr("所有文件和文件夹"), glyph: "", hue: -1 },
-                      { type: -2, name: qsTr("文件夹"), tip: qsTr("只找文件夹") + (launcher.folderKeyword.length > 0 ? " · :" + launcher.folderKeyword : ""),
-                        glyph: folderGlyph, hue: -2, keyword: launcher.folderKeyword }]
+        const list = [{ type: -1, name: qsTr("不限"), tip: launcher.mergeFileScope ? qsTr("所有应用、文件和文件夹") : qsTr("所有文件和文件夹"), glyph: "", hue: -1 }]
         const types = launcher.fileTypes
         for (let i = 0; i < types.length; ++i) {
             const exts = types[i].extensions.split(" ")
@@ -72,6 +72,9 @@ Item {
                         + (types[i].keyword.length > 0 ? " · :" + types[i].keyword : ""),
                         glyph: typeGlyph(exts), hue: i, keyword: types[i].keyword })
         }
+        list.splice(1 + Math.min(launcher.folderChipAt, types.length), 0,
+                    { type: -2, name: qsTr("文件夹"), tip: qsTr("只找文件夹") + (launcher.folderKeyword.length > 0 ? " · :" + launcher.folderKeyword : ""),
+                      glyph: folderGlyph, hue: -2, keyword: launcher.folderKeyword })
         return list
     }
     // 文件: how many of what is typed a chip would list (Launcher.fileTypeCounts:
@@ -229,6 +232,8 @@ Item {
         slide.start()
     }
     function scheduleReveal() {
+        if (keepView)
+            return
         revealRequested = true
         Qt.callLater(runReveal)
     }
@@ -265,8 +270,124 @@ Item {
         onStopped: strip.moving = false
     }
     onCurrentChanged: scheduleReveal()
-    onChipsChanged: scheduleReveal()
+    onChipsChanged: {
+        // Made anew (another scope, the settings) while one was dragged: that drag is over.
+        settle.stop()
+        settling = false
+        dragFrom = -1
+        dragTo = -1
+        scheduleReveal()
+    }
     onShowKeywordsChanged: scheduleReveal()
+
+    // A chip after 不限 held and dragged along 文件's strip to another place:
+    // the others make way (its width and a gap), it follows the pointer
+    // inside the strip, and held at either end the chips scroll on
+    // (edgeScroll). Let go, it glides into its place (settle), and the new
+    // order goes to the settings (Launcher.moveFileChip); the chips are then
+    // made anew where they already stand.
+    readonly property bool reorderable: !folders && !apps
+    property int dragFrom: -1 // the chip's index in chips; -1 for none
+    property int dragTo: -1 // the index it takes when let go
+    property real dragPointer: 0 // the pointer, in view
+    property real dragGrab: 0 // where on the chip it was taken
+    property bool settling: false
+    property real settleLeft: 0
+    property bool keepView: false // the chips made anew after a drop: no scrolling to the current one
+    readonly property Item draggedChip: dragFrom >= 0 ? chipRepeater.itemAt(dragFrom) : null
+    readonly property real dragRoom: draggedChip ? draggedChip.width + row.spacing + spreadGap : 0
+    // Where chip `index` rests in the row, and where the one dragged would rest at index `to`.
+    function slotLeft(index: int): real {
+        const chip = chipRepeater.itemAt(index)
+        return chip ? chip.x + chip.targetShift : 0
+    }
+    function restLeft(to: int): real {
+        const chip = chipRepeater.itemAt(to)
+        return chip && draggedChip && to > dragFrom ? slotLeft(to) + chip.width - draggedChip.width : slotLeft(to)
+    }
+    // Its left edge in the row: under the pointer, after 不限, before the end, in view.
+    readonly property real dragLeft: {
+        if (!draggedChip)
+            return 0
+        const left = view.contentX + dragPointer - dragGrab
+        const last = Math.min(restLeft(chipRepeater.count - 1), view.contentX + view.width - draggedChip.width)
+        return Math.max(slotLeft(1), view.contentX, Math.min(left, last))
+    }
+    // The place of the last chip whose middle its leading edge has passed,
+    // either way (by its middle, a chip wider than the next could not take
+    // the place it is shown in).
+    onDragLeftChanged: {
+        if (!draggedChip || settling)
+            return
+        const right = dragLeft + draggedChip.width
+        let to = dragFrom
+        for (let i = dragFrom + 1; i < chipRepeater.count; ++i) {
+            const chip = chipRepeater.itemAt(i)
+            if (!chip || right <= slotLeft(i) + chip.width / 2)
+                break
+            to = i
+        }
+        for (let i = dragFrom - 1; i >= 1; --i) {
+            const chip = chipRepeater.itemAt(i)
+            if (!chip || dragLeft >= slotLeft(i) + chip.width / 2)
+                break
+            to = i
+        }
+        dragTo = to
+    }
+    function beginDrag(index: int, grab: real, pointer: real) {
+        cancelReveal()
+        dragGrab = grab
+        dragPointer = pointer
+        dragTo = index
+        dragFrom = index
+    }
+    function endDrag(cancelled: bool) {
+        if (dragFrom < 0 || settling)
+            return
+        if (cancelled)
+            dragTo = dragFrom
+        const to = restLeft(dragTo)
+        settleLeft = dragLeft
+        settling = true
+        if (SystemTheme.animations && Math.abs(to - settleLeft) > 0.5) {
+            settle.to = to
+            settle.start()
+        } else {
+            Qt.callLater(finishDrag) // not under the handler that is ending: its chip goes with the drop
+        }
+    }
+    function finishDrag() {
+        if (!settling)
+            return
+        const from = dragFrom
+        const to = dragTo
+        settling = false
+        dragFrom = -1
+        dragTo = -1
+        if (from < 1 || to < 1 || to === from)
+            return
+        keepView = true
+        launcher.moveFileChip(from - 1, to - 1) // the places after 不限
+        keepView = false
+        scrollTo(firstChip, false) // where the chips, other widths in other places, now rest
+    }
+    NumberAnimation {
+        id: settle
+        target: strip; property: "settleLeft"; duration: 120; easing.type: Easing.OutCubic
+        onFinished: strip.finishDrag()
+    }
+    Timer { // held at an end of the chips while dragging: they scroll on, a chip at a time
+        id: edgeScroll
+        readonly property int way: !strip.draggedChip || strip.settling || !strip.scrolls ? 0
+            : strip.dragLeft <= view.contentX + 0.5 && strip.firstChip > 0 ? -1
+            : strip.dragLeft + strip.draggedChip.width >= view.contentX + view.width - 0.5 && strip.firstChip < strip.lastFirst() ? 1
+            : 0
+        interval: 400
+        repeat: true
+        running: way !== 0
+        onTriggered: strip.scrollTo(strip.firstChip + way, true)
+    }
 
     // A mouse's wheel (or a touchpad's swipe) turns the chips a chip per
     // notch. Over the chips, taking only the wheel (no buttons, no hover).
@@ -347,7 +468,7 @@ Item {
                     readonly property bool parted: index + 1 < strip.chips.length
                         && (kindChip ? strip.chips[index + 1].kind === undefined
                                      : isAll && (index === 0 || strip.chips[index - 1].kind !== undefined))
-                    readonly property bool tipWanted: area.containsMouse
+                    readonly property bool tipWanted: area.containsMouse && strip.dragFrom < 0
                     onTipWantedChanged: {
                         if (tipWanted) {
                             strip.hoveredChip = chip
@@ -361,9 +482,29 @@ Item {
                     // Whole device pixels too (150%: even), so the chips after it stay on them.
                     width: strip.stepUp(body.width + (parted ? row.spacing + 9 : 0))
                     readonly property real keyWidth: body.width
-                    // Whole or not at all where the chips scroll (strip.firstChip).
-                    readonly property bool whole: !strip.scrolls
-                        || (x >= strip.restX - 0.5 && x + body.width <= strip.restX + view.width + 0.5)
+                    readonly property bool dragged: strip.dragFrom === index
+                    // Making way for the chip dragged: its width and a gap, to the left or right.
+                    readonly property real makeWay: {
+                        const from = strip.dragFrom
+                        const to = strip.dragTo
+                        if (from < 0 || dragged)
+                            return 0
+                        if (from < to && index > from && index <= to)
+                            return -strip.dragRoom
+                        if (from > to && index >= to && index < from)
+                            return strip.dragRoom
+                        return 0
+                    }
+                    property real way: makeWay
+                    Behavior on way {
+                        enabled: SystemTheme.animations
+                        NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
+                    }
+                    z: dragged ? 2 : 0
+                    // Whole or not at all where the chips scroll (strip.firstChip); where
+                    // it goes when making way. The one dragged stays, kept in view.
+                    readonly property bool whole: dragged || !strip.scrolls
+                        || (x + makeWay >= strip.restX - 0.5 && x + makeWay + body.width <= strip.restX + view.width + 0.5)
                     opacity: whole ? 1 : 0
                     // Its share of strip.spreadGap; while the chips scroll, on its
                     // way there from where it was, with them. Whole device pixels.
@@ -376,7 +517,10 @@ Item {
                         target: strip
                         function onScrollStarting() { chip.fromShift = chip.rawShift }
                     }
-                    transform: Translate { x: strip.onPixel(chip.rawShift) }
+                    transform: Translate {
+                        x: chip.dragged ? strip.onPixel((strip.settling ? strip.settleLeft : strip.dragLeft) - chip.x)
+                                        : strip.onPixel(chip.rawShift + chip.way)
+                    }
                     Behavior on opacity {
                         enabled: SystemTheme.animations
                         NumberAnimation { duration: 120 }
@@ -409,8 +553,8 @@ Item {
                             anchors.fill: parent
                             part: Theme.chipSurface
                             checked: chip.active
-                            hovered: area.containsMouse
-                            pressed: area.pressed
+                            hovered: area.containsMouse || chip.dragged
+                            pressed: area.pressed || chip.dragged
                             isAll: chip.isAll
                             hueIndex: chip.hue
                             role: "type"
@@ -488,6 +632,31 @@ Item {
                                     strip.launcher.chooseFolderChip(chip.modelData.type)
                                 else
                                     strip.launcher.toggleFileType(chip.modelData.type)
+                            }
+
+                            // Held and moved sideways past the drag distance: the chip goes
+                            // with the pointer (strip.beginDrag) and the click is called off.
+                            // In the area, so it sees the press before the area takes it.
+                            DragHandler {
+                                objectName: "searchTypeChipDrag"
+                                target: null
+                                yAxis.enabled: false
+                                enabled: strip.reorderable && chip.modelData.type !== -1 && !strip.settling
+                                // A little more than Windows' few pixels: a click that wavers stays a click.
+                                dragThreshold: Math.max(8, Qt.styleHints.startDragDistance)
+                                cursorShape: Qt.ClosedHandCursor
+                                onActiveChanged: {
+                                    if (active)
+                                        strip.beginDrag(chip.index, chip.mapFromItem(null, centroid.scenePressPosition).x,
+                                                        view.mapFromItem(null, centroid.scenePosition).x)
+                                    else
+                                        strip.endDrag(false)
+                                }
+                                onCentroidChanged: {
+                                    if (active)
+                                        strip.dragPointer = view.mapFromItem(null, centroid.scenePosition).x
+                                }
+                                onCanceled: strip.dragTo = strip.dragFrom // put back where it was
                             }
                         }
                     }

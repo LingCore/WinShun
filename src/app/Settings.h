@@ -260,6 +260,9 @@ struct Settings {
     bool showFileSize = false; // compact results too; size sorting always shows it (GitHub #80)
     bool typeCounts = true; // 文件's type chips say how many of what is typed each kind has
     QString folderKeyword = QStringLiteral("folder"); // :folder in the search box
+    // Where 文件夹 stands among the kinds in 文件's strip, after 不限: 0
+    // before the first kind … fileTypes.size() after the last (Results/FolderChipAt).
+    int folderChipAt = 0;
     // A click on a result only selects it; a double click or Enter opens it
     // (GitHub #44: a stray click opened things). Off: a click opens.
     bool doubleClickToOpen = false;
@@ -423,6 +426,10 @@ struct Settings {
     FileTypes fileTypes;
     static FileTypes defaultFileTypes();
     FileTypes namedFileTypes() const; // each with its name, a built-in one's in the language shown
+    // Moves a chip of 文件's strip from place `from` to place `to`, the places
+    // counted after 不限 (文件夹 at folderChipAt, the kinds around it): the
+    // kinds' order and folderChipAt. False when there is no such place or it stays.
+    bool moveStripChip(int from, int to);
     // "jpg, .PNG *.gif" → {"jpg", "png", "gif"}: lower case, no dots, each once.
     static QStringList fileExtensions(const QString& text);
     // "~$*; Thumbs.db，*.tmp~" → {"~$*", "Thumbs.db", "*.tmp~"}: one name or

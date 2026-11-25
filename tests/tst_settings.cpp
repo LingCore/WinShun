@@ -1567,6 +1567,56 @@ private slots:
         QVERIFY(loaded.showModifiedTime);
     }
 
+    // The strip's order after 不限: 文件夹 among the kinds (folderChipAt), any of
+    // them moved anywhere, the kinds' own order with it; saved, and kept
+    // inside the list when the file says otherwise.
+    void stripOrder()
+    {
+        const auto kind = [](const QString& name) { return ws::FileType {name, {name}}; };
+        const auto names = [](const ws::Settings& s) {
+            QStringList list;
+            for (const ws::FileType& type : s.fileTypes)
+                list.append(type.name);
+            list.insert(s.folderChipAt, u"文件夹"_s);
+            return list;
+        };
+        ws::Settings settings;
+        settings.fileTypes = {kind(u"文档"_s), kind(u"图片"_s), kind(u"视频"_s)};
+        QCOMPARE(settings.folderChipAt, 0);
+        QVERIFY(settings.moveStripChip(0, 2)); // 文件夹 after 图片
+        QCOMPARE(names(settings), (QStringList {u"文档"_s, u"图片"_s, u"文件夹"_s, u"视频"_s}));
+        QCOMPARE(settings.folderChipAt, 2);
+        QVERIFY(settings.moveStripChip(3, 0)); // 视频 first: 文件夹 stays after 图片
+        QCOMPARE(names(settings), (QStringList {u"视频"_s, u"文档"_s, u"图片"_s, u"文件夹"_s}));
+        QCOMPARE(settings.folderChipAt, 3);
+        QVERIFY(settings.moveStripChip(1, 2)); // a kind past a kind
+        QCOMPARE(names(settings), (QStringList {u"视频"_s, u"图片"_s, u"文档"_s, u"文件夹"_s}));
+        QVERIFY(!settings.moveStripChip(1, 1));
+        QVERIFY(!settings.moveStripChip(-1, 0));
+        QVERIFY(!settings.moveStripChip(0, 4)); // four places
+        QCOMPARE(names(settings), (QStringList {u"视频"_s, u"图片"_s, u"文档"_s, u"文件夹"_s}));
+
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        settings.save();
+        ws::Settings loaded;
+        loaded.load();
+        QCOMPARE(names(loaded), names(settings));
+        {
+            QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+            ini.setValue(u"Results/FolderChipAt"_s, 9); // past the kinds: after the last
+        }
+        loaded.load();
+        QCOMPARE(loaded.folderChipAt, 3);
+        {
+            QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+            ini.setValue(u"Results/FolderChipAt"_s, -2);
+        }
+        loaded.load();
+        QCOMPARE(loaded.folderChipAt, 0);
+    }
+
     // [QuickFilters]: saved as written; a file edited by hand is tidied.
     void quickFilterSettings()
     {
