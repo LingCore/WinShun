@@ -4,7 +4,7 @@ import WinShun
 
 // The capture toolbar (docs/design-capture-roadmap.md, 3.5). In the capture
 // overlay it is two cards, left edges together, each as wide as its buttons:
-// the common row (grip, rectangle, ellipse, arrow, pen, text, number, mosaic;
+// the common row (grip, select, rectangle, ellipse, arrow, pen, text, number, mosaic;
 // undo, redo; pin, save; and at the right end cancel and copy, the check mark,
 // the primary one) lies next to the selection; the other row (line, highlighter;
 // OCR, QR; long, record, delay; the "?" that lists every key) on its far side.
@@ -260,6 +260,8 @@ Item {
                     bar.session.keyReleased(event.key)
             }
         }
+
+        SelectButton { objectName: "captureToolbarSelect" }
 
         Repeater {
             model: bar.annot ? bar.annot.tools : []
@@ -681,6 +683,49 @@ Item {
             hoverEnabled: true
             onClicked: action.clicked()
             onContainsMouseChanged: bar.hover(action, containsMouse, -1)
+        }
+    }
+
+    // No tool: the mouse picks what was drawn, to move, change or delete it
+    // (and moves the selection, crops the picture). The first of the tools and
+    // on while none of them is, so the way back from drawing is in sight: Esc,
+    // a right click and a second click on the tool do the same, but who would
+    // know.
+    component SelectButton: Item {
+        id: select
+
+        readonly property bool current: bar.annot !== null && bar.annot.tool < 0
+        property string tipText: qsTr("选择：点选画好的标注，再移动、修改或删除")
+        property string tipKeys: "Esc"
+
+        width: bar.toolWidth
+        height: bar.buttonHeight
+        Accessible.role: Accessible.Button
+        Accessible.name: qsTr("选择")
+        Accessible.onPressAction: if (bar.annot) bar.annot.tool = -1
+
+        KeyFace {
+            id: selectFace
+            hovered: selectArea.containsMouse
+            pressed: selectArea.pressed
+            checked: select.current
+        }
+        Glyph {
+            x: bar.snap((bar.toolWidth - bar.iconSize) / 2)
+            y: bar.snap((bar.buttonHeight - bar.iconSize) / 2 + selectFace.out("contentOffsetY", 0))
+            width: bar.iconSize
+            height: bar.iconSize
+            iconName: "cursor"
+            size: bar.iconSize
+            color: selectFace.out("foreground", select.current ? Theme.accentText : Theme.text)
+        }
+
+        MouseArea {
+            id: selectArea
+            anchors.fill: parent
+            hoverEnabled: true
+            onClicked: bar.annot.tool = -1
+            onContainsMouseChanged: bar.hover(select, containsMouse, -1)
         }
     }
 

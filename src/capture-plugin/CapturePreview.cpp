@@ -8,6 +8,8 @@
 #include "Capture.h"
 #include "CaptureSession.h"
 #include "CaptureOcr.h"
+#include "CapturePointer.h"
+#include "AnnotationStyles.h"
 #include "CaptureEditor.h"
 #include "PinKeyCard.h"
 #include "PinKeyLook.h"
@@ -942,6 +944,7 @@ int runToolbarDrag(const QStringList& args)
             check(model->document().items == draft, "releasing changed the live stroke");
         }
         check(model->itemCount() == 3, "QML pointer routing did not create three strokes");
+        const int penTool = model->tool();
         model->setTool(0); // let go of the pen's selection outline
         send(QEvent::MouseMove, QPointF(30, 30), Qt::NoButton, Qt::NoButton);
         grab(u"brush-overlay");
@@ -979,6 +982,32 @@ int runToolbarDrag(const QStringList& args)
         fresh.render(model->document(), model->base(), model->sampleBounds(), area, &expected);
         const QImage got = visible.copy(area).convertToFormat(QImage::Format_RGB32);
         check(got == expected, "visible brush pixels differ from the export compositor");
+        // GitHub #461: over the picture the pointer is the pen's tip, as wide as its
+        // stroke, and a click (no drag) leaves a dot there.
+        model->setTool(penTool);
+        const QPointF dotAt(500, 262); // between the first two strokes
+        send(QEvent::MouseMove, dotAt, Qt::NoButton, Qt::NoButton);
+        const auto pointers = window->findChildren<capture::CapturePointer*>();
+        check(pointers.size() == 1, "the overlay's pointer item was not found");
+        if (pointers.size() == 1) {
+            const capture::CapturePointer* pointer = pointers.first();
+            const int tip = annot::toImagePx(model->styles().tool(annot::Kind::Pen).width, model->dpr());
+            check(qFuzzyCompare(pointer->brushSize(), qreal(tip)), "the pointer does not show the pen's width");
+            check(pointer->brushColor().rgb() == QColor::fromRgb(model->styles().tool(annot::Kind::Pen).color).rgb(),
+                "the pointer does not show the pen's colour");
+            check(pointer->cursor().shape() == Qt::BitmapCursor, "the pen's tip is not the cursor");
+        }
+        send(QEvent::MouseButtonPress, dotAt, Qt::LeftButton, Qt::LeftButton);
+        send(QEvent::MouseButtonRelease, dotAt, Qt::LeftButton, Qt::NoButton);
+        const annot::Item dot = model->itemCount() == 4 ? model->document().items.last() : annot::Item {};
+        check(dot.kind == annot::Kind::Pen && dot.points.size() == 1
+                && (dot.points.first() - dotAt * dpr).manhattanLength() <= 2, // the pixel under the pointer
+            "a click with the pen did not leave a dot");
+        model->setTool(0);
+        send(QEvent::MouseMove, QPointF(30, 30), Qt::NoButton, Qt::NoButton);
+        if (pointers.size() == 1)
+            check(pointers.first()->brushSize() == 0, "the tip stayed with another tool");
+        grab(u"brush-dot");
         say(u"brush QML input, release stability and visible/export pixel checks: %1"_s.arg(ok ? u"passed"_s : u"failed"_s));
         return finish(window, ok);
     }
@@ -1004,12 +1033,28 @@ int runToolbarDrag(const QStringList& args)
         "a drag delivered as one move did not reposition the toolbar");
     grab(u"toolbar-moved");
     const QPointF moved = toolbar->position();
-    const QPointF firstTool = grip->mapToScene(QPointF(grip->width() + 4 + 16, grip->height() / 2));
-    send(QEvent::MouseButtonPress, firstTool, Qt::LeftButton, Qt::LeftButton);
-    send(QEvent::MouseButtonRelease, firstTool, Qt::LeftButton, Qt::NoButton);
-    settle(window);
+    // The select button comes first (on while no tool is), then the tools.
+    auto* selectButton = window->findChild<QQuickItem*>(u"captureToolbarSelect"_s);
+    check(selectButton && selectButton->property("current").toBool(), "the select button is not on while no tool is");
+    if (!selectButton)
+        return finish(window, false);
+    const auto clickAt = [&](QPointF at) {
+        send(QEvent::MouseButtonPress, at, Qt::LeftButton, Qt::LeftButton);
+        send(QEvent::MouseButtonRelease, at, Qt::LeftButton, Qt::NoButton);
+        settle(window);
+    };
+    const QPointF selectAt = selectButton->mapToScene(QPointF(selectButton->width() / 2, selectButton->height() / 2));
+    const QPointF firstTool = selectButton->mapToScene(QPointF(selectButton->width() + 4 + 16, selectButton->height() / 2));
+    clickAt(firstTool);
     check(session.annotation()->tool() == 0 && session.annotation()->panelVisible(), "annotation button stopped working after a drag");
+    check(!selectButton->property("current").toBool(), "the select button stayed on with a tool chosen");
     check(toolbar->position() == moved, "opening the style panel moved the toolbar");
+    clickAt(selectAt); // out of the tool: what was drawn can be picked again
+    check(session.annotation()->tool() == -1 && selectButton->property("current").toBool(), "the select button did not leave the tool");
+    check(toolbar->position() == moved, "leaving the tool moved the toolbar");
+    grab(u"toolbar-select");
+    clickAt(firstTool);
+    check(session.annotation()->tool() == 0 && session.annotation()->panelVisible(), "the tool did not come back after select");
     grab(u"toolbar-with-style");
     grip->forceActiveFocus(Qt::TabFocusReason);
     const QPointF beforeKey = toolbar->position();
