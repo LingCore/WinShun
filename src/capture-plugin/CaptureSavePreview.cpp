@@ -302,10 +302,12 @@ int runCaptureSave(const QStringList& args)
     click(arrow);
     key(Qt::Key_Escape);
     check(!menu->property("visible").toBool() && session->hasSelection(), "Escape closes only the menu");
+    // Esc gives the focus back to the arrow, where Down (like Enter) opens the
+    // menu again, as on any menu button; Left and Right go on to the capture.
     const QRect beforeNudge = session->selectionRect();
-    key(Qt::Key_Up);
-    check(session->selectionRect() == beforeNudge.translated(0, -1), "arrow keys still work after closing the menu");
-    key(Qt::Key_Down);
+    key(Qt::Key_Left);
+    check(session->selectionRect() == beforeNudge.translated(-1, 0), "arrow keys still work after closing the menu");
+    key(Qt::Key_Right);
     int pointerRequests = 0;
     const QMetaObject::Connection pointerWatch = QObject::connect(session, &CaptureSession::cursorMoveRequested, session,
         [&](const QPoint&) { ++pointerRequests; });
