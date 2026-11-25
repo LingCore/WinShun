@@ -242,6 +242,16 @@ std::optional<QRect> PinWindow::edgeTab() const
     return pictureRect();
 }
 
+void PinWindow::settleEdgeTab()
+{
+    // Let go of over another pin's tab: beside it, as a tab newly put there.
+    if (m_form != PinForm::Edge || !m_moved || !m_host.takenTabs)
+        return;
+    const QRect tab = pictureRect();
+    // (Its middle as edgeTabRect halves the width: QRect::center() is a pixel left of it, and the tab would creep.)
+    moveTo(edgeTabRect(tab.left() + tab.width() / 2, tab.size(), workArea(), m_host.takenTabs(this)).topLeft());
+}
+
 void PinWindow::releasePixels()
 {
     if (m_dc) {
@@ -1309,7 +1319,9 @@ LRESULT CALLBACK PinWindow::proc(HWND hwnd, UINT message, WPARAM wParam, LPARAM 
 LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
 {
     const HWND hwnd = m_hwnd;
-    const auto cursorNow = [] {
+    const auto cursorNow = [this] {
+        if (m_host.cursor)
+            return m_host.cursor();
         POINT cursor {};
         ::GetCursorPos(&cursor);
         return QPoint(cursor.x, cursor.y);
@@ -1439,7 +1451,10 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
             if (!m_moved && (at - m_press).manhattanLength() > std::max(3, static_cast<int>(std::lround(3 * dpr()))))
                 m_moved = true;
             if (m_form == PinForm::Edge) {
-                // A tab sits on the edge: a click opens it.
+                // A tab sits on its screen's top edge: dragged, it slides along
+                // that edge, over the other tabs (#456); a click opens it.
+                if (m_moved)
+                    moveTo(edgeTabRect(at.x() - m_grab.x() + pictureRect().width() / 2, pictureRect().size(), workArea(), {}).topLeft());
             } else if (m_form == PinForm::Tile) {
                 if (m_moved)
                     moveTo(at - m_grab);
@@ -1506,6 +1521,7 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
         m_corner = Corner::None;
         if (::GetCapture() == hwnd)
             ::ReleaseCapture();
+        settleEdgeTab();
         if (m_swallowUp) { // the double click's own button up: it collapsed the pin
             m_swallowUp = false;
         } else if (m_form != PinForm::Full && !m_moved) {
@@ -1537,6 +1553,7 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
         }
         m_dragging = false;
         m_corner = Corner::None;
+        settleEdgeTab(); // a drag taken away (Alt+Tab): the tab rests where it got to
         if (m_picking) {
             m_picking = false;
             m_pickDirect = false;

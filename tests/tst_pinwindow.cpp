@@ -678,6 +678,72 @@ private slots:
         QCOMPARE(historyIdAtClosing, 77ULL);
     }
 
+    // A tab on the top edge is dragged along that edge (GitHub #456): never off
+    // it or past the screen's ends, beside another pin's tab when let go of over
+    // one; a click still opens it, where the picture was.
+    void edgeTabSlidesAlongTheTopEdge()
+    {
+        const DPI_AWARENESS_CONTEXT was = ::SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        const auto restore = qScopeGuard([was] { ::SetThreadDpiAwarenessContext(was); });
+        QImage image(400, 300, QImage::Format_RGB32);
+        image.fill(Qt::white);
+        QPoint cursor; // the test's own pointer: no mouse is moved
+        std::vector<QRect> others;
+        PinWindow::Host host;
+        host.cursor = [&] { return cursor; };
+        host.takenTabs = [&](const PinWindow*) { return others; };
+        PinWindow pin(image, QPoint(300, 200), std::move(host));
+        QVERIFY(pin.hwnd());
+        const QPoint full = pin.pictureRect().topLeft();
+        pin.collapse(PinForm::Edge);
+        const QRect tab = *pin.edgeTab();
+        MONITORINFO info {sizeof info};
+        const POINT on {tab.center().x(), tab.center().y()};
+        QVERIFY(::GetMonitorInfoW(::MonitorFromPoint(on, MONITOR_DEFAULTTONEAREST), &info));
+        const QRect work(info.rcWork.left, info.rcWork.top, info.rcWork.right - info.rcWork.left, info.rcWork.bottom - info.rcWork.top);
+        QCOMPARE(tab.top(), work.top());
+        const auto drag = [&](QPoint to) {
+            ::SendMessageW(pin.hwnd(), WM_MOUSELEAVE, 0, 0); // no close button under the press
+            cursor = pin.edgeTab()->center();
+            ::SendMessageW(pin.hwnd(), WM_LBUTTONDOWN, MK_LBUTTON, 0);
+            cursor = to;
+            ::SendMessageW(pin.hwnd(), WM_MOUSEMOVE, MK_LBUTTON, 0);
+        };
+        const auto drop = [&] { ::SendMessageW(pin.hwnd(), WM_LBUTTONUP, 0, 0); };
+
+        // Right and down: along the edge only, and still a tab when let go of.
+        drag(tab.center() + QPoint(200, 150));
+        QCOMPARE(pin.edgeTab()->topLeft(), tab.topLeft() + QPoint(200, 0));
+        drop();
+        QCOMPARE(pin.form(), PinForm::Edge);
+        QCOMPARE(pin.edgeTab()->topLeft(), tab.topLeft() + QPoint(200, 0));
+
+        // Past the screen's ends: stops at them.
+        drag(QPoint(work.left() - 500, work.top()));
+        QCOMPARE(pin.edgeTab()->left(), work.left());
+        drop();
+        drag(QPoint(work.right() + 500, work.top()));
+        QCOMPARE(pin.edgeTab()->right(), work.right());
+        drop();
+
+        // Over another pin's tab while dragged; let go of there, it goes beside it.
+        const QRect other(work.left() + 600, work.top(), tab.width(), tab.height());
+        others = {other};
+        drag(other.center());
+        QCOMPARE(*pin.edgeTab(), other);
+        drop();
+        QCOMPARE(pin.edgeTab()->left(), other.right() + 1 + 4);
+        QCOMPARE(pin.form(), PinForm::Edge);
+
+        // A click opens it where the picture was.
+        ::SendMessageW(pin.hwnd(), WM_MOUSELEAVE, 0, 0);
+        cursor = pin.edgeTab()->center();
+        ::SendMessageW(pin.hwnd(), WM_LBUTTONDOWN, MK_LBUTTON, 0);
+        drop();
+        QCOMPARE(pin.form(), PinForm::Full);
+        QCOMPARE(pin.pictureRect().topLeft(), full);
+    }
+
     // Floating status/text pill geometry: outside the pin whenever there is
     // room on any edge, never overlapping the picture or another pill, falling
     // back inside only when the pin spans the whole work area.

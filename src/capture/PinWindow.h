@@ -88,6 +88,8 @@ public:
         std::function<bool()> ocrAvailable;
         // The edge tabs of the other pins on `monitorWork` (physical), so a new one goes beside them.
         std::function<std::vector<QRect>(const PinWindow* self)> takenTabs;
+        // Where the pointer is (physical); empty: the system's. A test's own, so that it moves no mouse.
+        std::function<QPoint()> cursor;
         std::function<void(PinWindow*)> released; // its picture was let go of (collapsed): memory can go back
         // The key card (#343): the keyboard focus came or went (`fromOwnWindow`:
         // it came back from another window of this program, its menu say);
@@ -256,6 +258,7 @@ private:
     void applyClickThrough(); // WS_EX_TRANSPARENT = click-through and not reachable
     void applyVisibility();
     void moveTo(QPoint origin); // the picture's top left, window follows
+    void settleEdgeTab(); // a dragged tab let go of: clear of the other pins' tabs
     QRect windowRect() const;
     QSize fullSize() const;
     const QImage& shownImage() const; // what the window draws at the zoom shown: the picture, or the thumbnail
