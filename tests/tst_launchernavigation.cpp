@@ -123,6 +123,22 @@ private slots:
         QVERIFY(!completesPath(splitTyped(u"tools/sc"_s), u"D:\\tools\\screenshots"_s));
     }
 
+    // GitHub #454: typed in a folder's window, the words are a path from it.
+    void pathCompletionInAFolder()
+    {
+        QVERIFY(completesPath(typedIn(u"D:\\Work"_s, u"合"_s), u"D:\\Work\\合同"_s));
+        QVERIFY(completesPath(typedIn(u"D:\\"_s, u"wo"_s), u"D:\\Work"_s));
+        QVERIFY(completesPath(typedIn(u"D:\\Work"_s, u"合同\\20"_s), u"D:\\Work\\合同\\2026"_s));
+        QVERIFY(completesPath(typedIn(u"D:\\Work"_s, u"合同/20"_s), u"D:\\Work\\合同\\2026"_s));
+        QVERIFY(completesPath(typedIn(u"\\\\server\\share"_s, u"do"_s), u"\\\\server\\share\\docs"_s));
+        // Not what lies deeper or elsewhere, nor a folder's own listing, nor no words or no names.
+        QVERIFY(!completesPath(typedIn(u"D:\\Work"_s, u"20"_s), u"D:\\Work\\合同\\2026"_s));
+        QVERIFY(!completesPath(typedIn(u"D:\\Work"_s, u"合"_s), u"D:\\Other\\合同"_s));
+        QVERIFY(!completesPath(typedIn(u"D:\\Work"_s, u"合同\\"_s), u"D:\\Work\\合同\\2026"_s));
+        QVERIFY(!completesPath(typedIn(u"D:\\Work"_s, {}), u"D:\\Work\\合同"_s));
+        QVERIFY(!completesPath(typedIn(u"D:\\Work"_s, u"*.pdf"_s), u"D:\\Work\\合同"_s));
+    }
+
     void stepsUpALevel()
     {
         const auto up = [](const QString& text) { return upFrom(pathtext::splitTyped(text)); };

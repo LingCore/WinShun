@@ -7091,6 +7091,45 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
         check(row >= 0 && !launcher.autocomplete(row) && launcher.query() == u"报告", "#361 Tab stepped into a folder in regex mode");
         launcher.setRegexMode(false);
         query({});
+        // GitHub #454, typed in a folder's window: the words are a path from
+        // that folder. A part of a name is completed by its folder there, the
+        // box going on as the path in full; stepOut brings the window's folder
+        // back with the words, searched as it was. A folder found elsewhere,
+        // chosen by nobody, keeps Tab for the scopes.
+        const QString prefix = base + u"\\ "_s;
+        const auto typeIn = [&](const QString& words) {
+            launcher.setTypingFolder(prefix);
+            query(prefix + words);
+            settled();
+        };
+        typeIn(u"ordin"_s);
+        check(startRow() == ordinaryPath && tabHint() == folderHint && launcher.autocomplete(0)
+                && launcher.query() == ordinaryPath + u'\\' && launcher.typingFolder().isEmpty(),
+            "#454 Tab did not complete the folder typed in part in a folder's window");
+        settled();
+        check(launcher.stepOut() && launcher.query() == prefix + u"ordin"_s && !launcher.typingFolder().isEmpty(),
+            "#454 stepOut did not come back to the folder's window and its words");
+        settled();
+        check(startRow() == ordinaryPath && tabHint() == folderHint, "#454 back out, the folder left was not chosen again");
+        typeIn(u"ordinary\\内"_s);
+        row = rowOf(inner);
+        launcher.setCurrentRow(row);
+        check(row >= 0 && launcher.autocomplete(row) && launcher.query() == inner + u'\\',
+            "#454 Tab did not complete a path typed from the window's folder");
+        settled();
+        check(launcher.stepOut() && launcher.query() == prefix + u"ordinary\\内"_s, "#454 stepOut lost the path typed from the window's folder");
+        typeIn(u"报告"_s);
+        row = rowOf(u"T:\\报告资料"_s);
+        launcher.setCurrentRow(row);
+        check(row >= 0 && !launcher.autocomplete(row) && launcher.query() == prefix + u"报告"_s,
+            "#454 Tab took a folder found elsewhere that nobody chose");
+        launcher.chooseRow(row);
+        check(launcher.autocomplete(row) && launcher.query() == u"T:\\报告资料\\", "#454 Tab did not step into the folder chosen");
+        settled();
+        check(launcher.stepOut() && launcher.query() == prefix + u"报告"_s && !launcher.typingFolder().isEmpty(),
+            "#454 stepOut from a folder chosen did not come back to the folder's window");
+        launcher.setTypingFolder({});
+        query({});
     }
     SearchResult suggestion {.name = u"Search suggestion"_s, .app = AppKind::Web,
         .keyword = u"example"_s, .words = u"report"_s, .suggestion = true};

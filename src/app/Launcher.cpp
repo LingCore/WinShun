@@ -7620,23 +7620,29 @@ navigation::TabAction Launcher::tabAction(int row) const
 // GitHub #361: a folder the user chose in this list (chooseRow), or the one
 // that completes the path being typed ("D:\Wo" on D:\Work, as a shell
 // completes it). Not where the words are no names or no path: a plugin's
-// keyword, regex mode, typed in a folder's window (whose folder would go).
+// keyword, regex mode. Typed in a folder's window (GitHub #454), the words
+// are a path from that folder: "合" there is completed by its folder 合同.
 bool Launcher::stepsInto(const SearchResult& r) const
 {
-    if (m_keyword || regexTerms() || typedInFolder() || !navigation::canBrowseFolder(r))
+    if (m_keyword || regexTerms() || !navigation::canBrowseFolder(r))
         return false;
     if (!m_chosenPath.isEmpty() && pathtext::samePath(r.path, m_chosenPath))
         return true;
     // A moment after typing, the rows on screen are the last query's: none
     // of them completes what is typed now (autocomplete waits for this one's).
-    return !rowsComing() && navigation::completesPath(pathtext::splitTyped(m_query), r.path);
+    return !rowsComing() && navigation::completesPath(typedPath(), r.path);
+}
+
+pathtext::TypedPath Launcher::typedPath() const
+{
+    return typedInFolder() ? navigation::typedIn(m_typingFolder, typingWords()) : pathtext::splitTyped(m_query);
 }
 
 bool Launcher::completingPath() const
 {
-    if (m_keyword || regexTerms() || typedInFolder() || m_scope == Content || m_scope == Apps)
+    if (m_keyword || regexTerms() || m_scope == Content || m_scope == Apps)
         return false;
-    const pathtext::TypedPath typed = pathtext::splitTyped(m_query);
+    const pathtext::TypedPath typed = typedPath();
     return !typed.folder.isEmpty() && !typed.name.isEmpty() && !typed.name.front().isSpace();
 }
 
@@ -7657,7 +7663,12 @@ void Launcher::browseFolder(const SearchResult& folder)
     const QString query = navigation::browseQuery(folder.path);
     // Where Ctrl+Backspace comes back to (stepOut, GitHub #361): these words,
     // in the scope under them (a prefix such as ":folder" sets its own again).
-    const FolderStep step {m_query, m_filePrefix ? m_filePrefix->scope : m_scope, folder.path};
+    // Typed in a folder's window (GitHub #454), the box goes on as a path
+    // typed in full (setQuery drops the folder typed in); back out, it is
+    // that window's folder again, searched as it was.
+    const bool typedIn = typedInFolder();
+    const FolderStep step {m_query, m_filePrefix ? m_filePrefix->scope : m_scope, folder.path,
+        typedIn ? m_typingPrefix : QString(), typedIn && m_typingOnly, typedIn && m_typingLevel};
     const bool moved = query != m_query;
     if (m_scope != All)
         setScope(All);
@@ -7677,8 +7688,7 @@ std::optional<Launcher::StepBack> Launcher::stepBack() const
     if (typed.name.isEmpty() && !m_folderSteps.isEmpty() && pathtext::sameFolder(m_folderSteps.last().folder, typed.folder)) {
         const FolderStep& step = m_folderSteps.last();
         return StepBack {step.from, step.folder, step.scope != m_scope ? std::optional(step.scope) : std::nullopt, true};
-    }
-    const std::optional<navigation::Up> up = navigation::upFrom(typed);
+    }    const std::optional<navigation::Up> up = navigation::upFrom(typed);
     if (!up)
         return std::nullopt;
     return StepBack {up->query, up->row, std::nullopt, false};
@@ -7689,8 +7699,16 @@ bool Launcher::stepOut()
     const std::optional<StepBack> out = stepBack();
     if (!out)
         return false;
-    if (out->back)
-        m_folderSteps.removeLast();
+    if (out->back) {
+        const FolderStep step = m_folderSteps.takeLast();
+        if (!step.typingPrefix.isEmpty()) { // back in the folder's window it was typed in (GitHub #454)
+            m_typingPrefix = step.typingPrefix;
+            m_typingFolder = pathtext::pathFromText(step.typingPrefix);
+            m_typingOnly = step.typingOnly;
+            m_typingLevel = step.typingLevel;
+            emit typingFolderChanged();
+        }
+    }
     if (out->scope)
         setScope(*out->scope); // as it was, not remembered as chosen (chooseScope, GitHub #263)
     returnTo(out->query, out->row);

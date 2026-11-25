@@ -63,6 +63,16 @@ inline bool completesPath(const pathtext::TypedPath& typed, const QString& folde
         && pathtext::isDirectChild(typed.folder, folder);
 }
 
+// GitHub #454: typed in a folder's window (Launcher::typingWords), the words
+// are a path from that folder, as a shell takes what is typed after its
+// prompt: "合" in D:\Work is "D:\Work\合", "合同\20" is "D:\Work\合同\20",
+// each completed by a folder as a path typed in full is (completesPath).
+// Nothing for no words, or words no name can be ("*.pdf").
+inline pathtext::TypedPath typedIn(const QString& folder, const QString& words)
+{
+    return words.isEmpty() ? pathtext::TypedPath() : pathtext::splitTyped(browseQuery(folder) + words);
+}
+
 // GitHub #361: where Ctrl+Backspace takes a path typed or stepped into
 // (`typed`, pathtext::splitTyped of the box), a level at a time: with a name
 // being typed after the folder, the folder alone ("D:\Work\合" ->

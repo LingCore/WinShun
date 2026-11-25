@@ -1171,6 +1171,9 @@ private:
     void browseFolder(const SearchResult& folder);
     // GitHub #361: Tab steps into `r` (navigation::tabAction's `stepsIn`).
     bool stepsInto(const SearchResult& r) const;
+    // The box read as a path being typed: its text, or typed in a folder's
+    // window the words after that folder (navigation::typedIn, GitHub #454).
+    pathtext::TypedPath typedPath() const;
     // A part of a name typed after a path ("D:\Wo"), which a folder listed
     // completes (stepsInto); not where Tab never steps in.
     bool completingPath() const;
@@ -1552,6 +1555,11 @@ private:
         QString from; // the words
         Scope scope = All;
         QString folder; // its path: its row is chosen again on the way back
+        // Stepped in from a folder's window typed in (GitHub #454): its
+        // prefix, and how its folder was searched, to come back to.
+        QString typingPrefix;
+        bool typingOnly = false;
+        bool typingLevel = false;
     };
     QList<FolderStep> m_folderSteps;
     QString m_returnRow; // returnTo: the row the next list starts on
