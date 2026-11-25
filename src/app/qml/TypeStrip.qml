@@ -389,8 +389,14 @@ Item {
                     Item {
                         id: body
                         readonly property real lead: surface.out("leadingInset", 0) > 0 ? surface.out("leadingInset", 0) : (chip.glyph.length > 0 ? 10 : 12) // 0 (a key without a lamp) is no say; 10 with an icon: it then sits as far from the key's edge as the last word does
-                        width: strip.stepUp(Math.ceil(lead + (chip.glyph.length > 0 ? icon.width + 4 : 0) + labelSize.width + badge.room) + (chip.glyph.length > 0 ? 6 : 12))
+                        width: strip.stepUp(Math.ceil(nameX + labelSize.width + badge.room) + (chip.glyph.length > 0 ? 6 : 12))
                         height: parent.height
+
+                        // Where the name starts: a clear gap after the icon's ink, not its box. A Phosphor
+                        // icon's ink reaches past its 16 box, by 3 for a folder and nearly 5 for a camera
+                        // (Glyph.inkRight): 4 after the box left the name against the icon, or under it.
+                        readonly property int iconGap: 6
+                        readonly property real nameX: chip.glyph.length > 0 ? strip.onPixel(lead + Math.max(icon.width, icon.inkRight) + iconGap) : lead
 
                         TextMetrics { id: labelSize; font: label.font; text: label.text }
                         TextMetrics { id: countSize; font: countLabel.font; text: countLabel.text }
@@ -410,6 +416,7 @@ Item {
 
                         Glyph {
                             id: icon
+                            objectName: "searchTypeChipIcon"
                             visible: chip.glyph.length > 0
                             x: body.lead
                             y: strip.onPixel((body.height - height) / 2 + surface.out("contentOffsetY", 0))
@@ -421,7 +428,8 @@ Item {
 
                         Text {
                             id: label
-                            x: chip.glyph.length > 0 ? body.lead + icon.width + 4 : body.lead
+                            objectName: "searchTypeChipName"
+                            x: body.nameX
                             y: strip.onPixel((body.height - height) / 2 + surface.out("contentOffsetY", 0))
                             text: strip.showKeywords && (chip.modelData.keyword ?? "").length > 0 ? ":" + chip.modelData.keyword : chip.modelData.name
                             color: surface.out("foreground", chip.active && !chip.isAll ? Theme.accentText
@@ -513,14 +521,14 @@ Item {
         Accessible.role: Accessible.Button
         Accessible.name: tip
 
-        Hook { // the style's key, flat until hovered, round as the chips
+        Hook { // the style's key, flat until hovered, cornered as the chips
             id: editKey
             anchors.fill: parent
             part: Theme.keySurface
             hovered: editArea.containsMouse
             pressed: editArea.pressed
             flat: true
-            corner: Theme.pillRadius(edit.height)
+            corner: Theme.chipRadius
             role: "toolbar"
             dpr: strip.dpr
         }

@@ -350,7 +350,7 @@ Item {
             hovered: chipArea.containsMouse
             pressed: chipArea.pressed
             focused: chip.activeFocus
-            corner: Theme.pillRadius(chip.height)
+            corner: Theme.chipRadius
             role: "filter"
             dpr: panel.dpr
         }

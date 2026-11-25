@@ -60,6 +60,8 @@ Item {
     // Where a Phosphor icon's ink starts, left of the box when the icon fills the em (0 for the others):
     // what to shift a row of icon and words by to put the ink on the edge the words below start at.
     readonly property real inkLeft: phosphorItem.used ? phosphorItem.inkLeft : 0
+    // ... and where it ends, right of the box likewise (the box's width for the others).
+    readonly property real inkRight: phosphorItem.used && phosphorItem.inkRight > 0 ? phosphorItem.inkRight : width
 
     PhosphorGlyph {
         id: phosphorItem

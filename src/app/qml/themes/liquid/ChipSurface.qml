@@ -11,7 +11,7 @@ GlassSurface {
     readonly property color hoverTint: look && look.dark ? Qt.rgba(1, 1, 1, 0.10) : Qt.rgba(0, 0, 0, 0.06)
     readonly property var foreground: !look ? undefined : filled ? look.accentText : look.text
 
-    radius: look ? look.pill(height) : 0
+    radius: look ? look.chipRadius : 0
     baseColor: !look ? "transparent" : filled ? look.accentFill : pressed ? look.controlPressed
                : checked ? look.chipRest : hovered ? hoverTint : "transparent"
     edgeColor: "transparent"

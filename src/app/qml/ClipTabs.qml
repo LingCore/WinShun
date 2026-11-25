@@ -294,7 +294,7 @@ Item {
                     hovered: addArea.containsMouse
                     pressed: addArea.pressed
                     flat: true
-                    corner: Theme.pillRadius(addChip.height)
+                    corner: Theme.chipRadius
                     role: "toolbar"
                     dpr: tabs.dpr
                 }
@@ -337,7 +337,7 @@ Item {
             pressed: orderArea.pressed
             checked: tabs.clipboard.pinnedFirst
             flat: true
-            corner: Theme.pillRadius(orderChip.height)
+            corner: Theme.chipRadius
             role: "toolbar"
             dpr: tabs.dpr
         }

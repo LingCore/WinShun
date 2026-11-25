@@ -89,6 +89,7 @@ QtObject {
     readonly property real insetCardRadius: r(8)
     readonly property real cardFocusRadius: r(15)
     readonly property real controlRadius: r(6)
+    readonly property real chipRadius: controlRadius // chipSurface and the keys beside it: no capsule
     readonly property real largeControlRadius: r(8)
     readonly property real smallControlRadius: r(4)
     readonly property real lineRadius: r(1)
