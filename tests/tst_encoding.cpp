@@ -38,6 +38,7 @@ const QHash<QString, QString> kCodePageUsers {
     {u"src/app/DisplayDiagnostics.cpp"_s, u"the diagnostics report which code page the PC has"_s},
     {u"src/app/UpdatePackage.cpp"_s, u"zip names without the UTF-8 flag are in the OEM code page"_s},
     {u"src/plugin/Install.cpp"_s, u"zip names without the UTF-8 flag are in the OEM code page"_s},
+    {u"src/archive-plugin/Lister.cpp"_s, u"names in an archive that are not UTF-8 are in the code page of the PC that packed it"_s},
     {u"src/plugin/runner/main.cpp"_s, u"a plugin's stderr in the code page its manifest names"_s},
     {u"src/cli/Encoding.cpp"_s, u"ws writes to a console or a pipe in the encoding it expects"_s},
     {u"src/core/ClipMisread.h"_s, u"tells a remote-desktop sync's ANSI garbling apart (#181)"_s},
