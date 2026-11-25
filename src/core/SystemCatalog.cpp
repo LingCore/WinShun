@@ -362,7 +362,19 @@ struct Word {
     pinyin::Matcher pinyin; // by each character's most common reading
     bool han = false;
     std::size_t chars = 0; // code points
+    pinyin::Matcher anyReading; // by any reading of a character ("cq": 重启)
 };
+
+// Whether the word is all of `text` (folded), as typed or as its pinyin.
+bool spellsWhole(std::string_view text, const Word& word)
+{
+    if (text == word.text)
+        return true;
+    if (!word.anyReading.valid())
+        return false;
+    const auto span = word.anyReading.findUtf8(text);
+    return span && span->start == 0 && span->length == text.size();
+}
 
 // How many characters of `name` the word fills, spelled out or as pinyin; 0
 // if it is not in the name.
@@ -441,7 +453,7 @@ std::vector<PlaceHit> searchPlaces(
             excluded.push_back(t.text);
             continue;
         }
-        Word w {t.text, pinyin::Matcher(t.text, true), pinyin::hasHan(t.text), charCount(t.text)};
+        Word w {t.text, pinyin::Matcher(t.text, true), pinyin::hasHan(t.text), charCount(t.text), pinyin::Matcher(t.text)};
         words.push_back(std::move(w));
     }
     byKeyword = byKeyword && !words.empty();
@@ -455,6 +467,7 @@ std::vector<PlaceHit> searchPlaces(
         int score;
         bool byInitials; // through a keyword's initials, not the name
         bool weak; // see PlaceHit
+        bool entire; // see PlaceHit
     };
     std::vector<Found> found;
     int belowNames = std::numeric_limits<int>::max(); // the cap for those places
@@ -511,14 +524,21 @@ std::vector<PlaceHit> searchPlaces(
             if (byWords >= 0 && 2 * filled >= charCount(place.nameUtf8))
                 belowNames = std::min(belowNames, score - 1);
         }
-        if (score >= 0)
-            found.push_back({i, score, byInitials, weak});
+        if (score < 0)
+            continue;
+        // Asked for by its whole name, or a whole keyword of places.txt.
+        const std::string foldedName = text::foldAscii(place.nameUtf8);
+        const bool entire = byKeyword && std::ranges::all_of(words, [&](const Word& w) {
+            return spellsWhole(foldedName, w)
+                || std::ranges::any_of(place.ownFolded, [&](const std::string& keyword) { return spellsWhole(keyword, w); });
+        });
+        found.push_back({i, score, byInitials, weak, entire});
     }
     for (const Found& f : found) {
         int score = f.byInitials ? std::min(f.score, belowNames) : f.score;
         if (recent.contains(places[f.index].key))
             score += affinities.isEmpty() ? 4 : History::affinity(affinities, places[f.index].path()).bonus();
-        hits.push_back({f.index, score, f.weak});
+        hits.push_back({f.index, score, f.weak, f.entire});
     }
     // Equal scores: the shorter name, which is more often the page itself
     // than one of the tasks on it.

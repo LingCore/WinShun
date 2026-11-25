@@ -1846,6 +1846,7 @@ void SearchEngine::runNameSearch(const Job& job)
                 SearchResult result;
                 bool guessedAction = false; // a switch or power command found by a guess (PlaceHit::weak)
             };
+                bool askedInPinyin = false; // a power command asked for by its whole name, in pinyin ("gj")
             std::vector<Ranked> ranked;
             // Win顺's own places (GitHub #389, #390), whether or not places
             // are searched, remembered as any place: its settings as a place
@@ -1881,7 +1882,17 @@ void SearchEngine::runNameSearch(const Job& job)
             }
             const std::size_t appCount = ranked.size();
             std::size_t shown = 0; // places other than switches (those are few, and each one a concept)
-            for (const PlaceHit& hit : request.places ? searchPlaces(*places, query, matcher, request.history, request.historyAffinity) : std::vector<PlaceHit> {}) {
+            const std::vector<PlaceHit> placeHits
+                = request.places ? searchPlaces(*places, query, matcher, request.history, request.historyAffinity) : std::vector<PlaceHit> {};
+            // A power command that asks before it acts, its whole name typed
+            // ("gj": 关机, "cq": 重启): Enter only asks, so it is no guess and
+            // ranks as any place does. A word for all of them ("dy": 电源)
+            // names none; one that acts at once (锁定) stays a guess.
+            const auto askedFor = [&](const PlaceHit& hit) {
+                return hit.entire && powerCommandNeedsConfirm((*places)[hit.index].command);
+            };
+            const bool oneAskedFor = std::ranges::count_if(placeHits, askedFor) == 1;
+            for (const PlaceHit& hit : placeHits) {
                 const PlaceInfo& place = (*places)[hit.index];
                 if (isOwnPlace(place)) // above
                     continue;
@@ -1894,11 +1905,12 @@ void SearchEngine::runNameSearch(const Job& job)
                     [&](const Ranked& r) { return r.result.name.compare(place.name, Qt::CaseInsensitive) == 0; });
                 if (isApp)
                     continue;
-                ranked.push_back({hit.score, fromPlace(place, false), (isSwitch || isPower) && hit.weak});
+                const bool asked = hit.weak && oneAskedFor && askedFor(hit);
+                ranked.push_back({hit.score, fromPlace(place, false), (isSwitch || isPower) && hit.weak && !asked, asked});
                 shown += isSwitch ? 0 : 1;
             }
             // A wrong Enter on an app opens it; on a switch or power command it
-            // changes system state. So one found only by a weak guess ("ly", "gj")
+            // changes system state. So one found only by a weak guess ("ly", "sp")
             // goes behind every app and page found as well, and first only where
             // there are none.
             int behind = std::numeric_limits<int>::max();
@@ -1907,9 +1919,19 @@ void SearchEngine::runNameSearch(const Job& job)
                     behind = std::min(behind, r.score);
             }
             for (Ranked& r : ranked) {
+            // Asked for in pinyin ("gj": 关机), it still gives way to what has
+            // those letters in its name as typed ("GJ Notes").
+            const QString typedText = request.text.trimmed();
+            int behindSpelled = std::numeric_limits<int>::max();
+            for (const Ranked& r : ranked) {
+                if (!r.askedInPinyin && !r.guessedAction && r.result.name.contains(typedText, Qt::CaseInsensitive))
+                    behindSpelled = std::min(behindSpelled, r.score);
+            }
                 if (r.guessedAction)
                     r.score = std::min(r.score, behind - 1);
             }
+                else if (r.askedInPinyin)
+                    r.score = std::min(r.score, behindSpelled - 1);
             // "关蓝牙", "音量 30", "蓝牙设置": the switch with what was asked of
             // it, above everything but a typed keyword; the plain row of the
             // same switch and the page that opens the same place give way.

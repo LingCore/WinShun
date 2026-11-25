@@ -72,8 +72,9 @@ inline constexpr QStringView kRestartElevatedCommand = u"winshun:restart-as-admi
 // Built-in Windows power and session actions in places.txt (GitHub #428):
 // "winshun:power/shutdown", "restart", "sleep", "hibernate", "lock", "signout".
 // Carried out directly by Win顺 (platform/Power) rather than the shell;
-// disruptive actions require a second press to confirm, and weak guesses rank
-// behind apps and ordinary pages so an accidental Enter never acts on them.
+// disruptive actions require a second press to confirm. A weak guess ranks
+// behind apps and ordinary pages; one that asks first is no guess when its
+// whole name was typed, initials included ("gj", "cq": PlaceHit::entire).
 inline constexpr QStringView kPowerCommandPrefix = u"winshun:power/";
 bool isPowerCommand(QStringView command) noexcept;
 QStringView powerCommandAction(QStringView command) noexcept;
@@ -108,6 +109,11 @@ struct PlaceHit {
     // ranks below the apps and pages found as well, as a wrong Enter on it
     // changes the system.
     bool weak = false;
+    // Every word of the query spells out the whole name or a whole keyword
+    // of places.txt, as typed or as pinyin ("gj", "guanji": 关机; "cq": 重启):
+    // asked for by its name, however short. A power command that asks before
+    // it acts is then no guess (SearchEngine).
+    bool entire = false;
 };
 
 // The places matching `query`, best first, one per command (several tasks

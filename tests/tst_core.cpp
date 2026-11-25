@@ -11843,6 +11843,91 @@ private slots:
             page.key = u"k/page"_s;
             page.command = u"x:one"_s;
             PlaceInfo sw;
+
+        // The whole name by its initials or pinyin ("gj", "guanji": 关机;
+        // "cq": 重启, a keyword) is asked for (PlaceHit::entire); part of a
+        // name is not.
+        const auto hitOf = [&](const QString& text, QStringView command) -> std::optional<PlaceHit> {
+            const ParsedQuery query = ws::parseQuery(text);
+            const NameMatcher matcher(query);
+            for (const PlaceHit& hit : searchPlaces(zh, query, matcher, {})) {
+                if (zh[hit.index].command == command)
+                    return hit;
+            }
+            return std::nullopt;
+        };
+        struct Asked {
+            QStringView text;
+            QStringView command;
+            bool entire;
+        };
+        const Asked askedFor[] = {
+            {u"gj", u"winshun:power/shutdown", true},
+            {u"guanji", u"winshun:power/shutdown", true},
+            {u"关机", u"winshun:power/shutdown", true},
+            {u"cq", u"winshun:power/restart", true},
+            {u"cqdn", u"winshun:power/restart", true},
+            {u"sm", u"winshun:power/sleep", true},
+            {u"zx", u"winshun:power/signout", true},
+            {u"sp", u"winshun:power/lock", true},
+            {u"dn", u"winshun:power/restart", false}, // 电脑, the end of its name
+            {u"关", u"winshun:power/shutdown", false},
+        };
+        for (const Asked& a : askedFor) {
+            const std::optional<PlaceHit> hit = hitOf(a.text.toString(), a.command);
+            QVERIFY2(hit.has_value(), qPrintable(a.text.toString()));
+            QVERIFY2(hit->entire == a.entire, qPrintable(a.text.toString()));
+        }
+
+        // So asked for, a command that asks before it acts is no guess: it
+        // ranks by its match among the apps, no longer behind the pages a
+        // keyword's initials happen to fit, and behind an app spelled so. A
+        // word for them all ("dy": 电源) names none, and the one that acts
+        // at once (锁定, "sp") stays behind.
+        const auto addApp = [&](const QString& name) {
+            AppInfo info;
+            info.name = name;
+            info.id = u"Test."_s + name;
+            info.prepare();
+            programs->push_back(info);
+        };
+        addApp(u"工具集"_s); // "gj"
+        addApp(u"传奇世界"_s); // "cq", half of it
+        addApp(u"电影"_s); // "dy"
+        addApp(u"视频"_s); // "sp"
+        apps.setApps(std::make_shared<AppList>(*programs));
+        const auto order = [&](const QString& text) {
+            QSignalSpy answered(&engine, &SearchEngine::resultsReady);
+            SearchEngine::Request ask;
+            ask.text = text;
+            ask.scope = Scope::All;
+            ask.limit = 30;
+            const quint64 id = engine.submit(std::move(ask));
+            QStringList names;
+            [&] {
+                QTRY_VERIFY_WITH_TIMEOUT(
+                    std::ranges::any_of(answered, [&](const QList<QVariant>& a) { return a.at(0).toULongLong() == id; }), 5000);
+            }();
+            for (const QList<QVariant>& a : answered) {
+                if (a.at(0).toULongLong() == id) {
+                    names.clear();
+                    for (const SearchResult& r : a.at(1).value<SearchResults>())
+                        names.append(r.name);
+                }
+            }
+            return names;
+        };
+        QStringList listed = order(u"gj"_s);
+        QVERIFY2(listed.indexOf(u"关机"_s) > listed.indexOf(u"GJ Notes"_s) && listed.indexOf(u"GJ Notes"_s) >= 0,
+            qPrintable(listed.join(u", ")));
+        listed = order(u"cq"_s);
+        QVERIFY2(listed.indexOf(u"重启电脑"_s) >= 0 && listed.indexOf(u"重启电脑"_s) <= 1, qPrintable(listed.join(u", ")));
+        listed = order(u"guanji"_s);
+        QVERIFY2(listed.indexOf(u"关机"_s) == 0, qPrintable(listed.join(u", ")));
+        listed = order(u"dy"_s);
+        QVERIFY2(listed.indexOf(u"电影"_s) >= 0 && listed.indexOf(u"电影"_s) < listed.indexOf(u"关机"_s), qPrintable(listed.join(u", ")));
+        listed = order(u"sp"_s);
+        QVERIFY2(listed.indexOf(u"视频"_s) >= 0 && listed.indexOf(u"视频"_s) < listed.indexOf(u"锁定屏幕"_s), qPrintable(listed.join(u", ")));
             sw.name = u"开关"_s;
             sw.key = u"k/switch"_s;
             sw.command = u"X:ONE"_s;
