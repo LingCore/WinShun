@@ -5,6 +5,7 @@
 #include "platform/PieDrop.h"
 
 #include <QElapsedTimer>
+#include <QHash>
 #include <QObject>
 #include <QPointF>
 #include <QPointer>
@@ -16,8 +17,10 @@
 
 #include <windows.h>
 
+#include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -56,9 +59,20 @@ class SystemCatalog;
 // own drop target while the source still holds it, as in File Explorer
 // (piedrop::DragItems).
 //
+// The pointer resting a moment on a folder (a chip, or a row) brings up the
+// folders inside it in a column beside it, as the folder menu's columns
+// (GitHub #463): beside the pie on the chip's side, the next beside the
+// column it came from, and so on down. Let go on a row and they go into that
+// folder; resting elsewhere closes the columns after it, as a menu's do. A
+// column too long for the screen scrolls while the pointer rests on the
+// strip at its top or bottom.
+//
 // Its window is see-through but still takes the pointer where nothing is
 // drawn (a layered D3D11 window): it goes the moment the pointer leaves the
-// chips' reach, so it never stands between a drag and what is under it.
+// chips' and the columns' reach, so it never stands between a drag and what
+// is under it. It covers the work area of the screen the pie is on, so that
+// a column comes without the window changing while it is seen (that shows a
+// frame of the old picture moved).
 class DropPie : public QObject, private piedrop::Handler {
     Q_OBJECT
     QML_ELEMENT
@@ -86,6 +100,18 @@ class DropPie : public QObject, private piedrop::Handler {
     Q_PROPERTY(int picked READ picked NOTIFY stateChanged FINAL) // ... if it can be dropped on, else -1
     Q_PROPERTY(QString mode READ mode NOTIFY stateChanged FINAL) // the picked one's: "move", "copy" or ""
     Q_PROPERTY(bool confirming READ confirming NOTIFY stateChanged FINAL) // dropped: the chip flashes
+    Q_PROPERTY(bool inMiddle READ inMiddle NOTIFY stateChanged FINAL) // the pointer in the middle: letting go cancels
+    Q_PROPERTY(bool onFolder READ onFolder NOTIFY stateChanged FINAL) // a chip or a row under the pointer: the line names it
+    // The columns of folders inside folders, the first from a chip: {x, y,
+    // width, height (the box, in the window), scrolls, strip (a scroll strip's
+    // height), rows: [{text, disabled}] (one disabled row that says it is being
+    // read or is empty)}. What each shows of them now is columnStates: {first
+    // (the first row in sight), hovered (the row under the pointer, -1), target
+    // (that row is where letting go puts them), opener (the row the next column
+    // came from, -1), up, down (whether its strips scroll further)}.
+    Q_PROPERTY(QVariantList columns READ columns NOTIFY columnsChanged FINAL)
+    Q_PROPERTY(QVariantList columnStates READ columnStates NOTIFY stateChanged FINAL)
+    Q_PROPERTY(int openedSector READ openedSector NOTIFY stateChanged FINAL) // the chip the first column came from, -1
     // The line under the chips: what letting go does ("移动到" and the
     // folder's name, its path, the key that changes it) or why it cannot.
     Q_PROPERTY(QString statusVerb READ statusVerb NOTIFY stateChanged FINAL)
@@ -115,6 +141,20 @@ public:
     // ... and turned to `page` at once (no fade), the pointer in sector
     // `hovered` of it (-1: the middle).
     void previewPage(int page, int hovered = -1);
+    // ... the folders inside the one at `index` of the last level (the pie's
+    // chip on the page shown when no column is up, else the last column's
+    // row) as the next column, read here and now; then the pointer at row
+    // `row` of column `column` (from 0; -1 none), or on its strip (`strip` -1
+    // up, 1 down), the column scrolled to `first`.
+    bool previewOpen(int index);
+    void previewColumnPointer(int column, int row, int first = 0, int strip = 0);
+    // ... the pointer at `local` (in the window, logical pixels) as a
+    // DragOver brings it, with `keys` (MK_*) held: the effect it answers.
+    DWORD previewPointer(QPointF local, DWORD keys = 0);
+    // What is drawn of it, in the window (logical pixels): the chips of
+    // every page, the middle, the line under them, the columns, with room for
+    // their shadows. The window covers the work area; a preview cuts this out.
+    QRectF drawnRect() const;
     bool dropReady() const noexcept { return m_hwnd && m_target; }
 
     // From the listener thread (KeyListener::Callbacks): during an OLE drag
@@ -151,6 +191,11 @@ public:
     int picked() const noexcept { return m_picked; }
     QString mode() const;
     bool confirming() const noexcept { return m_confirming; }
+    bool inMiddle() const noexcept { return m_spot.part == Part::Middle; }
+    bool onFolder() const noexcept { return pointedFolder() != nullptr; }
+    QVariantList columns() const { return m_columnItems; }
+    QVariantList columnStates() const;
+    int openedSector() const noexcept { return m_columns.empty() ? -1 : m_columns.front().from; }
     QString statusVerb() const { return m_statusVerb; }
     QString statusName() const { return m_statusName; }
     QString statusDetail() const { return m_statusDetail; }
@@ -171,6 +216,7 @@ signals:
     void layoutChanged();
     void revealedChanged();
     void stateChanged();
+    void columnsChanged();
 
 private:
     struct Folder {
@@ -179,6 +225,28 @@ private:
         bool network = false;
     };
     enum class Block { None, Missing, Source, Inside, Network };
+    // Where the pointer is: the middle; a chip's direction (Chip, `index` the
+    // sector, -1 when none is chosen yet); in column `level` (from 1) on a
+    // row (`index`), on a strip, elsewhere in it or near it (Box); outside all.
+    enum class Part { Outside, Middle, Chip, Row, Box, Up, Down };
+    struct Spot {
+        int level = 0; // 0 the pie, k the k-th column
+        int index = -1;
+        Part part = Part::Outside;
+        friend bool operator==(const Spot&, const Spot&) = default;
+    };
+    // A column of the folders inside `folder`, beside the chip (the first) or
+    // the row of the column before it that it came from (`from`).
+    struct Column {
+        Folder folder;
+        int from = -1;
+        std::vector<Folder> rows;
+        std::vector<Block> blocks; // by row
+        QString message; // instead of rows: being read, or there are none
+        double width = 0; // as its rows want (columnWidth)
+        pie::ColumnBox box;
+        int first = 0; // the first row in sight
+    };
 
     // piedrop::Handler, on the GUI thread
     DWORD dragEnter(IDataObject* data, DWORD keys, POINT pt, DWORD allowed) override;
@@ -200,10 +268,11 @@ private:
     void updateSectors();
     Block blockOf(const Folder& folder) const;
     QString reasonOf(Block block) const;
-    pie::Hit hitAt(POINT pt) const;
+    QPointF localOf(POINT pt) const; // a physical point in the window's logical pixels
+    Spot spotAt(QPointF local) const;
     POINT centreOnScreen() const; // physical pixels
     pie::Allowed allowed() const noexcept { return {bool(m_allowed & DROPEFFECT_MOVE), bool(m_allowed & DROPEFFECT_COPY)}; }
-    pie::Mode modeOf(int sector) const noexcept;
+    pie::Mode modeOf(const Folder* folder) const;
     DWORD track(DWORD keys, POINT pt); // DragOver's work: the state and the effect
     void updateTexts();
     void setRevealed(bool revealed);
@@ -211,6 +280,37 @@ private:
     void syncPageKeys();
     // The favorite a sector of the page shown stands for.
     std::size_t folderOf(int sector) const noexcept { return static_cast<std::size_t>(m_pageFirst + sector); }
+    // The folder a chip or a row of `spot` stands for, and its block; null
+    // for anything else. pointedFolder: the one under the pointer (named by the
+    // line under the chips); targetFolder: the same if it can be dropped on.
+    const Folder* folderAt(const Spot& spot, Block* block = nullptr) const;
+    const Folder* pointedFolder() const { return folderAt(m_spot); }
+    const Folder* targetFolder() const;
+    void refreshBlocks(); // the favorites' and the columns' rows' blocks, for this drag
+    void resetColumns(); // all closed, nothing pending, the folders read forgotten (a new opening)
+
+    // The columns: the pointer resting on a chip or a row opens its column, on
+    // anything else closes the columns after it (dwell); on a strip scrolls.
+    void pointerMoved();
+    void dwelt();
+    bool opens(const Spot& spot) const; // a chip or row whose folders can be listed
+    bool isOpener(const Spot& spot) const noexcept; // the chip or row the next column came from
+    // Menu aim: the pointer, at `local` over `spot`, still on its way from
+    // the opener (m_spot) to its column, which it is heading for.
+    bool aiming(QPointF local, const Spot& spot) const;
+    QPointF apex(QPointF local) const; // where the pointer was a little way back (m_trace)
+    void setItems(std::vector<std::wstring> paths); // m_items, and what blockOf looks them up by
+    void openColumn(int level, int index); // the column of `index` at `level`, now or once read
+    void showColumn(int level, int index, const QStringList* names); // up, its rows or "reading"
+    void closeColumnsFrom(int level); // columns level+1 on (level 0: all)
+    void listFolder(const QString& path);
+    void listed(const QString& path, const QStringList& names);
+    void fillColumn(Column& column, const QStringList& names) const;
+    void scrollColumn();
+    void layOutColumns(); // their boxes, the first beside the pie
+    void updateColumnItems();
+    pie::ColumnMetrics columnMetrics() const;
+    double columnWidth(const Column& column) const;
 
     Favorites* m_favorites;
     SystemCatalog* m_places;
@@ -233,6 +333,27 @@ private:
     int m_labelPixelSize = 13;
     QPointF m_centre; // in the window
     QRectF m_statusRect; // in the window
+    QRectF m_area; // the work area, in the window: where the columns go
+
+    // The columns, from the first (beside the pie) on, and what QML draws of them.
+    std::vector<Column> m_columns;
+    QVariantList m_columnItems;
+    // The folders inside folders read while the pie is up, by case-folded path.
+    QHash<QString, QStringList> m_listings;
+    struct Pending { // a folder being read, its column not up yet
+        int level = 0;
+        int index = -1;
+        QString path;
+    };
+    std::optional<Pending> m_pending;
+    QSet<QString> m_reading; // case-folded paths being read now
+    std::uint64_t m_opening = 0; // which showing of the pie a folder read belongs to
+    QTimer m_dwell; // the pointer resting where it is: its column opens, or those after close
+    QTimer m_slow; // the folder pending is slow to read: its column says so meanwhile
+    QTimer m_scroll; // the pointer on a scroll strip
+    QTimer m_aim; // on the way to a column, stopped over something else: that is chosen after all
+    std::vector<QPointF> m_trace; // the pointer's last few places, in the window (menu aim)
+    DWORD m_lastKeys = 0; // the last DragOver's
 
     // The drag over the pie
     bool m_open = false; // shown (revealed or not)
@@ -240,22 +361,27 @@ private:
     bool m_revealed = false;
     bool m_confirming = false;
     bool m_pageKeys = false; // pageKeysWanted(true) was the last word
-    // A page was turned and the pointer has not moved since: its chips are not
-    // chosen yet. OLE asks again and again with the pointer still, so it is
-    // the point that counts, not the asking.
+    // A page was turned and the pointer has not moved since: nothing under
+    // it is chosen yet. A column came under the pointer and it has not moved
+    // since: what it had chosen stays chosen (m_keepUntilMove). OLE asks
+    // again and again with the pointer still, so it is the point that counts,
+    // not the asking.
     bool m_awaitMove = false;
+    bool m_keepUntilMove = false;
     POINT m_turnedAt {};
     POINT m_lastAt {}; // the last DragOver's
     bool m_inDrop = false;
     DWORD m_allowed = 0; // what the source allows
     std::vector<std::wstring> m_items; // the file-system paths of what is dragged (piedrop::DragItems)
+    QSet<QString> m_itemKeys; // ... normalized and case-folded
+    QSet<QString> m_itemFolders; // ... the folders they are in, the same
     std::size_t m_count = 0; // ... and how many items there are
     bool m_plain = false; // ... all lasting files: copied by our own file operation
-    std::vector<Block> m_blocks; // by sector, for this drag
-    std::vector<bool> m_sameDrive; // by sector: every item already on its drive
-    pie::Hit m_hit;
+    std::vector<Block> m_blocks; // by favorite, for this drag
+    QString m_itemsDrive; // the drive every item is on (driveOf), empty when not one
+    Spot m_spot; // where the pointer is
     pie::Keys m_keys;
-    int m_hovered = -1;
+    int m_hovered = -1; // the pie's: the chip the pointer is on or heads for
     int m_picked = -1;
     QString m_statusVerb;
     QString m_statusName;

@@ -163,7 +163,7 @@
 //                      that name no app here, and the shortcuts that run
 //                      something else through a host program (cmd /k ...);
 //                      --all lists every app with its arguments and program
-//   wsbench --mcp-host [--pipe NAME] [--index FOLDER] [--plugins DIR] [--history FILE] [--frozen]
+//   wsbench --mcp-host [--pipe NAME] [--index FOLDER] [--plugins DIR [--app-dir DIR]] [--history FILE] [--frozen]
 //                      serves Win顺's MCP tools (src/mcp) on a named pipe as
 //                      the app does, over a copy of the index files (made in
 //                      the temporary folder unless --index names a folder
@@ -177,7 +177,12 @@
 //                      disk instead takes minutes): for measuring searches.
 //                      With --plugins, the plugins of DIR (every one enabled,
 //                      actions allowed) are tools too, as the AI 助手 page's
-//                      switches would make them (plugin::AiBridge)
+//                      switches would make them (plugin::AiBridge). --app-dir:
+//                      a deployed Win顺's folder (Qt6Core.dll, the platforms
+//                      and qml folders) told to them as WS_APP_DIR, whose Qt
+//                      a plugin with "qt": "host" runs on; default: wsbench's
+//                      folder, which in a build has no Qt (as for --plugin
+//                      and --launcher-sim)
 //   wsbench --mcp-search [--index FOLDER] [--history FILE] [--runs N] [--limit A,B] [--sort S,T]
 //                      [--kind K] [--size] [QUERY ...]
 //                      what ws's name searches cost Win顺: search_files as
@@ -240,7 +245,8 @@
 //                      asks its details and tries its three actions (the
 //                      effects are printed, nothing is opened). --data keeps
 //                      what it read in FOLDER for the next run
-//   wsbench --launcher-sim [--plugins DIR] [--index FOLDER] [--key-ms N] [--scope files|folders|save] [--each-key] [--data ID=DIR ...] ["TEXT" ...]
+//   wsbench --launcher-sim [--plugins DIR] [--index FOLDER] [--key-ms N] [--scope files|folders|save] [--each-key] [--data ID=DIR ...]
+//                      [--app-dir DIR] ["TEXT" ...]
 //                      the launcher's list without the launcher: each TEXT
 //                      typed key by key (N ms apart, default 80) over a copy
 //                      of the index, with the plugins of DIR (default
@@ -4893,6 +4899,25 @@ int runShare(QStringList args)
 
 // ---- a plugin, as the app runs it (--plugin) --------------------------------
 
+namespace {
+
+// --app-dir DIR, taken out of `args`: a deployed Win顺 (Qt6Core.dll,
+// platforms\ and qml\ beside WinShun.exe) for Host::Options::appDir. Plugins
+// get it as WS_APP_DIR, and one declaring "qt": "host" runs on its Qt. Empty
+// when not given: the runner's folder, next to wsbench, which in a build has
+// no Qt deployed (GitHub #462).
+QString takeAppDir(QStringList& args)
+{
+    const qsizetype at = args.indexOf(u"--app-dir"_s);
+    if (at < 0 || at + 1 >= args.size())
+        return {};
+    QString dir = QDir(args[at + 1]).absolutePath();
+    args.remove(at, 2);
+    return dir;
+}
+
+} // namespace
+
 // Checks FOLDER's plugin.json, runs `query` through the plugin Host (the
 // runner starts the plugin as it would in the app), prints the first
 // answer's items and the timings.
@@ -4928,11 +4953,7 @@ int runPlugin(QStringList args)
         actionId = args[at + 1];
         args.remove(at, 2);
     }
-    QString appDir; // --app-dir DIR: WS_APP_DIR, a deployed Win顺 whose Qt the plugin may use (winshun.capture)
-    if (const qsizetype at = args.indexOf(u"--app-dir"_s); at >= 0 && at + 1 < args.size()) {
-        appDir = QDir(args[at + 1]).absolutePath();
-        args.remove(at, 2);
-    }
+    const QString appDir = takeAppDir(args);
     const bool confirmElevated = args.removeAll(u"--confirm-elevated"_s) > 0;
     int lingerMs = 0; // --linger MS: keep the plugin running that long after the action (what a resident one shows)
     if (const qsizetype at = args.indexOf(u"--linger"_s); at >= 0 && at + 1 < args.size()) {
@@ -5210,6 +5231,7 @@ int runLauncherSim(QStringList args)
         args.remove(at, 2);
     }
     const bool eachKey = args.removeAll(u"--each-key"_s) > 0;
+    const QString appDir = takeAppDir(args);
     // HARNESS (ocr-in-search investigation): --ocr-data DIR = a copy of a plugin data folder
     // (put in as winshun.ocr-search.data), --walk DIR = index only this folder (repeatable),
     // --content on|off = filters.contentEnabled as the launcher sends it (default on).
@@ -5294,6 +5316,7 @@ int runLauncherSim(QStringList args)
     options.dataRoot = temp.path() + u"/data"_s;
     options.logPath = temp.path() + u"/plugins.log"_s;
     options.runnerExe = QCoreApplication::applicationDirPath() + u"/WinShunPluginHost.exe"_s;
+    options.appDir = appDir;
     options.version = QStringLiteral(WINSHUN_VERSION "-bench");
     if (!ocrData.isEmpty()) {
         const QString to = options.dataRoot + u"/winshun.ocr-search.data"_s;
@@ -5741,6 +5764,7 @@ int runMcpHost(QStringList args)
         args.remove(at, 2);
     }
     const bool frozen = args.removeAll(u"--frozen"_s) > 0;
+    const QString appDir = takeAppDir(args);
     ws::Settings settings;
     settings.load();
     QTemporaryDir temp;
@@ -5812,6 +5836,7 @@ int runMcpHost(QStringList args)
         pluginOptions.dataRoot = temp.path() + u"/data"_s;
         pluginOptions.logPath = temp.path() + u"/plugins.log"_s;
         pluginOptions.runnerExe = QCoreApplication::applicationDirPath() + u"/WinShunPluginHost.exe"_s;
+        pluginOptions.appDir = appDir;
         pluginOptions.version = QStringLiteral(WINSHUN_VERSION "-bench");
         plugins = std::make_unique<ws::plugin::Host>(pluginOptions);
         QObject::connect(plugins.get(), &ws::plugin::Host::logged, [](const QString& line) { std::printf("  plugins: %s\n", qUtf8Printable(line)); });
@@ -5829,7 +5854,10 @@ int runMcpHost(QStringList args)
         bridgeOptions.actions = true;
         bridge->setOptions(bridgeOptions);
         std::printf("plugins: %s\n", qUtf8Printable(ids.join(u", "_s)));
-    }
+        std::printf("plugins: Win顺 folder (WS_APP_DIR, a host Qt plugin's Qt) %s\n",
+            qUtf8Printable(QDir::toNativeSeparators(appDir.isEmpty() ? QCoreApplication::applicationDirPath() : appDir)));
+    } else if (!appDir.isEmpty())
+        std::printf("--app-dir is for the plugins of --plugins: none here\n");
     ws::mcp::McpServer server(&host, QStringLiteral(WINSHUN_VERSION));
     DWORD error = 0;
     if (!server.listen(pipeName, &error)) {

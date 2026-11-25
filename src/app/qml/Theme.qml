@@ -143,6 +143,10 @@ QtObject {
     readonly property int menuTextSize: metrics.uiBody
     readonly property int menuCaptionSize: metrics.uiCaption
     readonly property real menuPadding: pick("menuPadding")
+    // A column of folders as wide as its rows want, within these (the folder
+    // menu's, GitHub #384; the drop pie's, #463).
+    readonly property int menuColumnMinWidth: metrics.level < 2 ? 160 : metrics.size === "roomy" ? 200 : 180
+    readonly property int menuColumnMaxWidth: metrics.level < 2 ? 340 : metrics.size === "roomy" ? 460 : 420
     readonly property color danger: pick("danger") // words and glyphs
     readonly property color dangerFill: pick("dangerFill") // under white words (an armed delete button)
     readonly property color success: pick("success") // Windows 11's status colours

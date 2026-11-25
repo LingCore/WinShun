@@ -1,6 +1,7 @@
 #include "PieGeometry.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <numbers>
 
@@ -175,6 +176,106 @@ Hit hitTest(QPointF offset, const Layout& layout, const Metrics& metrics) noexce
             return {Zone::Sector, static_cast<int>(i)};
     }
     return {Zone::Sector, sectorAt(angleOf(offset), static_cast<int>(layout.chips.size()))};
+}
+
+ColumnBox placeColumn(const QRectF& beside, double levelY, int side, double width, int rows, const QRectF& area,
+    const ColumnMetrics& m) noexcept
+{
+    ColumnBox box;
+    const double tallest = std::max(m.row + 2 * m.padding, std::min(m.maxHeight, area.height() - 2 * m.margin));
+    const int count = std::max(1, rows);
+    double height = count * m.row + 2 * m.padding;
+    box.shown = count;
+    if (height > tallest) {
+        box.scrolls = true;
+        box.shown = std::max(1, static_cast<int>(std::floor((tallest - 2 * m.padding - 2 * m.strip()) / m.row)));
+        height = box.shown * m.row + 2 * m.padding + 2 * m.strip();
+    }
+    const double right = beside.right() + m.gap;
+    const double left = beside.left() - m.gap - width;
+    const bool roomRight = right + width <= area.right() - m.margin;
+    const bool roomLeft = left >= area.left() + m.margin;
+    box.side = side < 0 ? -1 : 1;
+    if (box.side > 0 ? !roomRight && roomLeft : !roomLeft && roomRight)
+        box.side = -box.side;
+    const double x = std::clamp(box.side > 0 ? right : left, area.left() + m.margin,
+        std::max(area.left() + m.margin, area.right() - m.margin - width));
+    const double y = levelY - m.row / 2 - m.padding - (box.scrolls ? m.strip() : 0);
+    box.rect = QRectF(x, std::clamp(y, area.top() + m.margin, std::max(area.top() + m.margin, area.bottom() - m.margin - height)),
+        width, height);
+    return box;
+}
+
+ColumnHit hitColumn(QPointF point, const ColumnBox& box, int first, int rows, const ColumnMetrics& m) noexcept
+{
+    if (!box.rect.contains(point))
+        return {};
+    if (box.scrolls) {
+        if (point.y() < box.rect.top() + m.padding + m.strip())
+            return {ColumnPart::Up};
+        if (point.y() >= box.rect.bottom() - m.padding - m.strip())
+            return {ColumnPart::Down};
+    }
+    const double offset = point.y() - box.rowsTop(m);
+    const int inSight = static_cast<int>(std::floor(offset / m.row));
+    const int row = first + inSight;
+    if (offset < 0 || inSight >= box.shown || row < 0 || row >= rows)
+        return {ColumnPart::Box};
+    return {ColumnPart::Row, row};
+}
+
+int clampFirst(int first, int rows, int shown) noexcept
+{
+    return std::clamp(first, 0, std::max(0, rows - shown));
+}
+
+bool inTriangle(QPointF point, QPointF a, QPointF b, QPointF c) noexcept
+{
+    // Which side of each edge it is on: all the same side (or on one), inside.
+    const auto cross = [](QPointF o, QPointF p, QPointF q) {
+        return (p.x() - o.x()) * (q.y() - o.y()) - (p.y() - o.y()) * (q.x() - o.x());
+    };
+    if (std::abs(cross(a, b, c)) < 1e-9)
+        return false;
+    const double ab = cross(a, b, point);
+    const double bc = cross(b, c, point);
+    const double ca = cross(c, a, point);
+    const bool below = ab < 0 || bc < 0 || ca < 0;
+    const bool above = ab > 0 || bc > 0 || ca > 0;
+    return !(below && above);
+}
+
+bool inHullOf(QPointF point, const QRectF& a, const QRectF& b) noexcept
+{
+    if (a.contains(point) || b.contains(point))
+        return true;
+    const auto cross = [](QPointF o, QPointF p, QPointF q) {
+        return (p.x() - o.x()) * (q.y() - o.y()) - (p.y() - o.y()) * (q.x() - o.x());
+    };
+    // The hull of their eight corners (Andrew's monotone chain), then the
+    // point on the inner side of each of its edges.
+    std::array corners {a.topLeft(), a.topRight(), a.bottomRight(), a.bottomLeft(), b.topLeft(), b.topRight(),
+        b.bottomRight(), b.bottomLeft()};
+    std::ranges::sort(corners, [](QPointF p, QPointF q) { return p.x() < q.x() || (p.x() == q.x() && p.y() < q.y()); });
+    std::array<QPointF, 2 * corners.size()> hull {};
+    std::size_t k = 0;
+    for (const QPointF& p : corners) {
+        while (k >= 2 && cross(hull[k - 2], hull[k - 1], p) <= 0)
+            --k;
+        hull[k++] = p;
+    }
+    for (std::size_t i = corners.size() - 1, lower = k + 1; i-- > 0;) {
+        while (k >= lower && cross(hull[k - 2], hull[k - 1], corners[i]) <= 0)
+            --k;
+        hull[k++] = corners[i];
+    }
+    if (k < 4)
+        return false; // no area: only on a or b, asked above
+    for (std::size_t i = 0; i + 1 < k; ++i) {
+        if (cross(hull[i], hull[i + 1], point) < -1e-9)
+            return false;
+    }
+    return true;
 }
 
 Mode modeFor(bool sameDrive, Keys keys, Allowed allowed) noexcept

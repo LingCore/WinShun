@@ -212,6 +212,7 @@ effects 的辅助：Python `winshun.hide() / keep() / notify(text) / copy(text) 
 - runner 在 `CreateProcess` 前为这个子进程配置 `PATH`、Qt 插件路径和 QML 导入路径，提供 `WS_QT_DIR`、`WS_QT_QML_DIR`，默认 Controls 样式为 Basic。普通静态导入 Qt 的 exe 也可直接启动，无需 `/DELAYLOAD`。不会修改系统、用户或 Win顺 主进程的环境变量。
 - 不要在包内混入另一版 Qt DLL、平台插件、QML 模块或覆盖共享路径的 `qt.conf`；Windows 优先搜索 exe 自身目录。自有的非 Qt 依赖照常放入插件目录。
 - 启动前检查版本及宿主部署是否完整；不兼容时显示具体原因和更新/重装建议，不尝试启动后再等待崩溃。
+- 用源码编译的 wsbench 测这类插件时，构建目录里没有部署 Qt，加 `--app-dir <装好的 Win顺 文件夹>` 借用它的 Qt（`--plugin`、`--launcher-sim`、`--mcp-host` 都支持）；不加时用 wsbench 所在文件夹。
 - 带 `elevated` 的插件也能用共享 Qt（0.23.0 起，GitHub #255；清单写 `"minWinShun": "0.23.0"`，更早的 Win顺 会拒绝这种清单）。以管理员身份运行时，runner 只认它自己所在的文件夹，也就是以管理员身份运行的 Win顺 自己加载 Qt 的那个文件夹，不会因此多加载任何代码：安装版在 Program Files 里，普通权限改不了；便携版的文件夹本来就决定了以管理员身份运行的 Win顺 跑什么。插件自己的 exe 和 DLL 照旧来自确认过的副本（见“权限”里的 `elevated`）。
 - 社区 exe/dll 包自动按“未审核的原生插件”收录（插件库的工具认出包里的 exe/dll 就标上，不再拒收）。插件库标明审核状态，安装及每次更新需确认；签名或 SHA256 校验只证明分发完整性，不代表代码已审核。
 
@@ -500,6 +501,7 @@ wsbench --plugin D:\my.plugin --query "hi 你好" --setting greeting=嗨    # �
 wsbench --plugin D:\my.plugin --query "kill note" --action kill          # 对第一条结果执行动作，打印 effects
 wsbench --launcher-sim --plugins D:\plugins "hi 你好" "#ff8800"          # 按启动器的合并逻辑逐键输入，看行怎么混进列表
 wsbench --mcp-host --plugins D:\plugins                                 # 把插件当 AI 工具提供在测试管道上（WinShunMcp.exe --pipe …）
+wsbench --mcp-host --plugins D:\plugins --app-dir "C:\Program Files\WinShun"  # 声明 "qt": "host" 的插件借用装好的 Win顺 的 Qt
 ```
 
 - 卡片上的状态行：就绪 / 运行中 · 内存 / 超时 n 次 / 崩溃，稍后重启 / 连续崩溃，已停用 / 无法使用：manifest 的错误。
