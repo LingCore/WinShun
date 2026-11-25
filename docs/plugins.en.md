@@ -197,9 +197,11 @@ Since WinShun 0.22.0, ordinary-privilege MSVC x64 Release executables can reques
 }
 ```
 
-The host and plugin require the same Qt major and minor version. A third component is the minimum patch version, and `6.12` accepts that major/minor line. The contract provides Core, Gui, Qml, Quick, QtQuick, Basic Controls and Layouts. Each plugin has its own process and QML engine. Plugins requesting administrator privileges supply their own runtime.
+The host and plugin require the same Qt major and minor version. A third component is the minimum patch version, and `6.12` accepts that major/minor line. The contract provides Core, Gui, Qml, Quick, QtQuick, Basic Controls and Layouts. Each plugin has its own process and QML engine. Since 0.23.0 (GitHub #255; declare `"minWinShun": "0.23.0"`), an `elevated` plugin can use the host Qt too: the elevated runner only takes the folder it runs from itself, so no extra code is loaded.
 
 Before creating the child process, the runner prepares its DLL, platform-plugin and QML paths and supplies `WS_QT_DIR` and `WS_QT_QML_DIR`. Ordinary static Qt imports work. Keep the package's own non-Qt dependencies beside its executable. The runner checks version and deployment requirements before starting it. Revalidate the plugin when the host changes Qt major/minor versions.
+
+A source build's wsbench has no Qt deployed next to it: to test such a plugin with it, add `--app-dir <an installed WinShun's folder>` to borrow that Qt (`--plugin`, `--launcher-sim` and `--mcp-host` all take it). Without it, wsbench's own folder is used.
 
 ### Queries, caching and stopping
 
@@ -491,6 +493,7 @@ wsbench --plugin D:\my.plugin --query "hi 你好" --setting greeting=hey    # a 
 wsbench --plugin D:\my.plugin --query "kill note" --action kill          # run an action on the first row, print the effects
 wsbench --launcher-sim --plugins D:\plugins "hi 你好" "#ff8800"          # the launcher's merge, key by key
 wsbench --mcp-host --plugins D:\plugins                                 # serve the plugins as AI tools on the test pipe (WinShunMcp.exe --pipe …)
+wsbench --mcp-host --plugins D:\plugins --app-dir "C:\Program Files\WinShun"  # a "qt": "host" plugin borrows an installed WinShun's Qt
 ```
 
 ## FAQ
