@@ -326,6 +326,8 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(int clipboardCount READ clipboardCount NOTIFY clipboardCountChanged FINAL)
     Q_PROPERTY(bool clipboardImporting READ clipboardImporting NOTIFY clipboardImportChanged FINAL)
     Q_PROPERTY(QString clipboardImportMessage READ clipboardImportMessage NOTIFY clipboardImportChanged FINAL)
+    Q_PROPERTY(bool clipboardBackupBusy READ clipboardBackupBusy NOTIFY clipboardBackupChanged FINAL)
+    Q_PROPERTY(QString clipboardBackupMessage READ clipboardBackupMessage NOTIFY clipboardBackupChanged FINAL)
     Q_PROPERTY(QString clipboardNumberKeys READ clipboardNumberKeys WRITE setClipboardNumberKeys NOTIFY changed FINAL)
     Q_PROPERTY(QString clipboardNumberKeysNote READ clipboardNumberKeysNote NOTIFY numberKeysNoteChanged FINAL)
     Q_PROPERTY(QString clipboardQuickPaste READ clipboardQuickPaste WRITE setClipboardQuickPaste NOTIFY changed FINAL)
@@ -1176,6 +1178,18 @@ public:
     // Set by the app: running (with how far it is), and how it ended.
     void setClipboardImportProgress(int done, int total);
     void setClipboardImportDone(const clipimport::Report& report, const QString& group);
+    // Backing the clipboard history up into a zip and restoring one
+    // (ClipBackupFiles.h): the file is picked here, the app does the work on
+    // a thread and reports back. A restore replaces the history there is and
+    // restarts Win顺: the page asks before restoreClipboard().
+    Q_INVOKABLE void backUpClipboard();
+    Q_INVOKABLE QString pickClipboardBackup(); // the backup to restore, "" if none
+    Q_INVOKABLE void restoreClipboard(const QString& path);
+    bool clipboardBackupBusy() const { return m_clipboardBackupBusy; }
+    QString clipboardBackupMessage() const { return m_clipboardBackupMessage; }
+    // Set by the app: how it ended. `stays`: through the window's next
+    // opening (what the start did with a backup: told once it is seen).
+    void setClipboardBackupDone(const QString& message, bool stays = false);
     Q_INVOKABLE void restartExplorer() { emit explorerRestartRequested(); }
     // "S" or "V": the letter out of Windows' DisabledHotkeys, though it is not ours.
     Q_INVOKABLE void giveBackToWindows(const QString& letter) { emit giveBackRequested(letter); }
@@ -1315,6 +1329,9 @@ signals:
     void clipboardImportChanged();
     void clipboardImportRequested(const QString& path, int split);
     void clipboardImportCancelled();
+    void clipboardBackupChanged();
+    void clipboardBackupRequested(const QString& path);
+    void clipboardRestoreRequested(const QString& path);
     void explorerRestartRequested(); // Win+V changes hands when Explorer starts again
     void giveBackRequested(const QString& letter);
     void edited(const ws::Settings& settings);
@@ -1399,6 +1416,9 @@ private:
     QVariantList m_clipboardEntryHotkeys;
     bool m_clipboardImporting = false;
     QString m_clipboardImportMessage;
+    bool m_clipboardBackupBusy = false;
+    bool m_clipboardBackupStays = false;
+    QString m_clipboardBackupMessage;
     QPointer<QWindow> m_window;
     QString m_pickedWebIcon; // chosen in a form not saved yet: kept from pruning
     QString m_diagnosticsStatus;

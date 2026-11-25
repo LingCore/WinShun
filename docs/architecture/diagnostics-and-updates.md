@@ -20,7 +20,7 @@ Win顺 在读取任何设置之前按以下优先级确定目录：
 | `dialogs.json` | `%LOCALAPPDATA%\WinShun\` | 自绘文件对话框规则（`DialogRuleStore`），监听变更热重载 |
 | `update.ini` | `%LOCALAPPDATA%\WinShun\` | 更新检查时间、跳过版本、`RolloutSlot`、`PendingVersion`、`Usage/LastReport` |
 | `index.bin` 与 `content\` | 默认在数据目录，可由 `[Index] Folder` 迁移 | 文件名索引快照、`content\*.grams`（内容索引段）与 `content\*.texts`（文档正文） |
-| `clipboard\` | `%LOCALAPPDATA%\WinShun\clipboard\` | `clipboard.db`、`images\`、OCR 崩溃哨兵文件 `reading-picture` |
+| `clipboard\` | `%LOCALAPPDATA%\WinShun\clipboard\` | `clipboard.db`、`images\`、`projects\`、OCR 崩溃哨兵文件 `reading-picture`；手动备份为单个 ZIP（`ClipBackupFiles`），还原时先解到旁边的 `clipboard.restore\`，下次启动在打开历史前整体换入 |
 | `WinShun.log` / `.old.log` | `%LOCALAPPDATA%\WinShun\` | 运行警告/错误日志（`WINSHUN_LOG_INFO` 开 info 级）；`RepeatFilter` 折叠 10 秒内超 3 次重复消息 |
 | `diagnostics\` | `%LOCALAPPDATA%\WinShun\diagnostics\` | `events*.jsonl`、`crash.txt` 与固定导出包 `WinShun-diagnostics.zip` |
 | `Updates\` | `%LOCALAPPDATA%\WinShun\Updates\` | 下载暂存 `*.partial`、增量展开目录、更新助手副本与 `update.log` |

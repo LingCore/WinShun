@@ -10,6 +10,7 @@
 #include "platform/OcrFiles.h"
 #include "platform/OcrPackage.h"
 
+#include "ClipBackupFiles.h"
 #include "ClipImport.h"
 #include "CliSetup.h"
 #include "ScoopInstall.h"
@@ -2720,6 +2721,48 @@ void SettingsEditor::setClipboardImportDone(const clipimport::Report& report, co
     emit clipboardImportChanged();
 }
 
+void SettingsEditor::backUpClipboard()
+{
+    if (m_clipboardBackupBusy || m_clipboardImporting)
+        return;
+    const HWND owner = m_window ? reinterpret_cast<HWND>(m_window->winId()) : nullptr;
+    const QString path = shell::pickSaveFile(owner, tr("备份剪贴板历史"),
+        clipbackup::fileName(QDateTime::currentDateTime()), tr("Win顺 剪贴板备份"), u"zip"_s);
+    if (path.isEmpty())
+        return;
+    m_clipboardBackupBusy = true;
+    m_clipboardBackupMessage = tr("正在备份…");
+    emit clipboardBackupChanged();
+    emit clipboardBackupRequested(path);
+}
+
+QString SettingsEditor::pickClipboardBackup()
+{
+    if (m_clipboardBackupBusy || m_clipboardImporting)
+        return {};
+    const HWND owner = m_window ? reinterpret_cast<HWND>(m_window->winId()) : nullptr;
+    return QDir::toNativeSeparators(shell::pickFile(owner, tr("选择要还原的剪贴板备份"),
+        {{tr("Win顺 剪贴板备份"), u"*.zip"_s}, {tr("所有文件"), u"*.*"_s}}));
+}
+
+void SettingsEditor::restoreClipboard(const QString& path)
+{
+    if (m_clipboardBackupBusy || m_clipboardImporting || path.isEmpty())
+        return;
+    m_clipboardBackupBusy = true;
+    m_clipboardBackupMessage = tr("正在检查备份…");
+    emit clipboardBackupChanged();
+    emit clipboardRestoreRequested(path);
+}
+
+void SettingsEditor::setClipboardBackupDone(const QString& message, bool stays)
+{
+    m_clipboardBackupBusy = false;
+    m_clipboardBackupStays = stays;
+    m_clipboardBackupMessage = message;
+    emit clipboardBackupChanged();
+}
+
 bool SettingsEditor::addClipboardExcludedApp(const QString& name)
 {
     if (!addProgram(m_settings.clipboardExcludedApps, name))
@@ -4655,6 +4698,12 @@ void SettingsEditor::forgetMessages()
     if (!m_clipboardImporting && !m_clipboardImportMessage.isEmpty()) {
         m_clipboardImportMessage.clear();
         emit clipboardImportChanged();
+    }
+    if (m_clipboardBackupStays) {
+        m_clipboardBackupStays = false; // seen this once
+    } else if (!m_clipboardBackupBusy && !m_clipboardBackupMessage.isEmpty()) {
+        m_clipboardBackupMessage.clear();
+        emit clipboardBackupChanged();
     }
     if (!m_mcpSkillBusy)
         setMcpMessage({});

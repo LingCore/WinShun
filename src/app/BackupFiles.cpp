@@ -362,6 +362,8 @@ QString unpack(const QString& path, const QString& folder)
     const QJsonObject manifest = zip.reading ? manifestOf(zip) : QJsonObject();
     if (manifest.isEmpty())
         return tr("这不是 Win顺 的备份");
+    if (manifest.value(u"kind"_s).toString() == u"clipboard") // ClipBackupFiles.h
+        return tr("这是剪贴板历史的备份，不是设置的；请到 设置 › 剪贴板 里还原");
     if (manifest.value(u"format"_s) != QJsonValue(1))
         return tr("不支持这个备份格式，请更新 Win顺 后再试");
     static const QRegularExpression digest(u"^[0-9a-f]{64}$"_s);

@@ -7903,7 +7903,7 @@ Window {
                 page: window.clipboardPage
                 tab: 2
                 width: parent.width
-                title: qsTr("数据导入与清空")
+                title: qsTr("数据导入、备份与清空")
                 glyph: "\uE8B5"
 
                 QtObject {
@@ -7944,7 +7944,7 @@ Window {
                     FlatButton {
                         dpr: window.dpr
                         visible: clipImport.ditto.length > 0
-                        enabled: !window.editor.clipboardImporting
+                        enabled: !window.editor.clipboardImporting && !window.editor.clipboardBackupBusy
                         text: qsTr("从 Ditto 导入")
                         glyph: "\uE8B5" // Import
                         onClicked: {
@@ -7954,6 +7954,7 @@ Window {
                     }
                     FlatButton {
                         dpr: window.dpr
+                        enabled: !window.editor.clipboardBackupBusy
                         text: window.editor.clipboardImporting ? qsTr("取消") : qsTr("导入…")
                         glyph: window.editor.clipboardImporting ? "\uE711" : "\uE8B5" // Cancel, Import
                         onClicked: window.editor.clipboardImporting ? window.editor.cancelClipboardImport() : clipImport.pick()
@@ -7986,6 +7987,66 @@ Window {
                 }
 
                 SettingRow {
+                    id: clipBackupRow
+
+                    // A backup picked, waiting for the word to replace the history with it.
+                    property string picked
+
+                    readonly property bool busy: window.editor.clipboardBackupBusy || window.editor.clipboardImporting
+
+                    title: qsTr("备份与还原")
+                    keywords: qsTr("备份;还原;恢复;导出;迁移;换电脑;重装;ZIP;backup;restore;export").split(";")
+                    description: window.editor.clipboardBackupMessage.length > 0
+                                 ? window.editor.clipboardBackupMessage
+                                 : qsTr("把全部历史、分组、备注和图片存成一个 ZIP 文件；换电脑或重装系统后从它还原")
+
+                    FlatButton {
+                        objectName: "clipboardBackupButton"
+                        dpr: window.dpr
+                        enabled: !clipBackupRow.busy
+                        text: qsTr("备份…")
+                        glyph: "\uEDE1" // Export
+                        onClicked: {
+                            clipBackupRow.picked = ""
+                            window.editor.backUpClipboard()
+                        }
+                    }
+                    FlatButton {
+                        objectName: "clipboardRestoreButton"
+                        dpr: window.dpr
+                        enabled: !clipBackupRow.busy
+                        text: qsTr("还原…")
+                        glyph: "\uE81C" // History
+                        onClicked: clipBackupRow.picked = window.editor.pickClipboardBackup()
+                    }
+                }
+
+                SettingRow {
+                    objectName: "clipboardRestoreConfirmRow"
+                    sub: true
+                    shown: clipBackupRow.picked.length > 0 && !clipBackupRow.busy
+                    title: qsTr("用这份备份替换现在的剪贴板历史？")
+                    description: qsTr("%1。现在的历史和分组会被它替换，Win顺 会重启一次").arg(clipBackupRow.picked.split(/[\\/]/).pop())
+
+                    FlatButton {
+                        dpr: window.dpr
+                        text: qsTr("取消")
+                        flat: true
+                        onClicked: clipBackupRow.picked = ""
+                    }
+                    FlatButton {
+                        dpr: window.dpr
+                        text: qsTr("还原并重启")
+                        highlighted: true
+                        onClicked: {
+                            const picked = clipBackupRow.picked
+                            clipBackupRow.picked = ""
+                            window.editor.restoreClipboard(picked)
+                        }
+                    }
+                }
+
+                SettingRow {
                     title: qsTr("清除剪贴板历史")
                     keywords: qsTr("删除;清空").split(";")
                     description: window.editor.clipboardCount > 0
@@ -8002,7 +8063,7 @@ Window {
 
                         text: confirming ? qsTr("确定清除？再点一次") : qsTr("清除")
                         glyph: confirming ? "" : "" // Delete
-                        enabled: window.editor.clipboardCount !== 0 && !window.editor.clipboardImporting
+                        enabled: window.editor.clipboardCount !== 0 && !window.editor.clipboardImporting && !window.editor.clipboardBackupBusy
                         onClicked: {
                             if (confirming) {
                                 window.editor.clearClipboard()

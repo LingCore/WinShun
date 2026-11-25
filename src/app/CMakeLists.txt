@@ -417,6 +417,7 @@ qt_add_qml_module(WinShun
         UiSize.h
         Updater.cpp Updater.h UpdatePackage.cpp UpdatePackage.h UpdateDelta.cpp UpdateDelta.h UninstallCleanup.cpp UninstallCleanup.h
         Backup.cpp Backup.h BackupFiles.cpp BackupFiles.h
+        ClipBackupFiles.cpp ClipBackupFiles.h
         WindowFrame.cpp WindowFrame.h
 )
 
