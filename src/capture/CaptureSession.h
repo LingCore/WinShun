@@ -251,8 +251,10 @@ public:
     Q_ENUM(Action)
     // One-shot picking modes: a drag or click finishes immediately without the toolbar.
     // Ocr: 识别屏幕文字 / 截图翻译 (#198, #356); Pin: 截图并直接贴图 (#450).
+    // Not a Q_ENUM: QML reads enum keys unscoped (CaptureSession.Pin), so its
+    // Ocr and Pin took over the toolbar's Action ones (1.1.33: 识别文字 saved,
+    // 贴图 cancelled). Every Q_ENUM key here must be unique (tst_capture).
     enum class QuickMode { None, Ocr, Pin };
-    Q_ENUM(QuickMode)
     static constexpr int kLongMinimum = 48;
     static constexpr int kSelectionHistoryLimit = 10;
     // The "screen" of a selection over more than one monitor (GitHub #409):

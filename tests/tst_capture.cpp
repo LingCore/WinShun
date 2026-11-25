@@ -16,6 +16,8 @@
 
 #include <QDir>
 #include <QFileInfo>
+#include <QHash>
+#include <QMetaEnum>
 #include <QScopeGuard>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -123,6 +125,27 @@ class TestCapture : public QObject {
     Q_OBJECT
 
 private slots:
+    // QML reads a type's enum keys unscoped (CaptureSession.Pin): a key in two of
+    // its Q_ENUMs gives the toolbar the wrong action (1.1.33's QuickMode::Pin = 2
+    // made 贴图 cancel, its Ocr = 1 made 识别文字 save).
+    void qmlEnumKeysAreUnique()
+    {
+        const QMetaObject& meta = CaptureSession::staticMetaObject;
+        QHash<QByteArray, QByteArray> owner; // key -> its enum
+        for (int e = meta.enumeratorOffset(); e < meta.enumeratorCount(); ++e) {
+            const QMetaEnum en = meta.enumerator(e);
+            for (int k = 0; k < en.keyCount(); ++k) {
+                const QByteArray key = en.key(k);
+                QVERIFY2(!owner.contains(key), qPrintable(u"%1 is in both %2 and %3"_s.arg(QString::fromLatin1(key),
+                                                   QString::fromLatin1(owner.value(key)), QString::fromLatin1(en.name()))));
+                owner.insert(key, en.name());
+            }
+        }
+        const QMetaEnum action = QMetaEnum::fromType<CaptureSession::Action>();
+        QCOMPARE(action.keyToValue("Pin"), int(CaptureSession::Action::Pin));
+        QCOMPARE(action.keyToValue("Ocr"), int(CaptureSession::Action::Ocr));
+    }
+
     void longCaptureFrameStaysOnScreen()
     {
         for (const QRect screen : {QRect(0, 0, 2560, 1600), QRect(-1920, -1080, 1920, 1080)}) {
