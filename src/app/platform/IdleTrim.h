@@ -106,7 +106,9 @@ private:
     std::atomic<qint64> m_lastTrimAtMs {0};
     std::atomic<qint64> m_lastTrimMb {0};
     // "idle-trim" entries: the first few, then one every ten minutes; each
-    // resume's hold (notable) up to 30 an hour.
+    // resume's hold, and each giving back that left far more than was kept
+    // (notable), up to 30 an hour. One entry a giving back, written when it
+    // is over: what there was, what was kept, what stayed.
     diagnostics::JournalBudget m_journal;
     std::atomic<bool> m_trimming {false}; // a background trim pass is running
     std::jthread m_worker; // joined on destruction; stopped on used()/resumed()

@@ -66,7 +66,7 @@ Win顺 在读取任何设置之前按以下优先级确定目录：
 | `app/plugins.log` | 取末尾 **256 KiB**（插件输出可能含路径） |
 | `capture/events*.jsonl` | `plugins/winshun.capture.data/diagnostics/`（每份 ≤1 MiB） |
 | `service/service.log` / `.old.log` | 索引服务目录，各取末尾 **1 MiB**（不可读时列于 `unavailable_logs`） |
-| `summary.json` | 版本/OS/权限、`plugins`（仅 id/version/enabled）、`display`、索引与磁盘状态；`memory`（导出时的“运行状况”分块：各进程、主进程按用途和按页类型，以及句柄、GDI/USER 对象、峰值与运行时长，`HealthMonitor::snapshot`）、`idle_trim`（内存没归还的原因：唤醒后保留、后台在忙、有窗口在用，及上次归还） |
+| `summary.json` | 版本/OS/权限、`plugins`（仅 id/version/enabled）、`display`、索引与磁盘状态；`memory`（导出时的“运行状况”分块：各进程、主进程按用途（含归还时留下的 `kept`）和按页类型，以及句柄、GDI/USER 对象、峰值与运行时长，`HealthMonitor::snapshot`）、`idle_trim`（内存没归还的原因：唤醒后保留、后台在忙、有窗口在用，及上次归还） |
 
 > **隐私底线（永不记录、永不入包）**：`WinShun.ini`、系统凭据、剪贴板正文/图片载荷/哈希、文件索引原件、文档正文、搜索词与历史、MCP/插件对话、窗口标题、OCR 文字、原始按键内容、屏幕事件中的显示器名称。
 
@@ -89,7 +89,7 @@ Win顺 在读取任何设置之前按以下优先级确定目录：
 | `capture` / `capture-stall` / `capture-cursor-hidden` | `Capture` | 截图耗时、结果、GUI 阻塞 >150 ms（每次 ≤5 条）、`graphics_lost`、脉冲间隔 |
 | `ui-stall` / `ui-stall-end` / `ui-stall-threads` | `UiStallWatch` | 界面无响应调用栈、CPU 耗时、`busy` 及截图时其余线程栈 |
 | `trigger` | `TriggerJournal` | 呼出全链路（`source`/`queue_ms`/`action`/`front`/`seen_ms`/`faults`/`trimmed`/`helper`/`raw_input`/`tap_from`/`queued_ms`）；显示分段 `show_ms`（界面线程同步准备）/`arm_ms`（到 `FrameReveal::arm`）/`frame_ms`（`arm` 到揭开遮罩），200 ms 兜底揭开带 `timeout: true`；`idle_s` 距上次显示或隐藏，`private_mb`/`working_mb`/`ws_delta_mb` 为按下时内存与到显示时的工作集增量；显示后落盘，异常/慢/超时 ≤30/h，正常前 5 条后每 10 分钟 1 条 |
-| `idle-trim` / `key-helper` | `IdleTrim` / `ServiceKeyListener` | 空闲内存交还与保留热页 `keep_mb`（`HotPages`）/`held: resumed`；UIAccess 按键助手状态 |
+| `idle-trim` / `key-helper` | `IdleTrim` / `ServiceKeyListener` | 空闲内存交还（归还结束后一条：归还前 `private_mb`、保留热页 `keep_mb`（`HotPages`）、归还后仍驻留 `stayed_mb`，中途被唤醒为 `stopped`）/`held: resumed`；UIAccess 按键助手状态 |
 | `double-tap-near-miss` / `double-tap-dropped` | `KeyListener` / `TapTeller` | 双击未成立原因与干扰类别、延迟/让位丢弃（合计 ≤30/h，不记具体键） |
 | `clipboard-picture-not-read` / `clipboard-key-routing-*` | `Clipboard` / `KeyRouter` | OCR 连崩跳图尺寸；剪贴板按键转发与未接管原因统计 |
 | `clipboard-hidden` | `App::hideClipboard` | 剪贴板面板每次隐藏的原因 `why`（`asked`/`inactive`/`clicked-away`/`routed-front-moved`/`lent-front-moved`/`display-lost-focus`）、显示了多久 `shown_ms`、是否转发按键、打开时前台是否全屏/独占全屏、目标窗口是否已最小化或消失；不记窗口标题与程序名 |

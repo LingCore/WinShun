@@ -285,6 +285,28 @@ private slots:
         QCOMPARE(large.pages(), pages({{0, first}}));
     }
 
+    // What stays for all the windows together has a limit; of more, the
+    // scattered pages stay and the long runs go.
+    void keptTogetherUpToTheLimit()
+    {
+        const std::size_t most = HotPages::kKeptBytes / kPage;
+        HotPages launcher;
+        launcher.learn(pages({{0, 100}, {1'000, 1'300}}));
+        HotPages clipboard;
+        clipboard.learn(pages({{50, 150}, {5'000, 5'010}}));
+        const PageSet both = pages({{0, 150}, {1'000, 1'300}, {5'000, 5'010}});
+        QCOMPARE(HotPages::kept({&launcher, &clipboard}), both); // all of it fits
+        QCOMPARE(HotPages::kept({&launcher, nullptr}), launcher.pages()); // a window not made yet
+        QCOMPARE(HotPages::kept({}), PageSet());
+
+        HotPages large; // a run as long as the limit itself
+        large.learn(pages({{100'000, 100'000 + most}}));
+        QCOMPARE(large.bytes(), HotPages::kKeptBytes);
+        QCOMPARE(HotPages::kept({&large}), large.pages()); // alone, it fits
+        QCOMPARE(HotPages::kept({&launcher, &clipboard, &large}), both);
+        QCOMPARE(large.pages(), pages({{100'000, 100'000 + most}})); // still learnt: read back ahead at a press
+    }
+
     void committedFiltersFreedAndDecommittedPages()
     {
         PageSet gone;

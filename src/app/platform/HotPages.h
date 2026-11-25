@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <initializer_list>
 #include <mutex>
 #include <span>
 #include <stop_token>
@@ -96,6 +97,19 @@ public:
     // ones the last search's rows as well (43 MB, then 64, measured).
     static constexpr std::size_t kMostBytes = std::size_t {96} << 20;
     static constexpr std::size_t kSlackBytes = std::size_t {32} << 20;
+    // At most this much stays in memory for all the windows together while
+    // the rest is given back (kept()). What each window learnt adds up, and
+    // it grows: 130 MB one morning, 174 by noon, and up to 384 MB as the
+    // limits above allow; never given back, that was Win顺's memory at rest
+    // (GitHub #459).
+    static constexpr std::size_t kKeptBytes = std::size_t {64} << 20;
+
+    // What stays while the memory is given back: these windows' pages
+    // together, and of more than kKeptBytes the scattered ones, which cost a
+    // fault each; the long runs go, and are read back in a few large reads
+    // when a window is asked for (pages(), PageSet::prefetch). Any thread.
+    // `most`: another limit, for a probe that times openings with less kept.
+    static PageSet kept(std::initializer_list<const HotPages*> windows, std::size_t most = kKeptBytes);
 
     // `used`: in the working set as the window was seen, the first time
     // since the memory was given back, and not among those kept. Any thread.

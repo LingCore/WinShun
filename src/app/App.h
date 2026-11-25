@@ -931,6 +931,9 @@ private:
     // GitHub #265, memory short: the pages an opening needs are read back ahead.
     std::shared_ptr<HotPages> m_launcherPages;
     std::shared_ptr<HotPages> m_clipPages;
+    // How much of them stays when the memory is given back (HotPages::kept);
+    // another amount only for a probe (--idle-open-kept). Any thread.
+    std::atomic<std::size_t> m_keptMost {HotPages::kKeptBytes};
     std::shared_ptr<HotPages> m_recordPages; // of the opening under way, told what it used once it is seen
     std::array<qint64, 2> m_openingSeenMs {}; // by TriggerWindow, when each was last seen; ms since 1970, as IdleTrim::LastTrim
     std::array<std::uint64_t, 2> m_lastActivityMs {}; // by TriggerWindow, GetTickCount64() when last shown or hidden

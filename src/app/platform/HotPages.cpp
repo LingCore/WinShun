@@ -207,6 +207,16 @@ std::size_t PageSet::prefetch() const
     return live.bytes();
 }
 
+PageSet HotPages::kept(std::initializer_list<const HotPages*> windows, std::size_t most)
+{
+    PageSet all;
+    for (const HotPages* window : windows) {
+        if (window)
+            all = all.united(window->pages());
+    }
+    return all.smallest(most);
+}
+
 void HotPages::learn(const PageSet& used)
 {
     const std::lock_guard lock(m_mutex);

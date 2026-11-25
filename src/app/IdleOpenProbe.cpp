@@ -31,6 +31,7 @@ namespace ws::preview {
 //     [--idle-open-index <folder;folder>] [--idle-open-query <text>]
 //     [--idle-open-start-list opened|modified] [--idle-open-cycles 8]
 //     [--idle-open-after-use 3000] [--idle-open-rest 0] [--idle-open-pressure <folder>]
+//     [--idle-open-kept <MB>]
 // The production App beside the Win顺 that runs, its windows opened the way a
 // hotkey opens them (beginTrigger, then the toggle), each opening timed from
 // that call until the window is there to be seen (uncloaked after its first
@@ -52,6 +53,8 @@ namespace ws::preview {
 //   warm     opened again a moment after that one closed
 // and at the end, three times each:
 //   windows  after Windows emptied the working set (EmptyWorkingSet, untold)
+// --idle-open-kept: at most so much stays when the memory is given back,
+// instead of HotPages::kKeptBytes: what an opening costs with less kept.
 // `cpu` is how busy the whole machine was from a second before the opening
 // until it was seen, 0 to 1: other work under way spoils a time.
 // Into idle-open.json. Nothing is typed and no input is sent; each opening
@@ -205,6 +208,8 @@ struct IdleOpenProbe {
             return false;
         const qint64 loadedMs = loading.elapsed();
         app.m_idleTrim->setAfterUse(afterUse);
+        if (const int kept = number(u"--idle-open-kept", -1); kept >= 0)
+            app.m_keptMost = static_cast<std::size_t>(std::min(kept, 1024)) << 20;
         std::vector<bool> windows {false};
         if (app.m_settings.clipboard)
             windows.push_back(true);
@@ -273,6 +278,7 @@ struct IdleOpenProbe {
             {u"index_ready_ms"_s, loadedMs},
             {u"idle_private_mb"_s, megabytes(idle.PrivateWorkingSetSize)},
             {u"idle_working_mb"_s, megabytes(idle.WorkingSetSize)},
+            {u"kept_most_mb"_s, megabytes(app.m_keptMost.load())},
             {u"openings"_s, rows},
         };
         QFile file(output.filePath(u"idle-open.json"_s));

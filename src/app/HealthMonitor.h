@@ -39,6 +39,9 @@ public:
         // heap, under its lock; false: not now (a writer has it).
         std::function<bool(Blocks& blocks, std::uint64_t& tableBytes)> fileIndex;
         std::function<std::uint64_t()> cachedPictures; // thumbnails kept, bytes; any thread
+        // The pages that stay when the memory is given back (HotPages::kept),
+        // as blocks: addresses only, never read. Asked on the GUI thread.
+        std::function<Blocks()> kept;
         std::function<QVariantList()> tasks; // BackgroundStatus::toVariant
         std::function<std::pair<qint64, qint64>()> lastTrim; // ms since 1970 (0: none), MB
     };
@@ -50,9 +53,10 @@ public:
     // The page's breakdown read once, for the diagnostics package (MB, one
     // decimal; program names, nothing else): each process of Win顺's, the
     // main one told apart as on the page and by kind of page. `fileIndex`:
-    // its blocks, taken under its lock; `fileIndexTables`, `pictures`: bytes.
+    // its blocks, taken under its lock; `fileIndexTables`, `pictures`: bytes;
+    // `kept`: Sources::kept's blocks.
     // Any thread, ~40 ms (memory::look and memory::map).
-    static QJsonObject snapshot(Blocks fileIndex, std::uint64_t fileIndexTables, std::uint64_t pictures);
+    static QJsonObject snapshot(Blocks fileIndex, std::uint64_t fileIndexTables, std::uint64_t pictures, const Blocks& kept = {});
 
     bool watching() const noexcept { return m_watching; }
     void setWatching(bool on);
@@ -91,6 +95,7 @@ private:
         memory::Map map;
         std::uint64_t fileIndexTables = 0;
         std::uint64_t pictures = 0;
+        std::uint64_t kept = 0; // of Sources::kept, what is in memory now
     };
 
     void take(); // a reading off the GUI thread, then apply()

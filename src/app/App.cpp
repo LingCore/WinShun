@@ -415,6 +415,20 @@ void styleWindow(QWindow* window, bool backdrop = false)
 
 App* g_launcherApp = nullptr; // for foregroundChanged, a hook's callback
 
+// The pages that stay when the memory is given back (IdleTrim's `keep`), as
+// blocks for the 运行状况 page and the diagnostics package: addresses to ask
+// Windows about, never read. Any thread.
+HealthMonitor::Blocks keptBlocks(const std::shared_ptr<HotPages>& launcher, const std::shared_ptr<HotPages>& clipboard,
+    std::size_t most)
+{
+    const PageSet kept = HotPages::kept({launcher.get(), clipboard.get()}, most);
+    HealthMonitor::Blocks blocks;
+    blocks.reserve(kept.ranges().size());
+    for (const PageSet::Range& r : kept.ranges())
+        blocks.emplace_back(reinterpret_cast<const void*>(r.start), r.bytes);
+    return blocks;
+}
+
 } // namespace
 
 App::App()
@@ -803,8 +817,9 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
         return (m_clipWindow && m_clipWindow->isVisible() && !m_clipPrewarming.load())
             || (m_launcher && m_launcher->pinned() && launcherShown()) || (m_dialogBar && m_dialogBar->isShown());
     }, [this] {
-        // What the launcher and the clipboard need to come up stays (HotPages).
-        return m_launcherPages->pages().united(m_clipPages->pages());
+        // What the launcher and the clipboard need to come up stays (HotPages),
+        // up to HotPages::kKeptBytes.
+        return HotPages::kept({m_launcherPages.get(), m_clipPages.get()}, m_keptMost.load());
     });
     // Stuck, with nothing to say where (GitHub #111): from now on the journal has it.
     if (diagnostics::enabled()) {
@@ -1112,6 +1127,9 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     };
     sources.cachedPictures = [] {
         return static_cast<std::uint64_t>(ThumbnailProvider::cachedBytes() + ClipThumbnailProvider::cachedBytes());
+    };
+    sources.kept = [this, launcher = m_launcherPages, clipboard = m_clipPages] {
+        return keptBlocks(launcher, clipboard, m_keptMost.load()); // asked on the GUI thread, by the App's own monitor
     };
     sources.tasks = [this] { return m_background->toVariant(); };
     sources.lastTrim = [this] {
@@ -4427,7 +4445,8 @@ void App::showSettingsNow(const std::function<void(QQuickWindow*)>& at)
             const QString serviceFolder = QDir(QString::fromStdWString(win32::expandEnvironment(L"%ProgramData%")))
                                               .filePath(u"WinShun"_s);
             m_diagnosticsExporting = true;
-            m_diagnosticsExport = std::jthread([this, log, context = std::move(context), index, dataFolder, serviceFolder]() mutable {
+            m_diagnosticsExport = std::jthread([this, log, context = std::move(context), index, dataFolder, serviceFolder,
+                                                   launcherPages = m_launcherPages, clipPages = m_clipPages]() mutable {
                 context[u"file_index_ready"_s] = index->state() == IndexService::State::Ready;
                 context[u"file_index_entries"_s] = static_cast<qint64>(index->itemCount());
                 HealthMonitor::Blocks indexBlocks; // addresses only: compared with, never read
@@ -4448,7 +4467,8 @@ void App::showSettingsNow(const std::function<void(QQuickWindow*)>& at)
                 // The 运行状况 page's breakdown as of now (the settings window is
                 // up for this export, so its own share is in "windows").
                 context[u"memory"_s] = HealthMonitor::snapshot(std::move(indexBlocks), indexTables,
-                    static_cast<std::uint64_t>(ThumbnailProvider::cachedBytes() + ClipThumbnailProvider::cachedBytes()));
+                    static_cast<std::uint64_t>(ThumbnailProvider::cachedBytes() + ClipThumbnailProvider::cachedBytes()),
+                    keptBlocks(launcherPages, clipPages, m_keptMost.load()));
                 context[u"file_index_refreshing"_s] = index->isRefreshing();
                 context[u"content"_s] = index->contentIndexer()->diagnosticStatus();
                 QJsonArray disks;

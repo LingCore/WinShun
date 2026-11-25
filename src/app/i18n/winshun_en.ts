@@ -13630,6 +13630,14 @@ Content index: %5</translation>
         <translation>the search box, settings, clipboard history and the like, in use</translation>
     </message>
     <message>
+        <source>快速打开预留</source>
+        <translation>Kept for a quick opening</translation>
+    </message>
+    <message>
+        <source>搜索框和剪贴板下次打开要用的，归还时留着</source>
+        <translation>what the search box and the clipboard need to open next time; stays when memory is given back</translation>
+    </message>
+    <message>
         <source>缩略图</source>
         <translation>Thumbnails</translation>
     </message>
