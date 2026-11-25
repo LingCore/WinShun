@@ -47,11 +47,17 @@
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQmlExpression>
+#include <QAbstractTextDocumentLayout>
 #include <QQuickItem>
+#include <QQuickTextDocument>
 #include <QQuickWindow>
+#include <QSet>
 #include <QSettings>
 #include <QScopeGuard>
 #include <QTemporaryDir>
+#include <QTextBlock>
+#include <QTextDocument>
+#include <QWheelEvent>
 
 #include <algorithm>
 #include <cmath>
@@ -2637,6 +2643,7 @@ bool checkSearchExperienceSettings(QQuickWindow* window, SettingsEditor* editor,
     check(scroll->property("contentHeight").toReal() > scroll->height(), u"long documentation is scrollable"_s);
     check(window->grabWindow().save(output.filePath(u"plugin-readme.png"_s)), u"capture themed documentation reader"_s);
     key(text, Qt::Key_PageDown);
+    settle(window); // it glides there, as the wheel does
     check(scroll->property("contentY").toReal() > 0, u"PageDown scrolls the document"_s);
     key(text, Qt::Key_Q);
     check(!dialog->isVisible() && window->isVisible(), u"Q closes the reader and keeps settings open"_s);
@@ -2653,6 +2660,298 @@ bool checkSearchExperienceSettings(QQuickWindow* window, SettingsEditor* editor,
     QFile report(output.filePath(u"search-experience-settings.json"_s));
     if (!report.open(QIODevice::WriteOnly)) return false;
     report.write(QJsonDocument(QJsonObject {{u"passed"_s, check.passed}, {u"checks"_s, check.rows}}).toJson());
+    return check.passed;
+}
+
+namespace {
+// A README with every kind of block a plugin's has, long enough that its HTML
+// is past the 10 000 characters where Qt's TextEdit drew only what was in view.
+QByteArray sampleReadme()
+{
+    QByteArray text = R"md(# 截图与录屏 / Screenshot and recording
+
+Win顺 的官方可选插件，需要 Win顺 0.18.0 或更新版本。新装的 Win顺 安装包里已带着这个插件，也可以在 设置 → 插件 → 插件库 里安装，确认权限后启用。输入 `cap` 能找到截图的各个命令，托盘菜单的“截图”里也都有。
+
+## 能做什么
+
+- **截图**：拖选一块，或单击窗口、按钮、输入框；框选前按 `Tab` 只框整个窗口。滚轮扩大到整个窗口、整块屏幕。
+- **标注**：矩形、椭圆、箭头、直线、画笔、荧光笔、文字、序号、马赛克。
+  - 粗细、字号、马赛克格子用滚轮或 `[` `]` 细调。
+  - 聚光灯 `G` 可以框几块，其余压暗。
+- **贴图**：贴在屏幕上，滚轮缩放、`Ctrl`+滚轮调透明度；点一下贴图再按 `E` 就地编辑。
+
+### 三步截一张图
+
+1. 按 `F1` 开始截图。
+2. 拖选一块区域，松开鼠标。
+3. 按 `Ctrl+S` 保存，或按 `Esc` 取消。
+
+> 截图和点住贴图时，左下角列出能按的键，`?` 或 `F1` 显示 / 隐藏；设置里可以关。
+
+### 常用按键
+
+| 按键 | 作用 |
+| --- | --- |
+| `F1` | 截图 |
+| `Ctrl+Shift+D` | 延时截图（3、5、10 秒） |
+| `F3` | 贴图 |
+
+在搜索框里输入下面的命令：
+
+```
+cap 白板
+cap 录屏
+```
+
+问题和建议请到 [项目主页](https://github.com/LingCore/WinShun) 反馈。
+
+## 最近的版本
+
+)md";
+    for (int i = 40; i > 0; --i)
+        text += "- **1.1." + QByteArray::number(i) + "**：贴图上直接选字复制；编辑时 `Esc` 先放下工具、取消选择；文字框编辑时也能拖，长截图后屏幕上不再留下一个空框。\n";
+    text += R"md(
+## 权限
+
+- `ui`：显示截图、编辑、贴图和录屏窗口，注册快捷键。
+- `clipboard:read`、`clipboard:write`：读要贴的图片，复制截图和识别的文字。
+
+---
+
+## What it does
+
+- **Screenshots**: drag over an area, or click a window, button or box; `Tab` before selecting outlines whole windows only. The wheel widens the selection to the window and the monitor.
+- **Pins**: wheel to zoom, `Ctrl`+wheel for opacity. Click a pin, then `E` edits it in place.
+)md";
+    return text;
+}
+
+// The share of the device pixels in `area` that differ from `ground`: the ink of words.
+double inkShare(const QImage& image, const QRect& area, QRgb ground, int threshold = 60)
+{
+    const QRect inside = area.intersected(image.rect());
+    if (inside.isEmpty())
+        return 0;
+    qint64 ink = 0;
+    for (int y = inside.top(); y <= inside.bottom(); ++y)
+        for (int x = inside.left(); x <= inside.right(); ++x) {
+            const QRgb p = image.pixel(x, y);
+            if (std::max({std::abs(qRed(p) - qRed(ground)), std::abs(qGreen(p) - qGreen(ground)), std::abs(qBlue(p) - qBlue(ground))}) > threshold)
+                ++ink;
+        }
+    return double(ink) / (qint64(inside.width()) * inside.height());
+}
+} // namespace
+
+bool checkPluginReadmeReading(QQuickWindow* window, SettingsEditor* editor, const QDir& output, const QString& readmePath)
+{
+    Checks check;
+    QTemporaryDir plugin;
+    const QString pluginDir = plugin.filePath(u"plugins/example.reading"_s);
+    QDir().mkpath(pluginDir);
+    QFile manifest(QDir(pluginDir).filePath(u"plugin.json"_s));
+    if (!manifest.open(QIODevice::WriteOnly)) return false;
+    manifest.write(R"({"manifest":1,"id":"example.reading","name":"截图与录屏","version":"1.1.35","commands":[{"id":"go","keyword":"reading","run":{"folder":"C:\\"}}]})");
+    manifest.close();
+    QByteArray readme = sampleReadme();
+    if (!readmePath.isEmpty()) {
+        QFile given(readmePath);
+        check(given.open(QIODevice::ReadOnly), u"read "_s + readmePath);
+        readme = given.readAll();
+    }
+    QFile file(QDir(pluginDir).filePath(u"README.md"_s));
+    if (!file.open(QIODevice::WriteOnly) || file.write(readme) != readme.size()) return false;
+    file.close();
+    plugin::Host host({.userPluginDir = plugin.filePath(u"plugins"_s), .dataRoot = plugin.filePath(u"data"_s),
+        .elevatedHost = false, .elevationRoot = plugin.filePath(u"elevated"_s), .elevationProtected = false});
+    host.catalog().scan();
+    editor->plugins()->setHost(&host);
+    const auto detach = qScopeGuard([&] { editor->plugins()->setHost(nullptr); });
+    editor->plugins()->openReadme(u"example.reading"_s);
+    settle(window);
+
+    auto* dialog = item(window->contentItem(), u"pluginReadmeDialog"_s);
+    auto* text = item(window->contentItem(), u"pluginReadmeText"_s);
+    auto* scroll = item(window->contentItem(), u"pluginReadmeScroll"_s);
+    auto* bar = item(window->contentItem(), u"pluginReadmeScrollBar"_s);
+    auto* thumb = bar ? item(bar, u"scrollBarThumb"_s) : nullptr;
+    auto* title = item(window->contentItem(), u"pluginReadmeTitle"_s);
+    check(dialog && text && scroll && bar && thumb && title && dialog->isVisible(), u"the 使用说明 opens"_s);
+    if (!dialog || !text || !scroll || !bar || !thumb || !title) return false;
+    const qreal dpr = dialog->property("dpr").toReal();
+    QJsonObject report {{u"dpr"_s, dpr}, {u"html"_s, dialog->property("html").toString().size()}};
+    check(title->property("text").toString() == u"截图与录屏", u"headed with the plugin's name"_s);
+
+    // Laid out for reading (ReadingStyle), and drawn whole.
+    const int body = text->property("font").value<QFont>().pixelSize();
+    auto* quick = text->property("textDocument").value<QQuickTextDocument*>();
+    QTextDocument* document = quick ? quick->textDocument() : nullptr;
+    check(document != nullptr, u"the text's document"_s);
+    if (!document) return false;
+    int heading = 0;
+    qreal lines = 0;
+    QRectF rule; // the first ---, in the text's own coordinates
+    QTextBlock quote; // the first > (toHtml keeps its margins, not that it is one)
+    for (QTextBlock block = document->begin(); block.isValid(); block = block.next()) {
+        const QTextBlockFormat format = block.blockFormat();
+        if (!quote.isValid() && block.text().contains(u"左下角列出"))
+            quote = block;
+        if (rule.isNull() && format.hasProperty(QTextFormat::BlockTrailingHorizontalRulerWidth)) {
+            rule = document->documentLayout()->blockBoundingRect(block);
+            report.insert(u"rule"_s, QJsonObject {{u"y"_s, rule.y()}, {u"height"_s, rule.height()},
+                {u"colour"_s, format.background().color().name(QColor::HexArgb)},
+                {u"width"_s, format.lengthProperty(QTextFormat::BlockTrailingHorizontalRulerWidth).rawValue()}});
+        }
+        if (heading == 0 && format.headingLevel() == 1)
+            heading = block.begin().fragment().charFormat().intProperty(QTextFormat::FontPixelSize);
+        if (lines == 0 && format.headingLevel() == 0 && !block.textList() && block.length() > 40
+            && format.lineHeightType() == QTextBlockFormat::ProportionalHeight)
+            lines = format.lineHeight();
+    }
+    report.insert(u"body"_s, body);
+    report.insert(u"heading"_s, heading);
+    report.insert(u"lineHeight"_s, lines);
+    check(heading == qRound(body * 1.43), u"the title a step over the body (%1 px over %2)"_s.arg(heading).arg(body));
+    check(lines >= 100, u"paragraph lines spaced for reading (%1 %)"_s.arg(lines));
+    if (readmePath.isEmpty()) { // the sample has one
+        const QColor quiet = quote.isValid() ? quote.begin().fragment().charFormat().foreground().color() : QColor();
+        const QTextBlockFormat quoted = quote.blockFormat();
+        report.insert(u"quote"_s, QJsonObject {{u"level"_s, quoted.intProperty(QTextFormat::BlockQuoteLevel)},
+            {u"left"_s, quoted.leftMargin()}, {u"right"_s, quoted.rightMargin()}, {u"colour"_s, quiet.name(QColor::HexArgb)}});
+        check(quote.isValid() && quoted.intProperty(QTextFormat::BlockQuoteLevel) == 1 && quoted.rightMargin() == 0
+                  && quiet.isValid() && quiet != text->property("color").value<QColor>(),
+              u"the > quote set as one: quieter, to the right edge (left %1, right %2)"_s
+                  .arg(quoted.leftMargin()).arg(quoted.rightMargin()));
+    }
+    check(dialog->property("html").toString().size() > 10000, u"its HTML is past the 10 000 characters where Qt drew in part"_s);
+    check(!(text->flags() & QQuickItem::ItemObservesViewport), u"all of it drawn, not only the part in view"_s);
+
+    const QRectF area = scroll->mapRectToScene(QRectF(0, 0, scroll->width(), scroll->height()));
+    const QRect textArea(QPoint(qCeil(area.left() * dpr), qCeil(area.top() * dpr)),
+                         QPoint(qFloor(area.right() * dpr) - 1, qFloor(area.bottom() * dpr) - 1));
+    const auto inked = [&](const QString& name) {
+        const QImage image = window->grabWindow();
+        image.save(output.filePath(name));
+        const QPointF margin = scroll->mapToScene(QPointF(-10, scroll->height() / 2)); // the card's own colour
+        return inkShare(image, textArea, image.pixel(qRound(margin.x() * dpr), qRound(margin.y() * dpr)));
+    };
+    const double top = inked(u"readme-top.png"_s);
+    check(top > 0.01, u"words at the top (%1 of the pixels)"_s.arg(top, 0, 'f', 3));
+
+    // Down the scroll bar in big jumps, each one drawn, as a mouse drags it;
+    // then part of the way back (it showed an empty page there).
+    const QPointF grip = thumb->mapToScene(QPointF(thumb->width() / 2, thumb->height() / 2));
+    const qreal travel = bar->height() - 8 - thumb->height();
+    const auto mouse = [&](QEvent::Type type, const QPointF& at) {
+        QMouseEvent event(type, at, window->mapToGlobal(at), type == QEvent::MouseMove ? Qt::NoButton : Qt::LeftButton,
+                          type == QEvent::MouseButtonRelease ? Qt::NoButton : Qt::LeftButton, {});
+        QCoreApplication::sendEvent(window, &event);
+        window->grabWindow();
+    };
+    mouse(QEvent::MouseButtonPress, grip);
+    for (int i = 1; i <= 6; ++i)
+        mouse(QEvent::MouseMove, grip + QPointF(0, travel * 0.8 * i / 6));
+    const qreal maxY = scroll->property("contentHeight").toReal() + scroll->property("bottomMargin").toReal() - scroll->height();
+    const qreal down = scroll->property("contentY").toReal();
+    const double dragged = inked(u"readme-dragged-down.png"_s);
+    check(down > maxY * 0.6, u"the scroll bar's drag scrolls it (%1 of %2)"_s.arg(down).arg(maxY));
+    check(dragged > 0.01, u"words where the drag took it (%1 of the pixels)"_s.arg(dragged, 0, 'f', 3));
+    for (int i = 1; i <= 4; ++i)
+        mouse(QEvent::MouseMove, grip + QPointF(0, travel * (0.8 - 0.55 * i / 4)));
+    const double back = inked(u"readme-dragged-back.png"_s);
+    check(back > 0.01, u"words where it came back to (%1 of the pixels)"_s.arg(back, 0, 'f', 3));
+    mouse(QEvent::MouseButtonRelease, grip + QPointF(0, travel * 0.25));
+
+    // A wheel turned on, three notches: every frame of the glide has the text
+    // on the same device-pixel phase (whole pixels, a fiftieth lower).
+    key(text, Qt::Key_Home);
+    settle(window);
+    const QPointF middle = scroll->mapToScene(QPointF(scroll->width() / 2, scroll->height() / 2));
+    QJsonArray frames;
+    QSet<qint64> positions;
+    double worst = 0;
+    for (int notch = 0; notch < 3; ++notch) {
+        QWheelEvent wheel(middle, window->mapToGlobal(middle), QPoint(), QPoint(0, -120), Qt::NoButton, Qt::NoModifier,
+                          Qt::NoScrollPhase, false);
+        QCoreApplication::sendEvent(window, &wheel);
+        QElapsedTimer timer;
+        timer.start();
+        // No grab in between: one takes longer than the glide. Where the
+        // text is drawn follows each step of it at once (bindings).
+        while (timer.elapsed() < (notch == 2 ? 400 : 70)) {
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 2);
+            const qreal y = text->mapToScene(QPointF()).y() * dpr;
+            const qreal contentY = scroll->property("contentY").toReal();
+            worst = std::max(worst, std::abs(y - std::floor(y) - 0.02));
+            if (!positions.contains(qRound64(contentY * 1000))) {
+                positions.insert(qRound64(contentY * 1000));
+                frames.append(QJsonObject {{u"contentY"_s, contentY}, {u"deviceY"_s, y}});
+            }
+        }
+    }
+    report.insert(u"frames"_s, frames);
+    check(positions.size() >= 6, u"the wheel glides (%1 positions)"_s.arg(positions.size()));
+    check(worst < 0.005, u"the text on the same device-pixel phase in every frame (off by %1 at worst)"_s.arg(worst, 0, 'f', 4));
+    const qreal rest = scroll->property("contentY").toReal() * dpr;
+    check(std::abs(rest - std::round(rest)) < 0.01, u"the glide stops on a whole device pixel"_s);
+    inked(u"readme-wheel.png"_s);
+
+    key(text, Qt::Key_End);
+    settle(window);
+    check(std::abs(scroll->property("contentY").toReal() - maxY) < 1, u"End goes to the end"_s);
+    inked(u"readme-end.png"_s);
+    if (!readmePath.isEmpty() && rule.isNull()) {
+        // no --- in the README given
+    } else {
+        // The ---, brought into view (a jump there): a line across the column, in the rule's colour.
+        const qreal there = std::clamp(rule.center().y() - scroll->height() / 2, 0.0, maxY);
+        scroll->setProperty("contentY", std::round(there * dpr) / dpr);
+        settle(window);
+        const QImage image = window->grabWindow();
+        image.save(output.filePath(u"readme-rule.png"_s));
+        const QPointF centre = text->mapToScene(QPointF(text->width() / 2, rule.center().y()));
+        const QPointF margin = scroll->mapToScene(QPointF(-10, scroll->height() / 2));
+        const QRgb ground = image.pixel(qRound(margin.x() * dpr), qRound(margin.y() * dpr));
+        const double drawn = inkShare(image, QRect(qRound(area.left() * dpr), qRound(centre.y() * dpr) - 2,
+                                                   qRound(area.width() * dpr), 5), ground, 6);
+        report.insert(u"ruleRowInk"_s, drawn);
+        check(!rule.isNull() && drawn > 0.15, u"the --- drawn as a line (%1 of its rows)"_s.arg(drawn, 0, 'f', 3));
+    }
+    const QString html = dialog->property("html").toString();
+    key(text, Qt::Key_Escape);
+    check(!dialog->isVisible(), u"Esc closes it"_s);
+
+    // 更新内容 (PluginNotesDialog), set the same way: the same long text, a jump
+    // to its middle, words there.
+    emit editor->plugins()->notesRequested(QVariantMap {{u"name"_s, u"截图与录屏"_s}, {u"version"_s, u"1.1.35"_s}}, html);
+    settle(window);
+    auto* notes = item(window->contentItem(), u"pluginNotesDialog"_s);
+    auto* notesText = item(window->contentItem(), u"pluginNotesText"_s);
+    auto* notesScroll = item(window->contentItem(), u"pluginNotesScroll"_s);
+    check(notes && notes->isVisible() && notesText && notesScroll, u"the 更新内容 opens with the same text"_s);
+    if (notes && notesText && notesScroll) {
+        check(!(notesText->flags() & QQuickItem::ItemObservesViewport), u"the 更新内容 drawn whole too"_s);
+        const qreal notesMax = notesScroll->property("contentHeight").toReal() - notesScroll->height();
+        notesScroll->setProperty("contentY", std::round(notesMax / 2 * dpr) / dpr);
+        settle(window);
+        const QImage image = window->grabWindow();
+        image.save(output.filePath(u"notes-middle.png"_s));
+        const QRectF shown = notesScroll->mapRectToScene(QRectF(0, 0, notesScroll->width(), notesScroll->height()));
+        const QRect shownArea = QRect(qCeil(shown.left() * dpr), qCeil(shown.top() * dpr),
+                                      qFloor(shown.width() * dpr) - 1, qFloor(shown.height() * dpr) - 1);
+        const QPointF plate = notesScroll->mapToScene(QPointF(-6, notesScroll->height() / 2));
+        const double ink = inkShare(image, shownArea, image.pixel(qRound(plate.x() * dpr), qRound(plate.y() * dpr)));
+        report.insert(u"notesInk"_s, ink);
+        check(ink > 0.01, u"words in the middle of the 更新内容 (%1 of the pixels)"_s.arg(ink, 0, 'f', 3));
+        key(notesText, Qt::Key_Escape);
+        check(!notes->isVisible(), u"Esc closes the 更新内容"_s);
+    }
+
+    report.insert(u"passed"_s, check.passed);
+    report.insert(u"checks"_s, check.rows);
+    QFile json(output.filePath(u"plugin-readme-reading.json"_s));
+    if (json.open(QIODevice::WriteOnly))
+        json.write(QJsonDocument(report).toJson());
     return check.passed;
 }
 

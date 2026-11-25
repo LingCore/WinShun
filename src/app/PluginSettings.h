@@ -329,7 +329,8 @@ public:
     Q_INVOKABLE QString permissionsNote() const;
 
 signals:
-    void readmeRequested(const QString& title, const QString& html);
+    // A plugin's 使用说明, installed or in the library. `about`: name, icon, version.
+    void readmeRequested(const QVariantMap& about, const QString& html);
     // A library entry's 更新内容 (GitHub #337). `about`: id, name, icon,
     // version, installedVersion, stage and staged of its row, as it was.
     void notesRequested(const QVariantMap& about, const QString& html);

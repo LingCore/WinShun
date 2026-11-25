@@ -147,6 +147,10 @@ Item {
                     clip: contentHeight > height
                     boundsBehavior: Flickable.StopAtBounds
                     flickableDirection: Flickable.VerticalFlick
+                    ListWheelScroll {
+                        view: scroll
+                        animate: SystemTheme.animations
+                    }
 
                     TextEdit {
                         id: body
@@ -159,10 +163,26 @@ Item {
                         selectByMouse: true
                         persistentSelection: true
                         color: Theme.text
-                        selectionColor: Theme.accent
-                        selectedTextColor: Theme.accentText
+                        selectionColor: Theme.textSelection
+                        selectedTextColor: Theme.text
                         font.pixelSize: Theme.fontCaption
+                        // On whole device pixels wherever it has scrolled to, a
+                        // fiftieth of one lower, as the 使用说明 (PluginReadmeDialog).
+                        transform: ScrollPixelAlignment {
+                            view: scroll
+                            viewY: dialog.y + card.y + content.y + notesBox.y + scroll.y
+                            itemY: body.y
+                            pixelBias: 0.02
+                        }
                         onLinkActivated: (link) => dialog.plugins.openReadmeLink(link)
+                        ReadingStyle { // set as a page to read; all of it drawn
+                            textDocument: body.textDocument
+                            pixelSize: body.font.pixelSize
+                            linkColor: Theme.accent
+                            quietColor: Theme.subtext
+                            ruleColor: Theme.controlBorder
+                            codeColor: Theme.keycap
+                        }
                         Keys.priority: Keys.BeforeItem
                         Keys.onPressed: (event) => {
                             if (event.key === Qt.Key_Escape || (event.key === Qt.Key_Q && event.modifiers === Qt.NoModifier)) {

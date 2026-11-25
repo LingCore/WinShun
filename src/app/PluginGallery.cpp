@@ -906,24 +906,26 @@ void PluginGallery::openReadme(const QString& id)
         return;
     const std::vector<PluginGalleryModel::Row>& rows = m_list.rows();
     const auto row = std::ranges::find_if(rows, [&](const PluginGalleryModel::Row& r) { return r.id == id; });
-    const QString name = row != rows.end() ? row->name : id;
+    QVariantMap about {{u"name"_s, row != rows.end() ? row->name : id}, {u"version"_s, found->version}};
+    if (row != rows.end())
+        about.insert(u"icon"_s, row->icon);
     m_readmeId = id;
     m_problems.remove(id);
     rebuild();
     constexpr qint64 kLimit = 1024 * 1024;
-    QThreadPool::globalInstance()->start([self = QPointer(this), id, name, url = found->readme, sha = found->readmeSha256] {
+    QThreadPool::globalInstance()->start([self = QPointer(this), id, about, url = found->readme, sha = found->readmeSha256] {
         const auto fits = [&](const QByteArray& bytes) {
             return bytes.size() <= kLimit && QString::fromLatin1(QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex()) == sha;
         };
         gallery::Fetched fetched = gallery::fetch(url, kLimit + 1, webFetcher(kListTimeoutMs), {}, fits);
         const bool good = fetched.status == 200 && fits(fetched.body);
-        QMetaObject::invokeMethod(qApp, [self, id, name, good, fetched = std::move(fetched)] {
+        QMetaObject::invokeMethod(qApp, [self, id, about, good, fetched = std::move(fetched)] {
             if (!self)
                 return;
             self->m_readmeId.clear();
             const readme::Document document = good ? readme::fromMarkdown(fetched.body) : readme::Document {};
             if (good && document.error.isEmpty()) {
-                emit self->m_settings->readmeRequested(name, document.html);
+                emit self->m_settings->readmeRequested(about, document.html);
             } else if (good) {
                 self->m_problems.insert(id, document.error);
             } else if (fetched.status == 200 || fetched.status == 404) {

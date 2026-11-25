@@ -2296,6 +2296,8 @@ int runSettings(const QStringList& args)
         return finish(window, checkDoubleTapSettings(window, editor, out));
     if (args.contains(u"--search-experience-settings"_s))
         return finish(window, checkSearchExperienceSettings(window, editor, out));
+    if (args.contains(u"--plugin-readme-reading"_s)) // + --readme <a README.md>; else a sample of every kind of block
+        return finish(window, checkPluginReadmeReading(window, editor, out, valueAfter(args, u"--readme")));
     if (args.contains(u"--logo-position-settings"_s))
         return finish(window, checkLogoPositionSettings(window, editor, out));
     if (args.contains(u"--dialog-rule-settings"_s)) // + --fixture tests\fixtures\wpf-file-window.ps1

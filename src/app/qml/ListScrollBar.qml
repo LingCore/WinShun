@@ -129,6 +129,7 @@ Item {
 
     Item { // where the thumb is (drawn by the part)
         id: thumb
+        objectName: "scrollBarThumb"
         anchors.right: track.right
         width: track.width
         height: Math.max(24, track.height * bar.flickable.height / Math.max(1, bar.maxY - bar.minY + bar.flickable.height))
