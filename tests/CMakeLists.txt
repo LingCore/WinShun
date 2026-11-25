@@ -1765,6 +1765,15 @@ target_compile_definitions(tst_clipimport PRIVATE WINSHUN_TEST_DATA="${CMAKE_CUR
 add_test(NAME tst_clipimport COMMAND tst_clipimport)
 set_tests_properties(tst_clipimport PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+# Backing the clipboard history up and restoring it: a real store through a
+# zip and into another's place; what is no backup turned away.
+qt_add_executable(tst_clipbackup tst_clipbackup.cpp ${PROJECT_SOURCE_DIR}/src/app/ClipBackupFiles.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/BackupFiles.cpp)
+target_include_directories(tst_clipbackup PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_link_libraries(tst_clipbackup PRIVATE wscore miniz Qt6::Gui Qt6::Test)
+add_test(NAME tst_clipbackup COMMAND tst_clipbackup)
+set_tests_properties(tst_clipbackup PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 # A native file picker, enabled explicitly with WINSHUN_TEST_NATIVE_DIALOG=1.
 qt_add_executable(tst_filepaste tst_filepaste.cpp ${PROJECT_SOURCE_DIR}/src/app/ClipFiles.cpp
     ${file_dialog_backend})

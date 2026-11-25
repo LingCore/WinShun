@@ -947,6 +947,7 @@ private:
     std::unique_ptr<PluginUpdates> m_pluginUpdates; // after m_updater; goes before the plugin host
     std::unique_ptr<PluginCommands> m_pluginCommands; // ws plugin; goes before the updates and the host
     std::unique_ptr<Backup> m_backup; // of the settings, into a folder chosen
+    bool m_clipRestoreTold = false; // a clipboard backup put in place at start: said in the settings once
     std::unique_ptr<VolumeNotifier> m_volumeNotifier; // after m_messages, whose window it uses
     std::unique_ptr<NetworkNotifier> m_network; // after m_index, whose shares it tells
     std::unique_ptr<IdleTrim> m_idleTrim; // gives the memory back while nothing is in use

@@ -8,6 +8,7 @@
 #include "DisplayProfile.h"
 #include "DropPieHelper.h"
 #include "Backup.h"
+#include "ClipBackupFiles.h"
 #include "Migration.h"
 #include "Phosphor.h"
 #include "Preview.h"
@@ -437,6 +438,7 @@ int main(int argc, char* argv[])
     if (portable)
         ws::copyIntoPortable(); // its first start: what the usual places hold
     ws::Backup::applyRestored(); // a backup chosen to restore, before the settings are read
+    ws::clipbackup::applyStaged(ws::Settings::dataDir()); // and one of the clipboard history, before it is opened
     const bool wantsElevation = ws::startupaccess::needsElevation(ws::startupaccess::storedMode(ws::Settings::filePath()),
         ws::userIsAdministrator(), ws::integrity::processElevated(), parser.isSet(unelevatedOnce));
     // Started by an in-app update's helper (WinShunUpdate.exe, each version's

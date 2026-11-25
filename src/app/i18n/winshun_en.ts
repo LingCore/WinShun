@@ -5790,6 +5790,38 @@ Double-click grip: expand/collapse search panel</translation>
 <context>
     <name>SettingsWindow</name>
     <message>
+        <source>备份与还原</source>
+        <translation>Back up and restore</translation>
+    </message>
+    <message>
+        <source>备份;还原;恢复;导出;迁移;换电脑;重装;ZIP;backup;restore;export</source>
+        <translation>backup;restore;export;import;migrate;new PC;reinstall;ZIP;transfer</translation>
+    </message>
+    <message>
+        <source>把全部历史、分组、备注和图片存成一个 ZIP 文件；换电脑或重装系统后从它还原</source>
+        <translation>Saves the whole history, with its groups, notes and pictures, as one ZIP file; restore from it on a new PC or after reinstalling Windows</translation>
+    </message>
+    <message>
+        <source>备份…</source>
+        <translation>Back up…</translation>
+    </message>
+    <message>
+        <source>还原…</source>
+        <translation>Restore…</translation>
+    </message>
+    <message>
+        <source>用这份备份替换现在的剪贴板历史？</source>
+        <translation>Replace the clipboard history with this backup?</translation>
+    </message>
+    <message>
+        <source>%1。现在的历史和分组会被它替换，Win顺 会重启一次</source>
+        <translation>%1. It replaces the history and groups there are now, and WinShun restarts once</translation>
+    </message>
+    <message>
+        <source>还原并重启</source>
+        <translation>Restore and restart</translation>
+    </message>
+    <message>
         <source>复制命令</source>
         <translation>Copy commands</translation>
     </message>
@@ -9588,8 +9620,8 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Capacity and automatic cleanup</translation>
     </message>
     <message>
-        <source>数据导入与清空</source>
-        <translation>Data import and clearing</translation>
+        <source>数据导入、备份与清空</source>
+        <translation>Import, backup and clearing</translation>
     </message>
     <message>
         <source>运行状况</source>
@@ -10914,6 +10946,29 @@ Double-click grip: expand/collapse search panel</translation>
 </context>
 <context>
     <name>ws::App</name>
+    <message>
+        <source>写不进 %1</source>
+        <translation>Cannot write to %1</translation>
+    </message>
+    <message numerus="yes">
+        <source>已备份 %n 条：%1</source>
+        <translation>
+            <numerusform>Backed up %n entry: %1</numerusform>
+            <numerusform>Backed up %n entries: %1</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>没有备份成功：%1</source>
+        <translation>Backup failed: %1</translation>
+    </message>
+    <message>
+        <source>没有还原：%1</source>
+        <translation>Not restored: %1</translation>
+    </message>
+    <message>
+        <source>剪贴板历史已还原</source>
+        <translation>Clipboard history restored</translation>
+    </message>
     <message>
         <source>打不开 Win顺 的设置窗口</source>
         <translation>WinShun&apos;s settings window could not be opened</translation>
@@ -16441,6 +16496,26 @@ Content index: %5</translation>
 <context>
     <name>ws::SettingsEditor</name>
     <message>
+        <source>备份剪贴板历史</source>
+        <translation>Back up clipboard history</translation>
+    </message>
+    <message>
+        <source>Win顺 剪贴板备份</source>
+        <translation>WinShun clipboard backup</translation>
+    </message>
+    <message>
+        <source>正在备份…</source>
+        <translation>Backing up…</translation>
+    </message>
+    <message>
+        <source>选择要还原的剪贴板备份</source>
+        <translation>Choose the clipboard backup to restore</translation>
+    </message>
+    <message>
+        <source>正在检查备份…</source>
+        <translation>Checking the backup…</translation>
+    </message>
+    <message>
         <source>无法安装索引服务：%1 的所有者是“%2”，不是管理员，普通程序也能改动它，服务放进去不安全。把所有者改回管理员组就能装：复制下面的命令，在“命令提示符（管理员）”里运行，再点一次安装。</source>
         <translation>Cannot install the index service: %1 is owned by “%2”, not by an administrator, so ordinary programs can change it and the service would not be safe there. Give it back to the Administrators group: copy the command below, run it in Command Prompt (Admin), then choose Install again.</translation>
     </message>
@@ -17720,6 +17795,10 @@ Content index: %5</translation>
 <context>
     <name>ws::backupfiles</name>
     <message>
+        <source>这是剪贴板历史的备份，不是设置的；请到 设置 › 剪贴板 里还原</source>
+        <translation>This is a backup of the clipboard history, not of the settings; restore it in Settings › Clipboard</translation>
+    </message>
+    <message>
         <source>不支持这个备份格式，请更新 Win顺 后再试</source>
         <translation>Unsupported backup format. Update WinShun and try again.</translation>
     </message>
@@ -17754,6 +17833,49 @@ Content index: %5</translation>
     <message>
         <source>备份文件已损坏</source>
         <translation>The backup file is damaged</translation>
+    </message>
+</context>
+<context>
+    <name>ws::clipbackup</name>
+    <message>
+        <source>写不进 %1</source>
+        <translation>Cannot write to %1</translation>
+    </message>
+    <message>
+        <source>还没有剪贴板历史</source>
+        <translation>There is no clipboard history yet</translation>
+    </message>
+    <message>
+        <source>读不出剪贴板历史</source>
+        <translation>Cannot read the clipboard history</translation>
+    </message>
+    <message>
+        <source>打不开 %1</source>
+        <translation>Cannot open %1</translation>
+    </message>
+    <message>
+        <source>这不是 Win顺 的剪贴板备份</source>
+        <translation>This is not a WinShun clipboard backup</translation>
+    </message>
+    <message>
+        <source>这是设置的备份，不是剪贴板历史的；请到 设置 › 常规 里恢复</source>
+        <translation>This is a backup of the settings, not of the clipboard history; restore it in Settings › General</translation>
+    </message>
+    <message>
+        <source>不支持这个备份格式，请更新 Win顺 后再试</source>
+        <translation>Unsupported backup format. Update WinShun and try again.</translation>
+    </message>
+    <message>
+        <source>备份文件已损坏</source>
+        <translation>The backup file is damaged</translation>
+    </message>
+    <message>
+        <source>磁盘空间不够，还原需要 %1 MB</source>
+        <translation>Not enough disk space: restoring needs %1 MB</translation>
+    </message>
+    <message>
+        <source>剪贴板历史正被别的程序占用，没有还原；重启 Win顺 会再试一次</source>
+        <translation>The clipboard history is in use by another program and was not restored; restarting WinShun tries again</translation>
     </message>
 </context>
 <context>

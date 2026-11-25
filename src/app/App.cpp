@@ -14,6 +14,7 @@
 #include "Backup.h"
 #include "Grabber.h" // take_screenshot (MCP)
 #include "CliSetup.h"
+#include "ClipBackupFiles.h"
 #include "ScoopInstall.h"
 #include "ServiceLocation.h"
 #include "ServiceUpdate.h"
@@ -4579,6 +4580,57 @@ void App::showSettingsNow(const std::function<void(QQuickWindow*)>& at)
             });
             job->start(path, split == 0 ? clipimport::Split::Lines : split == 2 ? clipimport::Split::Whole : clipimport::Split::Paragraphs);
         });
+        // The clipboard history into a zip, and back from one (ClipBackupFiles.h):
+        // off the GUI thread, the store's queued writes on disk first.
+        connect(editor, &SettingsEditor::clipboardBackupRequested, this, [this, editor](const QString& path) {
+            if (m_clipStore && m_clipStore->isOpen())
+                m_clipStore->flush();
+            QThreadPool::globalInstance()->start([guard = QPointer<SettingsEditor>(editor), path,
+                                                     folder = clipbackup::historyFolder(Settings::dataDir()),
+                                                     version = QCoreApplication::applicationVersion()] {
+                const clipbackup::Summary done = clipbackup::pack(folder, path, version, QDateTime::currentDateTime());
+                diagnostics::record(u"clipboard-backup"_s,
+                    {{u"ok"_s, done.problem.isEmpty()}, {u"entries"_s, done.entries}, {u"pictures"_s, done.pictures}});
+                const QString message = done.problem.isEmpty()
+                    ? tr("已备份 %n 条：%1", "", done.entries).arg(QDir::toNativeSeparators(path))
+                    : tr("没有备份成功：%1").arg(done.problem);
+                QMetaObject::invokeMethod(qApp, [guard, message] {
+                    if (guard)
+                        guard->setClipboardBackupDone(message);
+                });
+            });
+        });
+        // Checked and unpacked beside the history; the next start puts it in
+        // its place (main.cpp), so Win顺 starts again once it is ready.
+        connect(editor, &SettingsEditor::clipboardRestoreRequested, this, [this, editor](const QString& path) {
+            QThreadPool::globalInstance()->start([self = QPointer<App>(this), guard = QPointer<SettingsEditor>(editor), path,
+                                                     staged = clipbackup::stagedFolder(Settings::dataDir())] {
+                const QString part = staged + u".part"_s;
+                clipbackup::Summary done = clipbackup::unpack(path, part);
+                if (done.problem.isEmpty()
+                    && ((QFileInfo::exists(staged) && !QDir(staged).removeRecursively()) || !QDir().rename(part, staged))) {
+                    QDir(part).removeRecursively();
+                    done.problem = tr("写不进 %1").arg(QDir::toNativeSeparators(QFileInfo(staged).path()));
+                }
+                diagnostics::record(u"clipboard-restore"_s,
+                    {{u"ok"_s, done.problem.isEmpty()}, {u"entries"_s, done.entries}, {u"pictures"_s, done.pictures}});
+                QMetaObject::invokeMethod(qApp, [self, guard, problem = done.problem] {
+                    if (!problem.isEmpty()) {
+                        if (guard)
+                            guard->setClipboardBackupDone(tr("没有还原：%1").arg(problem));
+                    } else if (self) {
+                        self->restart({u"--settings"_s});
+                    }
+                });
+            });
+        });
+        // What this start did with a backup waiting: told once.
+        if (const clipbackup::Started started = clipbackup::started();
+            started.what != clipbackup::Start::Nothing && !std::exchange(m_clipRestoreTold, true))
+            editor->setClipboardBackupDone(started.what == clipbackup::Start::Restored
+                    ? tr("剪贴板历史已还原")
+                    : tr("没有还原：%1").arg(started.problem),
+                true);
         connect(editor, &SettingsEditor::restartRequested, this, [this] { restart({u"--settings"_s}); });
         connect(editor, &SettingsEditor::historyClearRequested, this, [this, editor] {
             m_launcher->clearHistory();
