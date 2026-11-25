@@ -2250,6 +2250,7 @@ void App::applySettings(bool initial)
     m_launcher->setSearchLogo(m_settings.searchLogo);
     m_launcher->setResultOptions(m_settings.foldersFirst ? KindOrder::FoldersFirst : KindOrder::FilesFirst,
         m_settings.showModified, m_settings.showFileSize, m_settings.thumbnails, m_settings.numberKeys);
+    m_launcher->setTypeCounts(m_settings.typeCounts);
     m_launcher->setDoubleClickToOpen(m_settings.doubleClickToOpen);
     m_launcher->setClickPreviews(m_settings.clickPreviews);
     m_launcher->setDefaultSystemMenu(m_settings.defaultSystemMenu);

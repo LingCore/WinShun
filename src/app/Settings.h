@@ -258,6 +258,7 @@ struct Settings {
     bool showModified = true; // each file and folder found says when it was last written
     bool showModifiedTime = false; // include the time on older dates too
     bool showFileSize = false; // compact results too; size sorting always shows it (GitHub #80)
+    bool typeCounts = true; // 文件's type chips say how many of what is typed each kind has
     QString folderKeyword = QStringLiteral("folder"); // :folder in the search box
     // A click on a result only selects it; a double click or Enter opens it
     // (GitHub #44: a stray click opened things). Off: a click opens.

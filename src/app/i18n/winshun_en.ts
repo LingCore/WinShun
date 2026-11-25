@@ -427,6 +427,10 @@
 <context>
     <name>AiSettings</name>
     <message>
+        <source>类型标签显示数量</source>
+        <translation>Counts on the type chips</translation>
+    </message>
+    <message>
         <source>模糊匹配（FZF）</source>
         <translation>Fuzzy matching (FZF)</translation>
     </message>
@@ -2954,6 +2958,18 @@
 </context>
 <context>
     <name>FileTypesSection</name>
+    <message>
+        <source>类型标签显示数量</source>
+        <translation>Counts on the type chips</translation>
+    </message>
+    <message>
+        <source>数量;个数;计数;统计;标签;角标;count;badge;number</source>
+        <translation>count;counts;badge;number;tally;how many;chip</translation>
+    </message>
+    <message>
+        <source>在“文件”里输入后，每个类型的名字右边显示它有多少个匹配；选了某个类型，其他类型的数量照样显示</source>
+        <translation>With something typed in Files, each type shows how many matches it has, after its name; the other types keep their numbers while one is chosen</translation>
+    </message>
     <message>
         <source>文件类型</source>
         <translation>File types</translation>
@@ -10572,6 +10588,10 @@ Double-click grip: expand/collapse search panel</translation>
 <context>
     <name>TypeStrip</name>
     <message>
+        <source>%1，%2 个</source>
+        <translation>%1, %2</translation>
+    </message>
+    <message>
         <source>常用</source>
         <translation>Most used</translation>
     </message>
@@ -13888,6 +13908,16 @@ Content index: %5</translation>
 </context>
 <context>
     <name>ws::Launcher</name>
+    <message>
+        <source>亿</source>
+        <comment>count unit: 10^8, or M (10^6) in English</comment>
+        <translation>M</translation>
+    </message>
+    <message>
+        <source>万</source>
+        <comment>count unit: 10^4, or k (10^3) in English</comment>
+        <translation>k</translation>
+    </message>
     <message>
         <source>确认%1</source>
         <translation>Confirm %1</translation>

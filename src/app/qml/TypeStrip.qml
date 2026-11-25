@@ -74,6 +74,15 @@ Item {
         }
         return list
     }
+    // 文件: how many of what is typed a chip would list (Launcher.fileTypeCounts:
+    // all, folders, then the kinds), -1 for no number.
+    function countOf(type): int {
+        const counts = launcher.fileTypeCounts
+        if (folders || apps || counts.length === 0 || typeof type !== "number")
+            return -1
+        const at = type === -1 ? 0 : type === -2 ? 1 : type + 2
+        return at < counts.length ? counts[at] : -1
+    }
     // 应用 (GitHub #296): which apps its grid shows, each with how many in its tooltip.
     property bool apps: false
     readonly property var appChips: {
@@ -374,16 +383,17 @@ Item {
                     }
                     height: Theme.typeChipHeight
                     Accessible.role: kindChip || (!strip.folders && !strip.apps && modelData.type >= 0) ? Accessible.CheckBox : Accessible.RadioButton
-                    Accessible.name: modelData.name
+                    Accessible.name: badge.count >= 0 ? qsTr("%1，%2 个").arg(modelData.name).arg(badge.count) : modelData.name
                     Accessible.checked: active
 
                     Item {
                         id: body
                         readonly property real lead: surface.out("leadingInset", 0) > 0 ? surface.out("leadingInset", 0) : (chip.glyph.length > 0 ? 10 : 12) // 0 (a key without a lamp) is no say; 10 with an icon: it then sits as far from the key's edge as the last word does
-                        width: strip.stepUp(Math.ceil(lead + (chip.glyph.length > 0 ? icon.width + 4 : 0) + labelSize.width) + (chip.glyph.length > 0 ? 6 : 12))
+                        width: strip.stepUp(Math.ceil(lead + (chip.glyph.length > 0 ? icon.width + 4 : 0) + labelSize.width + badge.room) + (chip.glyph.length > 0 ? 6 : 12))
                         height: parent.height
 
                         TextMetrics { id: labelSize; font: label.font; text: label.text }
+                        TextMetrics { id: countSize; font: countLabel.font; text: countLabel.text }
 
                         Hook {
                             id: surface
@@ -418,6 +428,36 @@ Item {
                                                             : chip.active || area.containsMouse ? Theme.text : Theme.subtext)
                             font.pixelSize: Theme.uiCaption
                             font.weight: surface.out("fontWeight", chip.active ? Theme.fontStrong : Font.Normal)
+                        }
+
+                        // How many of what is typed this chip lists: a small tag after its
+                        // name, in the name's own colour (each style's, on or off) over a
+                        // faint wash of it.
+                        Rectangle {
+                            id: badge
+                            objectName: "searchTypeChipCount"
+                            readonly property int count: strip.countOf(chip.modelData.type)
+                            // Its width with the gap before it; none without a number.
+                            readonly property real room: count >= 0 ? 5 + width : 0
+                            visible: count >= 0
+                            // Whole device pixels, its edges and its number's (150%: no half ones).
+                            x: strip.onPixel(label.x + Math.ceil(labelSize.width) + 5)
+                            y: strip.onPixel((body.height - height) / 2 + surface.out("contentOffsetY", 0))
+                            width: Theme.snapUp(Math.max(height, Math.ceil(countSize.width) + 8), strip.dpr)
+                            height: 16
+                            radius: Math.min(Theme.smallControlRadius, height / 2)
+                            color: Qt.alpha(label.color, count > 0 ? 0.12 : 0.06)
+
+                            Text {
+                                id: countLabel
+                                x: strip.onPixel((badge.width - width) / 2)
+                                y: strip.onPixel((badge.height - height) / 2)
+                                text: badge.count >= 0 ? strip.launcher.countLabel(badge.count) : ""
+                                textFormat: Text.PlainText
+                                color: label.color
+                                opacity: badge.count > 0 ? 1 : 0.55 // none of that kind: there, but quiet
+                                font.pixelSize: Theme.uiSmall
+                            }
                         }
 
                         MouseArea {

@@ -220,6 +220,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool showModified READ showModified WRITE setShowModified NOTIFY changed FINAL)
     Q_PROPERTY(bool showModifiedTime READ showModifiedTime WRITE setShowModifiedTime NOTIFY changed FINAL)
     Q_PROPERTY(bool showFileSize READ showFileSize WRITE setShowFileSize NOTIFY changed FINAL)
+    Q_PROPERTY(bool typeCounts READ typeCounts WRITE setTypeCounts NOTIFY changed FINAL)
     Q_PROPERTY(bool doubleClickToOpen READ doubleClickToOpen WRITE setDoubleClickToOpen NOTIFY changed FINAL)
     Q_PROPERTY(bool defaultSystemMenu READ defaultSystemMenu WRITE setDefaultSystemMenu NOTIFY changed FINAL)
     Q_PROPERTY(bool clickPreviews READ clickPreviews WRITE setClickPreviews NOTIFY changed FINAL)
@@ -896,6 +897,8 @@ public:
     void setShowModifiedTime(bool on);
     bool showFileSize() const { return m_settings.showFileSize; }
     void setShowFileSize(bool on);
+    bool typeCounts() const { return m_settings.typeCounts; }
+    void setTypeCounts(bool on);
     bool doubleClickToOpen() const { return m_settings.doubleClickToOpen; }
     void setDoubleClickToOpen(bool on);
     bool defaultSystemMenu() const { return m_settings.defaultSystemMenu; }

@@ -98,6 +98,17 @@ struct NameLeftOut {
     friend bool operator==(const NameLeftOut&, const NameLeftOut&) = default;
 };
 
+// How many names a search found of each kind asked about
+// (SearchEngine::Request::countTypes, SearchEngine::typeCounts): the numbers
+// on 文件's type chips. Counted without the kind chosen, so every chip says
+// what choosing it would list.
+struct NameTypeCounts {
+    qint64 all = 0; // files and folders
+    qint64 folders = 0;
+    QList<qint64> types; // as Request::countTypes
+    friend bool operator==(const NameTypeCounts&, const NameTypeCounts&) = default;
+};
+
 // A removable drive (a USB stick, a memory card) with media in it that the
 // index leaves out (Settings: includeRemovableDrives), as a name search
 // found it (SearchEngine::removableDrives). The launcher offers to walk it
@@ -170,6 +181,14 @@ public:
         QStringList conditions;
         // 文件类型绑定的范围；与面板位置和输入的路径取交集，不改变其他搜索。
         QStringList typeFolders;
+        // Something typed: its matches counted for each of these kinds too
+        // (typeCounts, after resultsReady), whatever kind `extensions` and
+        // `typeFolders` narrow the list to. Empty: not counted.
+        struct CountType {
+            QStringList extensions; // without the dot, any case
+            QStringList folders; // bound to these (full paths); empty: anywhere
+        };
+        QList<CountType> countTypes;
         // Typed in a folder's window (Explorer, Directory Opus: GitHub #110):
         // that folder, and `text` is what was typed after it. What it finds
         // in the folder comes first (its own files and folders from the
@@ -293,6 +312,9 @@ signals:
     // Before resultsReady for a name search with a query: how many matches in
     // the index were skipped only by hiddenFolders or excluded file rules.
     void nameLeftOut(quint64 requestId, const ws::NameLeftOut& leftOut);
+    // After resultsReady for a name search with a query and
+    // Request::countTypes: its matches by kind.
+    void typeCounts(quint64 requestId, const ws::NameTypeCounts& counts);
     // Content search delivers matches incrementally.
     void contentResults(quint64 requestId, const ws::SearchResults& results);
     void contentProgress(quint64 requestId, int scanned, int total, bool finished);
@@ -402,4 +424,5 @@ SearchResult appResult(const AppInfo& app, bool recent = false, int otherName = 
 Q_DECLARE_METATYPE(ws::ContentLeftOut)
 Q_DECLARE_METATYPE(ws::ContentScope)
 Q_DECLARE_METATYPE(ws::NameLeftOut)
+Q_DECLARE_METATYPE(ws::NameTypeCounts)
 Q_DECLARE_METATYPE(ws::RemovableDrive)

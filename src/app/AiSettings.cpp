@@ -742,6 +742,10 @@ std::vector<Entry> buildCatalog()
                     "Show file sizes in compact search results alongside the modification date when enabled. "
                     "Off by default; size sorting always shows sizes. Folders and unknown sizes stay blank."},
         &Settings::showFileSize));
+    add(boolean({"Results/TypeCounts", QT_TRANSLATE_NOOP("AiSettings", "类型标签显示数量"), "results", 3,
+                    "Each file type chip under the search box in Files says how many of the typed query's matches are "
+                    "of that type. On by default."},
+        &Settings::typeCounts));
     add(boolean({"Results/Thumbnails", QT_TRANSLATE_NOOP("AiSettings", "显示图片缩略图"), "results", 1,
                     "A picture, video or PDF shows its thumbnail as its icon."},
         &Settings::thumbnails));

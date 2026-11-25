@@ -627,6 +627,7 @@ Launcher::Launcher(IndexService* index, AppCatalog* apps, SystemCatalog* places,
     connect(&m_suggester, &WebSuggester::answered, this, &Launcher::onSuggestions);
     connect(m_engine, &SearchEngine::resultsReady, this, &Launcher::onResults);
     connect(m_engine, &SearchEngine::nameLeftOut, this, &Launcher::onNameLeftOut);
+    connect(m_engine, &SearchEngine::typeCounts, this, &Launcher::onTypeCounts);
     connect(m_engine, &SearchEngine::contentResults, this, &Launcher::onContentResults);
     connect(m_engine, &SearchEngine::contentProgress, this, &Launcher::onContentProgress);
     connect(m_engine, &SearchEngine::contentLeftOut, this, &Launcher::onContentLeftOut);
@@ -3095,8 +3096,18 @@ void Launcher::search(bool more)
         if (awake.ready() && awake.on == SwitchState::Value::On)
             request.pinnedPlaces = {placePath(u"winshun/switch-keep-awake"_s)};
     }
+    // 文件 (and 文件夹): what is typed counted for each kind on the strip. The
+    // numbers there stay until this search's come: no blink at every letter.
+    const bool counting = m_typeCounts && (m_scope == Files || m_scope == Folders) && !request.text.trimmed().isEmpty();
+    if (counting) {
+        for (const FileType& type : m_fileTypes)
+            request.countTypes.append({type.extensions, type.folder.isEmpty() ? QStringList() : QStringList {type.folder}});
+    }
     m_requestId = m_engine->submit(std::move(request)); // also stops a running content scan
     m_nameRequestId = m_requestId;
+    m_countRequestId = counting ? m_requestId : 0;
+    if (!counting)
+        setFileTypeCounts({});
     m_lastAsk.start();
     m_pending = true;
     m_contentRunning = false;
@@ -3871,6 +3882,68 @@ void Launcher::onNameLeftOut(quint64 id, const NameLeftOut& leftOut)
         m_nameLeftOut.hiddenFolders = 0;
     if (m_hintsTaken.contains(kExcludedFilesHint))
         m_nameLeftOut.excludedFiles = 0;
+}
+
+void Launcher::onTypeCounts(quint64 id, const NameTypeCounts& counts)
+{
+    if (id != m_nameRequestId || id != m_countRequestId)
+        return; // superseded
+    // As many as there are kinds now (they may have been edited meanwhile); none: no numbers.
+    QVariantList list;
+    if (counts.types.size() == m_fileTypes.size()) {
+        list.reserve(counts.types.size() + 2);
+        list << counts.all << counts.folders;
+        for (const qint64 count : counts.types)
+            list << count;
+    }
+    setFileTypeCounts(std::move(list));
+}
+
+void Launcher::setFileTypeCounts(QVariantList counts)
+{
+    if (counts == m_fileTypeCounts)
+        return;
+    m_fileTypeCounts = std::move(counts);
+    emit fileTypeCountsChanged();
+}
+
+QString Launcher::countLabel(qint64 count) const
+{
+    if (count < 10'000)
+        return QString::number(std::max<qint64>(0, count));
+    // The unit the language counts large numbers in, and how many it stands for.
+    struct Unit {
+        qint64 size;
+        QString name;
+    };
+    const Unit units[] {{100'000'000, tr("亿", "count unit: 10^8, or M (10^6) in English")},
+        {10'000, tr("万", "count unit: 10^4, or k (10^3) in English")}};
+    const bool western = units[1].name == u"k";
+    for (const Unit& unit : units) {
+        const qint64 size = western ? (unit.size == 10'000 ? 1'000 : 1'000'000) : unit.size;
+        if (count < size)
+            continue;
+        const double value = static_cast<double>(count) / static_cast<double>(size);
+        // One decimal under ten of them ("1.2万", but "1万"), cut, not rounded up to a figure it has not reached.
+        const qint64 tenths = static_cast<qint64>(std::floor(value * 10));
+        return (value < 10 && tenths % 10 != 0 ? QString::number(static_cast<double>(tenths) / 10, 'f', 1)
+                                               : QString::number(tenths / 10))
+            + unit.name;
+    }
+    return QString::number(count);
+}
+
+void Launcher::setTypeCounts(bool on)
+{
+    if (on == m_typeCounts)
+        return;
+    m_typeCounts = on;
+    if (!on) {
+        m_countRequestId = 0;
+        setFileTypeCounts({});
+    } else if (m_window && m_window->isVisible() && (m_scope == Files || m_scope == Folders)) {
+        search();
+    }
 }
 
 void Launcher::onContentLeftOut(quint64 id, const ContentLeftOut& leftOut)
