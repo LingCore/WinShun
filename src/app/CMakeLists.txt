@@ -288,6 +288,7 @@ set(qml_files
     qml/OcrPackageRow.qml
     qml/PluginCard.qml
     qml/PluginTile.qml
+    qml/PluginReport.qml
     qml/TileFlow.qml
     qml/Tag.qml
     qml/PluginDevSection.qml

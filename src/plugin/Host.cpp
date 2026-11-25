@@ -23,6 +23,8 @@
 #include <sddl.h>
 
 #include <algorithm>
+#include <array>
+#include <cmath>
 #include <iterator>
 #include <utility>
 #include <vector>
@@ -324,6 +326,7 @@ struct Host::Plugin {
     bool toastRefusedLogged = false;
     bool elevated = false; // the resident process is the elevated runner's
     bool inProcess = false; // it runs inside the runner (pid: the runner's)
+    std::optional<Host::Report> report; // winshun/status: how its work stands, while the process runs
 };
 
 Host::Host(Options options, QObject* parent)
@@ -1265,6 +1268,62 @@ void Host::onRefresh(const QString& id)
         p.rerun.start(wait);
 }
 
+std::optional<Host::Report> Host::reportFrom(const QJsonObject& params)
+{
+    Report report;
+    report.text = params.value(u"text"_s).toString().simplified().left(kReportText);
+    if (report.text.isEmpty())
+        return std::nullopt;
+    const QJsonValue progress = params.value(u"progress"_s);
+    if (progress.isDouble() && std::isfinite(progress.toDouble()))
+        report.progress = std::clamp(progress.toDouble(), 0.0, 1.0);
+    static constexpr std::array<QStringView, 5> kTones {u"ok", u"busy", u"idle", u"warn", u"error"};
+    report.tone = params.value(u"tone"_s).toString();
+    if (std::ranges::find(kTones, QStringView(report.tone)) == kTones.end())
+        report.tone = report.progress >= 0 ? u"busy"_s : u"ok"_s;
+    for (const QJsonValue& value : params.value(u"actions"_s).toArray()) {
+        const QJsonObject action = value.toObject();
+        const QString id = action.value(u"id"_s).toString();
+        const QString title = action.value(u"title"_s).toString().simplified().left(16);
+        if (id.isEmpty() || id.size() > 32 || title.isEmpty()
+            || std::ranges::find(report.actions, id, &Report::Action::id) != report.actions.end())
+            continue;
+        report.actions.append({id, title});
+        if (report.actions.size() >= kReportActions)
+            break;
+    }
+    return report;
+}
+
+void Host::onStatus(const QString& id, const QJsonObject& params)
+{
+    Plugin& p = plugin(id);
+    std::optional<Report> report = reportFrom(params);
+    if (report == p.report)
+        return;
+    p.report = std::move(report);
+    emit reportChanged(id);
+}
+
+void Host::statusAction(const QString& pluginId, const QString& actionId)
+{
+    Plugin& p = plugin(pluginId);
+    if (p.phase != Plugin::Phase::Ready || !p.session || !p.report || !m_catalog.enabled(pluginId)
+        || std::ranges::find(p.report->actions, actionId, &Report::Action::id) == p.report->actions.end())
+        return;
+    touch(p);
+    const QJsonObject params {{u"command"_s, QString()}, {u"action"_s, actionId}, {u"trigger"_s, u"status"_s},
+        {u"item"_s, QJsonObject()}, {u"text"_s, QString()}};
+    p.session->request(u"action"_s, params, [this, pluginId](const jsonrpc::Message& response) {
+        if (response.failed)
+            return;
+        for (const Effect& effect : parseEffects(response.result)) {
+            if (effect.kind == Effect::Kind::Notify && !effect.text.isEmpty())
+                emit notice(pluginId, effect.text);
+        }
+    });
+}
+
 void Host::cancel(std::uint64_t queryId)
 {
     for (auto& [id, p] : m_plugins) {
@@ -1560,6 +1619,7 @@ void Host::onStarted(std::uint64_t instance, quint32 pid)
     handlers.settingsUpdate = [this, id](const QJsonObject& values) {
         emit settingsUpdateRequested(id, values);
     };
+    handlers.status = [this, id](const QJsonObject& params) { onStatus(id, params); };
     handlers.hotkeys = [this, id](const QStringList& keys) { emit hotkeysChanged(id, keys); };
     handlers.systemSwitchesChanged = [this, id](const QStringList& ids) {
         const Entry* e = entry(id);
@@ -1878,6 +1938,8 @@ void Host::onInstanceExited(std::uint64_t instance, quint32 code, const QStringL
         return;
     emit processExited(p.id, code);
     emit hotkeysChanged(p.id, {}); // the process held them
+    if (std::exchange(p.report, std::nullopt))
+        emit reportChanged(p.id); // and what it said of itself
     traceEvent(p.id, u"进程退出（代码 %1）"_s.arg(code));
     const Plugin::Phase was = p.phase;
     p.instance = 0;
@@ -2576,6 +2638,7 @@ Host::State Host::state(const QString& id) const
     s.pid = p.inProcess ? 0 : p.pid; // the runner's own memory is not this plugin's
     s.error = p.error;
     s.timeouts = p.timeouts;
+    s.report = p.report;
     s.elevated = p.elevated && (p.phase == Plugin::Phase::Starting || p.phase == Plugin::Phase::Ready);
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
     s.crashes = static_cast<int>(std::count_if(p.crashTimes.begin(), p.crashTimes.end(), [now](qint64 t) { return now - t <= kCrashWindowMs; }));

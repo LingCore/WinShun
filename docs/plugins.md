@@ -114,9 +114,9 @@ Start-WinShunPlugin -Name 'me.ps' -OnQuery {
 
 | 文件 | 一次性 | 常驻 |
 |---|---|---|
-| `winshun.py` | `query()`、`settings()`、`item(...)`、`reply(items)`、`is_action()` / `action_request()` / `effects(...)` | `serve(on_query, on_action=None, on_settings=None, on_details=None)`；处理函数收到 `(q, plugin)`，`plugin.partial()`、`plugin.log()`、`plugin.notify_user()`、`plugin.toast()`、`plugin.progress()`、`plugin.refresh()`、`plugin.tool(name, **args)`、`plugin.settings` |
+| `winshun.py` | `query()`、`settings()`、`item(...)`、`reply(items)`、`is_action()` / `action_request()` / `effects(...)` | `serve(on_query, on_action=None, on_settings=None, on_details=None)`；处理函数收到 `(q, plugin)`，`plugin.partial()`、`plugin.log()`、`plugin.notify_user()`、`plugin.toast()`、`plugin.progress()`、`plugin.refresh()`、`plugin.status()`、`plugin.tool(name, **args)`、`plugin.settings` |
 | `WinShun.psm1` | `Get-WinShunQuery`、`Get-WinShunSettings`、`New-WinShunItem`、`Send-WinShunReply`、`Send-WinShunEffects` | `Start-WinShunPlugin -OnQuery {…} -OnAction {…} -OnDetails {…}`、`Send-WinShunPartial`、`Write-WinShunLog`、`Send-WinShunNotify`、`Send-WinShunToast`、`Send-WinShunProgress`、`Invoke-WinShunTool` |
-| `winshun.h` | `winshun::onceQuery()`、`onceSettings()`、`once(items)`、`onceAction()` / `onceEffects()` | 派生 `winshun::Plugin`，重写 `query()`（和 `queryResult()`、`action()`、`settingsChanged()`、`showSettings()`、`initialized()`、`shuttingDown()`、`appearanceChanged()`、`details()`），`serve()`；成员 `partial()`、`log()`、`notifyUser()`、`toast()`、`progress()`、`refresh()`、`updateSettings()`、`tool()`、`settings()`；这些成员可以在别的线程里调（发送有锁；`tool()` 在别的线程里调时由 `serve()` 所在的线程把回答交给它，可以给一个 `canceled` 标志，插件要停时置位，调用马上返回错误） |
+| `winshun.h` | `winshun::onceQuery()`、`onceSettings()`、`once(items)`、`onceAction()` / `onceEffects()` | 派生 `winshun::Plugin`，重写 `query()`（和 `queryResult()`、`action()`、`settingsChanged()`、`showSettings()`、`initialized()`、`shuttingDown()`、`appearanceChanged()`、`details()`），`serve()`；成员 `partial()`、`log()`、`notifyUser()`、`toast()`、`progress()`、`refresh()`、`status()`、`updateSettings()`、`tool()`、`settings()`；这些成员可以在别的线程里调（发送有锁；`tool()` 在别的线程里调时由 `serve()` 所在的线程把回答交给它，可以给一个 `canceled` 标志，插件要停时置位，调用马上返回错误） |
 
 effects 的辅助：Python `winshun.hide() / keep() / notify(text) / copy(text) / set_query(text) / open_path(path) / open_url(url) / replace(items)`；PowerShell `New-WinShunEffect -Hide / -Keep / -Notify / -Copy / -SetQuery / -OpenPath / -OpenUrl / -Replace`；C++ `winshun::effect::hide()` 等。
 
@@ -261,7 +261,10 @@ Win顺 → 插件：
 {"jsonrpc":"2.0","method":"winshun/progress","params":{"queryId":17,"text":"正在读书签…"}}   "正在等…"那行的文字
 {"jsonrpc":"2.0","method":"winshun/refresh","params":{}}   显示着的列表自己变了：马上再问一次
 {"jsonrpc":"2.0","method":"winshun/settings/update","params":{"settings":{"speed":3000,"wrap":true}}}   插件自己改了设置（0.30.0 起）
+{"jsonrpc":"2.0","method":"winshun/status","params":{"text":"正在建立索引：312 / 926 个文件","progress":0.34,"tone":"busy","actions":[{"id":"pause","title":"暂停"}]}}   卡片上的进度（0.46.0 起）
 ```
+
+`winshun/status`（0.46.0 起）：插件在后台干一件久的事（建索引、同步）时，用它把进展显示在 **设置 → 插件** 里自己的卡片上，用户不用打关键字也看得到。`text` 是一行话（最多 200 个字，换行会并成空格）；`progress` 是 0～1 的数，写了就在这行下面画进度条，不写不画；`tone` 是这行前面圆点的颜色：`busy`（正在做，圆点会闪）、`ok`（做完了）、`idle`（停着）、`warn`、`error`，不写时有进度条算 `busy`、没有算 `ok`；`actions` 是最多两个按钮 `{"id", "title"}`（`title` 最多 16 个字），用户点了，插件收到一次 `action`：`params.action` 是按钮的 `id`，`params.trigger` 是 `"status"`，`command` 是空的、`item` 是 `{}`；回的 effects 里只有 `notify` 会显示（底栏提示），别的不起作用。只能点当前显示着的按钮。状态变了再发，干活途中最多一秒一条；`text` 给空字符串就把这行拿掉，进程退出时 Win顺 也会自己拿掉。磁贴上只显示这行话和进度条，按钮在点开的卡片上。更早的 Win顺 不认识这条通知，不碍事。C++ SDK 是 `status(text, progress, tone, actions)`，Python 是 `plugin.status(text, progress=None, tone=None, actions=None)`。
 
 `winshun/refresh`：显示着的列表自己变了（比如来了一个请求、一次传输结束了），不必等 `rerun` 的秒数，Win顺 马上再问一次同样的查询；两次查询之间至少隔 0.1 秒，连着发几条只多问一次（正在回答时来的，答完再问）。只在上一次回答要了 `rerun`、列表还开着时起作用，别的时候什么都不做；旧版 Win顺 不认识它，也不碍事。先写好下一次查询要读的状态，再发它。C++ SDK 是 `refresh()`，Python 是 `plugin.refresh()`。
 

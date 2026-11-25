@@ -141,6 +141,10 @@ QVariant PluginListModel::data(const QModelIndex& index, int role) const
     case ElevationProblemRole: return c.elevationProblem;
     case FeedbackRole: return c.feedback;
     case StagedRole: return c.staged;
+    case ReportRole: return c.report;
+    case ReportToneRole: return c.reportTone;
+    case ProgressRole: return c.progress;
+    case ReportActionsRole: return c.reportActions;
     }
     return {};
 }
@@ -152,7 +156,8 @@ QHash<int, QByteArray> PluginListModel::roleNames() const
         {StatusRole, "status"}, {ToneRole, "tone"}, {ErrorRole, "error"}, {ResidentRole, "resident"}, {KeywordsRole, "keywords"},
         {PermissionsRole, "permissions"}, {SettingsRole, "settings"}, {HasReadmeRole, "hasReadme"}, {SettingsWindowRole, "settingsWindow"}, {HasDataRole, "hasData"},
         {AiExposeRole, "aiExpose"}, {AiEnabledRole, "aiEnabled"}, {AiNoteRole, "aiNote"}, {WebSearchRole, "webSearch"},
-        {ElevationRole, "elevation"}, {ElevationNoteRole, "elevationNote"}, {ElevationProblemRole, "elevationProblem"}, {FeedbackRole, "feedback"}, {StagedRole, "staged"}};
+        {ElevationRole, "elevation"}, {ElevationNoteRole, "elevationNote"}, {ElevationProblemRole, "elevationProblem"}, {FeedbackRole, "feedback"}, {StagedRole, "staged"},
+        {ReportRole, "report"}, {ReportToneRole, "reportTone"}, {ProgressRole, "progress"}, {ReportActionsRole, "reportActions"}};
 }
 
 bool PluginListModel::setCards(std::vector<Card> cards)
@@ -177,11 +182,15 @@ bool PluginListModel::setCards(std::vector<Card> cards)
         compared.status = old.status;
         compared.tone = old.tone;
         compared.error = old.error;
+        compared.report = old.report;
+        compared.reportTone = old.reportTone;
+        compared.progress = old.progress;
+        compared.reportActions = old.reportActions;
         const bool stateOnly = compared == old;
         old = std::move(fresh);
         const QModelIndex at = index(static_cast<int>(i));
         if (stateOnly)
-            emit dataChanged(at, at, {StatusRole, ToneRole, ErrorRole});
+            emit dataChanged(at, at, {StatusRole, ToneRole, ErrorRole, ReportRole, ReportToneRole, ProgressRole, ReportActionsRole});
         else
             emit dataChanged(at, at);
     }
@@ -343,6 +352,12 @@ void PluginSettings::setHost(plugin::Host* host)
     m_dataRoot = host->options().dataRoot.isEmpty() ? m_userDir : QDir::toNativeSeparators(host->options().dataRoot);
     m_logPath = host->options().logPath;
     connect(host, &plugin::Host::stateChanged, this, [this](const QString&) { rebuild(); });
+    // winshun/status: only the page on show follows it (it reads the cards
+    // again when it comes back, setActive).
+    connect(host, &plugin::Host::reportChanged, this, [this](const QString&) {
+        if (m_active)
+            rebuild();
+    });
     // winshun/settings/update (GitHub #332, PR #333): a plugin changed one of
     // its own settings where the user sets it in the search box; the card
     // and the settings file follow, so both show one value. Only what
@@ -734,6 +749,13 @@ PluginListModel::Card PluginSettings::cardFor(const QString& id) const
         if (state.timeouts > 0)
             c.status += tr(" · 超时 %n 次", "", state.timeouts);
         c.tone = u"ok"_s;
+        if (state.report) {
+            c.report = state.report->text;
+            c.reportTone = state.report->tone;
+            c.progress = state.report->progress;
+            for (const plugin::Host::Report::Action& action : state.report->actions)
+                c.reportActions.append(QVariantMap {{u"id"_s, action.id}, {u"title"_s, action.title}});
+        }
         break;
     case Status::Backoff:
         c.error = state.error;
@@ -1507,6 +1529,12 @@ void PluginSettings::openFolder(const QString& id)
 }
 
 // The plugin opens the window itself, in front (it may, AllowSetForegroundWindow).
+void PluginSettings::statusAction(const QString& id, const QString& action)
+{
+    if (m_host && !m_preview)
+        m_host->statusAction(id, action);
+}
+
 void PluginSettings::showSettings(const QString& id)
 {
     if (!m_host)
@@ -1850,6 +1878,13 @@ void PluginSettings::loadPreview(bool elevated, int logPlugins, bool hostNormal)
         c.resident = true;
         c.status = tr("就绪，用到时启动");
         c.tone = u"ok"_s;
+        if (qEnvironmentVariableIsSet("WINSHUN_PREVIEW_REPORT")) { // a plugin saying how its work stands (winshun/status), to look at
+            c.status = tr("运行中 · %1").arg(u"52 MB"_s);
+            c.report = tr("正在建立语义索引：312 / 926 个文件 · 约剩 14 分钟");
+            c.reportTone = u"busy"_s;
+            c.progress = 312.0 / 926;
+            c.reportActions = {QVariantMap {{u"id"_s, u"pause"_s}, {u"title"_s, tr("暂停")}}};
+        }
         c.keywords = {keyword(u"tr"_s, tr("翻译"), u"tr"_s, u"tr"_s, {}, false)};
         c.permissions = {admin, permission(u"network"_s, tr("联网"), false, tr("Win顺 不能阻止它联网")),
             permission(u"winshun:search"_s, tr("用 Win顺 搜索文件名和内容"), true)};

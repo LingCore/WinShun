@@ -3475,6 +3475,74 @@ private slots:
         QCOMPARE(f.startedPids.back(), runner);
     }
 
+    // winshun/status (GitHub #458): what a resident plugin says of its long
+    // work is its card's, a button's click goes back as an action, and the
+    // report leaves with the process.
+    void statusReportReachesTheCardAndItsButtonActs()
+    {
+        Fixture f;
+        Spec spec;
+        spec.args = {u"--status"_s};
+        QVERIFY(!f.install(spec).isEmpty());
+        int changes = 0;
+        QStringList notices;
+        QObject::connect(f.host.get(), &Host::reportChanged, f.host.get(), [&](const QString& id) { if (id == spec.id) ++changes; });
+        QObject::connect(f.host.get(), &Host::notice, f.host.get(), [&](const QString&, const QString& text) { notices.append(text); });
+        QVERIFY(f.host->query(u"fk x"_s, Scope::All, 1));
+        QVERIFY2(QTest::qWaitFor([&] { return f.host->state(spec.id).report.has_value(); }, 5000), qPrintable(f.logs.join(u'\n')));
+        Host::Report report = *f.host->state(spec.id).report;
+        QCOMPARE(report.text, u"indexing 3 / 12"_s);
+        QCOMPARE(report.tone, u"busy"_s); // a bar and no tone: at work
+        QCOMPARE(report.progress, 0.25);
+        QCOMPARE(report.actions, (QList<Host::Report::Action> {{u"pause"_s, u"Pause"_s}}));
+        QCOMPARE(changes, 1);
+
+        f.host->statusAction(spec.id, u"resume"_s); // not a button on show: not sent
+        f.host->statusAction(spec.id, u"pause"_s);
+        QVERIFY(QTest::qWaitFor([&] { return changes == 2 && notices.contains(u"status pause"_s); }, 5000));
+        report = *f.host->state(spec.id).report;
+        QCOMPARE(report.text, u"paused 3 / 12"_s);
+        QCOMPARE(report.tone, u"idle"_s);
+        QCOMPARE(report.progress, 1.0);
+        QVERIFY(!notices.contains(u"status resume"_s));
+
+        f.host->statusAction(spec.id, u"clear"_s); // an empty text: nothing to show
+        QVERIFY(QTest::qWaitFor([&] { return changes == 3; }, 5000));
+        QVERIFY(!f.host->state(spec.id).report);
+
+        // Said again, and gone with the process.
+        f.host->reload(spec.id);
+        QVERIFY(QTest::qWaitFor([&] { return changes == 4 && f.host->state(spec.id).report.has_value(); }, 5000));
+        f.host->stop(spec.id);
+        QVERIFY(QTest::qWaitFor([&] { return changes == 5; }, 5000));
+        QVERIFY(!f.host->state(spec.id).report);
+    }
+
+    void statusReportIsHeldToWhatTheCardShows()
+    {
+        QVERIFY(!Host::reportFrom({}));
+        QVERIFY(!Host::reportFrom({{u"text"_s, u"  \n "_s}, {u"progress"_s, 0.5}}));
+        const Host::Report plain = *Host::reportFrom({{u"text"_s, u"ready:\n 926 files"_s}});
+        QCOMPARE(plain.text, u"ready: 926 files"_s);
+        QCOMPARE(plain.tone, u"ok"_s);
+        QVERIFY(plain.progress < 0);
+        QVERIFY(plain.actions.isEmpty());
+        QJsonArray actions;
+        for (const char* id : {"a", "", "a", "b", "c"})
+            actions.append(QJsonObject {{u"id"_s, QString::fromLatin1(id)}, {u"title"_s, u"a title that is far too long for a button"_s}});
+        actions.prepend(QJsonObject {{u"id"_s, u"untitled"_s}});
+        const Host::Report full = *Host::reportFrom({{u"text"_s, QString(500, u'x')}, {u"tone"_s, u"purple"_s}, {u"progress"_s, -3},
+            {u"actions"_s, actions}});
+        QCOMPARE(full.text.size(), Host::kReportText);
+        QCOMPARE(full.tone, u"busy"_s);
+        QCOMPARE(full.progress, 0.0);
+        QCOMPARE(full.actions.size(), Host::kReportActions);
+        QCOMPARE(full.actions[0].id, u"a"_s);
+        QCOMPARE(full.actions[0].title.size(), 16);
+        QCOMPARE(full.actions[1].id, u"b"_s);
+        QCOMPARE(Host::reportFrom({{u"text"_s, u"x"_s}, {u"tone"_s, u"warn"_s}, {u"progress"_s, u"half"_s}})->progress, -1.0);
+    }
+
     void runnerCrashReleasesHotkeysAndWork()
     {
         Fixture f;

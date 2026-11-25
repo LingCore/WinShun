@@ -35,6 +35,10 @@ Rectangle {
     required property string elevation
     required property string elevationNote
     required property string staged // a newer version downloaded, waiting for the next start
+    required property string report // what its running process says of its work (winshun/status)
+    required property string reportTone
+    required property real progress
+    required property var reportActions
     required property string elevationProblem // why the last 确认 did not work
     property bool marked: false // just opened for (PluginsSection.reveal)
 
@@ -288,6 +292,17 @@ Rectangle {
                 maximumLineCount: 3
                 elide: Text.ElideRight
             }
+        }
+
+        PluginReport { // an index being built: how far (its buttons are on the card)
+            objectName: "pluginReport"
+            width: parent.width
+            dpr: tile.dpr
+            buttons: false
+            maximumLineCount: 2
+            text: tile.report
+            tone: tile.reportTone
+            progress: tile.progress
         }
 
         Column { // `elevated` waits for the user (or cannot be): why, what the last 确认 came to, and the one click

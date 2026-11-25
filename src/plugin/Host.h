@@ -180,6 +180,26 @@ public:
     void setMaxResident(int limit);
     bool developerMode() const noexcept { return m_developerMode; }
 
+    // winshun/status (GitHub #458): how a resident plugin's long work stands
+    // (an index being built), for its card in the settings: a line, how far
+    // along, and a button or two. Gone when its process is.
+    struct Report {
+        struct Action {
+            QString id;
+            QString title;
+            friend bool operator==(const Action&, const Action&) = default;
+        };
+        QString text; // one line, kReportText characters at most
+        QString tone; // ok | busy | idle | warn | error (the card's tones)
+        double progress = -1; // 0…1; below 0: no bar
+        QList<Action> actions; // kReportActions at most
+        friend bool operator==(const Report&, const Report&) = default;
+    };
+    static constexpr qsizetype kReportText = 200;
+    static constexpr qsizetype kReportActions = 2;
+    // What a winshun/status says; nullopt: nothing to show (no text).
+    static std::optional<Report> reportFrom(const QJsonObject& params);
+
     struct State {
         enum class Status { Off, Ready, Starting, Running, Backoff, Crashed, Unusable };
         Status status = Status::Off;
@@ -188,8 +208,14 @@ public:
         int timeouts = 0; // in a row, of the resident process
         QString error; // Unusable (manifest, missing program) or the last crash
         bool elevated = false; // its resident process runs as administrator (the elevated runner)
+        std::optional<Report> report; // what its resident process says of itself (winshun/status), while it runs
     };
     State state(const QString& id) const;
+    // A click on one of its report's buttons (the card's 暂停): the action
+    // `actionId` with "trigger": "status", no command and no item. Only what
+    // the report on show offers, and only while the process runs; a `notify`
+    // among the effects is the footer's (notice()), the rest are dropped.
+    void statusAction(const QString& pluginId, const QString& actionId);
     Runner::TokenSource tokenSource() const { return m_runner ? m_runner->tokenSource() : Runner::TokenSource::None; }
     QJsonObject runnerFacts() const { return m_runner ? m_runner->facts() : QJsonObject(); }
     bool runnerReady() const { return m_runner && m_runner->isReady(); }
@@ -253,6 +279,9 @@ signals:
     // says so, or its process ended.
     void hotkeysChanged(const QString& pluginId, const QStringList& keys);
     void settingsUpdateRequested(const QString& pluginId, const QJsonObject& settings);
+    // winshun/status: state(pluginId).report is another (or gone). Not a
+    // stateChanged(): it comes every second while an index is built.
+    void reportChanged(const QString& pluginId);
     // winshun/notify with "toast" from a plugin with the "notifications"
     // permission: a system notification. At most one per plugin every
     // kToastGapMs (a newer one waiting replaces the one before it); the
@@ -323,6 +352,7 @@ private:
     void dropInflight(Plugin& p, bool tellPlugin);
     void stopRerun(Plugin& p);
     void onRefresh(const QString& id);
+    void onStatus(const QString& id, const QJsonObject& params);
     void onToolCall(const QString& id, const QJsonValue& requestId, const QString& tool, const QJsonObject& arguments);
     void onToast(const QString& id, const QString& title, const QString& text, const QJsonArray& click);
     void showToast(Plugin& p);

@@ -179,6 +179,10 @@ SettingsSection {
                             required property string elevation
                             required property string elevationNote
                             required property string staged
+                            required property string report
+                            required property string reportTone
+                            required property real progress
+                            required property var reportActions
                             required property string elevationProblem
 
                             readonly property bool chosen: pluginId === gallerySection.detailPluginId
@@ -232,6 +236,10 @@ SettingsSection {
                                     elevation: slot.elevation
                                     elevationNote: slot.elevationNote
                                     staged: slot.staged
+                                    report: slot.report
+                                    reportTone: slot.reportTone
+                                    progress: slot.progress
+                                    reportActions: slot.reportActions
                                     elevationProblem: slot.elevationProblem
                                     onEditWebShortcut: (index, button) => gallerySection.editWebShortcut(index, button)
                                     onExpandRequested: (on) => { if (!on) gallerySection.closeDetail() }

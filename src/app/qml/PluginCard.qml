@@ -55,6 +55,10 @@ Rectangle {
     required property string elevation
     required property string elevationNote
     required property string staged // a newer version downloaded, waiting for the next start
+    required property string report // what its running process says of its work (winshun/status)
+    required property string reportTone
+    required property real progress
+    required property var reportActions
     required property string elevationProblem // why the last 确认 did not work: under the note, here where it was clicked
     property bool marked: false // what the settings search found
     property bool expanded: false
@@ -358,6 +362,17 @@ Rectangle {
                         wrapMode: Text.Wrap
                         lineHeight: 1.15
                     }
+                }
+
+                PluginReport { // an index being built: how far, and 暂停
+                    objectName: "pluginReport"
+                    width: parent.width
+                    dpr: card.dpr
+                    text: card.report
+                    tone: card.reportTone
+                    progress: card.progress
+                    actions: card.reportActions
+                    onActionRequested: (action) => card.plugins.statusAction(card.pluginId, action)
                 }
 
                 Column { // `elevated` waits for the user (or cannot be): why, what the last 确认 came to, and the one click

@@ -6165,7 +6165,8 @@ int runSemantic(QStringList args)
                 last = first(status);
                 std::printf("%6.1f s  %s\n", msSince(timer) / 1000, qUtf8Printable(last));
             }
-            if (status.isEmpty() || status.first().id != u"status"_s || status.first().title.contains(u"已就绪"_s)
+            // "pause": the row while files go through (Enter pauses, 1.0.6).
+            if (status.isEmpty() || (status.first().id != u"status"_s && status.first().id != u"pause"_s) || status.first().title.contains(u"已就绪"_s)
                 || status.first().title.contains(u"ready"_s))
                 break;
             const QDeadlineTimer pause(3000);

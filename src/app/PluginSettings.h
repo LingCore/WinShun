@@ -60,6 +60,13 @@ public:
         QString status; // where it stands, said for the user
         QString tone; // ok | busy | idle | warn | error (ShareCard's)
         QString error;
+        // What its running process says of its own work (winshun/status,
+        // GitHub #458): a line under the description, a bar when it says
+        // how far along, and its buttons [{id, title}]. Empty: nothing.
+        QString report;
+        QString reportTone; // ok | busy | idle | warn | error
+        double progress = -1; // 0…1; below 0: no bar
+        QVariantList reportActions;
         bool resident = false;
         QVariantList keywords; // [{command, title, keyword, defaults, conflict, user}]
         QVariantList permissions; // [{name, text, enforced, note}]
@@ -115,6 +122,10 @@ public:
         ElevationProblemRole,
         FeedbackRole,
         StagedRole,
+        ReportRole,
+        ReportToneRole,
+        ProgressRole,
+        ReportActionsRole,
     };
 
     using QAbstractListModel::QAbstractListModel;
@@ -295,6 +306,7 @@ public:
     Q_INVOKABLE void openFolder(const QString& id);
     Q_INVOKABLE void openReadme(const QString& id);
     Q_INVOKABLE void openReadmeLink(const QString& link);
+    Q_INVOKABLE void statusAction(const QString& id, const QString& action); // a button of its report (暂停)
     Q_INVOKABLE void showSettings(const QString& id); // the plugin's own settings window (settingsWindow)
     Q_INVOKABLE void openHomepage(const QString& id);
     Q_INVOKABLE void reportProblem(const QString& id); // its author's issues (the card's feedback)

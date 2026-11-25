@@ -305,6 +305,23 @@ class Plugin:
         after the state the next query reads is written."""
         self._notify("winshun/refresh", {})
 
+    def status(self, text, progress=None, tone=None, actions=None):
+        """How a long piece of work stands (an index being built), for the
+        plugin's card in the settings: one line, a bar when `progress` is
+        0…1, the dot's `tone` ("ok", "busy", "idle", "warn", "error") and up
+        to two buttons [{"id", "title"}]: a click comes to on_action with
+        action the id and trigger "status". Send it when it changes, a
+        second apart at most; an empty text takes it away, and so does the
+        process ending. Older Win顺 ignores it."""
+        params = {"text": str(text)}
+        if progress is not None:
+            params["progress"] = float(progress)
+        if tone:
+            params["tone"] = str(tone)
+        if actions:
+            params["actions"] = list(actions)
+        self._notify("winshun/status", params)
+
     def tool(self, name, **arguments):
         """One of Win顺's tools (search_files, search_content, recent_files,
         list_folder, get_file_info, open_item, show_in_folder,

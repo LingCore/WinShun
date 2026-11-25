@@ -13,7 +13,7 @@
 // Started as python.exe is (-u -X utf8 main.py first), it skips those.
 //   --serve [--partial] [--slow MS] [--crash N] [--hang] [--tool NAME [--tool-key KEY]] [--error] [--chatty] [--rerun S] [--toast] [--late N]
 //           [--translate | --needs-setup | --hang-settings | --slow-settings MS]
-//           [--refresh MS [--refresh-burst K] [--refresh-first]]
+//           [--refresh MS [--refresh-burst K] [--refresh-first]] [--status]
 //       A resident plugin: JSON-RPC on stdio. Answers initialize, query
 //       (two query/partial first with --partial; after MS; never with
 //       --hang; exits 3 on the Nth query with --crash; with an error with
@@ -27,7 +27,9 @@
 //       --refresh-burst), or preceded by one with --refresh-first), cancel
 //       (counted), action (the files and trigger of a `files` one in its
 //       notify), settingsChanged (remembered), appearance (remembered and
-//       counted: data.appearance, data.looks), shutdown. As a translate
+//       counted: data.appearance, data.looks), shutdown; with --status a
+//       winshun/status after initialize, another after its button's action
+//       ("clear" takes it away). As a translate
 //       plugin: "T:<text>" as its copy text with --translate, a row "setup"
 //       with --needs-setup.
 //   --probe
@@ -312,6 +314,9 @@ struct Server {
                 respond(id, json::Value::Object {{"protocolVersion", params["protocolVersion"].toString()}, {"name", "fake"}});
                 if (has(L"--hotkeys"))
                     notify("winshun/hotkeys", {{"keys", json::Value::Array {"Ctrl+Shift+9"}}});
+                if (has(L"--status")) // GitHub #458: how its work stands, for its card
+                    notify("winshun/status", {{"text", "indexing 3 / 12"}, {"progress", 0.25},
+                        {"actions", json::Value::Array {json::Value(json::Value::Object {{"id", "pause"}, {"title", "Pause"}})}}});
             } else if (method == "query") {
                 ++queries;
                 if (has(L"--crash") && queries == _wtoi(value(L"--crash").c_str())) {
@@ -408,6 +413,14 @@ struct Server {
                 const std::string action = params["action"].toString();
                 const std::string title = params["item"]["title"].toString();
                 std::string said = "did " + action + " on " + title;
+                if (params["trigger"].toString() == "status") { // a button of its winshun/status
+                    said = "status " + action;
+                    if (action == "clear")
+                        notify("winshun/status", {{"text", ""}});
+                    else
+                        notify("winshun/status", {{"text", "paused 3 / 12"}, {"tone", "idle"}, {"progress", 7}, // out of range: held to 1
+                            {"actions", json::Value::Array {json::Value(json::Value::Object {{"id", "clear"}, {"title", "Clear"}})}}});
+                }
                 if (params.has("files")) {
                     said = "files " + params["trigger"].toString() + ":";
                     for (const json::Value& file : params["files"].toArray())

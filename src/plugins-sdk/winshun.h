@@ -919,6 +919,28 @@ public:
     // shows it, Win顺 asks again now instead of when `rerun` is up. Call it
     // after the state the next query reads is written. Otherwise nothing.
     void refresh() { notify("winshun/refresh", Json::Object {}); }
+    // How a long piece of work stands (an index being built), for the
+    // plugin's card in the settings: one line, a bar when `progress` is
+    // 0…1, the dot's `tone` (ok, busy, idle, warn, error; empty: busy with a
+    // bar, else ok) and up to two buttons {id, title}: a click comes as
+    // action() with params.action the id and params.trigger "status". Send
+    // it when it changes, a second apart at most; an empty text takes it
+    // away, and so does the process ending. Older Win顺 ignores it.
+    void status(const std::string& text, double progress = -1, const std::string& tone = {},
+        const std::vector<std::pair<std::string, std::string>>& actions = {})
+    {
+        Json::Object params {{"text", text}};
+        if (progress >= 0)
+            params.emplace("progress", progress);
+        if (!tone.empty())
+            params.emplace("tone", tone);
+        Json::Array buttons;
+        for (const auto& [id, title] : actions)
+            buttons.push_back(Json::Object {{"id", id}, {"title", title}});
+        if (!buttons.empty())
+            params.emplace("actions", Json(std::move(buttons)));
+        notify("winshun/status", std::move(params));
+    }
     // Updates values declared in the plugin manifest. Win顺 validates,
     // persists and sends the merged result back through settingsChanged.
     void updateSettings(Json values)

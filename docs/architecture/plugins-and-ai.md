@@ -52,7 +52,7 @@
 | `Items` / `ZeroCode` / `Merge` / `Details` / `Programs` | 对应 `.{h,cpp}` | 结果与 `effects` 解析；零代码进程内求值；启动器合并配额（每插件 ≤3 行、总 ≤6 行）；解释器解析（Python 强制解析真实 `python.exe`，禁用再派生子进程的 `py.exe`） |
 | `Runner` / `WinShunPluginHost` | `Runner.*`、`runner/*` | 单命名管道 `WinShun.Plugin.<SID>.<pid>.<seq>.<rand>` 多路复用实例（复用 `LineChannel`，16 MiB 单行上限），校验对端 PID 与 hello 密钥 |
 | `InProcess` | `runner/InProcess.{h,cpp}` | 随包普通权限常驻插件 `winshun.tools`（静态编入 `wstools`）与 `winshun.switches`（单常驻 `QtLane` 线程加载 `WinShunSwitchesApp.dll`）直接在 runner 线程运行，减少常驻进程数；`WINSHUN_PLUGINS_APART=1` 可切回独立进程 |
-| `Session` / `Host` | `Session.*`、`Host.*` | JSON-RPC 2.0 会话；GUI 线程门面：防抖、超时、崩溃退避、空闲退出、开发者模式追踪（密码打码）及 `callCommand()` 独立通道 |
+| `Session` / `Host` | `Session.*`、`Host.*` | JSON-RPC 2.0 会话；GUI 线程门面：防抖、超时、崩溃退避、空闲退出、开发者模式追踪（密码打码）及 `callCommand()` 独立通道；`winshun/status` 经 `Host::reportFrom` 限长限项后存为 `State::report`（进程退出即清），`reportChanged` 只在插件页可见时刷新卡片（`PluginReport.qml`：一行状态、进度条、至多两个按钮），按钮经 `statusAction` 以 `trigger: "status"` 的 `action` 回传 |
 | `Tools` | `Tools.{h,cpp}` | 插件反向 `winshun/tool` 主机：独立 `SearchEngine` + `mcp::ToolHost`，不看 `[Mcp] Enabled` 与 AI 排除目录，严格按清单权限放行 |
 
 - **统一停止与限额**：停用、移除、权限未确认与 runner 断开共用同一停止入口，释放排队查询、`once` 进程、热键、托盘与在途工具调用。`once` 默认防抖 120 ms、stdout 上限 **16 MiB**，通过 `lastQuery` 防同步取消后误建 rerun；查询超时默认 `resident` 1500 ms / `once` 3000 ms，连超 3 次重启；崩溃退避 `1 → 5 → 30` 秒，5 分钟内崩 3 次自动停用；常驻上限 8（`eager` 不计入淘汰）。

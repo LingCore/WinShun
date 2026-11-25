@@ -49,6 +49,7 @@ constexpr auto kDebounce = 250ms; // a newer query in that time: this one is not
 constexpr auto kPassEvery = 10min; // looking for changed files
 constexpr std::size_t kFlushEvery = 20; // files
 constexpr auto kFlushAfter = 15s;
+constexpr auto kPublishEvery = 1s; // winshun/status while files go through
 constexpr std::size_t kSample = 24; // files read for the estimate
 constexpr int kReadChars = 60000; // of one file: more than its passages take
 constexpr int kUserAwaySec = 60; // a local model works flat out after that much quiet
@@ -268,6 +269,11 @@ private:
         std::size_t chars = 0; // … and their characters, estimated
         std::string error;
         bool contentStillReading = false;
+        bool paused = false; // the user's 暂停: kept across starts (pausedPath)
+        // For the time left: the files done and the clock when this run of
+        // work began (the pass, or the last 继续).
+        std::size_t paceFrom = 0;
+        std::chrono::steady_clock::time_point paceSince {};
     };
 
     // ---- the lines -------------------------------------------------------------
@@ -304,6 +310,8 @@ private:
             applySettings(params["settings"]);
             respond(id, Json::Object {{"protocolVersion", "1"}, {"name", "winshun.semantic"}});
             m_store = std::make_unique<Store>(folder());
+            m_status.paused = ::GetFileAttributesW(pausedPath().c_str()) != INVALID_FILE_ATTRIBUTES;
+            publish(true);
             m_indexer = std::thread([this] {
                 indexLoop();
                 m_indexerDone = true;
@@ -314,9 +322,14 @@ private:
                 respond(id, Json::Object {{"items", Json::Array {}}});
                 return true;
             }
-            respond(id, Json::Object {{"items", winshun::itemsJson(query(params))}});
+            Json::Object result {{"items", winshun::itemsJson(query(params))}};
+            // The row that says how far the index is moves by itself.
+            if (const Status s = status(); s.phase == Phase::Starting || s.phase == Phase::Counting || (s.phase == Phase::Indexing && !s.paused))
+                result.emplace("rerun", 1);
+            respond(id, std::move(result));
         } else if (method == "action") {
             respond(id, Json::Object {{"effects", action(params)}});
+            publish(true);
         } else if (method == "settingsChanged") {
             applySettings(params["settings"]);
         } else if (method == "shutdown") {
@@ -381,6 +394,109 @@ private:
         return {};
     }
 
+    // "7 / 926 个文件", and the time left once the pace is known.
+    std::string progressText(const Status& s) const
+    {
+        std::string text = zh(thousands(s.done) + " / " + thousands(s.total) + " 个文件", thousands(s.done) + " / " + thousands(s.total) + " files");
+        if (s.paused || s.done <= s.paceFrom || s.done >= s.total)
+            return text;
+        const double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - s.paceSince).count();
+        const std::size_t paced = s.done - s.paceFrom;
+        if (paced < 5 && elapsed < 20) // too little to tell
+            return text;
+        const double minutes = elapsed / static_cast<double>(paced) * static_cast<double>(s.total - s.done) / 60;
+        if (minutes < 1)
+            return text + zh(" · 不到 1 分钟", " · under a minute left");
+        if (minutes < 90) {
+            const std::string n = std::to_string(std::lround(minutes));
+            return text + zh(" · 约剩 " + n + " 分钟", " · about " + n + " min left");
+        }
+        const std::string n = std::to_string(std::lround(minutes / 60));
+        return text + zh(" · 约剩 " + n + " 小时", " · about " + n + " h left");
+    }
+
+    // What would be sent, for the user's yes: "约 926 个文件（约 213 万字）的文字会发给 硅基流动 计算，按它的价格计费".
+    std::string consentText(const Status& s, const Provider& p) const
+    {
+        const std::string files = thousands(s.toSend);
+        const std::string chars = s.chars >= 10000 ? thousands(s.chars / 10000) + zh(" 万字", "0k characters") : thousands(s.chars) + zh(" 字", " characters");
+        return p.local
+            ? zh("约 " + files + " 个文件（约 " + chars + "），用本机的 " + p.name + " 计算，不上传",
+                  "About " + files + " files (about " + chars + "), computed by " + p.name + " on this PC; nothing is uploaded")
+            : zh("约 " + files + " 个文件（约 " + chars + "）的文字会发给 " + p.name + " 计算，按它的价格计费",
+                  "The text of about " + files + " files (about " + chars + ") goes to " + p.name + ", at its prices");
+    }
+
+    // The same for the plugin's card in the settings (winshun/status, GitHub
+    // #458: the index was built with nothing to see but in the search box):
+    // a line, the bar, and 开始 / 暂停 / 继续 / 重试. A Win顺 that does not
+    // know the notification ignores it.
+    Json::Object reportNow() const
+    {
+        const Status s = status();
+        Provider p;
+        {
+            const std::lock_guard lock(m_mutex);
+            p = m_provider;
+        }
+        const auto button = [](const char* id, const std::string& title) {
+            return Json::Array {Json::Object {{"id", id}, {"title", title}}};
+        };
+        Json::Object r;
+        switch (s.phase) {
+        case Phase::Starting:
+        case Phase::Counting:
+            r = {{"text", zh("正在清点要建立索引的文件…", "Counting the files to index…")}, {"tone", "busy"}};
+            break;
+        case Phase::NoService:
+            r = {{"text", zh("还没选模型服务：在下面的“模型服务”里选一个，就开始建立语义索引", "No model service yet: pick one under “Model service” below, and the semantic index is built")}, {"tone", "warn"}};
+            break;
+        case Phase::NoContentIndex:
+            r = {{"text", zh("要先打开文件内容搜索：设置 → 搜索范围 → 文件内容", "Turn on file content search first: Settings → Search scope → File contents")}, {"tone", "warn"}};
+            break;
+        case Phase::WaitingForYes:
+            if (s.toSend == 0) {
+                r = {{"text", zh("没有要建索引的文件：看看下面的“只看这些文件夹”和“文件类型”", "No files to index: check “Only these folders” and “File types” below")}, {"tone", "idle"}};
+                break;
+            }
+            r = {{"text", zh("等你确认：", "Waiting for your yes: ") + consentText(s, p)}, {"tone", "warn"},
+                {"actions", button("start", zh("开始建立索引", "Build the index"))}};
+            break;
+        case Phase::Indexing:
+            r = {{"text", (s.paused ? zh("语义索引已暂停：", "The semantic index is paused: ") : zh("正在建立语义索引：", "Building the semantic index: ")) + progressText(s)},
+                {"tone", s.paused ? "idle" : "busy"},
+                {"progress", s.total > 0 ? static_cast<double>(s.done) / static_cast<double>(s.total) : 0.0},
+                {"actions", s.paused ? button("resume", zh("继续", "Resume")) : button("pause", zh("暂停", "Pause"))}};
+            break;
+        case Phase::Ready:
+            r = {{"text", zh("语义索引已就绪：" + thousands(m_store ? m_store->files() : 0) + " 个文件", "The semantic index is ready: " + thousands(m_store ? m_store->files() : 0) + " files")},
+                {"tone", "ok"}};
+            break;
+        case Phase::Failed:
+            r = {{"text", zh("语义索引停下了：" + s.error + "。过一会儿会自己再试", "The semantic index stopped: " + s.error + ". It tries again in a while")}, {"tone", "warn"},
+                {"actions", button("retry", zh("重试", "Try again"))}};
+            break;
+        }
+        return r;
+    }
+
+    // Tells Win顺 how the index stands, when that changed; while files go
+    // through, not more often than kPublishEvery (`now`: at once, a phase changed).
+    void publish(bool now = false)
+    {
+        const std::lock_guard lock(m_publishMutex);
+        const auto time = std::chrono::steady_clock::now();
+        if (!now && time - m_published < kPublishEvery)
+            return;
+        Json::Object report = reportNow();
+        std::string said = Json(report).dump();
+        if (said == m_publishedText)
+            return;
+        m_published = time;
+        m_publishedText = std::move(said);
+        m_wire.send(Json::Object {{"method", "winshun/status"}, {"params", std::move(report)}});
+    }
+
     Items statusItems(bool alone) const
     {
         const Status s = status();
@@ -414,21 +530,21 @@ private:
                         .withIcon(icon).invalid());
                 break;
             }
-            const std::string files = thousands(s.toSend);
-            const std::string chars = s.chars >= 10000 ? thousands(s.chars / 10000) + zh(" 万字", "0k characters") : thousands(s.chars) + zh(" 字", " characters");
-            std::string subtitle = p.local
-                ? zh("约 " + files + " 个文件（约 " + chars + "），用本机的 " + p.name + " 计算，不上传。回车开始",
-                      "About " + files + " files (about " + chars + "), computed by " + p.name + " on this PC; nothing is uploaded. Enter starts")
-                : zh("约 " + files + " 个文件（约 " + chars + "）的文字会发给 " + p.name + " 计算，按它的价格计费。回车开始",
-                      "The text of about " + files + " files (about " + chars + ") goes to " + p.name + ", at its prices. Enter starts");
-            items.push_back(Item("start", zh("开始建立语义索引", "Build the semantic index"), subtitle)
+            items.push_back(Item("start", zh("开始建立语义索引", "Build the semantic index"), consentText(s, p) + zh("。回车开始", ". Enter starts"))
                                 .withIcon("glyph:U+E768") // Play
                                 .withActions({{"start", zh("开始", "Start"), "Enter"}}));
             break;
         }
         case Phase::Indexing:
-            items.push_back(Item("status", zh("正在建立语义索引：" + thousands(s.done) + " / " + thousands(s.total) + " 个文件", "Building the semantic index: " + thousands(s.done) + " / " + thousands(s.total) + " files"),
-                p.name + " · " + p.model).withIcon(icon).invalid());
+            if (s.paused)
+                items.push_back(Item("resume", zh("语义索引已暂停：", "The semantic index is paused: ") + progressText(s), zh("回车继续", "Enter resumes"))
+                                    .withIcon("glyph:U+E769") // Pause
+                                    .withActions({{"resume", zh("继续", "Resume"), "Enter"}}));
+            else
+                items.push_back(Item("pause", zh("正在建立语义索引：", "Building the semantic index: ") + progressText(s),
+                    p.name + " · " + p.model + zh(" · 回车暂停", " · Enter pauses"))
+                                    .withIcon(icon)
+                                    .withActions({{"pause", zh("暂停", "Pause"), "Enter"}}));
             break;
         case Phase::Ready:
             if (alone)
@@ -525,6 +641,10 @@ private:
         if (item == "start" || what == "start") {
             {
                 const std::lock_guard lock(m_mutex);
+                if (m_status.phase != Phase::WaitingForYes) // a yes to what is no longer asked (a button of a moment ago)
+                    return Json::Array {winshun::effect::keep()};
+                m_status.paused = false; // 开始 is also 继续
+                ::DeleteFileW(pausedPath().c_str());
                 std::ofstream(consentPath(), std::ios::binary | std::ios::trunc) << consentFor(m_provider);
                 m_status.phase = Phase::Indexing;
                 m_status.done = 0;
@@ -534,6 +654,23 @@ private:
             m_wake.notify_all();
             return Json::Array {winshun::effect::notify(zh("开始建立语义索引", "Building the semantic index")), winshun::effect::keep(),
                 winshun::effect::replace(statusItems(true))};
+        }
+        // 暂停 / 继续: the row in the search box, or the button on the card
+        // in the settings. What is done stays; the file under way is finished.
+        if (what == "pause" || what == "resume" || item == "pause" || item == "resume") {
+            const bool pause = what == "pause" || (what != "resume" && item == "pause");
+            {
+                const std::lock_guard lock(m_mutex);
+                m_status.paused = pause;
+                m_status.paceFrom = m_status.done;
+                m_status.paceSince = std::chrono::steady_clock::now();
+            }
+            if (pause)
+                std::ofstream(pausedPath(), std::ios::binary | std::ios::trunc) << "1";
+            else
+                ::DeleteFileW(pausedPath().c_str());
+            m_wake.notify_all();
+            return Json::Array {winshun::effect::keep(), winshun::effect::replace(statusItems(true))};
         }
         if (item == "retry" || what == "retry") {
             {
@@ -552,6 +689,7 @@ private:
 
     std::wstring folder() const { return winshun::wide(m_dataDir) + L"\\semantic"; }
     std::wstring consentPath() const { return winshun::wide(m_dataDir) + L"\\consent.txt"; }
+    std::wstring pausedPath() const { return winshun::wide(m_dataDir) + L"\\paused"; } // there: the user's 暂停 holds
 
     // What the user said yes to: this model, and these files. Other folders
     // or types ask again (a try on one folder is no yes for the whole disk).
@@ -574,9 +712,30 @@ private:
 
     void setPhase(Phase phase, std::string error = {})
     {
-        const std::lock_guard lock(m_mutex);
-        m_status.phase = phase;
-        m_status.error = std::move(error);
+        {
+            const std::lock_guard lock(m_mutex);
+            m_status.phase = phase;
+            m_status.error = std::move(error);
+        }
+        publish(true);
+    }
+
+    // 暂停 holds the pass here, between two files, until 继续 (or the
+    // settings change, or the plugin is to end).
+    void waitWhilePaused(std::uint64_t generation)
+    {
+        {
+            const std::lock_guard lock(m_mutex);
+            if (!m_status.paused)
+                return;
+        }
+        m_store->flush();
+        publish(true);
+        {
+            std::unique_lock lock(m_mutex);
+            m_wake.wait(lock, [&] { return m_stop || m_generation != generation || !m_status.paused; });
+        }
+        publish(true);
     }
 
     // Sleeps until woken (settings, the user's yes) or `time` is up.
@@ -737,6 +896,7 @@ private:
                 || m_status.phase == Phase::NoContentIndex)
                 m_status.phase = Phase::Counting;
         }
+        publish(true);
         const auto listed = list(generation);
         if (!listed)
             return "-";
@@ -764,12 +924,15 @@ private:
                     ++sampled;
                 }
             }
-            const std::lock_guard lock(m_mutex);
-            if (m_generation != generation)
-                return "-";
-            m_status.phase = Phase::WaitingForYes;
-            m_status.toSend = todo.size();
-            m_status.chars = sampled > 0 ? chars * todo.size() / sampled : 0;
+            {
+                const std::lock_guard lock(m_mutex);
+                if (m_generation != generation)
+                    return "-";
+                m_status.phase = Phase::WaitingForYes;
+                m_status.toSend = todo.size();
+                m_status.chars = sampled > 0 ? chars * todo.size() / sampled : 0;
+            }
+            publish(true);
             return "-";
         }
 
@@ -777,15 +940,23 @@ private:
             if (!present.contains(path))
                 m_store->remove(path);
         }
+        const std::size_t already = listed->size() - todo.size();
         {
             const std::lock_guard lock(m_mutex);
-            m_status.done = 0;
-            m_status.total = todo.size();
+            // Of all the files to have, not of this pass: a pass taken up
+            // again (after 暂停 and a restart, or the network came back)
+            // goes on from where it was, 4 / 12 and not 0 / 8.
+            m_status.done = already;
+            m_status.total = listed->size();
             m_status.phase = todo.empty() ? Phase::Ready : Phase::Indexing;
             m_status.error.clear();
+            m_status.paceFrom = already;
+            m_status.paceSince = std::chrono::steady_clock::now();
         }
+        publish(true);
         auto lastFlush = std::chrono::steady_clock::now();
         for (std::size_t i = 0; i < todo.size(); ++i) {
+            waitWhilePaused(generation);
             if (changed(generation)) {
                 m_store->flush();
                 return "-";
@@ -815,8 +986,9 @@ private:
             m_store->add(std::move(file));
             {
                 const std::lock_guard lock(m_mutex);
-                m_status.done = i + 1;
+                m_status.done = already + i + 1;
             }
+            publish();
             const auto now = std::chrono::steady_clock::now();
             if (m_store->pending() >= kFlushEvery || now - lastFlush > kFlushAfter) {
                 m_store->flush();
@@ -850,6 +1022,10 @@ private:
     std::uint64_t m_generation = 0;
     bool m_stop = false;
     Status m_status;
+
+    std::mutex m_publishMutex; // what follows: the last winshun/status sent
+    std::chrono::steady_clock::time_point m_published {};
+    std::string m_publishedText;
 };
 
 } // namespace

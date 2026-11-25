@@ -38,6 +38,7 @@ public:
         std::function<void(std::uint64_t queryId, const QString& text)> progress; // winshun/progress
         std::function<void()> refresh; // winshun/refresh: what the launcher shows changed by itself
         std::function<void(const QJsonObject&)> settingsUpdate; // this plugin's declared settings only
+        std::function<void(const QJsonObject& params)> status; // winshun/status: how it stands, for its card
         // winshun/hotkeys: the shortcuts it registers itself (the screenshot's),
         // which Win顺 then leaves to it.
         std::function<void(const QStringList& keys)> hotkeys;

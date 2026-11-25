@@ -15436,6 +15436,14 @@ Content index: %5</translation>
 <context>
     <name>ws::PluginSettings</name>
     <message>
+        <source>正在建立语义索引：312 / 926 个文件 · 约剩 14 分钟</source>
+        <translation>Building the semantic index: 312 / 926 files · about 14 min left</translation>
+    </message>
+    <message>
+        <source>暂停</source>
+        <translation>Pause</translation>
+    </message>
+    <message>
         <source>新版本要更多权限，请单独更新</source>
         <translation>The new version needs more permissions; update it on its own</translation>
     </message>
