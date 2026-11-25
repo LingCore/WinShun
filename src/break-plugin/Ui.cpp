@@ -418,7 +418,7 @@ private:
         }
         m_graphics.m_zh = m_zh;
         m_state = st;
-        if (st.phase == Phase::HeadsUp || st.phase == Phase::Pending)
+        if (st.notice)
             showPill();
         else
             destroyPill();

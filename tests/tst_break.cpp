@@ -369,6 +369,22 @@ private slots:
         c.headsUpMs = 0;
         Run r(c);
         QCOMPARE(r.until(Phase::Pending), 20 * kMin);
+        // Nor while the break waits for a pause in typing: set to 0, the
+        // bar never shows (it did, "马上开始…", for those seconds).
+        QVERIFY(!r.state().notice);
+        r.idle = 0;
+        r.step(5 * kSec);
+        QCOMPARE(r.s.phase(), Phase::Pending);
+        QVERIFY(!r.state().notice);
+        r.idle = 2 * kSec;
+        r.step(kSec);
+        QCOMPARE(r.s.phase(), Phase::OnBreak);
+
+        Run with; // with a notice, the bar stays through that wait
+        with.until(Phase::HeadsUp);
+        QVERIFY(with.state().notice);
+        with.until(Phase::Pending);
+        QVERIFY(with.state().notice);
     }
 
     // The notice's look from Win顺's appearance (Core.h lookOf): the

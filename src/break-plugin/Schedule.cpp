@@ -105,6 +105,7 @@ State Schedule::state(std::int64_t now, std::int64_t wall) const
     const bool asking = m_phase == Phase::HeadsUp || m_phase == Phase::Pending || m_phase == Phase::OnBreak;
     st.canPostpone = asking && !m_postponed && !st.strict;
     st.waiting = m_waiting;
+    st.notice = m_phase == Phase::HeadsUp || (m_phase == Phase::Pending && m_config.headsUpMs > 0);
     return st;
 }
 

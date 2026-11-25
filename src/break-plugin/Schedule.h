@@ -60,6 +60,7 @@ struct State {
     bool strict = false; // OnBreak (or about to be): no skip, no postpone
     bool canPostpone = false;
     bool waiting = false; // due, but held back by `quiet`
+    bool notice = false; // the small bar shows; never with `headsUpMs` 0, the wait for a pause in typing included
 };
 
 class Schedule {
