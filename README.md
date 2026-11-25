@@ -66,7 +66,7 @@
 | 🗂️ | [搜索面板](docs/使用说明.md#搜索面板筛选和排序) | `Ctrl+E` 展开：按类型、时间、大小、位置、名称筛选，常用条件可存成一点就用的快捷筛选，按列排序，大图浏览 |
 | 👀 | [预览](docs/使用说明.md#预览文件) | `Alt+P` 看一眼图片、文档、PDF，不用打开 |
 | 🚀 | [应用和系统设置](docs/使用说明.md#打开应用和系统设置) | 开始菜单里的应用和约 1200 个设置页，`vsc`、`网卡` 都能找到；可以加一个把应用排成图标网格的“应用”标签，还能切换已打开的窗口；`关机`、`重启`、`锁屏` 也直接打得出（关机、重启要先确认） |
-| 📋 | [剪贴板历史](docs/使用说明.md#剪贴板历史) ¹ | 代替 `Win+V`，保存文字、图片和文件，支持分组查找与悬停预览 |
+| 📋 | [剪贴板历史](docs/使用说明.md#剪贴板历史) ¹ | 代替 `Win+V`，保存文字、图片和文件，支持分组查找、悬停预览和单条快捷键 |
 | 📂 | [“打开”“另存为”对话框](docs/使用说明.md#打开另存为对话框) ² | 对话框旁多一个搜索框；`Ctrl+G` 转到文件管理器正开着的文件夹 |
 | 🖱️ | [在资源管理器里](docs/使用说明.md#在资源管理器里) ² | 双击空白处弹出常用文件夹，可一层层走进子文件夹；在文件列表里直接打字就搜 |
 | ⭐ | [收藏夹](docs/使用说明.md#收藏夹) | 给常用的文件、文件夹、应用起个关键词，一打就开；点列头按名称、日期、类型、大小排好；还能自定义命令，也可放进文件的右键菜单 |
@@ -200,6 +200,14 @@ winget install LingCore.WinShun
 </details>
 
 ### 最近更新
+
+**0.47.0**
+
+- ⌨️ 剪贴板里常用的一条能**设自己的快捷键**，在任何程序里一按就粘贴它；📋 可以**保留重复项**，同样的内容再复制一次也记一条（和 Ditto 一样）。
+- 🗜️ 新插件**压缩包搜索**：按文件名找 zip、7z、rar、tar.gz 里的文件，不用解压；🖊️ 截图画笔**点一下就是一个点**，指针显示笔尖大小，工具栏多了“选择”按钮（#461）。
+- 🛠️ **改进** 全屏游戏里打开的剪贴板面板不再一闪就没（#452）。
+
+详见 [0.47.0 发布说明](docs/release-notes/v0.47.0.md)。
 
 **0.46.0**
 
@@ -453,7 +461,7 @@ No installer, or Scoop and WinGet? See [Download and install](#download-and-inst
 | 🗂️ | [Search panel](docs/features.en.md#file-search) | `Ctrl+E` expands it: filter by kind, date, size, folder and name, save your own quick filters, sort by column, large icons |
 | 👀 | [Preview](docs/features.en.md#file-search) | `Alt+P` shows a picture, document or PDF without opening it |
 | 🚀 | [Apps and settings](docs/features.en.md#apps-and-settings) | Start menu apps and about 1,200 Windows settings pages; an optional Apps tab shows the apps as a grid of icons and switches to open windows; shut down, restart and lock are one typed word away (shut down and restart ask first) |
-| 📋 | [Clipboard history](docs/features.en.md#clipboard-history) ¹ | Replaces `Win+V` with text, pictures and files, group search and hover previews |
+| 📋 | [Clipboard history](docs/features.en.md#clipboard-history) ¹ | Replaces `Win+V` with text, pictures and files, group search, hover previews and per-entry shortcuts |
 | 📂 | [Open / Save dialogs](docs/features.en.md#open-and-save-dialogs) ² | A search bar beside the dialog; `Ctrl+G` jumps to the folder open in your file manager |
 | 🖱️ | [In File Explorer](docs/features.en.md#in-file-explorer) ² | Double-click empty space for your folders and the folders inside them; type in a file list to search |
 | ⭐ | [Favorites](docs/features.en.md#favorites) | Give files, folders and apps a keyword to open them; sort them by name, date, type or size with a click; your own commands too, also in the right-click menu of files |
@@ -587,6 +595,14 @@ Standard and portable packages install enhanced text recognition on demand. Open
 </details>
 
 ### What's new
+
+**0.47.0**
+
+- ⌨️ A clipboard entry you use often can have **a shortcut of its own** that pastes it in any program; 📋 **Keep duplicates** records the same content copied again as a new entry (both as in Ditto).
+- 🗜️ New plugin **Archive search**: files inside zip, 7z, rar and tar.gz found by name, without unpacking; 🖊️ a click with the capture pen **leaves a dot**, the pointer shows the tip, and the toolbar has a Select button (#461).
+- 🛠️ **Improved** the clipboard panel stays up over a full-screen game (#452).
+
+See the [0.47.0 release notes](docs/release-notes/v0.47.0.md).
 
 **0.46.0**
 
