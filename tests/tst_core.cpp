@@ -4076,6 +4076,20 @@ private slots:
             QVERIFY(!indexedIn(service, back + u"\\docs\\a.txt"_s));
             QVERIFY(!indexedIn(service, inModules + u"\\o.txt"_s));
             QVERIFY(!indexedIn(service, inDotFolder + u"\\o.txt"_s));
+            // GitHub #460: a link not gone through has nothing under it here,
+            // and is not taken for an empty folder: flagged as found on the disk.
+            {
+                const auto index = service.index();
+                const auto lock = index->readLock();
+                for (const QString& link : {inDotFolder, up, back}) {
+                    const EntryId id = index->findPath(link.toStdWString());
+                    QVERIFY2(id != kNoEntry, qPrintable(link));
+                    const Entry e = index->entry(id);
+                    QVERIFY2(e.isDir() && e.firstChild() == kNoEntry && (e.flags & EntryFlag::Offline), qPrintable(link));
+                }
+                const EntryId plain = index->findPath(other.toStdWString()); // the folder they lead to: a plain one
+                QVERIFY(plain != kNoEntry && !(index->entry(plain).flags & EntryFlag::Offline));
+            }
             // Followed live under the link, and a link made since.
             QFile added(other + u"\\new.txt"_s);
             QVERIFY(added.open(QIODevice::WriteOnly));
@@ -5864,6 +5878,7 @@ private slots:
         QVERIFY(contents->times);
         QCOMPARE(loaded->modified(report), FileTime {1'700'000'123});
         QVERIFY(contents->created);
+        QVERIFY(contents->linkFlags); // version 11; an older file has the volumes read once more (IndexService)
         QCOMPARE(loaded->created(report), FileTime {1'600'000'456});
         QCOMPARE(loaded->modified(loaded->findPath(L"C:\\Windows")), FileTime {0xFFFF'FFFF});
         QCOMPARE(loaded->modified(loaded->findPath(L"C:\\Users\\me\\Documents")), FileTime {5});
@@ -9598,6 +9613,9 @@ private slots:
             const EntryId full = index->add(root, "zqfull", EntryFlag::Directory);
             inFull = index->add(full, "inside.txt", 0);
             index->add(root, "zqhidden", EntryFlag::Directory | EntryFlag::Hidden);
+            // GitHub #460: a junction or a symbolic link to a folder is not gone
+            // into, so it has no children here, yet it leads to a folder that has.
+            index->add(root, "zqlink", Crawler::attributeFlags(FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT));
             index->setSize(index->add(root, "zqzero.txt", 0), packSize(0));
         }
         SearchEngine engine(&service);
@@ -9621,6 +9639,9 @@ private slots:
         QVERIFY(rows[u"zqempty"_s]);
         QVERIFY(!rows[u"zqfull"_s]);
         QVERIFY(!rows.value(u"zqhidden"_s)); // listed or not: never marked
+        QVERIFY(rows.contains(u"zqlink"_s) && !rows[u"zqlink"_s]);
+        QCOMPARE(Crawler::attributeFlags(FILE_ATTRIBUTE_DIRECTORY), EntryFlag::Directory); // a plain folder: as before
+        QCOMPARE(Crawler::attributeFlags(FILE_ATTRIBUTE_REPARSE_POINT), std::uint8_t {0}); // a file that is a link: not offline
         QVERIFY(!rows[u"zqzero.txt"_s]);
         {
             const auto index = service.index();

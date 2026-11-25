@@ -187,8 +187,8 @@ struct SearchResult {
     // past 16 MB, FileSize); -1 for a folder, or when not known.
     std::int64_t size = -1;
     // A folder the index holds nothing in (GitHub #391): marked 空文件夹, so
-    // as not to be gone into for nothing. Never one that is hidden or on a
-    // share (emptyInIndex).
+    // as not to be gone into for nothing. Never one that is hidden, on a
+    // share, or a link to another folder (emptyInIndex; GitHub #460).
     bool emptyFolder = false;
     bool offline = false; // on a network share that cannot be reached now (ShareIndexer::offline)
     // Found by how its name reads (年度报告 for 年度报高; homophoneQueries),

@@ -367,6 +367,11 @@ std::uint8_t Crawler::attributeFlags(unsigned long attributes) noexcept
         flags |= EntryFlag::Hidden;
     if (attributes & (FILE_ATTRIBUTE_OFFLINE | FILE_ATTRIBUTE_RECALL_ON_OPEN | FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS))
         flags |= EntryFlag::Offline;
+    // A folder that is a reparse point (a junction, a symbolic link, a mount;
+    // a cloud folder too): what it leads to is not under it in the index
+    // unless it is walked, so the index cannot call it empty (GitHub #460).
+    if ((attributes & FILE_ATTRIBUTE_DIRECTORY) && (attributes & FILE_ATTRIBUTE_REPARSE_POINT))
+        flags |= EntryFlag::Offline;
     return flags;
 }
 

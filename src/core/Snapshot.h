@@ -35,6 +35,7 @@ struct Contents {
     std::vector<char> attachment; // empty in older files
     bool times = false; // the entries have their write times (older files do not)
     bool created = false;
+    bool linkFlags = false; // folders that are links carry EntryFlag::Offline (GitHub #460)
 };
 
 // Nullopt when the file is missing, corrupt or from an unknown version. The

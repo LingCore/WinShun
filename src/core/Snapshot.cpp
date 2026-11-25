@@ -63,7 +63,7 @@ namespace {
 // the index is walked or rebuilt. Files written before are read as they are.
 constexpr char kMagic[8] = {'Q', 'F', 'I', 'N', 'D', 'E', 'X', '\0'};
 constexpr char kPackedMagic[8] = {'Q', 'F', 'I', 'N', 'D', 'E', 'X', 'Z'};
-constexpr std::uint32_t kVersion = 10;
+constexpr std::uint32_t kVersion = 11; // 11: folders that are links are flagged (the format is 10's)
 constexpr std::size_t kGroup = 1 << 16;
 constexpr std::uint32_t kOldestVersion = 2; // without the rules
 constexpr std::uint32_t kEndMarker = 0x21444E45; // "END!"
@@ -872,6 +872,7 @@ std::optional<Contents> load(const QString& filePath)
     contents.index = std::move(index);
     contents.times = version >= 7;
     contents.created = version >= 9;
+    contents.linkFlags = version >= 11;
     return contents;
 }
 

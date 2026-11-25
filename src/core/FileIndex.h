@@ -30,7 +30,10 @@ inline constexpr std::uint8_t Deleted = 0x02;
 inline constexpr std::uint8_t Root = 0x04;
 inline constexpr std::uint8_t LowPriority = 0x08; // under system/program/tooling folders
 inline constexpr std::uint8_t Hidden = 0x10;
-inline constexpr std::uint8_t Offline = 0x20; // cloud placeholder: reading would download it
+// A cloud placeholder: reading would download it. On a folder, also a reparse
+// point (a link to another folder): what is in it is not told by its children
+// here (Crawler::attributeFlags).
+inline constexpr std::uint8_t Offline = 0x20;
 inline constexpr std::uint8_t Han = 0x40; // the name has Chinese characters (tried as pinyin); set by the index
 inline constexpr std::uint8_t Remote = 0x80; // on a network share (a root named "\\host\share")
 inline constexpr std::uint8_t Persistent = Directory | Root | LowPriority | Hidden | Offline | Remote;

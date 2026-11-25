@@ -1250,6 +1250,10 @@ void IndexService::run(std::stop_token stop, Pass pass)
     std::vector<bool> known(volumes.size(), false);
     std::optional<CrawlRules> snapshotRules;
     bool timesMissing = false; // a snapshot from before the index kept write times: every volume is read again
+    // ... or from before links were told from empty folders (GitHub #460): the
+    // volumes read through the MFT are read once more, which sets the flags;
+    // those that are walked, walked once a while after startup.
+    bool linkFlagsMissing = false;
     bool fromSnapshot = false;
     bool scopeKnown = false; // ... with its scope.json (GitHub #52)
     bool scopeStale = false; // ... with one that does not go with it
@@ -1278,6 +1282,7 @@ void IndexService::run(std::stop_token stop, Pass pass)
             m_index.store(std::shared_ptr<FileIndex>(std::move(contents->index)));
             snapshotRules = std::move(contents->rules);
             timesMissing = !contents->times || !contents->created;
+            linkFlagsMissing = !contents->linkFlags;
             fromSnapshot = true;
             // GitHub #52: what of it the chosen folders are, and how each stood.
             // Not known (none, or written with another snapshot): all of them
@@ -1434,7 +1439,7 @@ void IndexService::run(std::stop_token stop, Pass pass)
                 toSync.push_back(i);
                 if (known[i])
                     contentUnsureOf(volumes[i].root); // what changed meanwhile is not in the journal any more
-            } else if (timesMissing || linksOwed) {
+            } else if (timesMissing || linksOwed || linkFlagsMissing) {
                 toSync.push_back(i); // the journal then goes on from where the snapshot left off
             }
         } else {
@@ -1451,8 +1456,8 @@ void IndexService::run(std::stop_token stop, Pass pass)
                 scoped.push_back(i);
                 if (!known[i] || pass == Pass::Full || timesMissing || wasFollowed || contains(rewalk, volumes[i].root))
                     toSync.push_back(i);
-                else if (pass == Pass::Startup && m_options.rescanOnStartup)
-                    walkLater.push_back(i);
+                else if (pass == Pass::Startup && (m_options.rescanOnStartup || linkFlagsMissing))
+                    walkLater.push_back(i); // GitHub #460: once, for the links' flags, whatever the setting
                 continue;
             }
             // GitHub #52: whole again, after it held its chosen folders only.
@@ -1464,7 +1469,7 @@ void IndexService::run(std::stop_token stop, Pass pass)
             // walked as after a startup rescan.
             if (walkNow)
                 toSync.push_back(i);
-            else if (pass == Pass::Startup && (m_options.rescanOnStartup || wasFollowed || scopeStale))
+            else if (pass == Pass::Startup && (m_options.rescanOnStartup || wasFollowed || scopeStale || linkFlagsMissing))
                 walkLater.push_back(i); // let login settle first
         }
     }
