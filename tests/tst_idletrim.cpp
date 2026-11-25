@@ -77,6 +77,35 @@ private slots:
         QVERIFY(true);
     }
 
+    // What the diagnostics package says of it (summary.json "idle_trim").
+    void statusTellsWhatHoldsTheMemory()
+    {
+        const DirtyMemory memory(40);
+        const char* busy = "reading content";
+        bool up = true;
+        ws::IdleTrim trim([&] { return busy; }, [&] { return up; });
+        QJsonObject status = trim.status();
+        QCOMPARE(status.value(u"waiting_for").toString(), QStringLiteral("reading content"));
+        QCOMPARE(status.value(u"window_up").toBool(), true);
+        QCOMPARE(status.value(u"held_after_resume").toBool(), false);
+        QCOMPARE(status.value(u"last_trim_at").toString(), QString());
+
+        trim.resumed();
+        QCOMPARE(trim.status().value(u"held_after_resume").toBool(), true);
+
+        busy = nullptr;
+        up = false;
+        trim.setAfterUse(30);
+        trim.used(); // in use again: no longer held
+        QTRY_VERIFY_WITH_TIMEOUT(trim.lastTrim().atMs > 0, 2000);
+        status = trim.status();
+        QCOMPARE(status.value(u"waiting_for").toString(), QString());
+        QCOMPARE(status.value(u"window_up").toBool(), false);
+        QCOMPARE(status.value(u"held_after_resume").toBool(), false);
+        QVERIFY(status.value(u"last_trim_at").toString().endsWith(u'Z'));
+        QVERIFY(status.value(u"last_trim_mb").toInt() >= 40);
+    }
+
     void triggerJournalRecordsPhaseTimingsAndMemory()
     {
         QTemporaryDir temp;

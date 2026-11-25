@@ -2,6 +2,7 @@
 
 #include "platform/ProcessUsage.h"
 
+#include <QJsonObject>
 #include <QObject>
 #include <QTimer>
 #include <QVariantList>
@@ -45,6 +46,13 @@ public:
     explicit HealthMonitor(Sources sources, QObject* parent = nullptr);
     // A monitor with made-up readings (the previews); never reads.
     static HealthMonitor* demo(QObject* parent, bool idle);
+
+    // The page's breakdown read once, for the diagnostics package (MB, one
+    // decimal; program names, nothing else): each process of Win顺's, the
+    // main one told apart as on the page and by kind of page. `fileIndex`:
+    // its blocks, taken under its lock; `fileIndexTables`, `pictures`: bytes.
+    // Any thread, ~40 ms (memory::look and memory::map).
+    static QJsonObject snapshot(Blocks fileIndex, std::uint64_t fileIndexTables, std::uint64_t pictures);
 
     bool watching() const noexcept { return m_watching; }
     void setWatching(bool on);

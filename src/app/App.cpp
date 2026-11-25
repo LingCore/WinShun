@@ -4411,6 +4411,10 @@ void App::showSettingsNow(const std::function<void(QQuickWindow*)>& at)
             context[u"display"_s] = diagnostics::display(m_renderer, SystemTheme::backdropAvailable()); // fonts: this thread's
             if (m_clipWatcher)
                 context[u"clipboard"_s] = m_clipWatcher->diagnosticStatus();
+            // "Win顺 uses a lot of memory" (GitHub #459): what holds the memory
+            // from going back, here; where it is, on the export thread below.
+            if (m_idleTrim)
+                context[u"idle_trim"_s] = m_idleTrim->status();
             // Installed plugins: id, version, switched on (nothing else: no settings, no paths).
             if (m_pluginHost) {
                 QJsonArray plugins;
@@ -4426,9 +4430,13 @@ void App::showSettingsNow(const std::function<void(QQuickWindow*)>& at)
             m_diagnosticsExport = std::jthread([this, log, context = std::move(context), index, dataFolder, serviceFolder]() mutable {
                 context[u"file_index_ready"_s] = index->state() == IndexService::State::Ready;
                 context[u"file_index_entries"_s] = static_cast<qint64>(index->itemCount());
+                HealthMonitor::Blocks indexBlocks; // addresses only: compared with, never read
+                std::uint64_t indexTables = 0;
                 if (const auto files = index->index()) {
                     const auto lock = files->readLock();
                     const auto use = files->memoryUse();
+                    indexBlocks = files->memoryBlocks();
+                    indexTables = use.folderRecords + use.childTables + use.intern;
                     context[u"file_index_storage"_s] = QJsonObject {
                         {u"slots"_s, qint64(files->slotCount())}, {u"live"_s, qint64(files->liveCount())},
                         {u"entries_bytes"_s, qint64(use.entries)}, {u"times_bytes"_s, qint64(use.times)},
@@ -4437,6 +4445,10 @@ void App::showSettingsNow(const std::function<void(QQuickWindow*)>& at)
                         {u"folder_tables_bytes"_s, qint64(use.folderRecords)},
                         {u"child_tables_bytes"_s, qint64(use.childTables)}, {u"intern_bytes"_s, qint64(use.intern)}};
                 }
+                // The 运行状况 page's breakdown as of now (the settings window is
+                // up for this export, so its own share is in "windows").
+                context[u"memory"_s] = HealthMonitor::snapshot(std::move(indexBlocks), indexTables,
+                    static_cast<std::uint64_t>(ThumbnailProvider::cachedBytes() + ClipThumbnailProvider::cachedBytes()));
                 context[u"file_index_refreshing"_s] = index->isRefreshing();
                 context[u"content"_s] = index->contentIndexer()->diagnosticStatus();
                 QJsonArray disks;

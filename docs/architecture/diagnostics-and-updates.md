@@ -66,7 +66,7 @@ Win顺 在读取任何设置之前按以下优先级确定目录：
 | `app/plugins.log` | 取末尾 **256 KiB**（插件输出可能含路径） |
 | `capture/events*.jsonl` | `plugins/winshun.capture.data/diagnostics/`（每份 ≤1 MiB） |
 | `service/service.log` / `.old.log` | 索引服务目录，各取末尾 **1 MiB**（不可读时列于 `unavailable_logs`） |
-| `summary.json` | 版本/OS/权限、`plugins`（仅 id/version/enabled）、`display`、索引与磁盘状态 |
+| `summary.json` | 版本/OS/权限、`plugins`（仅 id/version/enabled）、`display`、索引与磁盘状态；`memory`（导出时的“运行状况”分块：各进程、主进程按用途和按页类型，以及句柄、GDI/USER 对象、峰值与运行时长，`HealthMonitor::snapshot`）、`idle_trim`（内存没归还的原因：唤醒后保留、后台在忙、有窗口在用，及上次归还） |
 
 > **隐私底线（永不记录、永不入包）**：`WinShun.ini`、系统凭据、剪贴板正文/图片载荷/哈希、文件索引原件、文档正文、搜索词与历史、MCP/插件对话、窗口标题、OCR 文字、原始按键内容、屏幕事件中的显示器名称。
 

@@ -7,6 +7,7 @@
 #include <QGuiApplication>
 #include <QJsonObject>
 #include <QScopeGuard>
+#include <QTimeZone>
 #include <QWindow>
 
 #include <algorithm>
@@ -127,6 +128,21 @@ bool IdleTrim::inUse() const
     if (foreground)
         ::GetWindowThreadProcessId(foreground, &owner);
     return owner == ::GetCurrentProcessId();
+}
+
+QJsonObject IdleTrim::status() const
+{
+    const char* busy = m_busy ? m_busy() : nullptr;
+    const LastTrim last = lastTrim();
+    return {
+        {u"held_after_resume"_s, m_heldAfterResume},
+        {u"waiting_for"_s, busy ? QString::fromLatin1(busy) : QString()},
+        {u"window_up"_s, m_up && m_up()}, // the clipboard, a pinned launcher, a dialog's bar
+        {u"after_use_ms"_s, m_afterUseMs},
+        {u"last_trim_at"_s, last.atMs ? QDateTime::fromMSecsSinceEpoch(last.atMs, QTimeZone::UTC).toString(Qt::ISODate) : QString()},
+        {u"last_trim_mb"_s, last.megabytes},
+        {u"kept_after_trim_mb"_s, static_cast<qint64>(m_floor.load() >> 20)},
+    };
 }
 
 void IdleTrim::poke()

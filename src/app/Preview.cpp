@@ -25,6 +25,7 @@
 #include "App.h"
 #include "Clipboard.h"
 #include "ClipboardDisplay.h"
+#include "DiagnosticLog.h"
 #include "DialogBar.h"
 #include "AppCatalog.h"
 #include "History.h"
@@ -2235,6 +2236,26 @@ int runSettings(const QStringList& args)
         monitor->refreshMemory();
         pump(400);
         check(updates > beforeRefresh, "memory refresh did not publish a reading");
+        { // the same breakdown as the diagnostics package gets it
+            const double pageTotal = monitor->now().value(u"total"_s).toDouble();
+            const QJsonObject snap = HealthMonitor::snapshot({}, 0, 0);
+            const QJsonObject parts = snap.value(u"parts_mb"_s).toObject();
+            double sum = 0;
+            for (const auto& part : parts)
+                sum += part.toDouble();
+            const double total = snap.value(u"total_mb"_s).toDouble();
+            check(total > 0 && std::abs(sum - total) < 2, "snapshot: the parts do not add up to the total");
+            check(std::abs(total - pageTotal) < std::max(8.0, pageTotal * 0.1), "snapshot: not the page's total");
+            check(snap.value(u"processes"_s).toArray().at(0).toObject().value(u"kind"_s).toString() == u"main",
+                "snapshot: the main process is not listed first");
+            check(snap.value(u"map_mb"_s).toObject().value(u"total"_s).toDouble() > 0, "snapshot: no page map");
+            const QJsonObject counters = snap.value(u"main_counters"_s).toObject();
+            check(counters.value(u"handles"_s).toInteger() > 0 && counters.value(u"peak_working_set_mb"_s).toDouble() > 0
+                    && counters.contains(u"uptime_minutes"_s),
+                "snapshot: the process's own counts are missing");
+            QFile file(out.filePath(u"health-snapshot.json"_s));
+            check(file.open(QIODevice::WriteOnly) && file.write(QJsonDocument(snap).toJson()) > 0, "snapshot not written");
+        }
         show(window->property("generalPage").toInt());
         return finish(window, ok);
     }
@@ -14517,6 +14538,7 @@ bool probeSettingsReopen(App& app, const QStringList& args, const QDir& out, QJs
 // (taken and deleted as they come) open its windows for a look at them:
 //   show [text] | hide | clip | settings [place] | style <fluent|brand|tactile>
 //   | theme <light|dark|system> | set <SettingsEditor property> <value>
+//   | call <SettingsEditor method> (one without arguments: exportDiagnostics)
 //   | windows (their places into windows.json) | press <objectName> (its clicked())
 //   | profile (the profile folder into profile.txt)
 // Each batch done is counted in <folder>\ack.txt.
@@ -14619,6 +14641,13 @@ int runLive(App& app, const QDir& out)
             } else if (verb == u"set") { // set <SettingsEditor property> <value>
                 if (SettingsEditor* found = editor())
                     found->setProperty(rest.section(u' ', 0, 0).toLatin1().constData(), rest.section(u' ', 1));
+            } else if (verb == u"call") { // call <SettingsEditor method without arguments>: what its button does
+                // The diagnostics journal is off in a probe: for its export, kept
+                // in <folder>\journal, where the package is found afterwards.
+                if (rest == u"exportDiagnostics" && !diagnostics::current())
+                    diagnostics::initialize(out.filePath(u"journal"_s));
+                if (SettingsEditor* found = editor())
+                    QMetaObject::invokeMethod(found, rest.toLatin1().constData());
             } else if (verb == u"windows") {
                 QJsonArray list;
                 for (QWindow* window : QGuiApplication::topLevelWindows()) {

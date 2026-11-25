@@ -66,6 +66,10 @@ public:
         qint64 megabytes = 0;
     };
     LastTrim lastTrim() const noexcept { return {m_lastTrimAtMs.load(), m_lastTrimMb.load()}; }
+    // Why the memory is, or is not, going back right now, for the diagnostics
+    // package: what holds it (held after a resume, work under way, a window
+    // up without the focus), the last time and what stayed then. GUI thread.
+    QJsonObject status() const;
     // An emptying done by someone else (the settings' button): remembered as the last.
     void noteTrim(qint64 megabytes) noexcept;
     // How long after the last use the memory goes back; 20 s. Shorter for a
