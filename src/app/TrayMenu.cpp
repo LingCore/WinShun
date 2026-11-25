@@ -26,9 +26,13 @@ using namespace Qt::StringLiterals;
 namespace ws::traymenu {
 namespace {
 
-// Shared density for native tray and capture menus; QML menus have their own layout.
+// Shared density for native tray and capture menus; QML menus have their own
+// layout. A row is no lower than these, and has kRowSpace (kInfoSpace) round
+// its words where 界面大小 makes them larger.
 constexpr int kRowHeight = 28;
 constexpr int kInfoHeight = 26;
+constexpr int kRowSpace = 14;
+constexpr int kInfoSpace = 12;
 constexpr int kSeparatorHeight = 7;
 constexpr int kIconSize = 14;
 constexpr int kIconBox = 18;
@@ -67,11 +71,17 @@ struct Appearance {
     qreal radius = 0;
     qreal inset = 4; // the hover from the menu's sides
     int maxWidth = 360;
+    int rowHeight = kRowHeight;
+    int infoHeight = kInfoHeight;
 
     Appearance(QObject* theme, POINT at)
     {
         const auto color = [theme](const char* name, QColor fallback) {
             return theme ? theme->property(name).value<QColor>() : fallback;
+        };
+        const auto size = [theme](const char* name, int fallback) {
+            const int value = theme ? theme->property(name).toInt() : 0;
+            return value > 0 ? value : fallback;
         };
         const QPalette palette = QGuiApplication::palette();
         background = color("menuBackground", palette.color(QPalette::Window));
@@ -82,8 +92,13 @@ struct Appearance {
         divider = color("divider", palette.color(QPalette::Mid));
         accent = color("accent", palette.color(QPalette::Highlight));
         selectedText = text;
-        body.setPixelSize(theme ? theme->property("fontCaption").toInt() : 14);
-        caption.setPixelSize(std::max(11, body.pixelSize() - 2));
+        // The words as large as in Win顺's other menus (ContextMenu.qml), which
+        // is Windows 11's own 14 px at the smaller 界面大小 and more above:
+        // a size smaller reads as small beside both.
+        body.setPixelSize(size("menuTextSize", 14));
+        caption.setPixelSize(size("menuCaptionSize", 12));
+        rowHeight = std::max(kRowHeight, body.pixelSize() + kRowSpace);
+        infoHeight = std::max(kInfoHeight, caption.pixelSize() + kInfoSpace);
         // The 界面风格's menu items (Theme reads its Look): their radius and
         // inset; the frame round them is Windows' (DWM's corners and edge).
         radius = theme ? theme->property("menuItemRadius").toReal() : 0;
@@ -260,13 +275,14 @@ struct Menu {
             : kShortcutGap + QFontMetricsF(appearance.caption).horizontalAdvance(row.shortcut);
         const qreal state = row.item->checked || !row.item->children.empty() ? kIconBox : 0;
         const qreal width = kLabelLeft + QFontMetricsF(font).horizontalAdvance(row.label) + suffix + state + kTextRight;
-        request.itemWidth
-            = qRound(std::clamp(width, qreal(std::min(208, appearance.maxWidth)), qreal(appearance.maxWidth))
-                * appearance.scale);
+        // Rounded up: a pixel's fraction less than the words need and the widest row's are cut short ("剪贴板…").
+        request.itemWidth = static_cast<UINT>(
+            std::ceil(std::clamp(width, qreal(std::min(208, appearance.maxWidth)), qreal(appearance.maxWidth))
+                * appearance.scale));
         request.itemHeight = qRound((row.padding                  ? kVerticalPadding
                                             : row.separator       ? kSeparatorHeight
-                                            : row.item->secondary ? kInfoHeight
-                                                                  : kRowHeight)
+                                            : row.item->secondary ? appearance.infoHeight
+                                                                  : appearance.rowHeight)
             * appearance.scale);
     }
 

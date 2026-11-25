@@ -61,6 +61,13 @@ std::vector<shell::MenuItem> entries(bool english)
     return items;
 }
 
+// A row's height in logical pixels: 14 round its words, which are as large
+// as in the QML menus (Theme.menuTextSize), and 28 at least.
+int rowHeight(const QObject* theme)
+{
+    return std::max(28, theme->property("menuTextSize").toInt() + 14);
+}
+
 } // namespace
 
 class TrayMenuTest : public QObject {
@@ -197,7 +204,7 @@ private slots:
                     QVERIFY(::GetMenuState(menu, 14, MF_BYPOSITION) & MF_HILITE);
                 RECT row {};
                 QVERIFY(::GetMenuItemRect(handle, menu, 1, &row));
-                QCOMPARE(row.bottom - row.top, qRound(28 * ::GetDpiForWindow(window) / 96.0));
+                QCOMPARE(row.bottom - row.top, qRound(rowHeight(theme) * ::GetDpiForWindow(window) / 96.0));
                 int corners = 0;
                 QVERIFY(SUCCEEDED(::DwmGetWindowAttribute(window, 33, &corners, sizeof corners)));
                 QCOMPARE(corners, round ? 2 : 1);
@@ -294,7 +301,7 @@ private slots:
                     observed = true;
                     RECT row {};
                     if (!::GetMenuItemRect(nullptr, menu, 1, &row)
-                        || row.bottom - row.top != qRound(28 * ::GetDpiForWindow(window) / 96.0))
+                        || row.bottom - row.top != qRound(rowHeight(theme) * ::GetDpiForWindow(window) / 96.0))
                         styled = false;
                     const QString folder = qEnvironmentVariable("WINSHUN_TRAY_EVIDENCE");
                     if (!folder.isEmpty()) {
@@ -620,14 +627,52 @@ private slots:
         const auto similar = [](const QColor& a, const QColor& b) {
             return std::abs(a.red() - b.red()) <= 2 && std::abs(a.green() - b.green()) <= 2 && std::abs(a.blue() - b.blue()) <= 2;
         };
-        // Row 2 (剪贴板历史) is highlighted: 6 px padding, then a 28 px row.
-        const int top = qRound(6 * scale), rowHeight = qRound(28 * scale);
-        const int middle = top + rowHeight + rowHeight / 2;
+        // Row 2 (剪贴板历史) is highlighted: 6 px padding, then a row.
+        const int top = qRound(6 * scale), row = qRound(rowHeight(theme) * scale);
+        const int middle = top + row + row / 2;
         QVERIFY2(similar(image.pixelColor(1, middle), background), "the menu's own background left of the hover");
         const int inset = qRound(theme->property("menuPadding").toReal() * scale);
         QVERIFY2(similar(image.pixelColor(inset + qRound(2 * scale) + 1, middle), opaque(hover)), "the hover's fill");
         QVERIFY2(similar(image.pixelColor(inset - 2, middle), background), "the hover starts at menuPadding");
         SystemTheme::setUiStyle(u"fluent"_s);
+    }
+
+    // The words as large as in Win顺's QML menus at every 界面大小 (never the
+    // caption's size, which read as small beside them and Windows' own menus),
+    // the rows as much higher: 10 rows, a line of information, 3 separators
+    // and the padding above and below.
+    void textSize_data()
+    {
+        QTest::addColumn<QString>("size");
+        QTest::addColumn<int>("text");
+        QTest::addColumn<int>("row");
+        QTest::addColumn<int>("info");
+        QTest::newRow("dense") << u"dense"_s << 14 << 28 << 26;
+        QTest::newRow("compact") << u"compact"_s << 14 << 28 << 26;
+        QTest::newRow("standard") << u"standard"_s << 16 << 30 << 26;
+        QTest::newRow("roomy") << u"roomy"_s << 18 << 32 << 28;
+    }
+
+    void textSize()
+    {
+        QFETCH(QString, size);
+        QFETCH(int, text);
+        QFETCH(int, row);
+        QFETCH(int, info);
+        SystemTheme::setUiSize(size);
+        const auto restore = qScopeGuard([] { SystemTheme::setUiSize(u"standard"_s); });
+        QQmlEngine engine;
+        QObject* theme = engine.singletonInstance<QObject*>(u"WinShun"_s, u"Theme"_s);
+        QVERIFY(theme);
+        QCOMPARE(theme->property("menuTextSize").toInt(), text);
+        for (const qreal scale : {1.0, 1.5}) {
+            const QImage image = traymenu::render(entries(false), theme, scale);
+            QCOMPARE(image.height(), // each row on whole device pixels
+                2 * qRound(6 * scale) + 3 * qRound(7 * scale) + qRound(info * scale) + 10 * qRound(row * scale));            if (const QString folder = qEnvironmentVariable("WINSHUN_TRAY_EVIDENCE"); !folder.isEmpty()) {
+                QVERIFY(QDir().mkpath(folder));
+                QVERIFY(image.save(QDir(folder).filePath(u"size-%1-%2.png"_s.arg(size).arg(int(scale * 100)))));
+            }
+        }
     }
 
     // The delayed capture's countdown as the capture plugin makes it: the
