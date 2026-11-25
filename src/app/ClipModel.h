@@ -46,6 +46,7 @@ public:
         ScreenshotRole, // a picture Win顺's capture took (Clip::screenshot): tagged 截图
         PastedRole, // pasted from the list before, and marksPasted: a mark on the row
         FileCountRole, // files and paths: how many; 0 for anything else
+        HotkeyRole, // its own shortcut (Clip::hotkey), "Ctrl+Alt+1"; empty for none
     };
 
     // Which rows can be moved in their group's order: none (a search, the

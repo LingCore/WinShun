@@ -575,6 +575,9 @@ struct Settings {
     // "standard" on a taller one, "large" enough to make out its details (forum #137).
     QString clipboardPictureSize = QStringLiteral("standard");
     bool clipboardKeepPlace = false; // pasting from the history leaves the entry where it is (GitHub #122); off: it moves to the top
+    // What was copied before, copied again, is a new entry (Ditto's "allow
+    // duplicates", ClipStore::setKeepsDuplicates); off: the old one moves to the top.
+    bool clipboardDuplicates = false;
     // Where the window opens: "caret" by the text caret or under a field of
     // ours, "pointer" always beside the mouse, over our fields too (GitHub
     // #105), "last" where its user last moved it (GitHub #376; Placement's

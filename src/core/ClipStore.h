@@ -111,6 +111,10 @@ struct Clip {
     // Kept from view (GitHub #260): the list and the preview show dots in its place, the search
     // finds it by its note and source only. Pasting it is as ever.
     bool masked = false;
+    // A global shortcut of its own (as Ditto's): pressed in any program, it
+    // pastes this entry there. "Ctrl+Alt+1"; empty: none. No two entries
+    // share one (ClipStore::setHotkey).
+    QString hotkey;
     bool read = false;
     // Image: taken with Win顺's own screen capture (src/capture), not copied
     // from a program: the screenshot history (jt, the 截图 tag, MCP's
@@ -333,8 +337,8 @@ public:
     int groupSize(qint64 id) const;
 
     // A new entry, or the same content copied again: that entry moves to the
-    // top (and keeps its group), unless the capture is `initial`. Returns its
-    // id, 0 if it could not be saved.
+    // top (and keeps its group), unless the capture is `initial` (see also
+    // setKeepsDuplicates). Returns its id, 0 if it could not be saved.
     qint64 add(const ClipCapture& capture, qint64 now);
     // Pasted from the history: `pasted` is set, and the entry goes to the top
     // (unless keepsPlaceOnPaste).
@@ -346,6 +350,13 @@ public:
     // up (add()). GitHub #122.
     void setKeepsPlaceOnPaste(bool on) { m_keepsPlace = on; }
     bool keepsPlaceOnPaste() const { return m_keepsPlace; }
+    // On (Settings::clipboardDuplicates, Ditto's "allow duplicates"), what
+    // was copied before is a new entry on top when copied again, and the old
+    // one stays where it is. Only a copy of what the newest entry is already
+    // is still that entry (Ctrl+C pressed twice, a program that writes the
+    // clipboard twice for one copy). Off, the entry it matches moves up.
+    void setKeepsDuplicates(bool on) { m_keepsDuplicates = on; }
+    bool keepsDuplicates() const { return m_keepsDuplicates; }
     // The pictures (and projects) of removed entries stay until
     // discardImages(), so that restore() can put them back.
     std::vector<ClipRecord> remove(std::span<const qint64> ids);
@@ -363,11 +374,19 @@ public:
     // words say (kindOfText), its formatted versions are gone (they would
     // paste the old words), its place and times stay. Its line ends are
     // those it had ("\r\n" as programs copy it). Refused: not such an entry,
-    // or nothing but spaces; Duplicate: another entry is those very words.
+    // or nothing but spaces; Duplicate: another entry is those very words
+    // (never while keepsDuplicates).
     enum class TextChange { Changed, Unchanged, Refused, Duplicate };
     TextChange setText(qint64 id, const QString& edited);
     // Kept from view or shown again (Clip::masked).
     void setMasked(std::span<const qint64> ids, bool masked);
+    // The entry's own shortcut (Clip::hotkey); empty takes it away. Another
+    // entry that had the same keys loses them. One given a shortcut while in
+    // no group goes into "固定": kept at hand, it never expires from under
+    // its keys. False if there is no such entry.
+    bool setHotkey(qint64 id, const QString& hotkey);
+    // The entry whose shortcut `hotkey` is, ignoring case; 0 if none.
+    qint64 hotkeyEntry(const QString& hotkey) const;
     // Moves an entry of a group to where `target`, of the same group, is
     // (before it moving up, after it moving down); the rest keep their order.
     void moveInGroup(qint64 id, qint64 target);
@@ -453,6 +472,7 @@ private:
     bool m_open = false;
     Limits m_limits;
     bool m_keepsPlace = false;
+    bool m_keepsDuplicates = false;
     std::vector<Clip> m_clips;
     std::vector<ClipGroup> m_groups;
     qint64 m_nextId = 1; // ids are never used twice (a removed entry's picture stays for undo)

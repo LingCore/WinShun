@@ -186,6 +186,9 @@ constexpr int kPanelHotkeyId = 8; // directly open the full search panel (#206)
 constexpr int kPastePlainHotkeyId = 9; // the clipboard pasted as plain text into the window in front (#408)
 constexpr int kSettingsHotkeyId = 10; // directly open or toggle the settings window
 constexpr int kQuickPasteHotkeyId = 20; // + 1…9: paste without opening the clipboard
+// + 0…kEntryHotkeys - 1: entries' own shortcuts (Clip::hotkey), pasting each anywhere.
+constexpr int kEntryHotkeyId = 100;
+constexpr int kEntryHotkeys = 200;
 // For another program to tell where its text caret is: longer, and the
 // clipboard would open late; it opens by the mouse pointer then.
 constexpr auto kCaretWait = 100ms;
@@ -1004,6 +1007,7 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     // would drop what a longer limit (or none) keeps, on every start.
     m_clipStore->setLimits({m_settings.clipboardMaxItems, m_settings.clipboardMaxDays}, QDateTime::currentMSecsSinceEpoch());
     m_clipStore->setKeepsPlaceOnPaste(m_settings.clipboardKeepPlace);
+    m_clipStore->setKeepsDuplicates(m_settings.clipboardDuplicates);
     if (m_settings.clipboard && !m_clipStore->open(QDateTime::currentMSecsSinceEpoch()))
         qWarning() << "Clipboard history: cannot be kept";
     ClipboardWatcher::Callbacks clipCallbacks;
@@ -1031,6 +1035,11 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     connect(m_clipboard.get(), &Clipboard::saveProblem, this,
         [this](const QString& message) { m_messages->showNotification(tr("保存为文件"), message); });
     connect(m_clipboard.get(), &Clipboard::activeChanged, this, &App::applyQuickPasteHotkeys);
+    connect(m_clipboard.get(), &Clipboard::entryHotkeysChanged, this, &App::applyEntryHotkeys);
+    connect(m_clipboard.get(), &Clipboard::hotkeyRequested, this, [this](qint64 id) {
+        hideClipboard(false);
+        showEntryHotkeySettings(id);
+    });
     connect(qApp, &QGuiApplication::focusWindowChanged, this, &App::applyQuickPasteHotkeys);
     connect(qApp, &QGuiApplication::focusWindowChanged, this, &App::updateNumberKeyHook);
     // Pinned, it stays up through a paste or a file opened (hideClipboard);
@@ -1178,7 +1187,11 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     callbacks.hotkeyPressed = [this](int id, std::uint32_t time) {
         // When the keys were pressed, on the clock of a window's reveal (seenBy).
         const std::uint64_t pressedAt = tickTime(time, ::GetTickCount64());
-        if (id > kQuickPasteHotkeyId && id <= kQuickPasteHotkeyId + 9) {
+        if (id >= kEntryHotkeyId && id < kEntryHotkeyId + kEntryHotkeys) {
+            const auto it = std::ranges::find(m_entryHotkeys, id, &EntryHotkey::id);
+            if (it != m_entryHotkeys.end() && m_settings.clipboard && m_clipStore->isOpen())
+                m_clipboard->pasteByHotkey(it->clip, ::GetForegroundWindow());
+        } else if (id > kQuickPasteHotkeyId && id <= kQuickPasteHotkeyId + 9) {
             const int number = id - kQuickPasteHotkeyId;
             // A message already queued before the keys were suspended must
             // not paste into the program behind our newly opened panel.
@@ -3047,6 +3060,7 @@ void App::applyClipboard(bool initial)
     m_winVRegistryFailed = !winv::reconcile(L'V', m_settings.clipboardWinV, winKeyOrigin(initial));
     m_clipStore->setLimits({m_settings.clipboardMaxItems, m_settings.clipboardMaxDays}, QDateTime::currentMSecsSinceEpoch());
     m_clipStore->setKeepsPlaceOnPaste(m_settings.clipboardKeepPlace);
+    m_clipStore->setKeepsDuplicates(m_settings.clipboardDuplicates);
     m_clipboard->items()->setMarksPasted(m_settings.clipboardKeepPlace);
     const bool reopening = m_settings.clipboard && !m_clipStore->isOpen();
     if (reopening && !m_clipStore->open(QDateTime::currentMSecsSinceEpoch()))
@@ -3099,6 +3113,7 @@ void App::applyClipboardHotkeys()
     // The digits first: one that is the clipboard's hotkey now is let go of
     // before that is registered (and all of them while one is recorded).
     applyQuickPasteHotkeys();
+    applyEntryHotkeys(); // after the digits, which they must not be
     if (m_settingsEditor && m_settingsEditor->recordingHotkey())
         return; // the keys being pressed must reach the settings window
     const bool winV = m_settings.clipboardWinV && m_messages->registerHotkey(kWinVHotkeyId, u"Win+V"_s);
@@ -3232,6 +3247,185 @@ void App::applyQuickPasteHotkeys()
         if (QGuiApplication::focusWindow())
             m_settingsEditor->refreshNumberKeys();
     }
+}
+
+namespace {
+
+// An entry as the settings name it beside its shortcut: its note, else its
+// first line (dots for one kept from view); what it is, under that.
+std::pair<QString, QString> entryLabel(const Clip& clip)
+{
+    const auto shortened = [](QString text) {
+        text = text.trimmed().section(u'\n', 0, 0).trimmed();
+        return text.size() > 30 ? text.left(30) + u'…' : text; // one line in the settings' row
+    };
+    QString what;
+    switch (clip.kind) {
+    case ClipKind::Image:
+        what = App::tr("图片 %1 × %2").arg(clip.width).arg(clip.height);
+        break;
+    case ClipKind::Files: {
+        const QStringList files = clip.files();
+        what = files.size() == 1 ? App::tr("文件") : App::tr("%Ln 个文件", nullptr, static_cast<int>(files.size()));
+        break;
+    }
+    case ClipKind::Link:
+        what = App::tr("链接");
+        break;
+    case ClipKind::Path:
+        what = App::tr("路径");
+        break;
+    default:
+        what = App::tr("文字 · %Ln 字", nullptr, static_cast<int>(std::min<qint64>(clip.textLength, std::numeric_limits<int>::max())));
+        break;
+    }
+    QString title;
+    if (!clip.note.isEmpty())
+        title = clip.note;
+    else if (clip.masked)
+        title = u"\u2022\u2022\u2022\u2022\u2022\u2022"_s;
+    else if (clip.kind == ClipKind::Files)
+        title = QFileInfo(clip.files().value(0)).fileName();
+    else if (clip.kind == ClipKind::Image && clip.searchText().trimmed().isEmpty())
+        title = App::tr("图片");
+    else
+        title = shortened(clip.kind == ClipKind::Image ? clip.searchText() : clip.text);
+    return {title.isEmpty() ? what : title, what};
+}
+
+} // namespace
+
+void App::applyEntryHotkeys()
+{
+    if (!m_messages || !m_clipStore || !m_clipboard)
+        return;
+    const bool recording = m_settingsEditor && m_settingsEditor->recordingHotkey();
+    // Wanted: every entry's keys, while the history is on and none recorded.
+    std::vector<std::pair<qint64, QString>> wanted;
+    if (!recording && m_settings.clipboard && m_clipStore->isOpen())
+        wanted = m_clipboard->entryHotkeys();
+    const auto wants = [&](qint64 clip) {
+        return std::ranges::find(wanted, clip, &std::pair<qint64, QString>::first);
+    };
+    // Let go of those gone or changed; the rest stay registered as they are.
+    std::erase_if(m_entryHotkeys, [&](const EntryHotkey& h) {
+        const auto w = wants(h.clip);
+        if (w != wanted.end() && w->second == h.keys)
+            return false;
+        m_messages->unregisterHotkey(h.id);
+        return true;
+    });
+    if (recording) // the keys being pressed must reach the settings window; told again once done
+        return;
+    // Win顺's own shortcuts: an entry's keys are never one of them.
+    QStringList own = m_settings.globalHotkeys();
+    if (m_settings.clipboardQuickPaste == u"ctrl" || m_settings.clipboardQuickPaste == u"alt") {
+        const QString modifier = m_settings.clipboardQuickPaste == u"ctrl" ? u"Ctrl"_s : u"Alt"_s;
+        for (int n = 1; n <= 9; ++n)
+            own.append(modifier + u'+' + QString::number(n));
+    }
+    QHash<qint64, QString> errors;
+    for (const auto& [clip, keys] : wanted) {
+        if (std::ranges::find(m_entryHotkeys, clip, &EntryHotkey::clip) != m_entryHotkeys.end())
+            continue;
+        if (own.contains(keys, Qt::CaseInsensitive)) {
+            errors.insert(clip, tr("%1 已是 Win顺 自己的快捷键，请换一个。").arg(keys));
+            continue;
+        }
+        int id = kEntryHotkeyId;
+        while (id < kEntryHotkeyId + kEntryHotkeys && std::ranges::find(m_entryHotkeys, id, &EntryHotkey::id) != m_entryHotkeys.end())
+            ++id;
+        if (id == kEntryHotkeyId + kEntryHotkeys) {
+            errors.insert(clip, tr("最多 %1 条内容可以设快捷键，这一条没有生效。").arg(kEntryHotkeys));
+            continue;
+        }
+        if (!m_messages->registerHotkey(id, keys)) {
+            UINT modifiers = 0;
+            UINT vk = 0;
+            errors.insert(clip, MessageWindow::parseHotkey(keys, &modifiers, &vk)
+                    ? tr("“%1” 已被其他程序或系统占用，请换一个。").arg(keys)
+                    : tr("无法识别“%1”，请重新设置。").arg(keys));
+            continue;
+        }
+        m_entryHotkeys.push_back({id, clip, keys});
+    }
+    // Told once: what did not work before is not news.
+    QStringList fresh;
+    for (auto it = errors.cbegin(); it != errors.cend(); ++it) {
+        if (m_entryHotkeyErrors.value(it.key()) != it.value())
+            fresh.append(it.value());
+    }
+    m_entryHotkeyErrors = std::move(errors);
+    QStringList all;
+    for (const QString& error : std::as_const(m_entryHotkeyErrors))
+        all.append(error);
+    all.sort();
+    noteApplyProblem(u"Clipboard/EntryHotkeys"_s, all.join(u' '));
+    if (m_settingsEditor)
+        m_settingsEditor->setClipboardEntryHotkeys(entryHotkeyRows());
+    if (!settingsShown() && !fresh.isEmpty() && !m_aiApplying)
+        m_messages->showNotification(tr("剪贴板条目的快捷键不可用"), fresh.join(u'\n'));
+}
+
+QVariantList App::entryHotkeyRows() const
+{
+    QVariantList rows;
+    if (!m_clipStore || !m_clipStore->isOpen())
+        return rows;
+    std::vector<const Clip*> listed;
+    for (const Clip& c : m_clipStore->clips()) {
+        if (!c.hotkey.isEmpty() || c.id == m_entryHotkeyPending)
+            listed.push_back(&c);
+    }
+    // In the order they were first copied: rows that stay put as entries are pasted.
+    std::ranges::sort(listed, {}, &Clip::id);
+    for (const Clip* c : listed) {
+        const auto [title, detail] = entryLabel(*c);
+        const QString error = m_entryHotkeyRefused.first == c->id ? m_entryHotkeyRefused.second
+                                                                   : m_entryHotkeyErrors.value(c->id);
+        rows.append(QVariantMap {{u"id"_s, c->id}, {u"title"_s, title}, {u"detail"_s, detail},
+            {u"hotkey"_s, c->hotkey}, {u"error"_s, error}});
+    }
+    return rows;
+}
+
+void App::showEntryHotkeySettings(qint64 id)
+{
+    const Clip* clip = m_clipStore->isOpen() ? m_clipStore->clip(id) : nullptr;
+    if (!clip)
+        return;
+    m_entryHotkeyPending = clip->hotkey.isEmpty() ? id : 0;
+    m_entryHotkeyRefused = {};
+    if (m_settingsEditor)
+        m_settingsEditor->setClipboardEntryHotkeys(entryHotkeyRows());
+    showSettings([id](QQuickWindow* window) {
+        QMetaObject::invokeMethod(window, "showClipboardEntryHotkey", Q_ARG(QVariant, QVariant(id)));
+    });
+}
+
+void App::setEntryHotkey(qint64 id, const QString& hotkey)
+{
+    const QString keys = hotkey.trimmed();
+    const Clip* clip = m_clipStore->isOpen() ? m_clipStore->clip(id) : nullptr;
+    if (!clip)
+        return;
+    m_entryHotkeyRefused = {};
+    // Keys another entry has, or one of Win顺's own: refused, and said why beside it.
+    if (const qint64 other = m_clipStore->hotkeyEntry(keys); other != 0 && other != id) {
+        m_entryHotkeyRefused = {id, tr("%1 已用于“%2”，请换一个，或先去掉那一条的快捷键。")
+                                        .arg(keys, entryLabel(*m_clipStore->clip(other)).first)};
+    } else if (!keys.isEmpty() && m_settings.globalHotkeys().contains(keys, Qt::CaseInsensitive)) {
+        m_entryHotkeyRefused = {id, tr("%1 已是 Win顺 自己的快捷键，请换一个。").arg(keys)};
+    } else {
+        if (keys.isEmpty() && m_entryHotkeyPending == id)
+            m_entryHotkeyPending = 0;
+        if (!keys.isEmpty())
+            m_entryHotkeyPending = 0; // listed for its keys now
+        m_clipStore->setHotkey(id, keys);
+        m_clipboard->historyChanged(); // its row, its group (固定), and applyEntryHotkeys
+    }
+    if (m_settingsEditor)
+        m_settingsEditor->setClipboardEntryHotkeys(entryHotkeyRows());
 }
 
 bool App::quickPasteSuspended() const
@@ -4330,6 +4524,9 @@ void App::showSettingsNow(const std::function<void(QQuickWindow*)>& at)
         connect(editor, &SettingsEditor::recordingHotkeyChanged, this, &App::applyTaskbarHotkeys);
         connect(editor, &SettingsEditor::recordingHotkeyChanged, this, &App::applyFolderMenuHotkey);
         connect(editor, &SettingsEditor::recordingHotkeyChanged, this, &App::applyPastePlainHotkey);
+        // Queued: the recorder that sent the keys stops first, then its list is made again.
+        connect(editor, &SettingsEditor::clipboardEntryHotkeyRequested, this, &App::setEntryHotkey, Qt::QueuedConnection);
+        editor->setClipboardEntryHotkeys(entryHotkeyRows());
         connect(editor, &SettingsEditor::explorerRestartRequested, this, &App::restartExplorer);
         connect(editor, &SettingsEditor::giveBackRequested, this, &App::giveBackWinKey);
         connect(editor, &SettingsEditor::autostartRequested, this, &App::setAutostart);
@@ -4598,6 +4795,12 @@ void App::showSettingsNow(const std::function<void(QQuickWindow*)>& at)
                 m_contentStatusTimer.stop();
                 m_idleTrim->poke(); // Qt may stay "active" after this close; do not wait for a focus event
                 m_settingsUnload.start(); // not opened again soon: its pages go (SettingsWindow.unloadPages)
+                // An entry 设置快捷键 was for, left without keys, is not listed next time.
+                if (m_entryHotkeyPending != 0 || !m_entryHotkeyRefused.second.isEmpty()) {
+                    m_entryHotkeyPending = 0;
+                    m_entryHotkeyRefused = {};
+                    m_settingsEditor->setClipboardEntryHotkeys(entryHotkeyRows());
+                }
             } else {
                 m_settingsUnload.stop();
             }
@@ -4623,7 +4826,7 @@ void App::showSettingsNow(const std::function<void(QQuickWindow*)>& at)
             applyFolderMenuHotkey();
         if (!m_settingsEditor->pastePlainHotkeyError().isEmpty())
             applyPastePlainHotkey();
-        if (!m_settingsEditor->clipboardHotkeyError().isEmpty())
+        if (!m_settingsEditor->clipboardHotkeyError().isEmpty() || !m_entryHotkeyErrors.isEmpty())
             applyClipboardHotkeys();
         // On the screen under the mouse again, at its user's size within it;
         // maximized it stays maximized, where it was (as Windows' own windows

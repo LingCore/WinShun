@@ -1247,6 +1247,7 @@ void Settings::load()
     if (clipboardPictureSize != u"small" && clipboardPictureSize != u"standard" && clipboardPictureSize != u"large")
         clipboardPictureSize = d.clipboardPictureSize;
     clipboardKeepPlace = readOrDefault(s, u"Clipboard/KeepPlace"_s, d.clipboardKeepPlace);
+    clipboardDuplicates = readOrDefault(s, u"Clipboard/KeepDuplicates"_s, d.clipboardDuplicates);
     // Clipboard/AtPointer was a switch until 0.37: on is "pointer".
     clipboardOpenAt = readOrDefault(s, u"Clipboard/OpenAt"_s,
         s.value(u"Clipboard/AtPointer"_s, false).toBool() ? u"pointer"_s : d.clipboardOpenAt).trimmed().toLower();
@@ -1601,6 +1602,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Clipboard/PictureSize"_s, clipboardPictureSize);
     s.remove(u"Clipboard/LargePictures"_s); // said by PictureSize now
     s.setValue(u"Clipboard/KeepPlace"_s, clipboardKeepPlace);
+    s.setValue(u"Clipboard/KeepDuplicates"_s, clipboardDuplicates);
     s.setValue(u"Clipboard/OpenAt"_s, clipboardOpenAt);
     s.remove(u"Clipboard/AtPointer"_s); // said by OpenAt now
     s.setValue(u"Clipboard/PreviewRestore"_s, clipboardPreviewRestore);

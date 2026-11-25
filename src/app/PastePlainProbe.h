@@ -25,4 +25,14 @@ bool activationPasteChordFree();
 // (--picture-width, 240 by default), 2/3 as high.
 bool seedActivationPastePicture(const QString& clipboardFolder, int width);
 bool checkActivationPaste(App& app, const QStringList& args, const QDir& output);
+
+// --probe-runtime <folder> --entry-hotkey-check: an entry's own shortcut
+// (Clip::hotkey) pressed for real over a text box of another process, with
+// 保留重复项 on. See the .cpp.
+inline constexpr auto kEntryHotkeyProbeChord = u"Ctrl+Alt+Shift+F20";
+bool entryHotkeyChordFree();
+// Before the App starts: the entry with the chord, and a newer one after it
+// (what Ctrl+V or the first quick paste key would paste instead).
+bool seedEntryHotkey(const QString& clipboardFolder);
+bool checkEntryHotkey(App& app, const QStringList& args, const QDir& output);
 }

@@ -109,6 +109,14 @@ Window {
                 }
                 section.rows.push(entry)
             }
+            if (where === "global") {
+                const rows = window.editor.clipboardEntryHotkeys
+                    .filter(row => row.hotkey.length > 0)
+                    .map(row => ({ keys: row.hotkey, text: qsTr("粘贴“%1”").arg(row.title),
+                                   setting: { page: "clipboard", tab: 1, part: "clipEntryHotkeysSection" } }))
+                if (rows.length > 0)
+                    sections.push({ title: qsTr("剪贴板 · 单条内容"), rows: rows })
+            }
         }
         return sections
     }
@@ -1262,6 +1270,20 @@ Window {
 
     function showUpdateDialog() { updateDialog.show() } // App::showUpdate
     function showClipboardPage() { showPage(clipboardPage) } // App::showClipboardSettings
+    // App::showEntryHotkeySettings: that entry's row in 单条内容的快捷键, recording its keys.
+    function showClipboardEntryHotkey(id) {
+        const wasLoaded = pageItem(clipboardPage) !== null
+        const section = part(clipboardPage, "clipEntryHotkeysSection")
+        const row = section ? section.rowOf(id) : null
+        if (!row) {
+            showPart(clipboardPage, "clipEntryHotkeysSection")
+            return
+        }
+        goTo(row)
+        if (!wasLoaded)
+            scrollAfterFrame = row
+        row.recorder.forceActiveFocus()
+    }
     function showWebPage() { showPluginPage("winshun.web") } // App::showWebSettings
     function showShortcutsPage() { showPage(keysPage, keysListTab) } // App::showShortcutSettings: the shortcut panels' last row
     // App::showQuickFilterSettings: the + of the search panel's quick filters, what was typed there as a new one's query
@@ -7059,12 +7081,16 @@ Window {
                         clipboardHotkeyRow: clipboardHotkeyRow,
                         pastePlainHotkeyRow: pastePlainHotkeyRow,
                         clipboardHoldRow: clipboardHoldRow,
-                        clipboardNumberKeysRow: clipboardNumberKeysRow
+                        clipboardNumberKeysRow: clipboardNumberKeysRow,
+                        clipboardDuplicatesRow: clipboardDuplicatesRow,
+                        clipEntryHotkeysSection: clipEntryHotkeysSection
                     })
                     recordingHotkey: clipHotkeyRecorder.recording || pastePlainHotkeyRecorder.recording
+                                     || clipEntryHotkeysSection.recordingId !== 0
                     onResetForReopen: {
                         clipHotkeyRecorder.stop()
                         pastePlainHotkeyRecorder.stop()
+                        clipEntryHotkeysSection.stopRecording()
                         appInput.clear()
                         captureKeywordBox.text = Qt.binding(() => window.editor.captureKeyword)
                         captureKeywordError.text = ""
@@ -7169,6 +7195,21 @@ Window {
                         color: Theme.danger
                         font.pixelSize: Theme.fontCaption
                         wrapMode: Text.Wrap
+                    }
+                }
+
+                SettingRow {
+                    id: clipboardDuplicatesRow
+                    objectName: "clipboardDuplicatesRow"
+                    title: qsTr("保留重复项")
+                    keywords: qsTr("重复;去重;合并;多次复制;再次复制;允许重复;Ditto;duplicate").split(";")
+                    description: qsTr("同样的内容再复制一次，也记成新的一条；关闭时只留一条，移到最前")
+                    tip: qsTr("紧接着复制同样的内容（比如连按两次 Ctrl+C）仍只记一条。从剪贴板里粘贴出去不算复制，不会多出一条")
+
+                    ToggleSwitch {
+                        dpr: window.dpr
+                        checked: window.editor.clipboardDuplicates
+                        onToggled: (on) => window.editor.clipboardDuplicates = on
                     }
                 }
 
@@ -7689,6 +7730,96 @@ Window {
                     destination: qsTr("结果列表 › 操作习惯")
                     targetPage: "results"
                     targetPart: "letterJumpRow"
+                }
+            }
+
+            SettingsSection {
+                id: clipEntryHotkeysSection
+                objectName: "clipEntryHotkeysSection"
+                page: window.clipboardPage
+                tab: 1
+                width: parent.width
+                title: qsTr("单条内容的快捷键")
+                glyph: "\uE765" // Keyboard
+                note: qsTr("给常用的一条设一个快捷键，在任何程序里按下就直接粘贴它。设了快捷键的会放进“固定”，不会过期。")
+
+                // The entry whose keys are being recorded, 0 for none (the page's recordingHotkey).
+                property real recordingId: 0
+                readonly property list<string> words: qsTr("快捷键;热键;单条;条目;一键粘贴;常用语;片段;Ditto;hotkey;snippet").split(";")
+                // Its row, to show it and record its keys (showClipboardEntryHotkey); null if not listed.
+                function rowOf(id) {
+                    for (let i = 0; i < entryHotkeyRows.count; ++i) {
+                        const row = entryHotkeyRows.itemAt(i)
+                        if (row && row.clipId === id)
+                            return row
+                    }
+                    return null
+                }
+                function stopRecording() {
+                    for (let i = 0; i < entryHotkeyRows.count; ++i)
+                        entryHotkeyRows.itemAt(i)?.recorder.stop()
+                    recordingId = 0
+                }
+
+                SettingRow {
+                    shown: window.editor.clipboardEntryHotkeys.length === 0
+                    title: qsTr("还没有设置")
+                    description: qsTr("打开剪贴板，在常用的一条上点右键，选“设置快捷键…”")
+                    keywords: clipEntryHotkeysSection.words
+                }
+
+                Repeater {
+                    id: entryHotkeyRows
+                    model: window.editor.clipboardEntryHotkeys
+
+                    delegate: SettingRow {
+                        id: entryRow
+
+                        required property var modelData
+                        readonly property real clipId: modelData.id
+                        readonly property HotkeyRecorder recorder: entryRecorder
+
+                        title: modelData.title
+                        description: modelData.detail
+                        keywords: clipEntryHotkeysSection.words
+                        values: [modelData.hotkey, modelData.title]
+
+                        FlatButton {
+                            dpr: window.dpr
+                            visible: entryRow.modelData.hotkey.length > 0 && !entryRecorder.recording
+                            flat: true
+                            text: qsTr("清除")
+                            onClicked: window.editor.setClipboardEntryHotkey(entryRow.clipId, "")
+                        }
+                        HotkeyRecorder {
+                            id: entryRecorder
+                            objectName: "entryHotkeyRecorder"
+                            hotkey: entryRow.modelData.hotkey
+                            onRecorded: (hotkey) => window.editor.setClipboardEntryHotkey(entryRow.clipId, hotkey)
+                            onRecordingChanged: {
+                                if (recording)
+                                    clipEntryHotkeysSection.recordingId = entryRow.clipId
+                                else if (clipEntryHotkeysSection.recordingId === entryRow.clipId)
+                                    clipEntryHotkeysSection.recordingId = 0
+                            }
+                        }
+
+                        body: Text {
+                            visible: entryRow.modelData.error.length > 0
+                            width: parent.width
+                            text: entryRow.modelData.error
+                            color: Theme.danger
+                            font.pixelSize: Theme.fontCaption
+                            wrapMode: Text.Wrap
+                        }
+
+                        // Made again with the list (keys set, another entry's
+                        // changed): not left recording on the way out.
+                        Component.onDestruction: {
+                            if (clipEntryHotkeysSection.recordingId === clipId)
+                                clipEntryHotkeysSection.recordingId = 0
+                        }
+                    }
                 }
             }
 

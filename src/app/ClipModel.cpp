@@ -121,6 +121,7 @@ QHash<int, QByteArray> ClipModel::roleNames() const
         {ScreenshotRole, "screenshot"},
         {PastedRole, "pasted"},
         {FileCountRole, "fileCount"},
+        {HotkeyRole, "hotkey"},
     };
 }
 
@@ -223,6 +224,8 @@ QVariant ClipModel::data(const QModelIndex& index, int role) const
         return c->kind == ClipKind::Files || c->kind == ClipKind::Path ? static_cast<int>(c->files().size()) : 0;
     case PastedRole:
         return m_marksPasted && c->pasted > 0;
+    case HotkeyRole:
+        return c->hotkey;
     case AfterPinnedRole: {
         const Clip* above = at(index.row() - 1);
         return m_pinnedFirst && c->group != ClipStore::kPinned && above && above->group == ClipStore::kPinned;

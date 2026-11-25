@@ -178,6 +178,8 @@ public:
         Mask, // 遮住内容 / 显示内容: dots in the list and the preview (Clip::masked)
         EditText, // 修改文字: the entry's own words changed in the preview's place (textEditRequested)
         OpenHere, // on a tab: 打开时显示这里, the tab the window opens on (openTabChosen); again: 全部
+        SetHotkey, // 设置快捷键: the entry's own shortcut, recorded in the settings (hotkeyRequested)
+        RemoveHotkey, // 去掉快捷键
         MoveToGroup = 1000, // + the group's id
     };
     Q_ENUM(Action)
@@ -352,6 +354,13 @@ public:
     // A global digit: keep the current program in front throughout. Never
     // activates it again if the user changes windows while letting go.
     void pasteDirect(qint64 id, HWND target);
+    // An entry's own shortcut pressed (Clip::hotkey, App): with the window
+    // up, as its row would paste; else straight into `target`, the program
+    // in front, as pasteDirect.
+    void pasteByHotkey(qint64 id, HWND target);
+    // The entries that have a shortcut of their own, [{id, hotkey}] in the
+    // history's order; entryHotkeysChanged when that changes.
+    const std::vector<std::pair<qint64, QString>>& entryHotkeys() const { return m_entryHotkeys; }
     // 粘贴为纯文本's global hotkey (GitHub #408), as PureText: the text the
     // clipboard holds, its formatting left behind, pasted as pasteDirect
     // pastes; the clipboard keeps the plain text. The history need not be on.
@@ -459,6 +468,8 @@ signals:
     void groupNameRequested(int row, qint64 group); // a name for a new group (group 0) for the row, or a new one for `group`
     void noteRequested(qint64 id, const QString& note, int color); // a note for the entry, starting from the one it has
     void textEditRequested(qint64 id, const QString& text); // the entry's words to change, starting from what they are
+    void hotkeyRequested(qint64 id); // 设置快捷键: its own shortcut to record (App, in the settings)
+    void entryHotkeysChanged(); // an entry got or lost a shortcut, or went with one (entryHotkeys)
     void fieldChanged();
     // The field the window goes back to: its own window in front again (App).
     void fieldRequested(QQuickItem* field);
@@ -500,6 +511,7 @@ private:
     void pasteThroughService(HWND target); // the index service presses the keys there (GitHub #277)
     void aimAtFrontProgram(); // pinned, clicked: the paste goes to the program in front now
     std::vector<const Clip*> targets(int row) const; // the row, or the picked ones it is one of
+    void pasteClips(const std::vector<const Clip*>& clips, bool other); // paste(), once the rows are entries
     // A picture 贴到屏幕 and 编辑 take: an entry's own, or a file it names.
     struct Picture {
         qint64 id = 0; // the entry's, for its own picture
@@ -612,6 +624,7 @@ private:
     int m_category = 0;
     qint64 m_categoryGroup = 0; // the group the category tab is, kept when groups come and go
     QString m_openTab = QStringLiteral("all");
+    std::vector<std::pair<qint64, QString>> m_entryHotkeys; // entryHotkeys(), as of the last refresh()
     QString m_lastTab; // the tab key it was left on (the database's lastTab), for 上次看的
     QString m_status;
     QString m_flash;

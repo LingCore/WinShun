@@ -305,12 +305,17 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QString clipboardUiSize READ clipboardUiSize WRITE setClipboardUiSize NOTIFY changed FINAL) // follow | dense | compact | standard | roomy
     Q_PROPERTY(QString clipboardPictureSize READ clipboardPictureSize WRITE setClipboardPictureSize NOTIFY changed FINAL)
     Q_PROPERTY(bool clipboardKeepPlace READ clipboardKeepPlace WRITE setClipboardKeepPlace NOTIFY changed FINAL)
+    Q_PROPERTY(bool clipboardDuplicates READ clipboardDuplicates WRITE setClipboardDuplicates NOTIFY changed FINAL)
     Q_PROPERTY(QString clipboardOpenAt READ clipboardOpenAt WRITE setClipboardOpenAt NOTIFY changed FINAL) // caret | pointer | last
     Q_PROPERTY(bool clipboardPreviewRestore READ clipboardPreviewRestore WRITE setClipboardPreviewRestore NOTIFY changed FINAL)
     // The tab the clipboard opens on (GitHub #404, Settings::clipboardOpenTab),
     // out of clipboardOpenTabs: [{value, text}] (Clipboard::openTabChoices, set by the app).
     Q_PROPERTY(QString clipboardOpenTab READ clipboardOpenTab WRITE setClipboardOpenTab NOTIFY changed FINAL)
     Q_PROPERTY(QVariantList clipboardOpenTabs READ clipboardOpenTabs NOTIFY clipboardOpenTabsChanged FINAL)
+    // The clipboard entries with a shortcut of their own (Clip::hotkey), set
+    // by the app: [{id, title, detail, hotkey, error}]; also the one 设置快捷键
+    // was chosen for, with no keys yet (App::entryHotkeyRows).
+    Q_PROPERTY(QVariantList clipboardEntryHotkeys READ clipboardEntryHotkeys NOTIFY clipboardEntryHotkeysChanged FINAL)
     Q_PROPERTY(bool clipboardPauseInFullScreen READ clipboardPauseInFullScreen WRITE setClipboardPauseInFullScreen NOTIFY changed FINAL)
     Q_PROPERTY(bool clipboardFlipAbove READ clipboardFlipAbove WRITE setClipboardFlipAbove NOTIFY changed FINAL)
     Q_PROPERTY(bool clipboardHoldToStep READ clipboardHoldToStep WRITE setClipboardHoldToStep NOTIFY changed FINAL)
@@ -836,6 +841,8 @@ public:
     void setClipboardPictureSize(const QString& size);
     bool clipboardKeepPlace() const { return m_settings.clipboardKeepPlace; }
     void setClipboardKeepPlace(bool on);
+    bool clipboardDuplicates() const { return m_settings.clipboardDuplicates; }
+    void setClipboardDuplicates(bool on);
     QString clipboardOpenAt() const { return m_settings.clipboardOpenAt; }
     bool clipboardPreviewRestore() const { return m_settings.clipboardPreviewRestore; }
     void setClipboardPreviewRestore(bool on);
@@ -843,6 +850,14 @@ public:
     void setClipboardOpenTab(const QString& key);
     QVariantList clipboardOpenTabs() const { return m_clipboardOpenTabs; }
     void setClipboardOpenTabs(const QVariantList& tabs); // set by the app
+    QVariantList clipboardEntryHotkeys() const { return m_clipboardEntryHotkeys; }
+    void setClipboardEntryHotkeys(const QVariantList& rows); // set by the app
+    // Keys recorded for an entry; empty takes its shortcut away. The app
+    // keeps them in the history and says in the list whether they work.
+    Q_INVOKABLE void setClipboardEntryHotkey(qint64 id, const QString& hotkey)
+    {
+        emit clipboardEntryHotkeyRequested(id, hotkey.trimmed());
+    }
     bool clipboardPauseInFullScreen() const { return m_settings.clipboardPauseInFullScreen; }
     void setClipboardPauseInFullScreen(bool on);
     void setClipboardOpenAt(const QString& at);
@@ -1288,6 +1303,8 @@ signals:
     void fileManagersChanged();
     void clipboardCountChanged();
     void clipboardOpenTabsChanged();
+    void clipboardEntryHotkeysChanged();
+    void clipboardEntryHotkeyRequested(qint64 id, const QString& hotkey);
     void numberKeysNoteChanged();
     void doubleCtrlClashChanged();
     void doubleTapActionsChanged();
@@ -1379,6 +1396,7 @@ private:
     QString m_clipboardHotkeyError;
     int m_clipboardCount = 0;
     QVariantList m_clipboardOpenTabs;
+    QVariantList m_clipboardEntryHotkeys;
     bool m_clipboardImporting = false;
     QString m_clipboardImportMessage;
     QPointer<QWindow> m_window;

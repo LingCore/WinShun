@@ -29,6 +29,7 @@ Item {
     required property bool screenshot // a picture Win顺's capture took: tagged 截图 (when in no group)
     required property int fileCount // files and paths: how many
     required property bool pasted // pasted from the list before, with 粘贴后保持位置 on (else the last pasted is on top): a check mark
+    required property string hotkey // its own shortcut (Clip::hotkey): in the badge, in its group's place
     property int hint: 0 // the number that pastes this row (Alt+1...); 0 for none
     property bool reserveHintSpace: false // keep one shared gutter, including rows beyond the nine numbered entries
     property string hintModifier: "Alt" // ... with this held
@@ -373,9 +374,9 @@ Item {
         }
     }
 
-    Rectangle { // in a group: which; else a screenshot says so, quieter
+    Rectangle { // its own shortcut, else in a group: which; else a screenshot says so, quieter
         id: badge
-        visible: (row.groupName.length > 0 || row.screenshot) && !row.showActions
+        visible: (row.hotkey.length > 0 || row.groupName.length > 0 || row.screenshot) && !row.showActions
         anchors.right: parent.right
         anchors.rightMargin: 16
         anchors.verticalCenter: parent.verticalCenter
@@ -389,20 +390,20 @@ Item {
             anchors.centerIn: parent
             spacing: 4
 
-            Glyph {
+            Glyph { // its keys' (a keyboard), else pinned
                 anchors.verticalCenter: parent.verticalCenter
-                visible: row.pinned
-                glyph: "" // Pin
+                visible: row.hotkey.length > 0 || row.pinned
+                glyph: row.hotkey.length > 0 ? "\uE765" : "\uE718" // Keyboard, Pin
                 size: 12
                 color: Theme.accent
             }
             Text {
                 anchors.verticalCenter: parent.verticalCenter
-                text: row.groupName.length > 0 ? row.groupName : qsTr("截图")
+                text: row.hotkey.length > 0 ? row.hotkey : row.groupName.length > 0 ? row.groupName : qsTr("截图")
                 textFormat: Text.PlainText
                 elide: Text.ElideRight
-                width: Math.min(implicitWidth, 96)
-                color: row.groupName.length > 0 ? Theme.accent : Theme.subtext
+                width: Math.min(implicitWidth, row.hotkey.length > 0 ? 160 : 96)
+                color: row.hotkey.length > 0 || row.groupName.length > 0 ? Theme.accent : Theme.subtext
                 font.pixelSize: row.metrics.uiCaption
             }
         }

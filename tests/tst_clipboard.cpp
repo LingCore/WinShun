@@ -320,6 +320,148 @@ private slots:
         QCOMPARE(store.clips().front().text, u"丙"_s);
     }
 
+    // 保留重复项 (Ditto's "allow duplicates"): copied again, a new entry on
+    // top; only the newest copied again at once stays one entry.
+    void duplicatesKeptWhenAsked()
+    {
+        QTemporaryDir dir;
+        ClipStore store(dir.path());
+        QVERIFY(store.open(kStart));
+        QVERIFY(!store.keepsDuplicates()); // off: today's behaviour
+        store.setKeepsDuplicates(true);
+        const qint64 a = store.add(text(u"甲"_s), kStart);
+        const qint64 b = store.add(text(u"乙"_s), kStart + 1);
+        // Ctrl+C twice (or a program writing the clipboard twice): one entry, its time and source new.
+        QCOMPARE(store.add(text(u"乙"_s, u"微信"_s), kStart + 2), b);
+        QCOMPARE(store.clips().size(), std::size_t(2));
+        QCOMPARE(store.clip(b)->used, kStart + 2);
+        QCOMPARE(store.clip(b)->source, u"微信"_s);
+        // An older one copied again: a new entry on top, the old one where it was.
+        const qint64 again = store.add(text(u"甲"_s), kStart + 3);
+        QVERIFY(again > b);
+        QCOMPARE(texts(store), (QStringList {u"甲"_s, u"乙"_s, u"甲"_s}));
+        QCOMPARE(store.clip(a)->used, kStart);
+        QCOMPARE(store.clip(again)->created, kStart + 3);
+        // An old one in a group stays in it; the copy is a new entry in none.
+        store.setGroup(std::span(&b, 1), ClipStore::kPinned);
+        const qint64 copy = store.add(text(u"乙"_s), kStart + 4);
+        QVERIFY(copy != b);
+        QCOMPARE(store.clip(copy)->group, qint64(0));
+        QCOMPARE(store.clip(b)->group, ClipStore::kPinned);
+        // What was on the clipboard as the history started is not a copy: no new entry.
+        ClipCapture already = text(u"甲"_s);
+        already.initial = true;
+        QCOMPARE(store.add(already, kStart + 5), again); // the first listed of the two
+        QCOMPARE(store.clips().size(), std::size_t(4));
+        // Pasting from the history is not a copy either: the entry moves, none is added.
+        store.touch(a, kStart + 6);
+        QCOMPARE(store.clips().size(), std::size_t(4));
+        QCOMPARE(store.clips().front().id, a);
+        // ... and copying what was just pasted is still that one.
+        QCOMPARE(store.add(text(u"甲"_s), kStart + 7), a);
+        QCOMPARE(store.clips().size(), std::size_t(4));
+        // Its words changed to another entry's: allowed while duplicates are kept.
+        QCOMPARE(store.setText(copy, u"甲"_s), ClipStore::TextChange::Changed);
+        store.setKeepsDuplicates(false);
+        QCOMPARE(store.setText(copy, u"乙"_s), ClipStore::TextChange::Duplicate);
+        // Off again: a copy moves the first entry it matches up.
+        QCOMPARE(store.add(text(u"乙"_s), kStart + 8), b);
+        QCOMPARE(store.clips().front().id, b);
+        // All of them kept on disk as entries of their own.
+        store.close();
+        QVERIFY(store.open(kStart + 9));
+        QCOMPARE(store.clips().size(), std::size_t(4));
+    }
+
+    // An entry's own shortcut (Clip::hotkey): one entry each, kept in 固定,
+    // on disk, and back with the entry on undo.
+    void entryHotkeys()
+    {
+        QTemporaryDir dir;
+        ClipStore store(dir.path());
+        QVERIFY(store.open(kStart));
+        const qint64 a = store.add(text(u"我的邮箱 someone@example.com"_s), kStart);
+        const qint64 b = store.add(text(u"收货地址"_s), kStart + 1);
+        const qint64 group = store.addGroup(u"常用"_s);
+        store.setGroup(std::span(&b, 1), group);
+        QVERIFY(!store.setHotkey(9999, u"Ctrl+Alt+1"_s)); // no such entry
+        QVERIFY(store.setHotkey(a, u"Ctrl+Alt+1"_s));
+        QCOMPARE(store.clip(a)->hotkey, u"Ctrl+Alt+1"_s);
+        // In no group: into 固定, so that it never expires from under its keys.
+        QCOMPARE(store.clip(a)->group, ClipStore::kPinned);
+        QCOMPARE(store.hotkeyEntry(u"ctrl+alt+1"_s), a);
+        QCOMPARE(store.hotkeyEntry(u"Ctrl+Alt+2"_s), qint64(0));
+        QCOMPARE(store.hotkeyEntry(QString()), qint64(0));
+        // In a group of its own: it stays there.
+        QVERIFY(store.setHotkey(b, u"Ctrl+Alt+2"_s));
+        QCOMPARE(store.clip(b)->group, group);
+        // The same keys for another entry: the first gives them up.
+        QVERIFY(store.setHotkey(b, u"CTRL+ALT+1"_s));
+        QCOMPARE(store.clip(a)->hotkey, QString());
+        QCOMPARE(store.hotkeyEntry(u"Ctrl+Alt+1"_s), b);
+        store.close(); // given up on disk too
+        QVERIFY(store.open(kStart + 2));
+        QCOMPARE(store.clip(a)->hotkey, QString());
+        QCOMPARE(store.hotkeyEntry(u"Ctrl+Alt+1"_s), b);
+        QVERIFY(store.setHotkey(a, u"Ctrl+Alt+3"_s));
+        // Limits leave them alone (both are in groups).
+        store.setLimits({1, 1}, kStart + 400 * kDay);
+        QVERIFY(store.clip(a) && store.clip(b));
+        // On disk.
+        store.close();
+        QVERIFY(store.open(kStart + 401 * kDay));
+        QCOMPARE(store.clip(a)->hotkey, u"Ctrl+Alt+3"_s);
+        QCOMPARE(store.clip(b)->hotkey, u"CTRL+ALT+1"_s);
+        // Taken away.
+        QVERIFY(store.setHotkey(a, {}));
+        QCOMPARE(store.clip(a)->hotkey, QString());
+        QCOMPARE(store.clip(a)->group, ClipStore::kPinned); // stays kept
+        store.close();
+        QVERIFY(store.open(kStart + 401 * kDay));
+        QCOMPARE(store.clip(a)->hotkey, QString());
+        // Deleted and put back: with its keys, unless another entry took them meanwhile.
+        std::vector<ClipRecord> records = store.remove(std::span(&b, 1));
+        QCOMPARE(store.hotkeyEntry(u"Ctrl+Alt+1"_s), qint64(0));
+        store.restore(std::move(records));
+        QCOMPARE(store.clip(b)->hotkey, u"CTRL+ALT+1"_s);
+        records = store.remove(std::span(&b, 1));
+        QVERIFY(store.setHotkey(a, u"Ctrl+Alt+1"_s));
+        store.restore(std::move(records));
+        QCOMPARE(store.clip(b)->hotkey, QString());
+        QCOMPARE(store.hotkeyEntry(u"Ctrl+Alt+1"_s), a);
+        store.close();
+        QVERIFY(store.open(kStart + 402 * kDay));
+        QCOMPARE(store.clip(b)->hotkey, QString());
+        QCOMPARE(store.clip(a)->hotkey, u"Ctrl+Alt+1"_s);
+    }
+
+    // A history from before entries had shortcuts: the column is added.
+    void hotkeyColumnAddedToAnOldHistory()
+    {
+        QTemporaryDir dir;
+        qint64 id = 0;
+        {
+            ClipStore store(dir.path());
+            QVERIFY(store.open(kStart));
+            id = store.add(text(u"旧记录"_s), kStart);
+        }
+        {
+            QSqlDatabase db = QSqlDatabase::addDatabase(u"QSQLITE"_s, u"oldhotkey"_s);
+            db.setDatabaseName(dir.filePath(u"clipboard.db"_s));
+            QVERIFY(db.open());
+            QVERIFY(QSqlQuery(db).exec(u"ALTER TABLE clips DROP COLUMN hotkey"_s));
+            db.close();
+        }
+        QSqlDatabase::removeDatabase(u"oldhotkey"_s);
+        ClipStore store(dir.path());
+        QVERIFY(store.open(kStart + 1));
+        QCOMPARE(store.clip(id)->hotkey, QString());
+        QVERIFY(store.setHotkey(id, u"Ctrl+Shift+F9"_s));
+        store.close();
+        QVERIFY(store.open(kStart + 2));
+        QCOMPARE(store.clip(id)->hotkey, u"Ctrl+Shift+F9"_s);
+    }
+
     void limits()
     {
         QTemporaryDir dir;

@@ -924,6 +924,10 @@ std::vector<Entry> buildCatalog()
     add(boolean({"Clipboard/KeepPlace", QT_TRANSLATE_NOOP("AiSettings", "粘贴后保持位置"), "clipboard", 0,
                     "Pasting an entry from the history leaves it where it is in the list; off: it moves to the top."},
         &Settings::clipboardKeepPlace));
+    add(boolean({"Clipboard/KeepDuplicates", QT_TRANSLATE_NOOP("AiSettings", "保留重复项"), "clipboard", 0,
+                    "Copying again what was copied before adds a new entry on top and leaves the old one where it is "
+                    "(Ditto's allow duplicates); off: the old entry moves to the top. The same thing copied twice in a row is one entry either way."},
+        &Settings::clipboardDuplicates));
     add(boolean({"Clipboard/PreviewRestore", QT_TRANSLATE_NOOP("AiSettings", "剪贴板再次打开时恢复预览"), "clipboard", 0,
                     "A side preview left open when the clipboard window closes opens again with it next time; off: it closes with the window."},
         &Settings::clipboardPreviewRestore));

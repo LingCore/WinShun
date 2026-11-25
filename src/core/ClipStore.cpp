@@ -481,6 +481,7 @@ bool ClipStore::open(qint64 now)
         bool hasNoteColor = false;
         bool hasMasked = false;
         bool hasLookColumn = false;
+        bool hasHotkey = false;
         QSqlQuery columns(db);
         columns.prepare(u"PRAGMA table_info(clips)"_s);
         if (!run(columns, "Reading the columns"))
@@ -498,6 +499,7 @@ bool ClipStore::open(qint64 now)
             hasNoteColor = hasNoteColor || columns.value(1).toString() == u"noteColor"_s;
             hasMasked = hasMasked || columns.value(1).toString() == u"masked"_s;
             hasLookColumn = hasLookColumn || columns.value(1).toString() == u"look"_s;
+            hasHotkey = hasHotkey || columns.value(1).toString() == u"hotkey"_s;
         }
         columns.finish();
         if (!hasOcr && !run(db, u"ALTER TABLE clips ADD COLUMN ocr TEXT"_s))
@@ -548,6 +550,9 @@ bool ClipStore::open(qint64 now)
         // where a picture's is, gone with its entry as a picture's is.
         if (!hasLookColumn && !run(db, u"ALTER TABLE clips ADD COLUMN look INTEGER NOT NULL DEFAULT 0"_s))
             return loaded;
+        // An entry's own shortcut (Clip::hotkey); '' none.
+        if (!hasHotkey && !run(db, u"ALTER TABLE clips ADD COLUMN hotkey TEXT NOT NULL DEFAULT ''"_s))
+            return loaded;
         groups.prepare(u"SELECT id, name FROM groups ORDER BY position, id"_s);
         if (!run(groups, "Reading the groups"))
             return loaded;
@@ -558,7 +563,7 @@ bool ClipStore::open(qint64 now)
         clips.setForwardOnly(true);
         clips.prepare(u"SELECT id, kind, substr(text, 1, %1), length, hash, created, used, source, sourcePath, groupId, "
                       u"width, height, bytes, html IS NOT NULL, rtf IS NOT NULL, ocr, rank, screenshot, project, "
-                      u"formats IS NOT NULL, imageFormat, animated, pasted, note, masked, look, noteColor "
+                      u"formats IS NOT NULL, imageFormat, animated, pasted, note, masked, look, noteColor, hotkey "
                       u"FROM clips ORDER BY used DESC, id DESC"_s
                 .arg(kTextInMemory));
         if (!run(clips, "Reading the history"))
@@ -594,6 +599,7 @@ bool ClipStore::open(qint64 now)
             clip.look = hasLook(clip.kind) && clips.value(25).toInt() != 0;
             if (const int color = clips.value(26).toInt(); !clip.note.isEmpty() && color > 0 && color <= kNoteColors)
                 clip.noteColor = static_cast<std::uint8_t>(color);
+            clip.hotkey = clips.value(27).toString();
             loaded.clips.push_back(std::move(clip));
         }
         QSqlQuery last(db);
@@ -782,7 +788,11 @@ qint64 ClipStore::add(const ClipCapture& capture, qint64 now)
     if (!m_open)
         return 0;
     const QByteArray hash = capture.hash.isEmpty() ? clipHash(capture.kind, capture.text) : capture.hash;
-    const auto same = std::ranges::find(m_clips, hash, &Clip::hash);
+    // Keeping duplicates, only the newest entry is this copy again; what was
+    // on the clipboard as the history started is never a copy at all.
+    const auto same = m_keepsDuplicates && !capture.initial
+        ? (!m_clips.empty() && m_clips.front().hash == hash ? m_clips.begin() : m_clips.end())
+        : std::ranges::find(m_clips, hash, &Clip::hash);
     if (same != m_clips.end() && capture.initial)
         return same->id; // listed already, and not copied just now
     if (same != m_clips.end()) {
@@ -1051,6 +1061,8 @@ void ClipStore::restore(std::vector<ClipRecord> records)
     for (ClipRecord& record : records) {
         if (record.clip.group != 0 && !group(record.clip.group))
             record.clip.group = 0;
+        if (!record.clip.hotkey.isEmpty() && hotkeyEntry(record.clip.hotkey) != 0)
+            record.clip.hotkey.clear(); // another entry took those keys meanwhile
     }
     const std::vector<bool> written = m_writer->call([&records](QSqlDatabase& db) {
         std::vector<bool> written;
@@ -1127,6 +1139,23 @@ void ClipStore::restore(std::vector<ClipRecord> records)
             for (const qint64 id : masked) {
                 query.addBindValue(id);
                 run(query, "Restoring an entry kept from view");
+            }
+        });
+    }
+    // With their shortcuts.
+    std::vector<std::pair<qint64, QString>> hotkeys;
+    for (std::size_t i = 0; i < records.size(); ++i) {
+        if (written[i] && !records[i].clip.hotkey.isEmpty())
+            hotkeys.emplace_back(records[i].clip.id, records[i].clip.hotkey);
+    }
+    if (!hotkeys.empty()) {
+        m_writer->post([hotkeys](QSqlDatabase& db) {
+            QSqlQuery query(db);
+            query.prepare(u"UPDATE clips SET hotkey = ? WHERE id = ?"_s);
+            for (const auto& [id, keys] : hotkeys) {
+                query.addBindValue(keys);
+                query.addBindValue(id);
+                run(query, "Restoring an entry's shortcut");
             }
         });
     }
@@ -1281,6 +1310,56 @@ void ClipStore::setNote(qint64 id, const QString& note, int color)
     });
 }
 
+bool ClipStore::setHotkey(qint64 id, const QString& hotkey)
+{
+    const auto it = std::ranges::find(m_clips, id, &Clip::id);
+    if (!m_open || it == m_clips.end())
+        return false;
+    const QString keys = hotkey.trimmed();
+    if (it->hotkey == keys)
+        return true;
+    // The keys are one entry's: whichever had them gives them up.
+    std::vector<qint64> cleared;
+    if (!keys.isEmpty()) {
+        for (Clip& c : m_clips) {
+            if (c.id != id && c.hotkey.compare(keys, Qt::CaseInsensitive) == 0) {
+                c.hotkey.clear();
+                cleared.push_back(c.id);
+            }
+        }
+    }
+    it->hotkey = keys;
+    m_writer->post([id, keys, cleared](QSqlDatabase& db) {
+        db.transaction();
+        QSqlQuery query(db);
+        // An empty QString binds as NULL, which the column refuses: '' for none.
+        query.prepare(u"UPDATE clips SET hotkey = COALESCE(?, '') WHERE id = ?"_s);
+        for (const qint64 other : cleared) {
+            query.addBindValue(QString());
+            query.addBindValue(other);
+            run(query, "Taking an entry's shortcut away");
+        }
+        query.addBindValue(keys);
+        query.addBindValue(id);
+        run(query, "Saving an entry's shortcut");
+        db.commit();
+    });
+    if (!keys.isEmpty() && it->group == 0) {
+        const qint64 kept[] {id};
+        setGroup(kept, kPinned);
+    }
+    return true;
+}
+
+qint64 ClipStore::hotkeyEntry(const QString& hotkey) const
+{
+    const QString keys = hotkey.trimmed();
+    if (keys.isEmpty())
+        return 0;
+    const auto it = std::ranges::find_if(m_clips, [&](const Clip& c) { return c.hotkey.compare(keys, Qt::CaseInsensitive) == 0; });
+    return it == m_clips.end() ? 0 : it->id;
+}
+
 ClipStore::TextChange ClipStore::setText(qint64 id, const QString& edited)
 {
     const auto it = std::ranges::find(m_clips, id, &Clip::id);
@@ -1296,7 +1375,7 @@ ClipStore::TextChange ClipStore::setText(qint64 id, const QString& edited)
         return TextChange::Unchanged;
     const ClipKind kind = kindOfText(words);
     const QByteArray hash = clipHash(kind, words);
-    if (std::ranges::any_of(m_clips, [&](const Clip& c) { return c.id != id && c.hash == hash; }))
+    if (!m_keepsDuplicates && std::ranges::any_of(m_clips, [&](const Clip& c) { return c.id != id && c.hash == hash; }))
         return TextChange::Duplicate;
     it->kind = kind;
     it->text = words.left(kTextInMemory);

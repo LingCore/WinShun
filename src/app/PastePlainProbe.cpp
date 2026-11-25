@@ -3,6 +3,7 @@
 #include "App.h"
 #include "ClipImage.h"
 #include "ClipStore.h"
+#include "Clipboard.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -380,6 +381,157 @@ bool checkPastePlain(App&, const QStringList&, const QDir& output)
         bool savedAgain = false;
         report.insert(u"clipboard_restored"_s, restored);
         report.insert(u"clipboard_formats_after"_s, static_cast<int>(saveClipboard(savedAgain).size())); // + the two marks
+        check(restored, "the clipboard as it was could not be put back");
+    }
+    QFile::remove(scriptPath);
+    return finish();
+}
+
+namespace {
+constexpr UINT kEntryKey = VK_F20;
+const QString kEntryText = u"WinShun 条目快捷键 entry hotkey 7731"_s;
+const QString kNewerText = u"WinShun newer entry, not this one"_s;
+} // namespace
+
+bool entryHotkeyChordFree()
+{
+    return chordFree(kEntryKey);
+}
+
+bool seedEntryHotkey(const QString& clipboardFolder)
+{
+    ClipStore store(clipboardFolder);
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (!store.open(now))
+        return false;
+    ClipCapture entry;
+    entry.text = kEntryText;
+    entry.source = u"Entry hotkey probe"_s;
+    const qint64 id = store.add(entry, now - 2000);
+    ClipCapture newer = entry;
+    newer.text = kNewerText;
+    const bool seeded = id != 0 && store.add(newer, now - 1000) != 0 && store.setHotkey(id, QString(kEntryHotkeyProbeChord));
+    store.flush();
+    return seeded;
+}
+
+// What the App holds, for the check (a friend of App).
+struct EntryHotkeyProbe {
+    static const ClipStore& store(App& app) { return *app.m_clipStore; }
+    static bool duplicatesKept(App& app) { return app.m_clipStore->keepsDuplicates(); }
+};
+
+// --probe-runtime <folder> --entry-hotkey-check (WINSHUN_TEST_NO_CLIP_HISTORY set)
+// The production App beside the Win顺 that runs, its history seeded with two
+// entries (seedEntryHotkey), the older one's own shortcut Ctrl+Alt+Shift+F20
+// (free before it started, its own after: registered from the history at
+// start) and 保留重复项 on. A text box of another process is brought to the
+// front and the chord pressed for real (SendInput, only while that box is in
+// front). Passed: the box got the older entry's words (not the newer one's),
+// and the history still has two entries (a paste from it is no copy, even
+// keeping duplicates) with the shortcut on the same one. The clipboard as it
+// was is saved first and put back after, marked so that no history records it.
+// Into entry-hotkey.json.
+bool checkEntryHotkey(App& app, const QStringList&, const QDir& output)
+{
+    QJsonObject report;
+    bool ok = true;
+    const auto check = [&](bool condition, const char* what) {
+        if (!condition) {
+            ok = false;
+            std::fprintf(stderr, "entry hotkey: FAILED: %s\n", what);
+        }
+    };
+    const auto finish = [&] {
+        report.insert(u"passed"_s, ok);
+        QFile file(output.filePath(u"entry-hotkey.json"_s));
+        const bool saved = file.open(QIODevice::WriteOnly) && file.write(QJsonDocument(report).toJson()) > 0;
+        std::fprintf(stderr, "entry hotkey: %s\n", ok ? "passed" : "FAILED");
+        return ok && saved;
+    };
+    check(qEnvironmentVariableIsSet("WINSHUN_TEST_NO_CLIP_HISTORY"), "WINSHUN_TEST_NO_CLIP_HISTORY not set: the paste would be in the histories");
+    pump(1500); // started, its hotkeys registered
+    const bool ours = chordOurs(kEntryKey);
+    report.insert(u"hotkey_registered"_s, ours);
+    check(ours, "the entry's hotkey is not registered");
+    const bool duplicates = EntryHotkeyProbe::duplicatesKept(app);
+    report.insert(u"duplicates_kept"_s, duplicates);
+    check(duplicates, "保留重复项 is not on in the history");
+    const auto entries = [&app] { return static_cast<int>(EntryHotkeyProbe::store(app).clips().size()); };
+    report.insert(u"entries_before"_s, entries());
+    check(entries() == 2, "the history is not the two seeded entries");
+    if (!ok)
+        return finish();
+
+    bool savedOk = false;
+    const std::vector<Item> before = saveClipboard(savedOk);
+    report.insert(u"clipboard_saved_formats"_s, static_cast<int>(before.size()));
+    check(savedOk, "the clipboard could not be read to be put back");
+    if (!ok)
+        return finish();
+    const QString resultPath = output.filePath(u"target.json"_s);
+    const QString scriptPath = output.filePath(u"target.ps1"_s);
+    QFile::remove(resultPath);
+    {
+        QFile script(scriptPath);
+        check(script.open(QIODevice::WriteOnly) && script.write(kTargetScript) > 0, "the target's script not written");
+    }
+    qint64 pid = 0;
+    const bool started = ok && QProcess::startDetached(u"powershell.exe"_s,
+        {u"-NoProfile"_s, u"-STA"_s, u"-ExecutionPolicy"_s, u"Bypass"_s, u"-File"_s, QDir::toNativeSeparators(scriptPath),
+            QDir::toNativeSeparators(resultPath)}, {}, &pid);
+    check(started, "the target did not start");
+    HWND target = nullptr;
+    QElapsedTimer limit;
+    limit.start();
+    while (started && !(target = findTarget(pid)) && limit.elapsed() < 20'000)
+        pump(100);
+    check(target, "the target's window never came");
+
+    bool changed = false; // the user's clipboard replaced: to be put back
+    bool restored = false;
+    if (ok) {
+        changed = true;
+        waitForQuietInput();
+        bringToFront(target);
+        pump(600);
+        const bool front = inFront(target);
+        report.insert(u"target_in_front"_s, front);
+        check(front, "the target could not be brought to the front (no key sent)");
+        if (ok && inFront(target)) // checked again just before the keys
+            pressChord(kEntryKey);
+        limit.restart();
+        while (ok && !QFile::exists(resultPath) && limit.elapsed() < 12'000)
+            pump(100);
+        pump(800); // the paste's own clipboard change, read back by the history
+        QFile result(resultPath);
+        const QJsonObject got = result.open(QIODevice::ReadOnly) ? QJsonDocument::fromJson(result.readAll()).object() : QJsonObject();
+        const QString text = got.value(u"text"_s).toString();
+        report.insert(u"target_text"_s, text);
+        report.insert(u"entries_after"_s, entries());
+        const qint64 holder = EntryHotkeyProbe::store(app).hotkeyEntry(QString(kEntryHotkeyProbeChord));
+        const Clip* entry = EntryHotkeyProbe::store(app).clip(holder);
+        report.insert(u"hotkey_entry_text"_s, entry ? entry->text : QString());
+        if (ok) {
+            check(!got.isEmpty() && !got.value(u"timedOut"_s).toBool(), "nothing was pasted into the target");
+            check(text == kEntryText, "the target did not get the entry's words");
+            check(entries() == 2, "the paste added an entry to the history");
+            check(entry && entry->text == kEntryText, "the shortcut is no longer on its entry");
+        }
+        std::fprintf(stderr, "entry hotkey: target got \"%s\", %d entries\n", qPrintable(text), entries());
+        restored = putOnClipboard(before);
+    }
+    if (pid > 0) {
+        if (const HANDLE process = ::OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, static_cast<DWORD>(pid))) {
+            if (::WaitForSingleObject(process, 3000) == WAIT_TIMEOUT)
+                ::TerminateProcess(process, 1);
+            ::CloseHandle(process);
+        }
+    }
+    if (changed && !restored)
+        restored = putOnClipboard(before); // once more
+    if (changed) {
+        report.insert(u"clipboard_restored"_s, restored);
         check(restored, "the clipboard as it was could not be put back");
     }
     QFile::remove(scriptPath);

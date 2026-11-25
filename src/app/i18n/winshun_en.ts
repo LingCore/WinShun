@@ -1283,6 +1283,10 @@
         <translation>Keep place after pasting</translation>
     </message>
     <message>
+        <source>保留重复项</source>
+        <translation>Keep duplicates</translation>
+    </message>
+    <message>
         <source>剪贴板再次打开时恢复预览</source>
         <translation>Restore the clipboard preview on reopening</translation>
     </message>
@@ -2564,6 +2568,17 @@
     <message>
         <source>圆盘启动后一直没有响应。Win顺 会自动再试，也可以点此马上重试。</source>
         <translation>The pie didn’t respond after starting. WinShun will try again by itself, or click here to retry now.</translation>
+    </message>
+</context>
+<context>
+    <name>EdgeScrollHint</name>
+    <message>
+        <source>继续向下滚动，切到「%1」</source>
+        <translation>Keep scrolling down for %1</translation>
+    </message>
+    <message>
+        <source>继续向上滚动，切到「%1」</source>
+        <translation>Keep scrolling up for %1</translation>
     </message>
 </context>
 <context>
@@ -4546,10 +4561,6 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
         <translation>%1 is downloaded. Updating now stops this plugin for a moment; otherwise it is put in place the next time WinShun starts</translation>
     </message>
     <message>
-        <source>在“已安装”里查看</source>
-        <translation>Show it under Installed</translation>
-    </message>
-    <message>
         <source>现在装的是 %1</source>
         <translation>Installed now: %1</translation>
     </message>
@@ -5380,10 +5391,6 @@ Send suggestions and problems on our website</translation>
         <translation>Open settings</translation>
     </message>
     <message>
-        <source>在终端中打开</source>
-        <translation>Open in Terminal</translation>
-    </message>
-    <message>
         <source>在终端中打开（Shift+点击以管理员身份）</source>
         <translation>Open in Terminal (Shift+click as administrator)</translation>
     </message>
@@ -5778,17 +5785,6 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>在“%1”中查看</source>
         <translation>See all in %1</translation>
-    </message>
-</context>
-<context>
-    <name>EdgeScrollHint</name>
-    <message>
-        <source>继续向下滚动，切到「%1」</source>
-        <translation>Keep scrolling down for %1</translation>
-    </message>
-    <message>
-        <source>继续向上滚动，切到「%1」</source>
-        <translation>Keep scrolling up for %1</translation>
     </message>
 </context>
 <context>
@@ -6436,6 +6432,14 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Search box</translation>
     </message>
     <message>
+        <source>粘贴“%1”</source>
+        <translation>Paste “%1”</translation>
+    </message>
+    <message>
+        <source>剪贴板 · 单条内容</source>
+        <translation>Clipboard · Single entries</translation>
+    </message>
+    <message>
         <source>在终端中打开</source>
         <translation>Open in Terminal</translation>
     </message>
@@ -6792,10 +6796,6 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Only files in these folders can be found; type a path (environment variables like %USERPROFILE% are supported) or drag folders here</translation>
     </message>
     <message>
-        <source>输入或粘贴文件夹路径，例如 D:\Work 或 %USERPROFILE%\Documents</source>
-        <translation>Type or paste a folder path, e.g. D:\Work or %USERPROFILE%\Documents</translation>
-    </message>
-    <message>
         <source>排除;忽略;隐藏;黑名单;手动输入;环境变量;exclude</source>
         <translation>exclude;ignore;hide;blacklist;manual input;environment variable</translation>
     </message>
@@ -6806,10 +6806,6 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>这些文件夹里的内容都不出现在结果里，支持手动输入和 %TEMP% 等环境变量</source>
         <translation>Nothing in these folders appears in results; manual input and environment variables like %TEMP% are supported</translation>
-    </message>
-    <message>
-        <source>输入或粘贴文件夹路径，例如 D:\Cache 或 %TEMP%</source>
-        <translation>Type or paste a folder path, e.g. D:\Cache or %TEMP%</translation>
     </message>
     <message>
         <source>选择不需要搜索的文件夹</source>
@@ -7020,10 +7016,6 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Nothing on the taskbar: open WinShun with its shortcut</translation>
     </message>
     <message>
-        <source>图标居中时在任务栏最左边，靠左时在托盘图标左边；点它直接打字</source>
-        <translation>At the taskbar’s left end when its icons are centred, left of the tray icons when they are on the left; click it and type</translation>
-    </message>
-    <message>
         <source>任务栏太挤，放不下：取消固定几个图标，或改用“固定图标”</source>
         <translation>The taskbar is too crowded for it: unpin a few icons, or use “Pinned icon”</translation>
     </message>
@@ -7050,14 +7042,6 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>通知区域和任务栏搜索框里的图标。单色随任务栏的浅色、深色变成黑或白，和系统图标一致</source>
         <translation>The icons in the notification area and the taskbar search box. Monochrome turns black or white with the taskbar&apos;s light or dark mode, like Windows&apos; own icons</translation>
-    </message>
-    <message>
-        <source>排除;忽略;隐藏;黑名单;exclude</source>
-        <translation>exclude;ignore;hide;blocklist</translation>
-    </message>
-    <message>
-        <source>添加文件夹</source>
-        <translation>Add folder</translation>
     </message>
     <message>
         <source>排除;忽略;文件夹名;exclude</source>
@@ -7927,6 +7911,26 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Program file name, e.g. KeePass.exe</translation>
     </message>
     <message>
+        <source>单条内容的快捷键</source>
+        <translation>Shortcuts for single entries</translation>
+    </message>
+    <message>
+        <source>给常用的一条设一个快捷键，在任何程序里按下就直接粘贴它。设了快捷键的会放进“固定”，不会过期。</source>
+        <translation>Give an entry you use often a shortcut of its own: press it in any program to paste that entry. Entries with a shortcut go into Pinned and never expire.</translation>
+    </message>
+    <message>
+        <source>快捷键;热键;单条;条目;一键粘贴;常用语;片段;Ditto;hotkey;snippet</source>
+        <translation>shortcut;hotkey;single;entry;one-key paste;phrases;snippet;Ditto;canned text;quick text</translation>
+    </message>
+    <message>
+        <source>还没有设置</source>
+        <translation>None yet</translation>
+    </message>
+    <message>
+        <source>打开剪贴板，在常用的一条上点右键，选“设置快捷键…”</source>
+        <translation>Open the clipboard, right-click an entry you use often and choose “Set shortcut…”</translation>
+    </message>
+    <message>
         <source>数量;条数;上限;自定义</source>
         <translation>count;number;limit;custom</translation>
     </message>
@@ -8530,14 +8534,6 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Entries not used for this long are deleted, except those in groups</translation>
     </message>
     <message>
-        <source>这些文件夹里的内容都不出现在结果里</source>
-        <translation>Nothing inside these folders shows up in results</translation>
-    </message>
-    <message>
-        <source>这些文件夹里的内容都不出现在结果里。“让其他软件把 Win顺 当作 Everything 搜索”开着时仍建索引，其他软件照样查得到（如 Total Commander 的文件夹大小）</source>
-        <translation>Nothing inside these folders shows up in results. With “Let other programs search WinShun as Everything” on they are still indexed, so other programs can find them (Total Commander&apos;s folder sizes, say)</translation>
-    </message>
-    <message>
         <source>按 %1+1 打开当前可见的第 1 行，依此类推到第 9 行（随列表滚动更新）</source>
         <translation>%1+1 opens the first visible row, up to the ninth (follows scrolling)</translation>
     </message>
@@ -8925,20 +8921,12 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Indexed folders</translation>
     </message>
     <message>
-        <source>文件夹;添加文件夹;工作文件夹;桌面;文档;下载;立即核对;folders</source>
-        <translation>folders;add folder;work folders;desktop;documents;downloads;check now</translation>
-    </message>
-    <message>
-        <source>只有这些文件夹里的文件能搜到；也可以从资源管理器把文件夹拖到这里</source>
-        <translation>Only the files in these folders are found; you can also drag folders here from File Explorer</translation>
-    </message>
-    <message>
-        <source>添加文件夹…</source>
-        <translation>Add folder…</translation>
-    </message>
-    <message>
         <source>选择要索引的文件夹</source>
         <translation>Choose a folder to index</translation>
+    </message>
+    <message>
+        <source>输入或粘贴文件夹路径，例如 D:\Work 或 %USERPROFILE%\Documents</source>
+        <translation>Type or paste a folder path, e.g. D:\Work or %USERPROFILE%\Documents</translation>
     </message>
     <message>
         <source>还没有选文件夹：本机磁盘上的文件都搜不到</source>
@@ -8990,6 +8978,10 @@ Double-click grip: expand/collapse search panel</translation>
             <numerusform>Now every hour</numerusform>
             <numerusform>Now every %n hours</numerusform>
         </translation>
+    </message>
+    <message>
+        <source>输入或粘贴文件夹路径，例如 D:\Cache 或 %TEMP%</source>
+        <translation>Type or paste a folder path, e.g. D:\Cache or %TEMP%</translation>
     </message>
     <message>
         <source>你在这台电脑上没有管理员权限，装不了索引服务。Win顺 会索引你选的文件夹，并定时核对</source>
@@ -9174,6 +9166,22 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>最近使用</source>
         <translation>Recent</translation>
+    </message>
+    <message>
+        <source>保留重复项</source>
+        <translation>Keep duplicates</translation>
+    </message>
+    <message>
+        <source>重复;去重;合并;多次复制;再次复制;允许重复;Ditto;duplicate</source>
+        <translation>duplicate;dedupe;merge;copy again;copied twice;allow duplicates;Ditto;repeat</translation>
+    </message>
+    <message>
+        <source>同样的内容再复制一次，也记成新的一条；关闭时只留一条，移到最前</source>
+        <translation>Copying the same content again adds a new entry; when off, only one is kept and moved to the top</translation>
+    </message>
+    <message>
+        <source>紧接着复制同样的内容（比如连按两次 Ctrl+C）仍只记一条。从剪贴板里粘贴出去不算复制，不会多出一条</source>
+        <translation>Copying the same content twice in a row (such as pressing Ctrl+C twice) still records it once. Pasting from the clipboard is not a copy and adds no entry</translation>
     </message>
     <message>
         <source>剪贴板大小</source>
@@ -10609,6 +10617,65 @@ Double-click grip: expand/collapse search panel</translation>
     </message>
 </context>
 <context>
+    <name>UiSize</name>
+    <message>
+        <source>密集</source>
+        <translation>Dense</translation>
+    </message>
+    <message>
+        <source>紧凑</source>
+        <translation>Compact</translation>
+    </message>
+    <message>
+        <source>标准</source>
+        <translation>Standard</translation>
+    </message>
+    <message>
+        <source>宽松</source>
+        <translation>Roomy</translation>
+    </message>
+    <message>
+        <source>界面大小：%1</source>
+        <translation>Interface size: %1</translation>
+    </message>
+    <message>
+        <source>界面大小：%1（已恢复默认）</source>
+        <translation>Interface size: %1 (reset to default)</translation>
+    </message>
+    <message>
+        <source>界面大小：%1（已是默认）</source>
+        <translation>Interface size: %1 (already default)</translation>
+    </message>
+    <message>
+        <source>界面大小：%1（已是最大）</source>
+        <translation>Interface size: %1 (maximum)</translation>
+    </message>
+    <message>
+        <source>界面大小：%1（已是最小）</source>
+        <translation>Interface size: %1 (minimum)</translation>
+    </message>
+    <message>
+        <source>剪贴板大小：%1</source>
+        <translation>Clipboard size: %1</translation>
+    </message>
+    <message>
+        <source>剪贴板大小：跟随界面大小（%1）</source>
+        <translation>Clipboard size: follow interface (%1)</translation>
+    </message>
+    <message>
+        <source>剪贴板大小：已跟随界面大小（%1）</source>
+        <translation>Clipboard size: following interface (%1)</translation>
+    </message>
+    <message>
+        <source>剪贴板大小：%1（已是最大）</source>
+        <translation>Clipboard size: %1 (maximum)</translation>
+    </message>
+    <message>
+        <source>剪贴板大小：%1（已是最小）</source>
+        <translation>Clipboard size: %1 (minimum)</translation>
+    </message>
+</context>
+<context>
     <name>UpdateDialog</name>
     <message>
         <source>正在检查更新…</source>
@@ -11162,6 +11229,56 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>、</source>
         <translation>, </translation>
+    </message>
+    <message>
+        <source>图片 %1 × %2</source>
+        <translation>Picture %1 × %2</translation>
+    </message>
+    <message>
+        <source>文件</source>
+        <translation>File</translation>
+    </message>
+    <message numerus="yes">
+        <source>%Ln 个文件</source>
+        <translation>
+            <numerusform>%Ln file</numerusform>
+            <numerusform>%Ln files</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>链接</source>
+        <translation>Link</translation>
+    </message>
+    <message>
+        <source>路径</source>
+        <translation>Path</translation>
+    </message>
+    <message numerus="yes">
+        <source>文字 · %Ln 字</source>
+        <translation>
+            <numerusform>Text · %Ln character</numerusform>
+            <numerusform>Text · %Ln characters</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>图片</source>
+        <translation>Picture</translation>
+    </message>
+    <message>
+        <source>%1 已是 Win顺 自己的快捷键，请换一个。</source>
+        <translation>%1 is already one of WinShun's own shortcuts. Please choose another.</translation>
+    </message>
+    <message>
+        <source>最多 %1 条内容可以设快捷键，这一条没有生效。</source>
+        <translation>At most %1 entries can have a shortcut; this one has no effect.</translation>
+    </message>
+    <message>
+        <source>剪贴板条目的快捷键不可用</source>
+        <translation>A clipboard entry's shortcut is unavailable</translation>
+    </message>
+    <message>
+        <source>%1 已用于“%2”，请换一个，或先去掉那一条的快捷键。</source>
+        <translation>%1 is already used for “%2”. Choose another, or remove that entry's shortcut first.</translation>
     </message>
     <message>
         <source>文件夹菜单</source>
@@ -12309,6 +12426,18 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Paste into %1</translation>
     </message>
     <message>
+        <source>设置快捷键…</source>
+        <translation>Set shortcut…</translation>
+    </message>
+    <message>
+        <source>去掉快捷键</source>
+        <translation>Remove shortcut</translation>
+    </message>
+    <message>
+        <source>更改快捷键（%1）…</source>
+        <translation>Change shortcut (%1)…</translation>
+    </message>
+    <message>
         <source>粘贴为纯文本</source>
         <translation>Paste as plain text</translation>
     </message>
@@ -12498,6 +12627,10 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>图片还在保存，请稍后再试</source>
         <translation>The picture is still being saved; try again in a moment</translation>
+    </message>
+    <message>
+        <source>已去掉快捷键 %1</source>
+        <translation>Removed shortcut %1</translation>
     </message>
     <message numerus="yes">
         <source>已删除分组“%1”和里面的 %Ln 条，按 Ctrl+Z 撤销</source>
@@ -17046,10 +17179,6 @@ Content index: %5</translation>
         <translation>No live updates: changes come in with the next check</translation>
     </message>
     <message>
-        <source>请选一个完整的文件夹路径</source>
-        <translation>Choose a full folder path</translation>
-    </message>
-    <message>
         <source>只能添加文件夹</source>
         <translation>Only folders can be added</translation>
     </message>
@@ -17702,65 +17831,6 @@ Content index: %5</translation>
     <message>
         <source>执行电源操作时出错</source>
         <translation>Could not carry out the power action</translation>
-    </message>
-</context>
-<context>
-    <name>UiSize</name>
-    <message>
-        <source>密集</source>
-        <translation>Dense</translation>
-    </message>
-    <message>
-        <source>紧凑</source>
-        <translation>Compact</translation>
-    </message>
-    <message>
-        <source>标准</source>
-        <translation>Standard</translation>
-    </message>
-    <message>
-        <source>宽松</source>
-        <translation>Roomy</translation>
-    </message>
-    <message>
-        <source>界面大小：%1</source>
-        <translation>Interface size: %1</translation>
-    </message>
-    <message>
-        <source>界面大小：%1（已恢复默认）</source>
-        <translation>Interface size: %1 (reset to default)</translation>
-    </message>
-    <message>
-        <source>界面大小：%1（已是默认）</source>
-        <translation>Interface size: %1 (already default)</translation>
-    </message>
-    <message>
-        <source>界面大小：%1（已是最大）</source>
-        <translation>Interface size: %1 (maximum)</translation>
-    </message>
-    <message>
-        <source>界面大小：%1（已是最小）</source>
-        <translation>Interface size: %1 (minimum)</translation>
-    </message>
-    <message>
-        <source>剪贴板大小：%1</source>
-        <translation>Clipboard size: %1</translation>
-    </message>
-    <message>
-        <source>剪贴板大小：跟随界面大小（%1）</source>
-        <translation>Clipboard size: follow interface (%1)</translation>
-    </message>
-    <message>
-        <source>剪贴板大小：已跟随界面大小（%1）</source>
-        <translation>Clipboard size: following interface (%1)</translation>
-    </message>
-    <message>
-        <source>剪贴板大小：%1（已是最大）</source>
-        <translation>Clipboard size: %1 (maximum)</translation>
-    </message>
-    <message>
-        <source>剪贴板大小：%1（已是最小）</source>
-        <translation>Clipboard size: %1 (minimum)</translation>
     </message>
 </context>
 </TS>

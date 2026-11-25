@@ -50,7 +50,7 @@ class QWinEventNotifier;
 
 namespace ws {
 
-namespace preview { struct DoubleTapActionsProbe; struct IdleOpenProbe; struct ForegroundUseProbe; struct ClipboardAnimationProbe; struct SearchShadowProbe; struct LauncherSettingsProbe; }
+namespace preview { struct DoubleTapActionsProbe; struct IdleOpenProbe; struct ForegroundUseProbe; struct ClipboardAnimationProbe; struct SearchShadowProbe; struct LauncherSettingsProbe; struct EntryHotkeyProbe; }
 
 namespace piedrop {
 class FileOperations;
@@ -147,6 +147,7 @@ class App : public QObject {
     friend struct preview::ClipboardAnimationProbe;
     friend struct preview::SearchShadowProbe;
     friend struct preview::LauncherSettingsProbe;
+    friend struct preview::EntryHotkeyProbe;
 
 public:
     struct StartOptions {
@@ -440,6 +441,20 @@ private:
     // front. Qt's focus window alone is not that (a refused activation leaves
     // one active in the background, the browser in front: #195).
     bool quickPasteSuspended() const;
+    // The entries' own shortcuts (Clip::hotkey): registered, those that
+    // changed only; let go of while the settings record a shortcut. Why one
+    // does not work goes beside it in the settings, and to a notification
+    // when that is new and the settings are not up.
+    void applyEntryHotkeys();
+    // The settings' list of them (SettingsEditor::clipboardEntryHotkeys):
+    // [{id, title, detail, hotkey, error}], the one 设置快捷键 is for first
+    // listed too while it has no keys yet.
+    QVariantList entryHotkeyRows() const;
+    // 设置快捷键 on an entry (Clipboard::hotkeyRequested): the settings at
+    // its row, recording.
+    void showEntryHotkeySettings(qint64 id);
+    // Keys recorded for an entry in the settings; empty takes them away.
+    void setEntryHotkey(qint64 id, const QString& hotkey);
     void clipCaptured(const ClipCapture& capture);
     void applyTaskbar(bool initial = false); // the [Taskbar] settings: Win+S, typing in the Start menu
     void applyTaskbarHotkeys(); // Win+S and Win+Shift+S; where Win+S stands, for the settings
@@ -1069,6 +1084,17 @@ private:
     bool m_quickPasteRetrying = false; // a look again at a held digit on its way
     bool m_quickPasteOdd = false; // as last written to the diagnostics
     QString m_quickPasteLogged; // likewise, in short
+    struct EntryHotkey {
+        int id = 0; // the hotkey's (kEntryHotkeyId + n)
+        qint64 clip = 0;
+        QString keys;
+    };
+    std::vector<EntryHotkey> m_entryHotkeys; // registered (applyEntryHotkeys)
+    QHash<qint64, QString> m_entryHotkeyErrors; // an entry -> why its keys do not work
+    // Keys refused as they were recorded (another entry's, Win顺's own): the
+    // entry and why, shown beside it until the next keys.
+    std::pair<qint64, QString> m_entryHotkeyRefused;
+    qint64 m_entryHotkeyPending = 0; // 设置快捷键 asked for it: listed with no keys yet
     QString m_winSState; // likewise for Win+S
     // In front when the launcher last opened: where a screenshot of the
     // history (jt, Enter) is pasted.

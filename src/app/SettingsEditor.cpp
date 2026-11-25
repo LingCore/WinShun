@@ -2460,6 +2460,14 @@ void SettingsEditor::setClipboardKeepPlace(bool on)
     commit();
 }
 
+void SettingsEditor::setClipboardDuplicates(bool on)
+{
+    if (m_settings.clipboardDuplicates == on)
+        return;
+    m_settings.clipboardDuplicates = on;
+    commit();
+}
+
 void SettingsEditor::setClipboardPreviewRestore(bool on)
 {
     if (m_settings.clipboardPreviewRestore == on)
@@ -2477,6 +2485,14 @@ void SettingsEditor::setClipboardOpenTab(const QString& key)
         return;
     m_settings.clipboardOpenTab = key;
     commit();
+}
+
+void SettingsEditor::setClipboardEntryHotkeys(const QVariantList& rows)
+{
+    if (m_clipboardEntryHotkeys == rows)
+        return;
+    m_clipboardEntryHotkeys = rows;
+    emit clipboardEntryHotkeysChanged();
 }
 
 void SettingsEditor::setClipboardOpenTabs(const QVariantList& tabs)

@@ -715,6 +715,17 @@ void Clipboard::refresh()
                             : ClipModel::Movable::None);
     m_model.setRows(m_store->find({category.kind, category.group, query, m_pinnedFirst}), query);
     refreshStatus();
+    // The entries' own shortcuts, for App to register: given, taken away,
+    // or gone with their entry (deleted, expired, put back by undo).
+    std::vector<std::pair<qint64, QString>> hotkeys;
+    for (const Clip& c : m_store->clips()) {
+        if (!c.hotkey.isEmpty())
+            hotkeys.emplace_back(c.id, c.hotkey);
+    }
+    if (hotkeys != m_entryHotkeys) {
+        m_entryHotkeys = std::move(hotkeys);
+        emit entryHotkeysChanged();
+    }
 }
 
 void Clipboard::refreshRecognition()
@@ -1338,12 +1349,15 @@ bool Clipboard::pastesPlain(const std::vector<const Clip*>& clips, bool usuallyP
 
 void Clipboard::paste(int row, bool other)
 {
-    if (m_pasting)
+    if (!m_pasting)
+        pasteClips(targets(row), other);
+}
+
+void Clipboard::pasteClips(const std::vector<const Clip*>& clips, bool other)
+{
+    if (m_pasting || clips.empty())
         return;
     aimAtFrontProgram();
-    const std::vector<const Clip*> clips = targets(row);
-    if (clips.empty())
-        return;
     const bool plainText = pastesPlain(clips, m_pastePlain, other);
     std::vector<qint64> touched;
     if (clips.size() > 1) {
@@ -1688,6 +1702,15 @@ void Clipboard::pasteDirect(qint64 id, HWND target)
     }
     m_target = window;
     startPaste(std::move(write), Into::CurrentProgram, {}, {});
+}
+
+void Clipboard::pasteByHotkey(qint64 id, HWND target)
+{
+    const Clip* clip = m_store->clip(id);
+    if (m_active && clip)
+        pasteClips({clip}, false); // where the window pastes: the program it is over, or a field of Win顺's own
+    else
+        pasteDirect(id, target);
 }
 
 void Clipboard::pastePlainNow(HWND target)
@@ -2162,6 +2185,16 @@ QVariantList Clipboard::menuItems(int row) const
     }
     if (!many) // a line of the user's own before it, found by the search
         items.append(entry(EditNote, clips.front()->note.isEmpty() ? tr("加备注…") : tr("改备注…"), QString(), u"\uE70F"_s)); // Edit
+    // Its own shortcut, pressed in any program (as Ditto's), recorded in the
+    // settings. Its keys in the words, not as the menu's shortcut: pressed
+    // here those would act on the current row (ClipboardPage.menuShortcut).
+    if (!many) {
+        const QString& keys = clips.front()->hotkey;
+        items.append(entry(SetHotkey, keys.isEmpty() ? tr("设置快捷键…") : tr("更改快捷键（%1）…").arg(keys), QString(),
+            u"\uE765"_s)); // Keyboard
+        if (!keys.isEmpty())
+            items.append(entry(RemoveHotkey, tr("去掉快捷键"), QString(), u"\uE711"_s)); // Cancel
+    }
     // Its own words changed where the preview is: text all of which is listed, not kept from view.
     if (!many && clips.front()->kind != ClipKind::Files && clips.front()->kind != ClipKind::Image
         && !clips.front()->truncated() && !clips.front()->masked)
@@ -2274,6 +2307,18 @@ void Clipboard::trigger(int row, int action)
     case EditText:
         if (const std::vector<const Clip*> clips = targets(row); clips.size() == 1)
             emit textEditRequested(clips.front()->id, clips.front()->text);
+        break;
+    case SetHotkey:
+        if (const Clip* c = one())
+            emit hotkeyRequested(c->id);
+        break;
+    case RemoveHotkey:
+        if (const Clip* c = one(); c && !c->hotkey.isEmpty()) {
+            const QString keys = c->hotkey;
+            m_store->setHotkey(c->id, {});
+            refresh();
+            flash(tr("已去掉快捷键 %1").arg(keys));
+        }
         break;
     case LeaveGroup:
         moveToGroup(row, 0);

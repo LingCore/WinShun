@@ -1837,6 +1837,20 @@ int runSettings(const QStringList& args)
             tabs.append(QVariantMap {{u"value"_s, value}, {u"text"_s, text}});
         editor->setClipboardOpenTabs(tabs);
     }
+    if (!args.contains(u"--no-entry-hotkeys"_s)) { // 单条内容的快捷键 as App::entryHotkeyRows gives it: one set,
+        // one refused by the system, the one 设置快捷键 was just chosen for
+        QVariantList rows;
+        const auto row = [&rows](qint64 id, const QString& title, const QString& detail, const QString& hotkey,
+                             const QString& error = {}) {
+            rows.append(QVariantMap {{u"id"_s, id}, {u"title"_s, title}, {u"detail"_s, detail}, {u"hotkey"_s, hotkey},
+                {u"error"_s, error}});
+        };
+        row(12, u"lingcore@example.com"_s, u"文字 · 20 字"_s, u"Ctrl+Alt+1"_s);
+        row(31, u"收货地址：上海市浦东新区世纪大道 100 号"_s, u"文字 · 21 字"_s, u"Ctrl+Alt+D"_s,
+            u"“Ctrl+Alt+D” 已被其他程序或系统占用，请换一个。"_s);
+        row(47, u"会议纪要.docx"_s, u"1 个文件"_s, {});
+        editor->setClipboardEntryHotkeys(rows);
+    }
     editor->setHotkeyError({});
     // What the app reads off this PC, read-only: the file managers
     // installed, the taskbar, the AI clients and their configurations.
@@ -3338,6 +3352,48 @@ int runSettings(const QStringList& args)
     bool saved = true;
     bool onePage = false;
     const int wantedPage = valueAfter(args, u"--page").toInt(&onePage);
+    if (args.contains(u"--entry-hotkey-settings"_s)) {
+        // 设置快捷键… from an entry's menu (App::showEntryHotkeySettings): its
+        // row in 单条内容的快捷键 shown, recording; the keys pressed go to the app.
+        window->resize(QSize(920, 720));
+        settle(window, 3);
+        bool okay = true;
+        const auto check = [&okay](bool condition, const char* reason) {
+            okay = condition && okay;
+            if (!condition) qWarning("entry hotkey settings: %s", reason);
+        };
+        std::pair<qint64, QString> asked;
+        QObject::connect(editor, &SettingsEditor::clipboardEntryHotkeyRequested, editor,
+            [&asked](qint64 id, const QString& keys) { asked = {id, keys}; });
+        QMetaObject::invokeMethod(window, "showClipboardEntryHotkey", Q_ARG(QVariant, QVariant(qint64(47))));
+        settle(window, 3);
+        std::vector<QQuickItem*> recorders;
+        const std::function<void(QQuickItem*)> collect = [&](QQuickItem* item) {
+            if (item->objectName() == u"entryHotkeyRecorder")
+                recorders.push_back(item);
+            for (QQuickItem* child : item->childItems())
+                collect(child);
+        };
+        collect(window->contentItem());
+        const auto focused = std::ranges::find_if(recorders, [](QQuickItem* r) { return r->hasActiveFocus(); });
+        check(recorders.size() == 3, "the three entries' recorders are not there");
+        check(focused != recorders.end() && (*focused)->property("hotkey").toString().isEmpty(),
+            "the chosen entry's recorder is not the one recording");
+        if (focused != recorders.end()) {
+            const QRectF shown = (*focused)->mapRectToScene(QRectF(QPointF(), (*focused)->size()));
+            check(shown.top() >= 0 && shown.bottom() <= window->height(), "the chosen entry's row is not in view");
+            check(saveGrab(window, out.filePath(u"entry-hotkey-settings.png"_s)), "the settings did not render");
+            QKeyEvent press(QEvent::KeyPress, Qt::Key_K, Qt::ControlModifier | Qt::AltModifier);
+            QCoreApplication::sendEvent(*focused, &press);
+            QKeyEvent release(QEvent::KeyRelease, Qt::Key_K, Qt::ControlModifier | Qt::AltModifier);
+            QCoreApplication::sendEvent(*focused, &release);
+            settle(window);
+            check(asked == std::pair<qint64, QString>(47, u"Ctrl+Alt+K"_s), "the keys recorded did not go to the app for that entry");
+            check(!(*focused)->hasActiveFocus(), "the recorder went on recording");
+        }
+        say(u"entry hotkey settings: 设置快捷键… shows the entry's row recording; Ctrl+Alt+K goes to the app for it"_s);
+        return finish(window, okay, editor);
+    }
     if (args.contains(u"--preview-hotkeys"_s)) {
         QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, QVariant(u"results"_s)), Q_ARG(QVariant, QVariant(1))); // 结果列表 › 显示与预览
         window->resize(args.contains(u"--compact"_s) ? QSize(760, 420) : QSize(920, 720));
@@ -8881,6 +8937,123 @@ bool checkClipboardPinFiles(QQmlEngine* engine, const QDir& output)
     return ok;
 }
 
+// --clipboard-entry-hotkey: an entry's own shortcut (Clip::hotkey) in the
+// window. Its badge says the keys (in its group's place); the menu offers
+// 设置快捷键… on one entry, 更改快捷键（keys）… and 去掉快捷键 once it has
+// some, nothing on several picked; 设置快捷键 asks the settings for it
+// (hotkeyRequested), 去掉快捷键 takes the keys away and leaves it pinned.
+// A temporary history; the native clipboard untouched.
+bool checkClipboardEntryHotkey(QQmlEngine* engine, const QDir& output)
+{
+    QTemporaryDir temporary;
+    ClipStore store(temporary.filePath(u"history"_s));
+    bool ok = true;
+    const auto check = [&](bool condition, const char* reason) {
+        ok = condition && ok;
+        if (!condition) qWarning("clipboard entry hotkey regression: %s", reason);
+    };
+    if (!store.open(QDateTime::currentMSecsSinceEpoch())) { check(false, "temporary history could not open"); return false; }
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    // Newest first: rows 0 (no keys) to 2 (keys, a note).
+    const qint64 mailId = store.add(ClipCapture {.kind = ClipKind::Text, .text = u"lingcore@example.com"_s, .source = u"浏览器"_s}, now - 3000);
+    const qint64 addressId = store.add(ClipCapture {.kind = ClipKind::Text,
+        .text = u"上海市浦东新区世纪大道 100 号 3 号楼 502 室"_s, .source = u"微信"_s}, now - 2000);
+    store.add(ClipCapture {.kind = ClipKind::Text, .text = u"会议纪要：周五前确认年度报告。"_s, .source = u"记事本"_s}, now - 1000);
+    check(store.setHotkey(mailId, u"Ctrl+Alt+1"_s) && store.setHotkey(addressId, u"Ctrl+Alt+D"_s), "the keys were not kept");
+    store.setNote(mailId, u"工作邮箱"_s, 0);
+
+    ClipboardWatcher watcher({}, {});
+    Clipboard clipboard(&store, &watcher);
+    engine->addImageProvider(u"clippreview"_s, clipboard.filePreview()->imageProvider());
+    clipboard.setRowOptions(false, u"standard"_s, SystemTheme::uiSize());
+    clipboard.setActive(true);
+    clipboard.handleShown();
+    Placement placement(temporary.filePath(u"state.ini"_s), u"Clipboard"_s);
+    WindowFrame frame(false);
+    QQmlComponent component(engine, u"WinShun"_s, u"ClipboardWindow"_s);
+    std::unique_ptr<QObject> object(component.createWithInitialProperties({{u"clipboard"_s, QVariant::fromValue(&clipboard)},
+        {u"placement"_s, QVariant::fromValue(&placement)}, {u"frame"_s, QVariant::fromValue(&frame)}}));
+    auto* window = qobject_cast<QQuickWindow*>(object.get());
+    if (!window) { qWarning().noquote() << "clipboard entry hotkey regression:" << component.errorString(); return false; }
+    window->create();
+    frame.setWindow(window);
+    placement.setWindow(window);
+    placement.enableWindowSizing();
+    showOffScreen(window);
+    clipboard.handlePlaced();
+    clipboard.setSeen(true);
+    settle(window);
+    auto* page = visualNamed(window->contentItem(), u"clipboardPage"_s);
+    if (!page) { check(false, "production clipboard page missing"); return false; }
+
+    ClipModel& model = *clipboard.items();
+    const auto rowOf = [&](qint64 id) {
+        for (int row = 0; row < model.rowCount(); ++row)
+            if (model.data(model.index(row), ClipModel::IdRole).toLongLong() == id)
+                return row;
+        return -1;
+    };
+    const auto texts = [&](int row) {
+        QStringList words;
+        for (const QVariant& entry : clipboard.menuItems(row))
+            words << entry.toMap().value(u"text"_s).toString();
+        return words;
+    };
+    const int mail = rowOf(mailId);
+    const int plain = rowOf(store.clips().front().id);
+    check(mail >= 0 && plain >= 0, "the entries are not listed");
+    check(model.data(model.index(mail), ClipModel::HotkeyRole).toString() == u"Ctrl+Alt+1"_s
+            && model.data(model.index(plain), ClipModel::HotkeyRole).toString().isEmpty(),
+        "the rows do not say their keys");
+    // The keys in the badge, in the row as drawn.
+    const std::function<bool(QQuickItem*, const QString&)> shows = [&shows](QQuickItem* item, const QString& words) {
+        if (item->isVisible() && item->inherits("QQuickText") && item->property("text").toString() == words)
+            return true;
+        return std::ranges::any_of(item->childItems(), [&](QQuickItem* child) { return shows(child, words); });
+    };
+    check(shows(window->contentItem(), u"Ctrl+Alt+1"_s), "the row's badge does not show its keys");
+    check(texts(plain).contains(Clipboard::tr("设置快捷键…")) && !texts(plain).contains(Clipboard::tr("去掉快捷键")),
+        "an entry without keys is not offered 设置快捷键…");
+    check(texts(mail).contains(Clipboard::tr("更改快捷键（%1）…").arg(u"Ctrl+Alt+1"_s))
+            && texts(mail).contains(Clipboard::tr("去掉快捷键")),
+        "an entry with keys is not offered 更改快捷键 and 去掉快捷键");
+    clipboard.toggleSelected(mail);
+    clipboard.toggleSelected(plain);
+    check(!texts(mail).join(u'|').contains(u"快捷键"_s), "several picked are offered one shortcut");
+    clipboard.clearSelection();
+
+    // The menu as shown, then the window.
+    check(QMetaObject::invokeMethod(page, "openContextMenu", Q_ARG(QVariant, QVariant(mail)), Q_ARG(QVariant, QVariant())),
+        "clipboard context menu did not open");
+    if (auto* menu = qobject_cast<QQuickWindow*>(page->property("contextMenu").value<QObject*>())) {
+        settle(menu);
+        check(saveGrab(menu, output.filePath(u"clipboard-entry-hotkey-menu.png"_s)), "the menu did not render");
+        QMetaObject::invokeMethod(menu, "dismiss");
+        settle(window);
+    } else {
+        check(false, "production clipboard menu is missing");
+    }
+    check(saveGrab(window, output.filePath(u"clipboard-entry-hotkey.png"_s)), "the clipboard window did not render");
+
+    // 设置快捷键… asks the settings for that entry.
+    qint64 asked = 0;
+    QObject::connect(&clipboard, &Clipboard::hotkeyRequested, &clipboard, [&](qint64 id) { asked = id; });
+    clipboard.trigger(plain, Clipboard::SetHotkey);
+    check(asked == store.clips().front().id, "设置快捷键… did not ask for the entry's keys");
+    // 去掉快捷键: gone from the entry and the window's list, still pinned.
+    int listChanged = 0;
+    QObject::connect(&clipboard, &Clipboard::entryHotkeysChanged, &clipboard, [&] { ++listChanged; });
+    clipboard.trigger(rowOf(mailId), Clipboard::RemoveHotkey);
+    const Clip* removed = store.clip(mailId);
+    check(removed && removed->hotkey.isEmpty() && removed->group == ClipStore::kPinned, "去掉快捷键 did not take the keys away, or unpinned it");
+    check(listChanged == 1 && clipboard.entryHotkeys().size() == 1 && clipboard.entryHotkeys().front().first == addressId,
+        "the shortcuts to register were not said again");
+    check(!watcher.running(), "fixture must never start the native clipboard writer");
+    window->hide();
+    say(u"clipboard entry hotkey: badge shows the keys, menu sets/changes/removes them (one entry only), removing keeps it pinned; native clipboard untouched"_s);
+    return ok;
+}
+
 // --clipboard-paste-plain: 默认粘贴为纯文本 (Settings::clipboardPlainByDefault).
 // Off, as ever: a paste keeps the words' formatting, Shift drops it. On: the
 // usual paste (Enter, a click, Alt+1…9) drops it, Shift+Enter and the menu's
@@ -11506,6 +11679,8 @@ int runResults(const QStringList& args)
         return checkClipboardPinFiles(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-paste-plain"_s))
         return checkClipboardPastePlain(&engine, out) ? std::min(g_warnings, 100) : 4;
+    if (args.contains(u"--clipboard-entry-hotkey"_s))
+        return checkClipboardEntryHotkey(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-picture-view"_s))
         return checkClipboardPictureView(&engine, out, valueAfter(args, u"--gallery-image")) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-select"_s))
@@ -14972,6 +15147,15 @@ int runRuntime(const QStringList& args)
         }
         settings.pastePlainHotkey = QString(kPastePlainProbeChord);
     }
+    const bool entryHotkey = args.contains(u"--entry-hotkey-check"_s);
+    if (entryHotkey) { // an entry's own shortcut: a chord nobody else has
+        if (!entryHotkeyChordFree()) {
+            qWarning("entry hotkey: %s is someone else's already", qPrintable(QString(kEntryHotkeyProbeChord)));
+            return 4;
+        }
+        settings.clipboard = true;
+        settings.clipboardDuplicates = true;
+    }
     const bool activationPaste = args.contains(u"--activation-paste-check"_s);
     if (activationPaste) { // GitHub #432: the clipboard's own chord, nobody else's
         if (!activationPasteChordFree()) {
@@ -14982,6 +15166,8 @@ int runRuntime(const QStringList& args)
         settings.clipboardHotkey = QString(kActivationPasteProbeChord);
     }
     settings.save(); // prepared profiles normally skip onboarding
+    if (entryHotkey && !seedEntryHotkey(Settings::dataDir() + u"/clipboard"_s))
+        return 4;
     if (activationPaste
         && !seedActivationPastePicture(Settings::dataDir() + u"/clipboard"_s,
             std::clamp(valueAfter(args, u"--picture-width", u"240"_s).toInt(), 16, 6000)))
@@ -15085,7 +15271,7 @@ int runRuntime(const QStringList& args)
             if ((args.contains(u"--idle-open-check"_s) || args.contains(u"--foreground-use-check"_s) || args.contains(u"--live"_s)
                     || args.contains(u"--clipboard-animation-check"_s) || args.contains(u"--settings-motion-check"_s)
                     || args.contains(u"--search-shadow-check"_s) || args.contains(u"--paste-plain-check"_s)
-                    || args.contains(u"--activation-paste-check"_s)
+                    || args.contains(u"--activation-paste-check"_s) || args.contains(u"--entry-hotkey-check"_s)
                     || args.contains(u"--launcher-settings-check"_s) || args.contains(u"--launcher-open-check"_s))
                 && profile.fileName().startsWith(u"WinShun-preview-")
                 && QDir::cleanPath(profile.absolutePath()).compare(QDir::cleanPath(QDir::tempPath()), Qt::CaseInsensitive) == 0)
@@ -15158,6 +15344,8 @@ int runRuntime(const QStringList& args)
             return checkPastePlain(app, args, out) ? 0 : 4; // its profile likewise
         if (args.contains(u"--activation-paste-check"_s))
             return checkActivationPaste(app, args, out) ? 0 : 4; // its profile likewise
+        if (args.contains(u"--entry-hotkey-check"_s))
+            return checkEntryHotkey(app, args, out) ? 0 : 4; // its profile likewise
         if (args.contains(u"--settings-reopen-check"_s))
             return probeSettingsReopen(app, args, out, report) ? 0 : 4;
         if (args.contains(u"--settings-motion-check"_s))
