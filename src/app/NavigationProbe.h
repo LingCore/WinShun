@@ -18,6 +18,9 @@ bool checkPluginGallerySettings(QQuickWindow* window, SettingsEditor* editor, co
 // Production QML/controller checks on isolated data and non-activating,
 // offscreen windows. No global key injection or clipboard writes.
 bool checkNavigationWorkflows(QQmlEngine* engine, const QDir& output, bool flipped);
+// The panel's 名称 filter on a believable folder of office files, for the
+// release poster (--name-filter-poster); writes name-filter-poster.png.
+bool checkNameFilterPoster(QQmlEngine* engine, const QDir& output);
 bool checkNavigationSettings(QQuickWindow* window, SettingsEditor* editor, const QDir& output);
 bool checkOptimizationSettings(QQuickWindow* window, SettingsEditor* editor, const QDir& output);
 bool checkClipboardAlignment(QQmlEngine* engine, const QDir& output, bool flipped);
