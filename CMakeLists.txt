@@ -76,6 +76,7 @@ add_subdirectory(src/archive-plugin)
 add_subdirectory(src/switches-plugin)
 add_subdirectory(src/bookmarks-plugin)
 add_subdirectory(src/translate-plugin)
+add_subdirectory(src/localmodel-plugin) # sets WS_LLAMA_FILES: llama.cpp's runtime for the package
 add_subdirectory(src/cloudbackup-plugin)
 add_subdirectory(src/capture)
 add_subdirectory(src/capture-plugin)
@@ -199,6 +200,13 @@ add_custom_target(library_plugins ALL
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunBookmarks>" "${library_plugins_dir}/winshun.bookmarks/WinShunBookmarks.exe"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/translate-plugin/package" "${library_plugins_dir}/winshun.translate"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunTranslate>" "${library_plugins_dir}/winshun.translate/WinShunTranslate.exe"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/localmodel-plugin/package" "${library_plugins_dir}/winshun.localmodel"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunLocalModel>" "${library_plugins_dir}/winshun.localmodel/WinShunLocalModel.exe"
+    # llama.cpp's llama-server with its DLLs and the C++ runtime they use (src/localmodel-plugin/CMakeLists.txt).
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${library_plugins_dir}/winshun.localmodel/llama"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${WS_LLAMA_FILES} "${library_plugins_dir}/winshun.localmodel/llama/"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/third_party/llama.cpp/LICENSE" "${library_plugins_dir}/winshun.localmodel/licenses/llama.cpp.txt"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${WS_LLAMA_LICENSE_OPENMP}" "${library_plugins_dir}/winshun.localmodel/licenses/llvm-openmp.txt"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/cloudbackup-plugin/package" "${library_plugins_dir}/winshun.cloudbackup"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunCloudBackup>" "${library_plugins_dir}/winshun.cloudbackup/WinShunCloudBackup.exe"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/capture-plugin/package" "${library_plugins_dir}/winshun.capture"
@@ -207,7 +215,7 @@ add_custom_target(library_plugins ALL
     # What is compiled into WinShunCaptureApp.dll; Qt, ONNX Runtime and the OCR models are Win顺's.
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/third_party/zxing-cpp/LICENSE" "${library_plugins_dir}/winshun.capture/licenses/zxing-cpp.txt"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/third_party/miniz/LICENSE" "${library_plugins_dir}/winshun.capture/licenses/miniz.txt"
-    DEPENDS WinShunSemantic WinShunLocalSend WinShunSync WinShunBreak WinShunExplorerTabs WinShunGestures WinShunGesturesEditor WinShunExpander WinShunTopmost WinShunArchive WinShunBookmarks WinShunTranslate WinShunCloudBackup WinShunCapture WinShunCaptureApp WinShunOcrSearch WinShunOcrSearchApp
+    DEPENDS WinShunSemantic WinShunLocalSend WinShunSync WinShunBreak WinShunExplorerTabs WinShunGestures WinShunGesturesEditor WinShunExpander WinShunTopmost WinShunArchive WinShunBookmarks WinShunTranslate WinShunLocalModel WinShunCloudBackup WinShunCapture WinShunCaptureApp WinShunOcrSearch WinShunOcrSearchApp
         WinShunDevTools WinShunDevToolsApp
     COMMENT "Staging the library plugins into ${library_plugins_dir}"
     VERBATIM)
