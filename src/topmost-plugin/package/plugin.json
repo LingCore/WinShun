@@ -1,0 +1,24 @@
+{
+  "manifest": 1,
+  "id": "winshun.topmost",
+  "name": {"zh": "窗口置顶", "en": "Always on top"},
+  "version": "1.0.0",
+  "description": {"zh": "按一下快捷键，当前窗口就一直显示在其他窗口上面，再按一下取消；也可以在搜索框里输入“置顶”挑一个窗口。管理员身份运行的窗口改不了", "en": "One shortcut keeps the window in front above the others, and takes it off again; or type “top” in the search box and pick a window. Not for windows run as administrator"},
+  "author": "LingCore",
+  "homepage": "https://github.com/LingCore/WinShun",
+  "license": "MIT",
+  "minWinShun": "0.45.0",
+  "runtime": {"mode": "resident", "program": "WinShunTopmost.exe", "start": "eager", "sandbox": "normal", "timeoutMs": 1500, "idleExitSec": 0, "memoryMB": 48},
+  "permissions": ["ui"],
+  "commands": [{
+    "id": "topmost",
+    "keyword": ["置顶", "top"],
+    "title": {"zh": "窗口置顶", "en": "Always on top"},
+    "description": {"zh": "打开的窗口；置顶、取消置顶", "en": "The open windows; on top, or no longer"},
+    "icon": "ph:push-pin",
+    "hint": {"zh": "Enter 置顶或取消置顶", "en": "Enter to keep on top or take off"}
+  }],
+  "settings": [
+    {"key": "hotkey", "type": "hotkey", "title": {"zh": "置顶 / 取消置顶当前窗口", "en": "Keep the window in front on top, or take it off"}, "hint": {"zh": "窗口上会出现“已置顶”或“已取消置顶”；留空就不用快捷键", "en": "The window says “On top” or “No longer on top”; leave empty for no shortcut"}, "default": "Win+Ctrl+T"}
+  ]
+}

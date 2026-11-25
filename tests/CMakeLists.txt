@@ -1577,6 +1577,16 @@ add_test(NAME tst_expander COMMAND tst_expander)
 set_tests_properties(tst_expander PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# winshun.topmost's windows (src/topmost-plugin/Pins), built in again: which
+# windows are the user's, and the switch itself on windows of the test's own.
+qt_add_executable(tst_topmost tst_topmost.cpp ${PROJECT_SOURCE_DIR}/src/topmost-plugin/Pins.cpp)
+target_include_directories(tst_topmost PRIVATE ${PROJECT_SOURCE_DIR}/src/topmost-plugin)
+target_link_libraries(tst_topmost PRIVATE winshun_options Qt6::Test user32 dwmapi)
+set_target_properties(tst_topmost PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_topmost COMMAND tst_topmost)
+set_tests_properties(tst_topmost PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # winshun.bookmarks (src/bookmarks-plugin/Bookmarks), built in again: reading
 # Bookmarks files, the folder text, percent-decoding, matching, scoring,
 # the 50-row cap and the "nothing found" rows.

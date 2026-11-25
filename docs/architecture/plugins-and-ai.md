@@ -6,7 +6,7 @@
 
 ### 核心能力与进程模型
 
-文件搜索、内容搜索与剪贴板管理属于宿主核心（`WinShun.exe`）；截图与录屏、系统开关、网页搜索、图片文字搜索、语义搜索、开发工具、翻译、浏览器书签、局域网传输、剪贴板同步、云备份、休息提醒、鼠标手势、缩写展开与资源管理器标签页均作为可选插件运行。文件夹菜单、文件对话框集成与拖放圆盘由宿主实现。剪贴板在原生 Start/Search 上叠加显示时，可使用独立 UIAccess 显示子进程（`WinShun.exe --clipboard-display`），历史库、监听与插件调用仍在普通主进程。
+文件搜索、内容搜索与剪贴板管理属于宿主核心（`WinShun.exe`）；截图与录屏、系统开关、网页搜索、图片文字搜索、语义搜索、开发工具、翻译、浏览器书签、局域网传输、剪贴板同步、云备份、休息提醒、鼠标手势、缩写展开、窗口置顶与资源管理器标签页均作为可选插件运行。文件夹菜单、文件对话框集成与拖放圆盘由宿主实现。剪贴板在原生 Start/Search 上叠加显示时，可使用独立 UIAccess 显示子进程（`WinShun.exe --clipboard-display`），历史库、监听与插件调用仍在普通主进程。
 
 插件遵循“三层形态、一份协议”，且**绝不将插件代码载入 `WinShun.exe` 主进程**：
 
@@ -60,7 +60,7 @@
 
 ## 3. 官方插件一览
 
-当前仓库包含 **18 个官方插件**（4 个随包 + 14 个插件库）：
+当前仓库包含 **19 个官方插件**（4 个随包 + 15 个插件库）：
 
 | 插件 ID | 源码目录 | 二进制 / 入口 | 分发与运行模式 | 核心职责与要点 |
 |---|---|---|---|---|
@@ -81,6 +81,7 @@
 | `winshun.break` | `src/break-plugin` | `WinShunBreak.exe`（无 Qt） | 插件库 · `resident`（`eager`/`normal`） | 休息提醒：纯时钟调度、空闲/锁屏/全屏/勿扰感知、独立线程 Direct2D 分层窗口 |
 | `winshun.gestures` | `src/gestures-plugin` | `WinShunGestures.exe` + `*Editor.dll` | 插件库 · `resident`（`eager`/`normal`） | 鼠标手势、触发角/摩擦边与划词动作（常驻无 Qt，编辑器共享宿主 Qt），详见 [design-gestures.md](../design-gestures.md) |
 | `winshun.expander` | `src/expander-plugin` | `WinShunExpander.exe`（无 Qt） | 插件库 · `resident`（`eager`/`normal`） | 缩写展开：`WH_KEYBOARD_LL`/`WH_MOUSE_LL` + `ToUnicodeEx` + 输入法中文状态检测 + `SendInput` 替换 |
+| `winshun.topmost` | `src/topmost-plugin` | `WinShunTopmost.exe`（无 Qt） | 插件库 · `resident`（`eager`/`normal`） | 窗口置顶：快捷键（宿主代注册 `register_hotkeys`，默认 `Win+Ctrl+T`）切换前台窗口的 `WS_EX_TOPMOST`，`置顶`/`top` 列出窗口；状态只认窗口自身的置顶位，`SWP_ASYNCWINDOWPOS` 不等无响应程序；提权窗口（UIPI）、无响应、已关闭都在窗口上的提示条（独立线程 Direct2D 分层窗口）写明；停止时取消自己置顶过的窗口 |
 | `winshun.explorer-tabs` | `src/explorer-tabs-plugin` | `WinShunExplorerTabs.exe`（无 Qt） | 插件库 · `resident`（`eager`/`elevated`） | Win11 22H2+ 资源管理器合并标签页与会话恢复；提权宿主经确认可合并管理员窗口 |
 
 - **系统开关线程模型（`winshun.switches`）**：宿主仅留 `SwitchCommand` 语法解析、`places.txt` 与 GUI 异步缓存（`Switches`/`SwitchPlugin`）。插件内部三线程分离：① 插件事件线程（`RegistryWatch`、`PowerCreateRequest` 与保持唤醒定时器，严禁调 WinRT `.get()` 或全局广播）；② MTA `ComWorker` 开关线程（串行硬件读写，回调经 `SwitchRelay` 转回）；③ 独立 `detach` 广播线程（深色模式先同步刷本进程窗再 `HWND_BROADCAST` `ImmersiveColorSet` 配 `SMTO_ABORTIFHUNG`，退出不 `join` 防主消息循环死锁）。因全属当前用户会话与 HKCU，不经 LocalSystem 服务；崩溃或停用立即撤销电源请求，重启仅重读不重放写入。
@@ -104,5 +105,5 @@ MCP 服务端位于 `src/mcp/`（`wsmcp`），实现 MCP 2025-11-25（兼容 202
 
 - **插件运行时与安全**：`tst_plugin`、`tst_plugincommands`、`tst_pluginhotkeys`、`tst_pluginupdates`、`tst_pluginsdk`、`tst_movedplugins`、`tst_pluginreadme`、`tst_pluginconfirm`、`tst_pluginhomepage`、`tst_pluginkeywords`、`tst_pluginsliders`。
 - **MCP 与命令行**：`tst_mcp`、`tst_aisettings`、`tst_cli`、`tst_commandline`、`tst_shelllaunch`。
-- **官方插件回归**：`tst_switchplugin`、`tst_switches`、`tst_tools`、`tst_shunsync`、`tst_semantic`、`tst_localsend`、`tst_ocrsearch`、`tst_devtools`、`tst_cloudbackup`、`tst_explorertabs`、`tst_gestures`、`tst_expander`、`tst_break`、`tst_translate`、`tst_bookmarks`。
+- **官方插件回归**：`tst_switchplugin`、`tst_switches`、`tst_tools`、`tst_shunsync`、`tst_semantic`、`tst_localsend`、`tst_ocrsearch`、`tst_devtools`、`tst_cloudbackup`、`tst_explorertabs`、`tst_gestures`、`tst_expander`、`tst_topmost`、`tst_break`、`tst_translate`、`tst_bookmarks`。
 - **探针与预览**：`wsbench --plugin` / `--launcher-sim` / `--mcp-host` / `--switches`、`plugin-probe --parent`、`WinShun.exe --preview-plugins` / `--preview-ai-cards`。
