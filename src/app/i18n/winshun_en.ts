@@ -2023,8 +2023,12 @@
         <translation>Group name</translation>
     </message>
     <message>
-        <source>搜索剪贴板，支持拼音</source>
+        <source>搜索剪贴板</source>
         <translation>Search the clipboard</translation>
+    </message>
+    <message>
+        <source>拼音搜索，点这里用输入法</source>
+        <translation>Search; click for the input method</translation>
     </message>
     <message>
         <source>打拼音：tupian → 图片</source>

@@ -1069,14 +1069,22 @@ bool checkFieldFocus(App&, const QStringList&, const QDir& output)
 
             // What a Shift alone under a Chinese layout brings up: pinyin in the
             // field, and below it the click that brings the input method, each in full.
-            emit clipboard->pinyinHintRequested();
-            pump(400);
-            const auto shownInFull = [&](const QString& name, QStringView word) {
+            const auto shownInFull = [&](const QString& name, QStringView word, const QString& as = {}) {
                 auto* text = window->findChild<QQuickItem*>(name);
                 const QString said = text ? text->property("text").toString() : QString();
-                report.insert(name, said);
+                report.insert(as.isEmpty() ? name : as, said);
                 return text && text->isVisible() && said.contains(word) && !text->property("truncated").toBool();
             };
+            // The empty field itself says the click, before any Shift (GitHub #470).
+            if (auto* text = window->findChild<QQuickItem*>(u"clipboardSearchPlaceholder"_s)) {
+                report.insert(u"placeholder_room"_s, text->width());
+                report.insert(u"placeholder_needs"_s, text->implicitWidth());
+            }
+            check(shownInFull(u"clipboardSearchPlaceholder"_s, u"输入法", u"placeholder_opened"_s),
+                "the empty field does not say the click that brings the input method, or is cut off");
+            window->grabWindow().save(output.filePath(u"field-opened.png"_s));
+            emit clipboard->pinyinHintRequested();
+            pump(400);
             check(shownInFull(u"clipboardSearchPlaceholder"_s, u"拼音"), "the field does not say pinyin finds Chinese, or is cut off");
             check(shownInFull(u"clipboardInputMethodNote"_s, u"输入法"), "nothing says how to use the input method, or it is cut off");
             window->grabWindow().save(output.filePath(u"field-hint.png"_s));
@@ -1095,6 +1103,11 @@ bool checkFieldFocus(App&, const QStringList&, const QDir& output)
             check(front, "the clipboard's window did not take the focus on the click");
             check(!clipboard->keysRouted(), "the keys are still routed after the click");
             check(field->hasActiveFocus(), "the search field does not have the focus");
+            if (auto* text = window->findChild<QQuickItem*>(u"clipboardSearchPlaceholder"_s)) {
+                const QString said = text->property("text").toString();
+                report.insert(u"placeholder_focused"_s, said);
+                check(!said.contains(u"输入法"), "the field still asks for the click it has had");
+            }
             if (ok && ::GetForegroundWindow() == hwnd) { // checked again just before the keys
                 typeText(kFocusTyped);
                 pump(500);
