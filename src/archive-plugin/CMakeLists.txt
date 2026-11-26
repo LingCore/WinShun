@@ -13,7 +13,7 @@ add_executable(WinShunArchive
     Lister.cpp Lister.h
     ${PROJECT_SOURCE_DIR}/resources/WinShunArchive.rc
 )
-target_include_directories(WinShunArchive PRIVATE ${PROJECT_SOURCE_DIR}/src/plugins-sdk)
+target_include_directories(WinShunArchive PRIVATE ${PROJECT_SOURCE_DIR}/src/plugins-sdk ${PROJECT_SOURCE_DIR}/src/plugins-common)
 target_link_libraries(WinShunArchive PRIVATE winshun_options wsarchive_deps psapi)
 set_target_properties(WinShunArchive PROPERTIES AUTOMOC OFF MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 # For the staging of the package (library_plugins): the licenses of what is linked in.

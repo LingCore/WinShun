@@ -17,8 +17,7 @@
 
 #include "winshun.h"
 
-#include <psapi.h>
-
+#include "IdleTrim.h"
 #include "Chunker.h"
 #include "Embedder.h"
 #include "Store.h"
@@ -38,6 +37,7 @@
 using winshun::Item;
 using winshun::Items;
 using winshun::Json;
+using wsplugin::Working; // the vectors and what a pass listed: given back while idle (IdleTrim.h)
 using namespace std::chrono_literals;
 
 namespace semantic {
@@ -56,13 +56,6 @@ constexpr std::size_t kSample = 24; // files read for the estimate
 constexpr int kReadChars = 60000; // of one file: more than its passages take
 constexpr int kUserAwaySec = 60; // a local model works flat out after that much quiet
 constexpr std::size_t kResults = 30;
-// Idle trim (as the app's IdleTrim, which needs Qt): the vectors and what a pass
-// listed stay in the working set long after the work; unused for a while and
-// above this, the working set goes to Windows' standby list (soft faults bring
-// back what the next query needs).
-constexpr ULONGLONG kTrimAfterMs = 20'000;
-constexpr auto kTrimRecheck = 30s;
-constexpr SIZE_T kTrimAbove = 32 * 1024 * 1024; // private working set
 // Rows shown however far below the best: the best one only. With 3, "猫打针的记录"
 // showed a father's health check (2026-10-13).
 constexpr std::size_t kAtLeast = 1;
@@ -131,49 +124,6 @@ std::string thousands(std::size_t n)
     for (int i = static_cast<int>(s.size()) - 3; i > 0; i -= 3)
         s.insert(static_cast<std::size_t>(i), ",");
     return s;
-}
-
-// ---- giving memory back while idle ----------------------------------------------------
-
-std::atomic<int> g_working {0}; // queries, actions and passes under way
-std::atomic<ULONGLONG> g_lastUse {0}; // GetTickCount64 when the work last started or ended
-
-struct Working {
-    Working()
-    {
-        ++g_working;
-        g_lastUse = ::GetTickCount64();
-    }
-    ~Working()
-    {
-        g_lastUse = ::GetTickCount64();
-        --g_working;
-    }
-    Working(const Working&) = delete;
-    Working& operator=(const Working&) = delete;
-};
-
-SIZE_T privateWorkingSet()
-{
-    PROCESS_MEMORY_COUNTERS_EX2 counters {};
-    counters.cb = sizeof(counters);
-    if (!::GetProcessMemoryInfo(::GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&counters), sizeof(counters)))
-        return SIZE_MAX; // unknown: trim
-    return counters.PrivateWorkingSetSize;
-}
-
-void trimWhenIdle()
-{
-    g_lastUse = ::GetTickCount64();
-    std::thread([] {
-        for (;;) {
-            std::this_thread::sleep_for(kTrimRecheck);
-            if (g_working.load() > 0 || ::GetTickCount64() - g_lastUse.load() < kTrimAfterMs)
-                continue;
-            if (privateWorkingSet() > kTrimAbove)
-                ::SetProcessWorkingSetSizeEx(::GetCurrentProcess(), static_cast<SIZE_T>(-1), static_cast<SIZE_T>(-1), 0);
-        }
-    }).detach(); // ends with the process
 }
 
 // ---- the wire: lines out, and Win顺's tools from any thread -------------------------
@@ -283,7 +233,7 @@ public:
     int run()
     {
         std::thread reader([this] { read(); });
-        trimWhenIdle();
+        wsplugin::trimWhenIdle();
         while (const auto message = m_inbox.pop()) {
             if (!handle(*message))
                 break;

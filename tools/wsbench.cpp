@@ -242,7 +242,7 @@
 //                      follows the indexing for up to S seconds (default
 //                      900), then asks each QUERY. --data keeps its vectors
 //                      in FOLDER for the next run
-//   wsbench --archive [--setting KEY=VALUE ...] [--data FOLDER] [--wait S] ["QUERY" ...]
+//   wsbench --archive [--setting KEY=VALUE ...] [--data FOLDER] [--wait S] [--idle S] ["QUERY" ...]
 //                      the 压缩包搜索 plugin (winshun.archive) through the
 //                      real plugin host over a copy of the index: follows
 //                      the line on its card until the archives are read (S
@@ -250,7 +250,10 @@
 //                      "zip QUERY" and in 内容, and on the first row found
 //                      asks its details and tries its three actions (the
 //                      effects are printed, nothing is opened). --data keeps
-//                      what it read in FOLDER for the next run
+//                      what it read in FOLDER for the next run. --idle leaves
+//                      it alone S seconds after, its memory every 10 s (what
+//                      it gives back while idle, GitHub #478), then asks the
+//                      first QUERY again
 //   wsbench --launcher-sim [--plugins DIR] [--index FOLDER] [--key-ms N] [--scope files|folders|save] [--each-key] [--data ID=DIR ...]
 //                      [--app-dir DIR] ["TEXT" ...]
 //                      the launcher's list without the launcher: each TEXT
@@ -6344,6 +6347,11 @@ int runArchive(QStringList args)
         waitSec = std::max(5, args[at + 1].toInt());
         args.remove(at, 2);
     }
+    int idleSec = 0;
+    if (const qsizetype at = args.indexOf(u"--idle"_s); at >= 0 && at + 1 < args.size()) {
+        idleSec = std::max(0, args[at + 1].toInt());
+        args.remove(at, 2);
+    }
     const QStringList queries = args;
 
     ws::Settings settings;
@@ -6516,13 +6524,29 @@ int runArchive(QStringList args)
     const ws::plugin::Host::State state = host.state(id);
     std::printf("\nplugin state %d, pid %lu%s\n", static_cast<int>(state.status), static_cast<unsigned long>(state.pid),
         state.error.isEmpty() ? "" : qUtf8Printable(u" ("_s + state.error + u")"_s));
-    if (state.pid != 0) {
-        const HANDLE process = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, state.pid);
-        PROCESS_MEMORY_COUNTERS_EX memory {};
-        if (process && ::GetProcessMemoryInfo(process, reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&memory), sizeof memory))
-            std::printf("plugin memory: private %.1f MB, working set %.1f MB\n", memory.PrivateUsage / 1048576.0, memory.WorkingSetSize / 1048576.0);
+    // Task Manager's column (the private working set; 0 before Windows 11 22H2), the whole one, and the commit.
+    const auto memory = [pid = state.pid](int second) {
+        const HANDLE process = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+        PROCESS_MEMORY_COUNTERS_EX2 counters {};
+        if (process && ::GetProcessMemoryInfo(process, reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&counters), sizeof counters))
+            std::printf("plugin memory at +%3d s: private working set %.1f MB, working set %.1f MB, private %.1f MB\n", second,
+                counters.PrivateWorkingSetSize / 1048576.0, counters.WorkingSetSize / 1048576.0, counters.PrivateUsage / 1048576.0);
         if (process)
             ::CloseHandle(process);
+    };
+    if (state.pid != 0) {
+        memory(0);
+        for (int second = 10; second <= idleSec; second += 10) { // left alone, as after a search
+            spin(10000);
+            memory(second);
+        }
+        if (idleSec > 0 && !queries.isEmpty()) { // the first search after: what was given back comes back
+            double took = 0;
+            const ws::plugin::Items again = ask(u"zip "_s + queries.first(), ws::Scope::All, &took);
+            std::printf("zip %s again after %d s idle: %lld rows, %.0f ms\n", qUtf8Printable(queries.first()), idleSec,
+                static_cast<long long>(again.size()), took);
+            memory(idleSec);
+        }
     }
     host.shutdown();
     service.shutdown();

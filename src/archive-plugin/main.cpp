@@ -16,8 +16,7 @@
 
 #include "winshun.h"
 
-#include <psapi.h>
-
+#include "IdleTrim.h"
 #include "Index.h"
 #include "Lister.h"
 
@@ -35,6 +34,7 @@
 using winshun::Item;
 using winshun::Items;
 using winshun::Json;
+using wsplugin::Working; // the names stay in memory: given back while idle (IdleTrim.h)
 using namespace std::chrono_literals;
 
 namespace wsarchive {
@@ -53,12 +53,6 @@ constexpr std::uint64_t kPreviewBytes = std::uint64_t {32} << 20; // a member sh
 constexpr std::uint64_t kOpenBytes = std::uint64_t {1} << 30; // a member opened with Ctrl+Enter
 constexpr std::uint64_t kKeptBytes = std::uint64_t {256} << 20; // of members taken out for previews
 constexpr std::size_t kFolderLines = 400; // of a folder's listing in the content pane
-// As the app's IdleTrim (which needs Qt): the names stay in the working set
-// long after a search; unused for a while and above this, it goes to
-// Windows' standby list (soft faults bring back what the next search reads).
-constexpr ULONGLONG kTrimAfterMs = 20'000;
-constexpr auto kTrimRecheck = 30s;
-constexpr SIZE_T kTrimAbove = 24 * 1024 * 1024; // private working set
 
 // Archives by their names. A .gz or .xz alone holds one file, not a list:
 // only .tar.gz and .tar.xz count.
@@ -175,49 +169,6 @@ std::string safeName(std::string_view name)
     return out.empty() ? "file" : out;
 }
 
-// ---- giving memory back while idle ----------------------------------------------------
-
-std::atomic<int> g_working {0}; // queries, actions and passes under way
-std::atomic<ULONGLONG> g_lastUse {0};
-
-struct Working {
-    Working()
-    {
-        ++g_working;
-        g_lastUse = ::GetTickCount64();
-    }
-    ~Working()
-    {
-        g_lastUse = ::GetTickCount64();
-        --g_working;
-    }
-    Working(const Working&) = delete;
-    Working& operator=(const Working&) = delete;
-};
-
-SIZE_T privateWorkingSet()
-{
-    PROCESS_MEMORY_COUNTERS_EX2 counters {};
-    counters.cb = sizeof(counters);
-    if (!::GetProcessMemoryInfo(::GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&counters), sizeof(counters)))
-        return SIZE_MAX; // unknown: trim
-    return counters.PrivateWorkingSetSize;
-}
-
-void trimWhenIdle()
-{
-    g_lastUse = ::GetTickCount64();
-    std::thread([] {
-        for (;;) {
-            std::this_thread::sleep_for(kTrimRecheck);
-            if (g_working.load() > 0 || ::GetTickCount64() - g_lastUse.load() < kTrimAfterMs)
-                continue;
-            if (privateWorkingSet() > kTrimAbove)
-                ::SetProcessWorkingSetSizeEx(::GetCurrentProcess(), static_cast<SIZE_T>(-1), static_cast<SIZE_T>(-1), 0);
-        }
-    }).detach();
-}
-
 // ---- the plugin -------------------------------------------------------------------------
 
 struct Config {
@@ -287,7 +238,7 @@ protected:
             const std::lock_guard lock(m_mutex);
             m_config = configOf(settings());
         }
-        trimWhenIdle();
+        wsplugin::trimWhenIdle();
         m_worker = std::thread([this] {
             try {
                 run();
