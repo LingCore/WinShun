@@ -2013,6 +2013,7 @@ void Launcher::setSwitches(Switches* switches, const QString& stateFile)
     }
     m_contentPane->loadPreferences(stateFile);
     m_switchPageTold = !stateFile.isEmpty() && QSettings(stateFile, QSettings::IniFormat).value(u"Hints/SwitchPage"_s).toBool();
+    m_pinHintsTold = stateFile.isEmpty() ? kPinHints : QSettings(stateFile, QSettings::IniFormat).value(u"Hints/PinAfterOpen"_s).toInt();
     m_previewWanted = !stateFile.isEmpty() && QSettings(stateFile, QSettings::IniFormat).value(u"Launcher/PreviewOpen"_s).toBool();
     m_results.setSwitches(switches);
     refreshKeyHints();
@@ -2488,6 +2489,8 @@ void Launcher::handleShown(bool deferBackgroundWork)
         search(); // new query, changed settings, or updated recent history
     emit historyChanged(); // things were opened since
     refreshFrequentApps(!deferBackgroundWork);
+    if (!deferSearch)
+        tellPinHint(); // else after that search, which clears what the footer says (finishShownRefresh)
     emit shown();
 }
 
@@ -2508,6 +2511,7 @@ void Launcher::finishShownRefresh()
     if (std::exchange(m_deferredSearchRefresh, false)) {
         m_searchWhy = "deferred open refresh";
         search();
+        tellPinHint();
     }
 }
 
@@ -4086,10 +4090,36 @@ void Launcher::setPinned(bool on)
         return;
     m_pinned = on;
     emit pinnedChanged();
+    if (on)
+        setPinHintsTold(kPinHints); // found: nothing more to tell (tellPinHint)
     // Said in the footer as well: Ctrl+T leaves no other trace near the keys (short,
     // so the key hints keep their room).
     if (m_window && m_window->isVisible())
         flash(on ? tr("已钉住") : tr("已取消钉住")); // what pinning means is in the pin button's tip
+}
+
+void Launcher::setPinHintsTold(int told)
+{
+    if (m_pinHintsTold == told)
+        return;
+    m_pinHintsTold = told;
+    if (!m_stateFile.isEmpty())
+        QSettings(m_stateFile, QSettings::IniFormat).setValue(u"Hints/PinAfterOpen"_s, told);
+}
+
+// A file opened from here, and here again within the minute with the same
+// words still typed: going through the results one after another, the box
+// closing each time. That is what pinning is for, and Ctrl+T is not found by
+// itself; said in the footer, kPinHints times at most, never once it was pinned.
+void Launcher::tellPinHint()
+{
+    constexpr qint64 kBackWithin = 60'000;
+    const bool back = m_lookedAt.isValid() && m_lookedAt.elapsed() < kBackWithin && !m_query.isEmpty() && m_query == m_lookedQuery;
+    m_lookedAt.invalidate();
+    if (!back || m_pinned || m_pinHintsTold >= kPinHints)
+        return;
+    setPinHintsTold(m_pinHintsTold + 1);
+    flash(tr("要接着看别的结果？按 Ctrl+T 钉住，打开后搜索框不收起"), 8s);
 }
 
 void Launcher::setClosing(bool on)
@@ -5745,6 +5775,14 @@ void Launcher::setPreview(FilePreview* preview)
     });
     // 打开 in the preview's header: as Enter on that file's row.
     connect(preview, &FilePreview::closedByUser, this, [this] { setPreviewWanted(false); });
+    // Enlarged or not, as it was left (state.ini): a screen its own size is
+    // too small on stays so.
+    if (!m_stateFile.isEmpty())
+        preview->setEnlarged(QSettings(m_stateFile, QSettings::IniFormat).value(u"Launcher/PreviewEnlarged"_s).toBool());
+    connect(preview, &FilePreview::enlargedChanged, this, [this, preview] {
+        if (!m_stateFile.isEmpty())
+            QSettings(m_stateFile, QSettings::IniFormat).setValue(u"Launcher/PreviewEnlarged"_s, preview->enlarged());
+    });
     connect(preview, &FilePreview::openRequested, this, [this](const QString& path) {
         for (int row = 0; row < m_results.count(); ++row) {
             const SearchResult* r = m_results.at(row);
@@ -6296,6 +6334,10 @@ void Launcher::perform(const SearchResult& result, Action action, bool fileCheck
             contentopen::open(r.path, r.line, reportFailure(r.name)); // at the matching line, in an editor that can
         else if (action != Open || !r.isDir || !m_folderOpener || !m_folderOpener(r.path))
             shell::open(r.path, action == RunAsAdmin, reportFailure(r.name));
+        if (action == Open && !m_pinned) { // back soon with the same words: tellPinHint
+            m_lookedAt.start();
+            m_lookedQuery = m_query;
+        }
         emit dismissRequested();
         break;
     case Reveal:

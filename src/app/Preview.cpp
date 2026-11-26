@@ -4001,7 +4001,7 @@ int runSettings(const QStringList& args)
 // GitHub #186: the preview window by the real launcher on the real screen
 // (GetWindowRect, physical): beside it while there is room (a launcher in
 // the middle of the screen), and with no room, never over the names.
-void checkPreviewPlacement(Launcher& launcher, QQuickWindow* window, FilePreview& preview)
+void checkPreviewPlacement(Launcher& launcher, QQuickWindow* window, FilePreview& preview, const QDir* output = nullptr)
 {
     const auto check = [](bool okay, const QString& name) {
         if (!okay) qWarning("preview placement regression: %s", qUtf8Printable(name));
@@ -4055,6 +4055,73 @@ void checkPreviewPlacement(Launcher& launcher, QQuickWindow* window, FilePreview
             check(QRect(QPoint(work.left, work.top), QPoint(work.right - 1, work.bottom - 1)).contains(previewRect),
                 u"the preview stays in the work area"_s);
         }
+        preview.close();
+        pump(50);
+    }
+    // Enlarged (the key in its header, a double click on the header): the
+    // work area's whole height, the launcher's names still never under it,
+    // the same size for the next file; and back as it was.
+    {
+        const QSize size(760, 480);
+        window->setGeometry(area.left() + (area.width() - size.width()) / 2, area.top() + area.height() * 2 / 5, size.width(), size.height());
+        settle(window);
+        const auto showAndWait = [&](const FilePreview::Item& file) {
+            preview.show(file);
+            QElapsedTimer loaded;
+            loaded.start();
+            while ((preview.kind() == FilePreview::Loading || !preview.isShowing(file.path) || !preview.window()
+                       || !preview.window()->isVisible())
+                && loaded.elapsed() < 3000)
+                pump(10);
+            pump(100);
+        };
+        showAndWait(item);
+        QQuickWindow* shown = preview.window();
+        QQuickItem* key = shown ? visualNamed(shown->contentItem(), u"previewEnlarge"_s) : nullptr;
+        check(key && key->isVisible() && !preview.enlarged(), u"enlarged: the key is in the header, off at first"_s);
+        if (key) {
+            const auto hwnd = reinterpret_cast<HWND>(shown->winId());
+            const qreal dpr = shown->devicePixelRatio();
+            const auto screenPoint = [&](QPointF scene) {
+                RECT bounds {};
+                ::GetWindowRect(hwnd, &bounds);
+                return MAKELPARAM(bounds.left + qRound(scene.x() * dpr), bounds.top + qRound(scene.y() * dpr));
+            };
+            const QRect usual = physical(shown);
+            const QPointF onKey = key->mapToScene({key->width() / 2, key->height() / 2});
+            check(::SendMessageW(hwnd, WM_NCHITTEST, 0, screenPoint(onKey)) == HTCLIENT, u"enlarged: the key is the window's own, not a drag of it"_s);
+            systemMouse(shown, QEvent::MouseButtonPress, onKey);
+            systemMouse(shown, QEvent::MouseButtonRelease, onKey);
+            pump(150);
+            const QRect large = physical(shown), launcherRect = physical(window);
+            MONITORINFO monitor {.cbSize = sizeof(MONITORINFO)};
+            ::GetMonitorInfoW(::MonitorFromWindow(reinterpret_cast<HWND>(window->winId()), MONITOR_DEFAULTTONEAREST), &monitor);
+            const QRect work(QPoint(monitor.rcWork.left, monitor.rcWork.top), QPoint(monitor.rcWork.right - 1, monitor.rcWork.bottom - 1));
+            const int gap = qCeil(8 * dpr) + 2;
+            say(u"preview placement (enlarged): launcher %1,%2 %3x%4, preview %5,%6 %7x%8, before %9x%10 (physical)"_s
+                    .arg(launcherRect.x()).arg(launcherRect.y()).arg(launcherRect.width()).arg(launcherRect.height())
+                    .arg(large.x()).arg(large.y()).arg(large.width()).arg(large.height()).arg(usual.width()).arg(usual.height()));
+            check(preview.enlarged() && large.width() > usual.width() && large.height() > usual.height(),
+                u"enlarged: a click on the key did not enlarge the window"_s);
+            check(work.contains(large) && large.top() - work.top() <= gap && work.bottom() - large.bottom() <= gap
+                    && work.right() - large.right() <= gap,
+                u"enlarged: not the work area's height to its right edge"_s);
+            check(large.left() >= launcherRect.left() + launcherRect.width() * 40 / 100 - 1, u"enlarged: the preview covered the names"_s);
+            const QString next = launcher.results()->pathAt(1);
+            showAndWait({next, QFileInfo(next).fileName()});
+            check(physical(shown) == large, u"enlarged: the next file changed the window's size"_s);
+            if (output)
+                check(saveGrab(shown, output->filePath(u"preview-enlarged.png"_s)), u"enlarged: screenshot"_s);
+            QQuickItem* header = key->parentItem() ? key->parentItem()->parentItem() : nullptr;
+            const QPointF onHeader = header ? header->mapToScene({header->width() / 3, header->height() / 2}) : QPointF();
+            check(header && ::SendMessageW(hwnd, WM_NCHITTEST, 0, screenPoint(onHeader)) == HTCAPTION, u"enlarged: the header still drags the window"_s);
+            ::SendMessageW(hwnd, WM_NCLBUTTONDBLCLK, HTCAPTION, screenPoint(onHeader));
+            pump(150);
+            showAndWait(item);
+            check(!preview.enlarged() && physical(shown).size() == usual.size(),
+                u"enlarged: a double click on the header did not put it back"_s);
+        }
+        preview.setEnlarged(false);
         preview.close();
         pump(50);
     }
@@ -5860,7 +5927,7 @@ void checkFileGallery(Launcher& launcher, IndexService& index, SystemCatalog& pl
         "real image search did not produce the gallery rows");
     if (auto* field = visualNamed(window->contentItem(), u"panelSearchField"_s))
         field->setProperty("text", u"测试照片"_s);
-    checkPreviewPlacement(launcher, window, filePreview);
+    checkPreviewPlacement(launcher, window, filePreview, &output);
     checkSearchMenuKeys(launcher, places, window, filePreview, output);
     checkFolderSteps(launcher, index, window, output);
     checkDialogSearchKeys(index, engine, output);
@@ -6896,6 +6963,125 @@ bool checkScopeMemory(QQuickWindow* window, const QDir& output)
             {u"file_type_kept_while_prefix_typed"_s, typedChoiceKept}}).toJson());
     say(passed ? u"scope memory: the scope chosen by tab, Tab or chip comes back at the next start; what only passes is not kept"_s
                : u"scope memory: FAILED (%1)"_s.arg(failures.join(u"; "_s)));
+    return passed;
+}
+
+// The footer's word about pinning (Launcher::tellPinHint): a result opened,
+// the box up again within the minute with the same words. Real Launcher,
+// SearchEngine and index over a temporary folder; what is opened is a folder
+// handed to a folder opener of the check's own, so nothing opens for real.
+bool checkPinHint(QQuickWindow* window, const QDir& output)
+{
+    QTemporaryDir temporary;
+    IndexService index(temporary.path(), IndexService::Options {});
+    AppCatalog apps;
+    SystemCatalog places;
+    apps.setApps(std::make_shared<const AppList>());
+    places.setPlaces(std::make_shared<const PlaceList>());
+    History history(temporary.filePath(u"history.tsv"_s));
+    SearchEngine engine(&index, &apps, &places);
+    const QString stateFile = temporary.filePath(u"state.ini"_s);
+    bool passed = true;
+    QStringList failures;
+    const auto check = [&](bool condition, const QString& message) {
+        if (condition)
+            return;
+        passed = false;
+        failures.append(message);
+        qWarning().noquote() << u"pin hint: "_s + message;
+    };
+    const QStringList names {u"zqpinhint 合同"_s, u"zqpinhint 报价"_s, u"zqother 图纸"_s};
+    {
+        const auto files = index.index();
+        const auto lock = files->writeLock();
+        const auto root = files->addRoot(QDir::toNativeSeparators(temporary.path()).toStdString());
+        for (const QString& name : names) {
+            check(QDir(temporary.path()).mkdir(name), u"could not make the folder "_s + name);
+            files->add(root, name.toStdString(), EntryFlag::Directory);
+        }
+    }
+    const auto told = [&] { return QSettings(stateFile, QSettings::IniFormat).value(u"Hints/PinAfterOpen"_s).toInt(); };
+    QString shownHint;
+    // One run of the program: `body` is what the user does in it.
+    const auto start = [&](const std::function<void(Launcher&)>& body) {
+        Launcher launcher(&index, &apps, &places, &engine, &history);
+        launcher.setWindow(window);
+        launcher.setSwitches(nullptr, stateFile);
+        launcher.setContentOptions(false, {u"txt"_s}, ContentSizeLimits {}, false, false);
+        body(launcher);
+        QElapsedTimer settling;
+        settling.start();
+        while (launcher.searching() && settling.elapsed() < 2000)
+            pump(10);
+        launcher.setSwitches(nullptr, {});
+    };
+    const auto type = [&](Launcher& launcher, const QString& words, int rows) {
+        launcher.setQuery(words);
+        QElapsedTimer timeout;
+        timeout.start();
+        while ((launcher.searching() || launcher.results()->count() != rows) && timeout.elapsed() < 3000)
+            pump(10);
+        check(launcher.results()->count() == rows, u"“%1” found %2 rows, not %3"_s.arg(words).arg(launcher.results()->count()).arg(rows));
+    };
+    // Enter on the first row, the box hidden for it (as App hides it, unless
+    // pinned), and up again: what the footer says then.
+    // `revealed`: as App shows it, the same rows on the screen at once and
+    // searched again only after (finishShownRefresh), which is when it is said.
+    const auto openAndReturn = [&](Launcher& launcher, const QString& wordsOnReturn = {}, bool revealed = false) {
+        int opened = 0, dismissed = 0;
+        launcher.setFolderOpener([&](const QString&) { ++opened; return true; });
+        const auto connection = QObject::connect(&launcher, &Launcher::dismissRequested, &launcher, [&] { ++dismissed; });
+        launcher.trigger(0, Launcher::Open);
+        QObject::disconnect(connection);
+        launcher.setFolderOpener({});
+        check(opened == 1 && dismissed == 1, u"Enter did not open the folder once and ask to be hidden"_s);
+        if (!launcher.pinned())
+            launcher.handleHidden();
+        if (!wordsOnReturn.isEmpty())
+            launcher.setQuery(wordsOnReturn);
+        launcher.handleShown(revealed);
+        if (revealed) {
+            check(!launcher.statusText().contains(u"Ctrl+T"), u"said before the search that would have cleared it"_s);
+            launcher.finishShownRefresh();
+        }
+        return launcher.statusText();
+    };
+    const auto isHint = [](const QString& status) { return status.contains(u"Ctrl+T"); };
+
+    start([&](Launcher& launcher) {
+        type(launcher, u"zqpinhint"_s, 2);
+        check(!isHint(launcher.statusText()) && told() == 0, u"said before anything was opened"_s);
+        shownHint = openAndReturn(launcher);
+        check(isHint(shownHint) && told() == 1, u"opened and back with the same words: not said (“%1”, told %2)"_s.arg(shownHint).arg(told()));
+        // Typing takes it away, as any word in the footer.
+        type(launcher, u"zqpinhint 合"_s, 1);
+        check(!isHint(launcher.statusText()), u"it stayed while typing"_s);
+        // Back with other words: looking for something else, not said.
+        const QString other = openAndReturn(launcher, u"zqother"_s);
+        check(!isHint(other) && told() == 1, u"said though the words had changed"_s);
+    });
+    // The next run: once more, and then never again.
+    start([&](Launcher& launcher) {
+        type(launcher, u"zqpinhint"_s, 2);
+        check(isHint(openAndReturn(launcher, {}, true)) && told() == 2, u"not said a second time (the box revealed first, searched after)"_s);
+        check(!isHint(openAndReturn(launcher)) && told() == 2, u"said a third time"_s);
+    });
+    // Pinned: nothing is hidden, nothing to say; and who has pinned once knows.
+    QFile::remove(stateFile);
+    start([&](Launcher& launcher) {
+        type(launcher, u"zqpinhint"_s, 2);
+        launcher.setPinned(true);
+        check(!isHint(openAndReturn(launcher)), u"said while pinned"_s);
+        launcher.setPinned(false);
+        check(!isHint(openAndReturn(launcher)) && told() == 2, u"said to someone who has pinned before"_s);
+    });
+
+    QFile report(output.filePath(u"pin-hint.json"_s));
+    if (report.open(QIODevice::WriteOnly))
+        report.write(QJsonDocument(QJsonObject {{u"passed"_s, passed}, {u"failures"_s, QJsonArray::fromStringList(failures)},
+            {u"hint"_s, shownHint}}).toJson());
+    say(passed ? u"pin hint: said when a result was opened and the box came back with the same words, twice at most, never once pinned (“%1”)"_s.arg(shownHint)
+               : u"pin hint: FAILED (%1)"_s.arg(failures.join(u"; "_s)));
     return passed;
 }
 
@@ -12616,6 +12802,8 @@ int runResults(const QStringList& args)
         return finish(window, checkSwitchProvider(window, out) && saved);
     if (args.contains(u"--scope-memory"_s))
         return finish(window, checkScopeMemory(window, out) && saved);
+    if (args.contains(u"--pin-hint"_s))
+        return finish(window, checkPinHint(window, out) && saved);
     if (args.contains(u"--number-column"_s))
         return finish(window, checkNumberColumn(&engine, out, valueAfter(args, u"--width", u"760"_s).toInt()) && saved);
     if (args.contains(u"--clipboard-send"_s))

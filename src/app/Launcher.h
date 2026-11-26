@@ -1692,6 +1692,15 @@ private:
     int m_tabBeforePreview = 1; // the details' tab Alt+P left for 预览 (匹配 at first): Alt+P again goes back
     void setPreviewWanted(bool on);
     bool m_switchPageTold = false; // "要打开设置页：Ctrl+Enter", said once for good (state.ini)
+    // A file opened, unpinned, and with which words: back soon with the same,
+    // the footer says what pinning is for (tellPinHint), kPinHints times at
+    // most (state.ini).
+    static constexpr int kPinHints = 2;
+    QElapsedTimer m_lookedAt;
+    QString m_lookedQuery;
+    int m_pinHintsTold = kPinHints;
+    void setPinHintsTold(int told);
+    void tellPinHint();
     // Toggles waiting for their state (Switches::Outcome::Waiting), by switch id.
     QHash<QString, SearchResult> m_switchWaiting;
     QString m_clickedSwitch; // the last click that switched, by path ...

@@ -24,6 +24,11 @@ Window {
 
     function onPixel(v) { return Math.round(v * dpr) / dpr }
 
+    Connections {
+        target: window.frame
+        function onDoubleClicked() { window.preview.toggleEnlarged() }
+    }
+
     // ---- the header: the file, what it is, 打开 and close ----------------------------
 
     Item {
@@ -87,6 +92,21 @@ Window {
                 text: qsTr("打开")
                 onClicked: window.preview.openFile()
                 Component.onCompleted: window.frame.addControl(openButton)
+            }
+            // As large as the screen lets it be, and back (a double click on
+            // the header too): the launcher's names stay in sight beside it.
+            FlatButton {
+                dpr: window.dpr
+                id: enlargeButton
+                objectName: "previewEnlarge"
+                flat: true
+                width: 32
+                height: 32
+                glyph: window.preview.enlarged ? "ph:arrows-in-simple" : "ph:arrows-out-simple"
+                Accessible.role: Accessible.Button
+                Accessible.name: window.preview.enlarged ? qsTr("还原") : qsTr("放大")
+                onClicked: window.preview.toggleEnlarged()
+                Component.onCompleted: window.frame.addControl(enlargeButton)
             }
             FlatButton {
                 dpr: window.dpr

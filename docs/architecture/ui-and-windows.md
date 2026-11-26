@@ -23,7 +23,7 @@
 
 ### 2.2 钉住（`Ctrl+T`）、长文件名提示与对称调宽
 
-- **钉住**：`Launcher::pinned` 设置顶且失焦/打开结果不收起（`Esc` 仍可收起，不写配置）；失焦时再次触发呼出就地拉回前台不重算位置；从任务栏打开后钉住则把输入区迁回启动器。
+- **钉住**：`Launcher::pinned` 设置顶且失焦/打开结果不收起（`Esc` 仍可收起，不写配置）；失焦时再次触发呼出就地拉回前台不重算位置；从任务栏打开后钉住则把输入区迁回启动器。未钉住时打开文件/文件夹记下时刻与当时的搜索词，60 s 内带同样的词再次呼出即在底栏提示 `Ctrl+T`（`Launcher::tellPinHint`，延迟刷新时等 `finishShownRefresh` 的搜索之后再说，否则被 `search()` 清掉）；`state.ini` 的 `Hints/PinAfterOpen` 计数，最多 2 次，钉住过一次即不再提示。
 - **长文件名提示与调宽**：`Elide.cpp` 保留文件名尾部做中间省略；`NameTip.qml` 为独立无焦点透传置顶窗（防被低窗裁切），`FileFacts` 后台补读创建时间（跳过 UNC）。`WindowFrame::setSideSizing` 在左右 6 逻辑像素返 `HTLEFT`/`HTRIGHT`（不加 `WS_THICKFRAME` 防 Aero Snap），`Placement::beginSizing` 围绕中心对称调宽并存 `state.ini`。
 
 ### 2.3 异步缩略图（`ThumbnailProvider`）
@@ -38,7 +38,7 @@
 
 ### 2.5 文件预览（`Alt+P`、`FilePreview`、`PreviewHost`）
 
-- **调度**：`PreviewWith=auto` 优先调用运行中的 QuickLook（命名管道）或 Seer（`WM_COPYDATA` + 200 ms 节流），否则启内置无焦点工具窗 `PreviewWindow.qml`（`PreviewPlacement.h` 优先左右空侧）。读取走 `ComWorker` 通道池（单文件阻塞 >2 s 切新线程，最多 4 条）。
+- **调度**：`PreviewWith=auto` 优先调用运行中的 QuickLook（命名管道）或 Seer（`WM_COPYDATA` + 200 ms 节流），否则启内置无焦点工具窗 `PreviewWindow.qml`（`PreviewPlacement.h` 优先左右空侧）。标题栏的放大键或双击标题栏切换 `FilePreview::enlarged`（存 `state.ini` 的 `Launcher/PreviewEnlarged`）：放大后不看文件想要的尺寸，`enlargedPreview` 取工作区整高，从搜索框宽度 40% 处（文件名列之后）盖到屏幕右缘，左侧更宽时改放左侧不遮挡；键盘仍归搜索框，换文件尺寸不变。读取走 `ComWorker` 通道池（单文件阻塞 >2 s 切新线程，最多 4 条）。
 - **隔离 STA 预览宿主（`platform/PreviewHost`）**：严格以 `CLSCTX_LOCAL_SERVER` 进程外加载系统 `IPreviewHandler`（防崩溃拖垮主进程），独占 STA 线程建无父无属主 `WS_EX_NOACTIVATE` 弹出浮层叠在预览区上；GUI 仅异步操作；10 s 卡死则丢弃线程并本轮拉黑该处理器；对 `Zone.Identifier` ZoneId 3/4 网传文件拒交 `IPreviewHandler`。
 
 ## 3. 收藏夹、自定义命令、网页搜索与设置

@@ -77,6 +77,26 @@ inline PreviewSide chooseSide(const QRect& area, const QRect& launcher, QSize do
 
 } // namespace previewplacement
 
+// Enlarged (the key in the preview's header, FilePreview::enlarged): all the
+// room there is, whatever the file would like. The launcher is still to be
+// used meanwhile (the keys are its own, the next row is a press of ↓ away),
+// so its field's start and its rows' names stay in sight: over the rest of
+// it to the screen's right edge, the work area's whole height; beside it on
+// the left where that is the wider (a launcher at the right edge). With no
+// launcher, the work area.
+inline QRect enlargedPreview(const QRect& area, const QRect& launcher)
+{
+    using namespace previewplacement;
+    const QRect inner = area.adjusted(kGap, kGap, -kGap, -kGap);
+    if (!launcher.isValid())
+        return inner;
+    QRect over = inner;
+    over.setLeft(std::max(inner.left(), launcher.left() + launcher.width() * kNamesShare / 100));
+    QRect beside = inner;
+    beside.setRight(launcher.left() - 1 - kGap);
+    return beside.width() > over.width() ? beside : over;
+}
+
 // The window's place: on `side` when one was chosen and it still has room
 // (it does not jump from side to side as the arrows go through small and
 // large files), else on the side chosen for `document`. `fit` gives the

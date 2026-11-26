@@ -5300,6 +5300,14 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
         <source>打开</source>
         <translation>Open</translation>
     </message>
+    <message>
+        <source>放大</source>
+        <translation>Enlarge</translation>
+    </message>
+    <message>
+        <source>还原</source>
+        <translation>Restore</translation>
+    </message>
 </context>
 <context>
     <name>QCoreApplication::App</name>
@@ -14084,6 +14092,10 @@ Content index: %5</translation>
     <message>
         <source>要打开设置页：Ctrl+Enter</source>
         <translation>To open the settings page: Ctrl+Enter</translation>
+    </message>
+    <message>
+        <source>要接着看别的结果？按 Ctrl+T 钉住，打开后搜索框不收起</source>
+        <translation>Checking several results? Ctrl+T pins the box so it stays after opening</translation>
     </message>
     <message>
         <source>%1已经是这样了</source>

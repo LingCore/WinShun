@@ -647,6 +647,17 @@ bool FilePreview::owns(HWND window) const
     return (m_window && window == reinterpret_cast<HWND>(m_window->winId())) || (m_host && m_host->owns(window));
 }
 
+void FilePreview::setEnlarged(bool on)
+{
+    if (m_enlarged == on)
+        return;
+    m_enlarged = on;
+    m_side = PreviewSide::None; // back at its own size, its side is chosen afresh
+    emit enlargedChanged();
+    if (m_open && !m_external && !m_embedded && m_window && m_window->isVisible())
+        showWindow(m_kind == Picture || m_kind == Video ? m_imageSize : QSize());
+}
+
 void FilePreview::openFile()
 {
     if (!m_item.path.isEmpty())
@@ -1023,6 +1034,11 @@ QRect FilePreview::placeBeside(QSize wanted)
         return {};
     const QRect area = screen->availableGeometry();
     const QRect launcher = m_launcher && m_launcher->isVisible() ? m_launcher->geometry() : QRect();
+    if (m_enlarged) { // one size for every file: nothing jumps as the arrows go through them
+        const QRect rect = enlargedPreview(area, launcher);
+        m_overLauncher = rect.intersects(launcher);
+        return rect;
+    }
     using previewplacement::kGap;
     constexpr int kHeader = 64; // the header row and a margin, about
     constexpr int kPad = 32;

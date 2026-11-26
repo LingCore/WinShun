@@ -178,6 +178,51 @@ private slots:
         QCOMPARE(rect.size(), QSize(560, 460));
         QVERIFY(qAbs(rect.center().x() - area.center().x()) <= 1 && qAbs(rect.center().y() - area.center().y()) <= 1);
     }
+
+    // Enlarged: the work area's whole height, the launcher's names never under it.
+    void enlargedLeavesTheNames_data()
+    {
+        QTest::addColumn<QRect>("area");
+        QTest::addColumn<QRect>("launcher");
+        QTest::addColumn<bool>("overIt");
+
+        const QRect laptop(0, 0, 1536, 816); // 1920×1080 at 125%
+        const QRect wide(0, 0, 2560, 1392);
+        const QRect second(1920, -200, 1280, 984); // a second screen, right of and above the first
+        QTest::newRow("laptop, centred") << laptop << centred(laptop, 800, 160, 520) << true;
+        QTest::newRow("laptop, nothing typed") << laptop << centred(laptop, 800, 160, 96) << true;
+        QTest::newRow("wide, centred") << wide << centred(wide, 800, 280, 520) << true;
+        QTest::newRow("at the left edge") << laptop << QRect(8, 160, 800, 520) << true;
+        QTest::newRow("at the right edge") << laptop << QRect(728, 160, 800, 520) << false;
+        QTest::newRow("second screen") << second << centred(second, 760, 0, 520) << true;
+        QTest::newRow("the search panel") << laptop << QRect(100, 60, 1300, 700) << true;
+    }
+    void enlargedLeavesTheNames()
+    {
+        QFETCH(QRect, area);
+        QFETCH(QRect, launcher);
+        QFETCH(bool, overIt);
+
+        const QRect rect = enlargedPreview(area, launcher);
+        const QRect inner = area.adjusted(8, 8, -8, -8);
+        QVERIFY(inner.contains(rect));
+        QCOMPARE(rect.top(), inner.top());
+        QCOMPARE(rect.bottom(), inner.bottom());
+        QCOMPARE(rect.intersects(launcher), overIt);
+        const QRect names(launcher.topLeft(), QSize(launcher.width() * 40 / 100, launcher.height()));
+        QVERIFY(!rect.intersects(names));
+        // More room than the window a document gets by itself there, and never less tall.
+        const auto usual = placePreview(area, launcher, PreviewSide::None, kText, fitting(QSize(900, inner.height() * 90 / 100)));
+        QVERIFY(qint64(rect.width()) * rect.height() >= qint64(usual.rect.width()) * usual.rect.height());
+        QVERIFY(rect.height() >= usual.rect.height());
+        QVERIFY(rect.width() >= 480);
+    }
+
+    void enlargedWithoutLauncher()
+    {
+        const QRect area(0, 0, 1920, 1040);
+        QCOMPARE(enlargedPreview(area, QRect()), area.adjusted(8, 8, -8, -8));
+    }
 };
 
 QTEST_APPLESS_MAIN(TestPreviewPlacement)
