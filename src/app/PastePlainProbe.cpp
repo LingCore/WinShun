@@ -7,6 +7,7 @@
 #include "Launcher.h"
 #include "Settings.h"
 
+#include <QClipboard>
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
@@ -28,6 +29,7 @@
 #include <vector>
 
 #include <windows.h>
+#include <shellapi.h>
 
 using namespace Qt::StringLiterals;
 
@@ -1131,6 +1133,130 @@ bool checkFieldFocus(App&, const QStringList&, const QDir& output)
         check(restored, "the clipboard as it was could not be put back");
     }
     QFile::remove(scriptPath);
+    return finish();
+}
+
+// --probe-runtime <folder> --full-screen-game-check <window> (WINSHUN_TEST_NO_CLIP_HISTORY set)
+// The production App beside the Win顺 that runs, its clipboard's hotkey
+// Ctrl+Alt+Shift+F21 and two entries in its history (seedFieldFocus).
+// <window> (a number, the HWND) is a game in Direct3D's exclusive full screen
+// (docs/validation/issue-452/fsgame.cpp, which takes full screen again each
+// time it comes to the front). Twice it is brought to the front and the chord
+// pressed for real: the clipboard takes the focus over it, the game leaves
+// full screen for it, and the clipboard is still there, in front, two and a
+// half seconds on. The first time Esc closes it, the second Enter pastes;
+// both give the game the front back. What the game got (its keys) is in its
+// own log, for the harness. The clipboard as it was is saved first and put
+// back after, marked so that no history records it. Into full-screen-game.json.
+bool checkFullScreenGame(App&, const QStringList& args, const QDir& output)
+{
+    QJsonObject report;
+    bool ok = true;
+    const auto check = [&](bool condition, const char* what) {
+        if (!condition) {
+            ok = false;
+            std::fprintf(stderr, "full-screen game: FAILED: %s\n", what);
+        }
+    };
+    const auto finish = [&] {
+        report.insert(u"passed"_s, ok);
+        QFile file(output.filePath(u"full-screen-game.json"_s));
+        const bool saved = file.open(QIODevice::WriteOnly) && file.write(QJsonDocument(report).toJson()) > 0;
+        std::fprintf(stderr, "full-screen game: %s\n", ok ? "passed" : "FAILED");
+        return ok && saved;
+    };
+    const auto waitFor = [](const auto& done, int ms) {
+        QElapsedTimer limit;
+        limit.start();
+        while (!done() && limit.elapsed() < ms)
+            pump(50);
+        return done();
+    };
+    check(qEnvironmentVariableIsSet("WINSHUN_TEST_NO_CLIP_HISTORY"), "WINSHUN_TEST_NO_CLIP_HISTORY not set: the paste would be in the histories");
+    const qsizetype at = args.indexOf(u"--full-screen-game-check"_s);
+    const auto target = reinterpret_cast<HWND>(static_cast<quintptr>(at >= 0 && at + 1 < args.size() ? args[at + 1].toULongLong() : 0));
+    check(target && ::IsWindow(target), "no game to open over (--full-screen-game-check <HWND>)");
+    pump(1500); // started, its hotkeys registered
+    const bool ours = chordOurs(kActivationKey);
+    report.insert(u"hotkey_registered"_s, ours);
+    check(ours, "the clipboard's hotkey is not registered");
+    if (!ok)
+        return finish();
+
+    bool savedOk = false;
+    const std::vector<Item> before = saveClipboard(savedOk);
+    check(savedOk, "the clipboard could not be read to be put back");
+    if (!ok)
+        return finish();
+    bool changed = false; // the user's clipboard replaced by the paste: to be put back
+    waitForQuietInput();
+    for (const WORD key : {static_cast<WORD>(VK_ESCAPE), static_cast<WORD>(VK_RETURN)}) {
+        QJsonObject round;
+        const auto done = qScopeGuard([&] { report.insert(key == VK_ESCAPE ? u"escape"_s : u"enter"_s, round); });
+        bringToFront(target);
+        QUERY_USER_NOTIFICATION_STATE state {};
+        const bool exclusive = waitFor([&] {
+            return inFront(target) && SUCCEEDED(::SHQueryUserNotificationState(&state)) && state == QUNS_RUNNING_D3D_FULL_SCREEN;
+        }, 6000);
+        pump(500); // the change of display mode over
+        round.insert(u"game_in_front"_s, inFront(target));
+        round.insert(u"game_exclusive"_s, exclusive);
+        check(exclusive, "the game is not in front in exclusive full screen (no key sent)");
+        if (!ok)
+            break;
+        pressChord(kActivationKey);
+        QQuickWindow* window = nullptr;
+        const auto panel = [&] {
+            for (QWindow* candidate : QGuiApplication::topLevelWindows()) {
+                if (candidate->isVisible() && QByteArray(candidate->metaObject()->className()).startsWith("ClipboardWindow_"))
+                    window = qobject_cast<QQuickWindow*>(candidate);
+            }
+            return window && ::GetForegroundWindow() == reinterpret_cast<HWND>(window->winId());
+        };
+        QElapsedTimer opened;
+        opened.start();
+        const bool tookFocus = waitFor(panel, 4000);
+        round.insert(u"focus_taken_ms"_s, opened.elapsed());
+        round.insert(u"focus_taken"_s, tookFocus);
+        check(tookFocus, "the clipboard did not take the focus over the game");
+        if (!ok)
+            break;
+        const auto hwnd = reinterpret_cast<HWND>(window->winId());
+        auto* clipboard = qobject_cast<Clipboard*>(window->property("clipboard").value<QObject*>());
+        pump(2500); // the game out of full screen meanwhile, the display mode changed
+        const bool stayed = window->isVisible() && ::GetForegroundWindow() == hwnd;
+        round.insert(u"stayed_in_front"_s, stayed);
+        round.insert(u"keys_routed"_s, clipboard && clipboard->keysRouted());
+        round.insert(u"game_minimized"_s, static_cast<bool>(::IsIconic(target)));
+        ::SHQueryUserNotificationState(&state);
+        round.insert(u"game_left_exclusive"_s, state != QUNS_RUNNING_D3D_FULL_SCREEN);
+        check(stayed, "the clipboard did not stay up in front as the game left full screen");
+        check(clipboard && !clipboard->keysRouted(), "the keys are routed although it has the focus");
+        if (!ok)
+            break;
+        window->grabWindow().save(output.filePath(key == VK_ESCAPE ? u"game-escape.png"_s : u"game-enter.png"_s));
+        if (::GetForegroundWindow() != hwnd) // checked again just before the key
+            break;
+        changed = changed || key == VK_RETURN;
+        pressKey(key);
+        const bool back = waitFor([&] { return !window->isVisible() && inFront(target) && !::IsIconic(target); }, 6000);
+        round.insert(u"panel_hidden"_s, !window->isVisible());
+        round.insert(u"game_back_in_front"_s, back);
+        check(back, key == VK_ESCAPE ? "Esc did not give the game the front back" : "Enter did not give the game the front back");
+        pump(1500); // the paste keys after it is in front
+        if (key == VK_RETURN) {
+            const QString text = QGuiApplication::clipboard()->text();
+            round.insert(u"clipboard_text"_s, text);
+            check(text == kFocusOther, "Enter did not put the entry on the clipboard to paste");
+        }
+        if (!ok)
+            break;
+    }
+    if (changed) {
+        const bool restored = putOnClipboard(before) || putOnClipboard(before);
+        report.insert(u"clipboard_restored"_s, restored);
+        check(restored, "the clipboard as it was could not be put back");
+    }
     return finish();
 }
 

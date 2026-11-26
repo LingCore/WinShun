@@ -18056,6 +18056,24 @@ private slots:
         QVERIFY(!leftFullScreenForPanel(later));
     }
 
+    // GitHub #452: over a game in exclusive full screen the clipboard opens
+    // with the focus (Windows 10 leaves the game there for a window without it).
+    void panelFocusOverExclusive()
+    {
+        ForegroundFacts game;
+        game.program = u"Game.exe"_s;
+        game.coversMonitor = true;
+        game.exclusiveFullScreen = true;
+        QVERIFY(panelTakesFocus(game));
+        ForegroundFacts borderless = game; // covers its monitor only: a window shows over it
+        borderless.exclusiveFullScreen = false;
+        QVERIFY(!panelTakesFocus(borderless));
+        ForegroundFacts shell = game; // the desktop, a window of ours: no program
+        shell.program.clear();
+        QVERIFY(!panelTakesFocus(shell));
+        QVERIFY(!panelTakesFocus({}));
+    }
+
     void hiddenForTypingRule()
     {
         // A key (not a modifier) went down to this window shortly before the hide.

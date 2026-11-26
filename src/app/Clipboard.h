@@ -285,8 +285,9 @@ public:
         m_target = window;
         m_targetLeft = false;
     }
-    // That window minimized itself as the clipboard showed over it (a game
-    // leaving exclusive full screen, GitHub #452): Esc brings it back, as
+    // That window left full screen for the clipboard (a game in exclusive
+    // full screen: the clipboard took the focus over it, or it minimized
+    // itself as the clipboard showed, GitHub #452): Esc brings it back, as
     // closing a menu over it would have left it in front.
     void setTargetLeft(bool left) { m_targetLeft = left; }
     HWND target() const { return m_target; }

@@ -58,6 +58,13 @@ bool checkCommandHotkey(App& app, const QStringList& args, const QDir& output);
 bool seedFieldFocus(const QString& clipboardFolder); // before the App starts: the two entries of its history
 bool checkFieldFocus(App& app, const QStringList& args, const QDir& output);
 
+// --probe-runtime <folder> --full-screen-game-check <window>: the clipboard
+// opened by its own hotkey over <window>, a game in Direct3D's exclusive full
+// screen (GitHub #452): it takes the focus, stays as the game leaves full
+// screen, and Esc or Enter give the game the front back. The clipboard's
+// chord and history as for --field-focus-check. See the .cpp.
+bool checkFullScreenGame(App& app, const QStringList& args, const QDir& output);
+
 // --probe-runtime <folder> --duplicates-check [--keep-place]: 保留重复项 on
 // the real clipboard: copies as a program makes them, one after another,
 // twice at once, and after a paste from the history (with 粘贴后保持位置 on

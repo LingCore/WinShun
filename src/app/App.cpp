@@ -6874,7 +6874,7 @@ void App::showClipboard()
         // screen leaves it for any window shown, and what its leaving does to
         // the front is told from the package (GitHub #452).
         const ForegroundFacts over = foreground::facts();
-        m_clipOver = {::GetTickCount64(), over.coversMonitor, over.exclusiveFullScreen};
+        m_clipOver = {.at = ::GetTickCount64(), .fullScreen = over.coversMonitor, .exclusive = over.exclusiveFullScreen};
         m_clipboard->setTarget(foreground);
         m_clipboard->setPinned(false); // as it opens, whatever closed it last (a close of Qt's own)
         m_clipboard->setActive(true); // under the launcher's search box, it folds its rows away (Main.qml)
@@ -6892,7 +6892,10 @@ void App::showClipboard()
             // put it (GitHub #376), on the monitor with the mouse as the
             // launcher: always the same place, the same size.
             const HWND target = paste::usableTarget(foreground);
-            const std::optional<QRect> caret = target && byCaret ? m_textCaret->find(target, kCaretWait) : std::nullopt;
+            // A game in exclusive full screen has no caret to wait for.
+            const bool overGame = panelTakesFocus(over);
+            const std::optional<QRect> caret
+                = target && byCaret && !overGame ? m_textCaret->find(target, kCaretWait) : std::nullopt;
             if (m_settings.clipboardOpenAt == u"last") {
                 QScreen* screen = QGuiApplication::screenAt(QCursor::pos());
                 m_clipPlacement->placeOn(screen ? screen : QGuiApplication::primaryScreen());
@@ -6918,7 +6921,16 @@ void App::showClipboard()
                 m_clipboard->setTarget(front);
             const bool shellFlyout = win::isShellFlyout(front);
             m_clipDisplayWanted = shellFlyout && m_clipDisplay && m_clipDisplay->ready();
-            keepFocus = routed && (startKeyRouting(routed) || shellFlyout);
+            // Over a game in exclusive full screen it takes the focus instead:
+            // nothing shows over that screen, and Windows 10 leaves the game
+            // there for a window that asks for nothing, the panel up unseen
+            // with the game's keys (GitHub #452). Taking the focus brings the
+            // game out of full screen, on every Windows alike; a paste or Esc
+            // gives it the front back (Clipboard::dismiss).
+            m_clipOver.focusTaken = overGame && routed && front == foreground;
+            keepFocus = !m_clipOver.focusTaken && routed && (startKeyRouting(routed) || shellFlyout);
+            if (m_clipOver.focusTaken)
+                m_clipboard->setTargetLeft(true);
             if (shellFlyout && !m_clipDisplayWanted)
                 avoidClipboardShellFlyout(front);
         }
@@ -6954,10 +6966,17 @@ void App::showClipboard()
         return;
     }
     m_clipWindow->show();
-    toFront(m_clipWindow);
+    const bool inFront = toFront(m_clipWindow) != win::Front::Refused;
     m_clipWindow->requestActivate();
     if (m_triggers)
         m_triggers->showDone();
+    if (!m_clipOver.focusTaken)
+        return;
+    diagnostics::record(u"clipboard-over-exclusive"_s, {{u"front"_s, inFront}});
+    // Refused the front: the game keeps its screen and its keys, and the
+    // panel would stay up where nobody sees it.
+    if (!inFront)
+        hideClipboard(true, "front-refused");
 }
 
 bool App::clipboardInCharge() const
@@ -7729,6 +7748,7 @@ void App::hideClipboard(bool launcherToo, const char* why)
             {u"active"_s, m_clipWindow->isActive()},
             {u"over_full_screen"_s, m_clipOver.fullScreen},
             {u"over_exclusive"_s, m_clipOver.exclusive},
+            {u"focus_taken"_s, m_clipOver.focusTaken},
             {u"target_minimized"_s, targetMinimized},
             {u"target_gone"_s, target && !::IsWindow(target)}});
     if (m_clipDisplay) m_clipDisplay->hide();
@@ -7736,11 +7756,12 @@ void App::hideClipboard(bool launcherToo, const char* why)
     // Out as the launcher goes (弹出动画): a picture of it fades where it was
     // (GitHub #377); the window itself goes at once, so the focus, the keys
     // and a paste go on as ever. Not when it was never seen, nor behind the
-    // display (cloaked: fadeOutCopy shows nothing). Nor over a full-screen
-    // window that minimized itself for it: that one comes back next (a paste,
-    // Esc), and the picture would be over it as it takes full screen again
-    // (GitHub #452).
-    const bool overLeftFullScreen = targetMinimized && (m_clipOver.fullScreen || m_clipOver.exclusive);
+    // display (cloaked: fadeOutCopy shows nothing). Nor over a game that left
+    // full screen for it (minimized itself, or lost the focus to it): that one
+    // comes back next (a paste, Esc), and the picture would be over it as it
+    // takes full screen again (GitHub #452).
+    const bool overLeftFullScreen
+        = m_clipOver.focusTaken || (targetMinimized && (m_clipOver.fullScreen || m_clipOver.exclusive));
     if (m_clipRevealedAt && m_settings.openAnimation && Placement::animationsOn() && !overLeftFullScreen) {
         const quint64 fadeSeq = ++m_clipFadeSeq;
         QPointer<App> self(this);

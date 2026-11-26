@@ -16149,7 +16149,8 @@ int runRuntime(const QStringList& args)
             return 4;
     }
     const bool activationPaste = args.contains(u"--activation-paste-check"_s);
-    const bool fieldFocus = args.contains(u"--field-focus-check"_s);
+    const bool gameCheck = args.contains(u"--full-screen-game-check"_s); // GitHub #452
+    const bool fieldFocus = gameCheck || args.contains(u"--field-focus-check"_s);
     if (activationPaste || fieldFocus) { // GitHub #432: the clipboard's own chord, nobody else's
         if (!activationPasteChordFree()) {
             qWarning("activation paste: %s is someone else's already", qPrintable(QString(kActivationPasteProbeChord)));
@@ -16269,6 +16270,7 @@ int runRuntime(const QStringList& args)
                     || args.contains(u"--activation-paste-check"_s) || args.contains(u"--entry-hotkey-check"_s)
                     || args.contains(u"--command-hotkey-check"_s)
                     || args.contains(u"--duplicates-check"_s) || args.contains(u"--field-focus-check"_s)
+                    || args.contains(u"--full-screen-game-check"_s)
                     || args.contains(u"--launcher-settings-check"_s) || args.contains(u"--launcher-open-check"_s))
                 && profile.fileName().startsWith(u"WinShun-preview-")
                 && QDir::cleanPath(profile.absolutePath()).compare(QDir::cleanPath(QDir::tempPath()), Qt::CaseInsensitive) == 0)
@@ -16341,6 +16343,8 @@ int runRuntime(const QStringList& args)
             return checkPastePlain(app, args, out) ? 0 : 4; // its profile likewise
         if (args.contains(u"--activation-paste-check"_s))
             return checkActivationPaste(app, args, out) ? 0 : 4; // its profile likewise
+        if (args.contains(u"--full-screen-game-check"_s))
+            return checkFullScreenGame(app, args, out) ? 0 : 4; // its profile likewise
         if (args.contains(u"--field-focus-check"_s))
             return checkFieldFocus(app, args, out) ? 0 : 4; // its profile likewise
         if (args.contains(u"--entry-hotkey-check"_s))
