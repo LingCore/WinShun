@@ -30,7 +30,7 @@ SOURCES = {
 }
 
 POSTERS = (
-    ("formula", "L-formula", "截图里的公式，[一键转 LaTeX]", "Shift+F · 复制成 Word 公式、Markdown、Typst · 在本机识别"),
+    ("formula", "L-formula", "公式识别，[一键转 LaTeX]", "截图按 Shift+F · 复制成 Word 公式、Markdown、Typst"),
 )
 
 
