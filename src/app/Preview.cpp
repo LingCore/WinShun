@@ -15415,6 +15415,9 @@ bool probeSettingsReopen(App& app, const QStringList& args, const QDir& out, QJs
         // pages cost ~20 MB each. The search box taking the keyboard makes the
         // rest (fillInBackground); a letter typed (--settings-type-at) does too.
         pump(500);
+        say(u"settings after the first frame: made %1, pointer on %2"_s.arg(
+            js(w, u"[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].filter(i => pageItem(i) !== null).join(',')"_s).toString(),
+            js(w, u"String(navHovered)"_s).toString()));
         if (!allFirst)
             check(js(w, u"[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].filter(i => pageItem(i) !== null).join(',')"_s).toString() == madeFirst,
                 u"nothing_made_after_first_frame"_s);
@@ -15765,6 +15768,8 @@ bool probeSettingsReopen(App& app, const QStringList& args, const QDir& out, QJs
         pump(300);
         const int leftAt = js(window, u"flick.contentY = Math.min(120, Math.max(0, flick.contentHeight - flick.height)); flick.contentY"_s).toInt();
         guiThreadIdle(4000); // put away one per turn, then given back a second later, on a thread
+        // The page under the real pointer is kept (hoverNav): said, to tell that from a page left by mistake.
+        say(u"settings pages left: made %1, pointer on %2"_s.arg(js(window, madeNow).toString(), js(window, u"String(navHovered)"_s).toString()));
         check(js(window, madeNow).toString() == js(window, u"String(scopePage)"_s).toString()
                 && js(window, u"visible && !allPagesLoaded && !searchReady"_s).toBool(),
             u"left_pages_put_away"_s);
