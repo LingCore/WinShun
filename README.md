@@ -91,6 +91,7 @@
 | [图片文字搜索](docs/使用说明.md#图片文字搜索) | 搜图片和扫描件里的字，或 `ocr 关键词` | 插件库 |
 | 按意思找 | `? 去年报销的规定` | 插件库 |
 | 翻译 | `tr 句子` 翻译，`dict 单词` 查词典；截图翻译也用它 | 插件库 |
+| 本地模型 | 在这台电脑上跑 AI 模型，“翻译”和“按意思找”选它就能离线用，内容不出本机；`llm` 看状态 | 插件库 |
 | [网页搜索](docs/使用说明.md#网页搜索) | `baidu 天气`、`zhihu 显卡` | 插件库 |
 | 浏览器书签 | `bm 关键词`，搜 Chrome、Edge 的书签，拼音也行；打开开关后 `bh 关键词` 搜浏览历史 | 插件库 |
 | 局域网传输 | `传`，和开着 [LocalSend](https://localsend.org) 的手机、电脑互传文件 | 插件库 |
@@ -201,13 +202,13 @@ winget install LingCore.WinShun
 
 ### 最近更新
 
-**0.48.0**
+**0.49.0**
 
-- 💾 **剪贴板历史备份与还原**：存成一个 ZIP，换电脑或重装后还原；🔢 “文件”的**类型标签显示数量**，每种类型找到多少个一眼可见。
-- 🈶 增强文字识别可加装**读日文的较大模型**，也能用自己下载的模型；🗂️ 收藏圆盘在文件夹上停一下**展开子文件夹**（#463）；🎥 录屏控制条按住空白处就能拖。
-- 🛠️ **改进** 全部图标按容器排版、间距统一，选项标签改为小圆角；插件“使用说明”拖滚动条不再空白。
+- 🧠 新插件**本地模型**：在自己电脑上跑 AI 模型，翻译和“按意思找”可以完全离线；📊 截图**复制为表格**认得合并单元格，粘进 Excel 就是表格。
+- 📌 钉住的搜索框**让位给刚打开的文件**，可设成一直钉住，打开过的结果标“已打开”；🎛️ **结果行尾的按钮**自己选、自己排；⌨️ 插件命令可以有自己的快捷键（#466）。
+- 🛠️ **改进** 读网络共享不再拖慢文件管理器；复制整屏截图少占约 200 MB 内存（#467）；开着标注工具时双击照样完成截图；安全软件扫描安装包时更新不再误报。
 
-详见 [0.48.0 发布说明](docs/release-notes/v0.48.0.md)。
+详见 [0.49.0 发布说明](docs/release-notes/v0.49.0.md)。
 
 **0.47.0**
 
@@ -494,6 +495,7 @@ Some plugins come with WinShun; the rest are installed when you want them from *
 | Image text search | Search the words in pictures and scans, or `ocr words` | Plugin library |
 | Search by meaning | `? last year's expense rules` | Plugin library |
 | Translate | `tr sentence` to translate, `dict word` for a dictionary; screenshot translation uses it too | Plugin library |
+| Local models | Runs an AI model on this PC: Translate and Search by meaning work offline with it and nothing leaves the computer; `llm` shows its state | Plugin library |
 | Web search | `baidu 天气`, `zhihu 显卡` | Plugin library |
 | Browser bookmarks | `bm words` searches Chrome and Edge bookmarks, pinyin too; once turned on, `bh words` searches the browsing history | Plugin library |
 | LAN transfer | `ls ` to send files to and from phones and PCs running [LocalSend](https://localsend.org) | Plugin library |
@@ -604,13 +606,13 @@ Standard and portable packages install enhanced text recognition on demand. Open
 
 ### What's new
 
-**0.48.0**
+**0.49.0**
 
-- 💾 **Back up and restore the clipboard history** as one ZIP, for a new PC or a reinstall; 🔢 the **type chips in Files show counts**: how many matches each type has.
-- 🈶 Enhanced OCR can add **a larger model that reads Japanese**, or take a model you downloaded; 🗂️ resting on a folder in the drop pie **opens its subfolders** (#463); 🎥 the recording bar moves from any empty place.
-- 🛠️ **Improved** every icon is laid out by its container with consistent gaps, chips take a small corner radius; a plugin's 使用说明 no longer goes blank after a scroll bar drag.
+- 🧠 The new **Local models** plugin runs an AI model on your own PC, so Translate and Search by meaning work with no network; 📊 a capture's **Copy as a table** knows merged cells and pastes into Excel as a table.
+- 📌 A pinned search box **stands back for the file just opened**, can stay pinned for good, and tags opened results; 🎛️ **a row's buttons** are yours to choose and order; ⌨️ a plugin command can have a shortcut of its own (#466).
+- 🛠️ **Improved** reading a network share no longer slows the file manager; copying a full-screen capture takes about 200 MB less memory (#467); a double click finishes a capture with an annotation tool on; an update is not called bad while security software scans the package.
 
-See the [0.48.0 release notes](docs/release-notes/v0.48.0.md).
+See the [0.49.0 release notes](docs/release-notes/v0.49.0.md).
 
 **0.47.0**
 
