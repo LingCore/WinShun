@@ -343,6 +343,23 @@ private slots:
         QCOMPARE(askedKey, unsigned('K'));
         QCOMPARE(text("PinCollapse"), u"Ctrl+Shift+K"_s);
 
+        // #469: 贴到屏幕 may be the 贴图 hotkey (that hotkey pins the selection
+        // while capturing), its own registration not asked about; any other key
+        // still is, and another action's capture key on it is still refused.
+        settings.setCaptureLastPinHotkey(u"F9"_s);
+        askedKey = 0;
+        QVERIFY(settings.setCaptureKey(u"Pin"_s, Qt::Key_F9, 0).isEmpty());
+        QCOMPARE(askedKey, 0u);
+        QCOMPARE(text("Pin"), u"F9"_s);
+        QVERIFY(entry("Pin").value(u"conflict"_s).toString().isEmpty());
+        QVERIFY(!settings.setCaptureKey(u"Save"_s, Qt::Key_F9, 0).isEmpty());
+        settings.setCaptureKey(u"Pin"_s, Qt::Key_F12, 0);
+        QVERIFY(settings.setCaptureKey(u"Save"_s, Qt::Key_F9, 0).contains(u"贴图"_s));
+        settings.setCaptureLastPinHotkey(u"F10"_s); // set in the other order: no conflict either
+        QVERIFY(settings.setCaptureKey(u"Pin"_s, Qt::Key_F11, 0).isEmpty());
+        settings.setCaptureLastPinHotkey(u"F11"_s);
+        QVERIFY(entry("Pin").value(u"conflict"_s).toString().isEmpty());
+
         // A pin hears keys, not characters: Shift+1 typed as "!" is Shift+1 there (the scan code says which key).
         QVERIFY(settings.setCaptureKey(u"PinFlipVertical"_s, Qt::Key_Exclam, int(Qt::ShiftModifier), 0x02).isEmpty());
         QCOMPARE(text("PinFlipVertical"), u"Shift+1"_s);

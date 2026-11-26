@@ -402,7 +402,7 @@ QVariantMap CaptureSettings::captureKeys() const
             {u"text"_s, keys.text(a.action)},
             {u"changed"_s, keys.key(a.action) != a.key},
             {u"defaultText"_s, defaults.text(a.action)},
-            {u"conflict"_s, keys.has(a.action) ? hotkeyConflict(keys.key(a.action), false) : QString()},
+            {u"conflict"_s, keys.has(a.action) ? hotkeyConflict(keys.key(a.action), false, a.action) : QString()},
         });
     }
     return map;
@@ -427,7 +427,7 @@ QString CaptureSettings::setCaptureKey(const QString& id, int key, int modifiers
     }
     if (const auto why = m_options.keys.problem(a->action, candidate))
         return *why;
-    if (const QString why = hotkeyConflict(candidate, true); !why.isEmpty())
+    if (const QString why = hotkeyConflict(candidate, true, a->action); !why.isEmpty())
         return why;
     setKey(id, [&](capture::KeyAction) { return candidate; });
     return {};
@@ -457,11 +457,17 @@ void CaptureSettings::setKey(const QString& id, const std::function<QKeyCombinat
     change(m_options.keys, keys);
 }
 
-QString CaptureSettings::hotkeyConflict(QKeyCombination key, bool askSystem) const
+QString CaptureSettings::hotkeyConflict(QKeyCombination key, bool askSystem, capture::KeyAction action) const
 {
     const auto tr = settingsTr;
     const QString normal = hotkeys::normalized(QKeySequence(key).toString(QKeySequence::PortableText));
     if (!normal.isEmpty()) {
+        // 贴到屏幕 may share the 贴图 hotkey (#469): pressed while capturing,
+        // that hotkey pins the selection itself (CaptureApp, LastPinKey). Its
+        // own registration is what the probe below would find: not asked.
+        if (action == capture::KeyAction::Pin && !m_options.lastPinHotkey.isEmpty()
+            && hotkeys::normalized(m_options.lastPinHotkey) == normal)
+            return {};
         for (const auto& [hotkey, name] : ownHotkeys(m_options)) {
             if (!hotkey.isEmpty() && hotkeys::normalized(hotkey) == normal)
                 return tr("和“%1”的快捷键相同，按下时会先被它用掉").arg(tr(name));

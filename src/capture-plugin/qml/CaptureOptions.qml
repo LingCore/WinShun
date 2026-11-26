@@ -1023,7 +1023,7 @@ Column {
                         id: lastPinHotkeyRow
                         objectName: "capturePinImageHotkey"
                         title: qsTr("贴图的快捷键")
-                        description: qsTr("优先贴剪贴板里的图片或文字；连续按下会按顺序贴出之前的历史截图与贴图（并保留标注）。不设时仍可从托盘菜单操作")
+                        description: qsTr("优先贴剪贴板里的图片或文字；连续按下会按顺序贴出之前的历史截图与贴图（并保留标注）。截图时按它直接贴出选区，可以和“截图时 › 贴到屏幕”设成同一个键。不设时仍可从托盘菜单操作")
                         hotkey: card.editor.captureLastPinHotkey
                         error: card.editor.captureLastPinHotkeyError
                         onRecorded: (hotkey) => card.editor.captureLastPinHotkey = hotkey

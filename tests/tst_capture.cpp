@@ -2693,6 +2693,27 @@ private slots:
         QCOMPARE(rig.session.annotation()->pinKeyText(), QString());
     }
 
+    // The 贴图 hotkey while capturing (#469): the selection pinned as by
+    // 贴到屏幕, its region the one dragged; held back mid-drag, and nothing
+    // once the capture has ended.
+    void pinByHotkeyPinsTheSelection()
+    {
+        Rig rig;
+        rig.begin();
+        rig.drag({100, 100}, {299, 199});
+        QSignalSpy finished(&rig.session, &CaptureSession::finished);
+        rig.session.pointerPress(0, {150, 150}, Qt::LeftButton); // moving it: held back
+        rig.session.pointerMove(0, {160, 150});
+        rig.session.pinByHotkey();
+        QCOMPARE(finished.count(), 0);
+        rig.session.pointerRelease(0, {160, 150}, Qt::LeftButton);
+        const QRect selected = rig.session.selectionRect();
+        rig.session.pinByHotkey();
+        QCOMPARE(finished.count(), 1);
+        QCOMPARE(finished[0][0].value<CaptureSession::Action>(), CaptureSession::Action::Pin);
+        QCOMPARE(finished[0][2].toRect(), selected);
+    }
+
     // With a button held the arrows are the pointer too (they did nothing
     // there, while moving it before the press): the drag goes along.
     void arrowsMoveThePointerWhileAButtonIsHeld()

@@ -473,6 +473,8 @@ public:
     Q_INVOKABLE bool keyPressed(int key, int modifiers, bool autoRepeat = false);
     Q_INVOKABLE void keyReleased(int key); // a Shift alone, let go of: the colour's next format
     Q_INVOKABLE void act(int action); // the toolbar's buttons: an Action
+    // The 贴图 hotkey, the same key as 贴到屏幕 here (#469): as that key does.
+    void pinByHotkey();
 
 signals:
     // What to take: that monitor's pixels in `rect` (its own physical

@@ -1430,8 +1430,8 @@
         <translation>Pin image shortcut</translation>
     </message>
     <message>
-        <source>优先贴剪贴板里的图片或文字；连续按下会按顺序贴出之前的历史截图与贴图（并保留标注）。不设时仍可从托盘菜单操作</source>
-        <translation>Pins the picture or text on the clipboard first; pressing again cycles through earlier captures and closed pins (keeping annotations). Still available from the tray menu if left unset</translation>
+        <source>优先贴剪贴板里的图片或文字；连续按下会按顺序贴出之前的历史截图与贴图（并保留标注）。截图时按它直接贴出选区，可以和“截图时 › 贴到屏幕”设成同一个键。不设时仍可从托盘菜单操作</source>
+        <translation>Pins the picture or text on the clipboard first; pressing again cycles through earlier captures and closed pins (keeping annotations). While capturing it pins the selection, so it may be the same key as While capturing › Pin to screen. Still available from the tray menu if left unset</translation>
     </message>
     <message>
         <source>隐藏 / 显示全部贴图的快捷键</source>

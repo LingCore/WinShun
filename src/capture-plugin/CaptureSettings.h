@@ -306,7 +306,7 @@ public:
     // Why `key` would never reach the capture or a pin: one of the plugin's
     // own hotkeys is the same key, or (askSystem) another program's or
     // Win顺's global hotkey holds it. Empty: none.
-    QString hotkeyConflict(QKeyCombination key, bool askSystem) const;
+    QString hotkeyConflict(QKeyCombination key, bool askSystem, capture::KeyAction action) const;
 
 signals:
     void changed();

@@ -1931,6 +1931,17 @@ void CaptureSession::keyReleased(int key)
     s->setFlash(tr("颜色格式：%1").arg(colorFormatName(m_colorFormat).toUpper()));
 }
 
+void CaptureSession::pinByHotkey()
+{
+    if (!m_active)
+        return;
+    // Mid-drag or mid-stroke the key is held back, as the 贴到屏幕 key is.
+    if (m_phase == Phase::Pressed || m_phase == Phase::Dragging || m_phase == Phase::Adjusting
+        || m_phase == Phase::Annotating)
+        return;
+    finish(Action::Pin);
+}
+
 void CaptureSession::act(int action)
 {
     if (!m_active || action < static_cast<int>(Action::Copy) || action > static_cast<int>(Action::OcrTranslate))

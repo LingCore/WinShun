@@ -2617,6 +2617,15 @@ void CaptureApp::hotkey(int id)
             startOcr(id == TranslateKey);
         break;
     case LastPinKey:
+        // One key for both (#469): while capturing it pins the selection, in
+        // the editing window in front the picture being edited (a global
+        // hotkey takes the key before either window hears it); else the clipboard.
+        if (m_capture && m_capture->pinByHotkey())
+            break;
+        if (m_editor && m_editor->isOpen() && m_editor->window() && m_editor->window()->isActive()) {
+            m_editor->act(static_cast<int>(capture::CaptureSession::Action::Pin));
+            break;
+        }
         pinCurrentImage();
         break;
     case PresentKey: // never held back in full screen: a slide show is what it is for

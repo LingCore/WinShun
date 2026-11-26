@@ -540,6 +540,19 @@ void Capture::triggerPin()
     triggerQuick(QuickPurpose::Pin);
 }
 
+bool Capture::pinByHotkey()
+{
+    if (m_state == State::Idle)
+        return false;
+    if (m_state != State::Showing)
+        return true; // coming up or going: nothing to pin yet, and not the clipboard either
+    if (m_quickPurpose != QuickPurpose::None && m_quickPurpose != QuickPurpose::Pin)
+        triggerQuick(QuickPurpose::Pin); // picking for OCR: picking to pin instead
+    else
+        m_session.pinByHotkey();
+    return true;
+}
+
 void Capture::triggerQuick(QuickPurpose purpose)
 {
     if (purpose == QuickPurpose::None)

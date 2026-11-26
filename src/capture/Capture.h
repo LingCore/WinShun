@@ -222,6 +222,10 @@ public:
     // with a selection, pins that selection immediately; with no selection (or in
     // OCR/translate picking), switches to quick pin picking.
     void triggerPin();
+    // The 贴图 hotkey pressed while a capture is open (#469): what its 贴到屏幕
+    // key does there, the selection (or the window under the pointer) pinned.
+    // False when no capture is open, and the hotkey pins the clipboard as ever.
+    bool pinByHotkey();
     bool busy() const { return m_state != State::Idle || m_countdown || (m_long && m_long->running()) || (m_recorder && m_recorder->active()); }
 
     // 贴上最近一次截图 (the tray menu).
