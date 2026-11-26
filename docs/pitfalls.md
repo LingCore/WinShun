@@ -14,6 +14,7 @@
 8. **后台线程与异常处理**：所有 `std::jthread` 与工作线程入口必须捕获异常（`try/catch (...)`），避免未捕获异常触发 `std::terminate()` 直接闪退；跨线程回调 UI 一律 `QMetaObject::invokeMethod(..., Qt::QueuedConnection)` 并绑定上下文对象。
 9. **系统版本兼容**：最低支持 Windows 10 1809；Windows 11 专属 DWM/WinRT API 必须运行时动态解析并提供降级路径，禁止硬链接导致旧版系统无法启动。
 10. **安装与升级实测**：任何涉及 `installer/` 或应用内拉起安装程序的改动，提交前必须运行 `tools/verify-installer.ps1` 做真实安装与文件占用升级测试，不可仅凭编译通过判断。
+11. **递归删除与目录链接**：递归删除会顺着联接删掉它指向的内容，不经回收站。测试里的链接只能指向测试自己建的数据，绝不指向真实盘根、卷名、用户目录或系统目录，建联接只用 `tests/TestJunction.h` 的 `makeJunction()`；递归删除只针对自己创建并核对过绝对路径的目录，删前先单独删掉其中的链接；出现超时或清理异常时立即停止，按文件级证据核查，未证实前不向用户报“没事”。详见 [测试与清理的文件安全](pitfalls/installer-build-and-testing.md#测试与清理的文件安全)。
 
 ## 2. 领域专题索引（按需阅读）
 
@@ -24,4 +25,4 @@
 | 输入、剪贴板、对话框与资源管理器 | [input-dialogs-and-explorer.md](pitfalls/input-dialogs-and-explorer.md) | 双击触发、`WH_KEYBOARD_LL`、前台切换、剪贴板监听/SQLite/`KeyRouter`/粘贴/UIAccess、打开保存对话框、资源管理器/拖放圆盘、任务栏搜索 |
 | 截图、标注、OCR 与录屏 | [capture-ocr-and-recording.md](pitfalls/capture-ocr-and-recording.md) | 多屏/HDR 捕获、遮罩与显卡驱动/TDR、标注与智能打码、贴图、长截图、Media Foundation/WASAPI 录屏、PaddleOCR/WinRT OCR |
 | 插件、MCP 与命令行 | [plugins-mcp-and-cli.md](pitfalls/plugins-mcp-and-cli.md) | 插件沙箱与权限、`WinShunPluginHost`、共享 Qt、stdio 管道与缓存、MCP、`ws.exe` CLI、官方插件专项问题 |
-| 安装升级、构建、编码与测试 | [installer-build-and-testing.md](pitfalls/installer-build-and-testing.md) | UTF-8/BOM/`tst_encoding`、Inno Setup 占用与回滚、Scoop、`WinShunService`、MSVC/Qt 升级、`IdleTrim`/卡死/崩溃诊断、离屏预览与截图工具 |
+| 安装升级、构建、编码与测试 | [installer-build-and-testing.md](pitfalls/installer-build-and-testing.md) | UTF-8/BOM/`tst_encoding`、Inno Setup 占用与回滚、Scoop、`WinShunService`、MSVC/Qt 升级、`IdleTrim`/卡死/崩溃诊断、离屏预览与截图工具、测试链接与递归删除的文件安全 |

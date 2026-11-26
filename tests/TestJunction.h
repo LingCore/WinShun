@@ -7,6 +7,7 @@
 
 #include <QDir>
 #include <QString>
+#include <QtGlobal>
 
 #include <windows.h>
 #include <winioctl.h>
@@ -17,8 +18,65 @@
 #include <string>
 #include <vector>
 
+// A whole volume a test may link to: only a scratch one made for the tests
+// (a .vhd), named by WINSHUN_TEST_SCRATCH_VOLUME ("V:"). Never the disk of
+// the system, of %TEMP% or of this source tree, whatever the variable says.
+inline QString testScratchVolume()
+{
+    const QString named = qEnvironmentVariable("WINSHUN_TEST_SCRATCH_VOLUME").left(2).toUpper();
+    if (named.size() != 2 || named[1] != u':' || !named[0].isLetter())
+        return {};
+    wchar_t windows[MAX_PATH] = {};
+    ::GetWindowsDirectoryW(windows, MAX_PATH);
+    for (const QString& real : {QString::fromWCharArray(windows), QDir::tempPath(), QDir::homePath(), QStringLiteral(__FILE__)}) {
+        if (QDir::toNativeSeparators(real).left(2).toUpper() == named)
+            return {};
+    }
+    return named;
+}
+
+// Whether a link may lead there: only to what the tests made themselves.
+// Whatever removes a folder tree by going through its links (QTemporaryDir,
+// QDir::removeRecursively, a cleanup of %TEMP%, a test killed before its
+// MadeLinks ran) then removes test data and nothing else. A link to a real
+// disk's root, made in a test, once emptied a user's Desktop and AppData.
+inline bool testOwnsLinkTarget(const QString& target)
+{
+    const QString scratch = testScratchVolume();
+    if (target.startsWith(uR"(\\?\Volume{)")) { // a whole volume by its name: the scratch one alone
+        wchar_t name[64] = {};
+        return !scratch.isEmpty() && ::GetVolumeNameForVolumeMountPointW((scratch + u'\\').toStdWString().c_str(), name, 64)
+            && target.compare(QString::fromWCharArray(name), Qt::CaseInsensitive) == 0;
+    }
+    const QString path = QDir::cleanPath(QDir(target).absolutePath());
+    if (!scratch.isEmpty() && path.startsWith(scratch, Qt::CaseInsensitive))
+        return true; // the scratch volume, its root too
+    for (const QString& owned : {QDir::tempPath(), qEnvironmentVariable("WINSHUN_TEST_OTHER_DISK_DIR")}) {
+        const QString root = owned.isEmpty() ? QString() : QDir::cleanPath(QDir(owned).absolutePath());
+        if (root.size() > 3 && path.size() > root.size() + 1 && path.startsWith(root + u'/', Qt::CaseInsensitive))
+            return true; // strictly inside: never the folder of all the temporary files itself
+    }
+    return false;
+}
+
+// A directory link taken away as a link, whatever it leads to. For a path
+// about to be made anew or removed recursively: false when it is a plain folder.
+inline bool removeLinkOnly(const QString& path)
+{
+    const std::wstring native = QDir::toNativeSeparators(path).toStdWString();
+    const DWORD attributes = ::GetFileAttributesW(native.c_str());
+    if (attributes == INVALID_FILE_ATTRIBUTES || !(attributes & FILE_ATTRIBUTE_REPARSE_POINT))
+        return false;
+    return (attributes & FILE_ATTRIBUTE_DIRECTORY) ? ::RemoveDirectoryW(native.c_str()) : ::DeleteFileW(native.c_str());
+}
+
 inline bool makeJunction(const QString& link, const QString& target)
 {
+    if (!testOwnsLinkTarget(target)) {
+        qCritical("makeJunction: refused, the target is not test data: %ls", qUtf16Printable(target));
+        ::SetLastError(ERROR_ACCESS_DENIED);
+        return false;
+    }
     if (!QDir().mkpath(link))
         return false;
     const std::wstring linkPath = QDir::toNativeSeparators(link).toStdWString();
@@ -64,7 +122,9 @@ inline bool makeJunction(const QString& link, const QString& target)
 
 // Directory links a test made, removed as links (never followed) before the
 // QTemporaryDir holding them goes: its removeRecursively() walks through
-// junctions, into whatever they lead to. Declare it after the dirs.
+// junctions, into whatever they lead to. Declare it after the dirs, and
+// register each link before it is made. This is the second guard: the first
+// is that a link only leads to test data (testOwnsLinkTarget).
 class MadeLinks {
 public:
     MadeLinks() = default;

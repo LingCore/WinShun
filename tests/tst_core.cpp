@@ -3797,12 +3797,29 @@ private slots:
         QVERIFY(directoryLinkTarget(target.toStdWString()).empty()); // no link
         QVERIFY(directoryLinkTarget((t + u"\\missing"_s).toStdWString()).empty());
 
+        // A test's link leads to test data only: a real disk, its volume, the
+        // home folder and the folder of all temporary files are refused, and
+        // nothing is made for them.
+        wchar_t realVolume[64] = {};
+        QVERIFY(::GetVolumeNameForVolumeMountPointW((t.left(2) + u"\\"_s).toStdWString().c_str(), realVolume, 64));
+        for (const QString& real : {t.left(2) + u"\\"_s, QString::fromWCharArray(realVolume), QDir::homePath(), QDir::tempPath()}) {
+            QTest::ignoreMessage(QtCriticalMsg, QRegularExpression(u"^makeJunction: refused.*"_s));
+            QVERIFY2(!makeJunction(t + u"\\拒绝"_s, real), qPrintable(real));
+            QVERIFY(!QFileInfo::exists(t + u"\\拒绝"_s));
+        }
+
         // A volume mounted in a folder: by its drive letter when it has one.
-        wchar_t volume[64] = {};
-        QVERIFY(::GetVolumeNameForVolumeMountPointW((t.left(2) + u"\\"_s).toStdWString().c_str(), volume, 64));
-        const QString mounted = made << t + u"\\卷"_s;
-        QVERIFY(makeJunction(mounted, QString::fromWCharArray(volume))); // "\\?\Volume{…}\"
-        QCOMPARE(QString::fromStdWString(directoryLinkTarget(mounted.toStdWString())), t.left(2).toUpper());
+        // Only a scratch volume is ever mounted (TestJunction.h): a link to a
+        // real disk is one recursive removal away from emptying it.
+        if (const QString scratch = testScratchVolume(); scratch.isEmpty()) {
+            qInfo("No WINSHUN_TEST_SCRATCH_VOLUME: a mounted volume is not tried");
+        } else {
+            wchar_t volume[64] = {};
+            QVERIFY(::GetVolumeNameForVolumeMountPointW((scratch + u"\\"_s).toStdWString().c_str(), volume, 64));
+            const QString mounted = made << t + u"\\卷"_s;
+            QVERIFY(makeJunction(mounted, QString::fromWCharArray(volume))); // "\\?\Volume{…}\"
+            QCOMPARE(QString::fromStdWString(directoryLinkTarget(mounted.toStdWString())), scratch);
+        }
 
         // Symbolic links (mklink /d), where this account may make them
         // (Developer Mode, or elevated): relative and to a share.
@@ -4020,7 +4037,10 @@ private slots:
     // One disk, no elevation; each verdict is counted in the diagnostics.
     void directoryLinksToIndexedDisk()
     {
-        QTemporaryDir tree;
+        // The link to a whole disk is only made on a scratch volume, with
+        // the tree on it (TestJunction.h): never to the disk of %TEMP%.
+        const QString scratch = testScratchVolume();
+        QTemporaryDir tree((scratch.isEmpty() ? QDir::tempPath() : scratch) + u"/tst_core-XXXXXX"_s);
         QTemporaryDir store;
         QVERIFY(tree.isValid() && store.isValid());
         MadeLinks made; // after the folders: removed as links, never through them
@@ -4041,8 +4061,11 @@ private slots:
         QVERIFY(addLinkAttributes(system, FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM));
         // The target is not changed by that: it is still a plain folder.
         QVERIFY(!(::GetFileAttributesW(other.toStdWString().c_str()) & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM)));
-        const QString whole = made << t + u"\\links\\整盘"_s;
-        QVERIFY(makeJunction(whole, root + u"\\"_s));
+        const QString whole = t + u"\\links\\整盘"_s;
+        if (!scratch.isEmpty()) {
+            made << whole;
+            QVERIFY(makeJunction(whole, root + u"\\"_s));
+        }
         const QString up = made << t + u"\\docs\\上级"_s; // to the folder it is in
         QVERIFY(makeJunction(up, t + u"\\docs"_s));
         const QString back = made << t + u"\\docs\\sub\\回去"_s; // to a folder far above
@@ -4121,14 +4144,15 @@ private slots:
             if (!details.value(u"read"_s).toArray().contains(root))
                 continue;
             read = true;
-            QCOMPARE(details.value(u"found"_s).toInteger(), 8);
+            const int wholeDisk = scratch.isEmpty() ? 0 : 1; // made on a scratch volume only
+            QCOMPARE(details.value(u"found"_s).toInteger(), 7 + wholeDisk);
             // Each one for its own reason, not for another's.
             QCOMPARE(results.value(u"walked"_s).toInteger(), 1);
             QCOMPARE(results.value(u"system-link"_s).toInteger(), 2); // hidden only; hidden and system
-            QCOMPARE(results.value(u"whole-disk"_s).toInteger(), 1);
+            QCOMPARE(results.value(u"whole-disk"_s).toInteger(), wholeDisk);
             QCOMPARE(results.value(u"loop"_s).toInteger(), 2);
             QCOMPARE(results.value(u"tool-folder"_s).toInteger(), 2);
-            QCOMPARE(results.size(), 5);
+            QCOMPARE(results.size(), 4 + wholeDisk);
         }
         QVERIFY2(read && madeSince, text.constData());
     }

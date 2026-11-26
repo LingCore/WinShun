@@ -86,6 +86,35 @@
 - **`QTRY_VERIFY` / `QTRY_COMPARE` 表达式严禁副作用**：`QTRY_*` 循环成功后会再次求值做超时诊断和最终 `QVERIFY`，如 `::DeleteFileW(path)` 二次调用返回 FALSE 会多等两倍超时并误判失败 → 所有 `QTRY_*` 表达式须幂等（如 `QFile::remove(p) || !QFileInfo::exists(p)`）。
 - **`IdleOpenProbe` 与插件探针运行约束**：带尾反斜杠加引号的参数（`"C:\;F:\"`）会转义引号吞掉后续参数；后台编译会令呼出耗时翻倍并出现 600–700 ms 输入法毛刺；插件库探针若不检查索引加载成功，失败空模型送入卡片会制造次生警告 → 命令行路径一律正斜杠，剔除整机 CPU > 30% 样本并新旧交替跑；插件探针须断言数据角色且日志零 QML 警告。
 
+### 测试与清理的文件安全
+
+递归删除不认目录链接：`QTemporaryDir` 析构、`QDir::removeRecursively()`、`Remove-Item -Recurse`、`rmdir /s`、`shutil.rmtree` 遇到联接或挂载点会走进去，把它指向的内容当成自己的删掉，不经回收站。一个指向真实盘根的测试联接，曾因此清空了用户的桌面和 `AppData` 下的大批目录。下面每一条都是硬规则，不是建议。
+
+**一、链接只能指向测试自己建的数据**
+
+- 测试里的联接、符号链接、挂载点，目标只允许在这三处：`%TEMP%` 之内（不含 `%TEMP%` 本身）、`WINSHUN_TEST_OTHER_DISK_DIR` 之内、`WINSHUN_TEST_SCRATCH_VOLUME` 指定的专用测试卷。绝不指向真实盘的根目录或卷名（`C:\`、`\\?\Volume{…}\`）、用户目录、`Program Files`、`Windows`、源码树。
+- 建联接一律用 `tests/TestJunction.h` 的 `makeJunction()`：它用 `testOwnsLinkTarget()` 检查目标，不合规就拒绝并报 `makeJunction: refused`。不得绕过它另写 `FSCTL_SET_REPARSE_POINT`、`cmd /c mklink` 或 PowerShell `New-Item -ItemType Junction`。直接调 `CreateSymbolicLinkW` 只允许相对目标（落在测试树内）或不存在的 UNC 路径。
+- 需要“整盘目标”“文件夹里挂了一个卷”这类用例时，只在专用测试卷上做：建一个 `.vhd`，挂载后把盘符填进 `WINSHUN_TEST_SCRATCH_VOLUME`（`testScratchVolume()` 会拒绝系统盘、`%TEMP%` 所在盘、用户目录所在盘和源码所在盘）。没设这个变量时，这部分断言跳过并在日志里写明，不拿真实盘顶替。
+- 这样即使测试被杀、`MadeLinks` 没来得及运行、残留目录后来被别的清理程序扫到，被删的也只是测试数据。
+
+**二、链接先于目录被删，按链接删**
+
+- 测试建的每个链接在创建之前登记到 `MadeLinks`（`made << 路径`），且 `MadeLinks` 声明在所有 `QTemporaryDir` 之后，析构时先用 `RemoveDirectoryW` 只删链接本身。
+- 对一个可能是链接的路径做“先清掉再重建”时，先 `removeLinkOnly()`，它返回 `false`（是普通目录）才允许递归删。
+- 手工或脚本清理测试残留：先列出目录内全部重解析点（`Get-ChildItem -Recurse -Force -Attributes ReparsePoint`），逐个 `[IO.Directory]::Delete(链接, $false)` 非递归删除，再列一遍确认为 0，最后才递归删目录。不用 `cmd /c rmdir /s`，不用 Windows PowerShell 5.1 的 `Remove-Item -Recurse` 处理含链接的目录。
+
+**三、递归删除只针对自己建的、核对过的路径**
+
+- 删除对象必须是本次任务自己创建的目录，位于 `build/`、`dist/`、`.worktrees/`、`%TEMP%` 下自己的子目录或会话的 scratchpad 之内。
+- 删前把路径解析成绝对路径并打印核对；路径由变量拼出时先断言变量非空、结果以预期前缀开头（空变量会把 `"$dir\"` 变成盘根）。目标本身是链接时不递归删。
+- 新写或改过“建链接、递归删除、卷操作”的测试，第一次运行必须设 `QTEST_FUNCTION_TIMEOUT=60000`，并在运行前把它的清理路径从头读一遍：每个链接指向哪里，谁在什么时候删它。
+
+**四、出现异常就停，按文件级证据核查，不凭印象报平安**
+
+- 这类测试出现超时、卡住、清理耗时异常、临时目录残留，立即结束测试进程，不重跑，不继续别的任务。
+- 核查要看文件，不看目录还在不在：目录在不等于里面的文件在。至少做三件事：对每个链接目标（含桌面、文档、`AppData`）统计文件数并看有没有成批的空目录；找出事发时刻之后才新建的目录（被删后由程序重建）；提权读 USN 日志里该时间段的删除记录（`fsutil usn readjournal C: csv`）。
+- 无法证明没有删除时，当场如实告诉用户“可能已经删除了文件”，并提醒三件事：尽量停止往该盘写入、先查卷影副本和同步盘回收站、尽快做只读恢复扫描。删除后的头几个小时是恢复机会最大的时候，错误的“没事”结论会把它耗掉。
+
 ### 真实输入界面实测与 PowerShell 陷阱
 
 - **`-WindowStyle Hidden` 会吞掉进程首个窗口显示**：Windows 将隐藏启动参数套用到进程首次 `ShowWindow`（`GetForegroundWindow`/`Visible` 仍为真而 `IsWindowVisible` 为假），致使测试窗点击穿透到 VS Code、服务回 `ERROR_INVALID_WINDOW_HANDLE`，也会让 `--background` 启动的 Win顺 首个设置窗永久隐形 → 启动 Win顺 必用 `-WindowStyle Normal`；隐藏测试脚本首窗须再显示一次并断言 `IsWindowVisible()`；点击/滚轮前先以 `WindowFromPoint` 核验最顶层窗口归属。

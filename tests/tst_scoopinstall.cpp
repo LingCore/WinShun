@@ -39,8 +39,12 @@ void makeVersion(const QString& appDir, const QString& version, bool newNames = 
 // `current` as Scoop makes it: a directory junction (mklink /J).
 bool junction(const QString& link, const QString& target)
 {
-    QDir(link).removeRecursively();
-    QFile::remove(link);
+    // An earlier `current` goes as a link: removed recursively, it would
+    // take what is in the version it leads to.
+    if (!removeLinkOnly(link)) {
+        QDir(link).removeRecursively();
+        QFile::remove(link);
+    }
     return makeJunction(link, target);
 }
 
