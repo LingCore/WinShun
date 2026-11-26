@@ -140,6 +140,12 @@ public:
     struct Options {
         std::vector<std::wstring> excludedFiles; // a name, or "prefix*"
         bool shortNames = false; // FileIdBothDirectoryInfo instead of FileFullDirectoryInfo (for wsbench)
+        // Of each request after a folder's first (that one Windows asks at a
+        // size of its own, enough for some 500 names). Smaller was tried for
+        // the sake of a file manager waiting behind a folder of thousands
+        // on a slow disk: 4 KB halves that wait (p99 245 to 140 ms), and
+        // reads such a folder eight times slower over a line with 5 ms
+        // delay. Left as it is (docs/validation/bugs-1126).
         std::size_t bufferBytes = 64 * 1024;
         std::atomic<std::size_t>* progress = nullptr; // counts the items read, when set
     };

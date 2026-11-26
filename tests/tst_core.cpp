@@ -7694,6 +7694,61 @@ private slots:
         QCOMPARE(ShareIndexer::passWidth(1, true, false, false), (Limit {1, true}));
     }
 
+    // With a gate one wide, eight threads read the folders in the order one
+    // thread does: none holds a folder it took long before its turn.
+    void crawlerGateKeepsTheOrder()
+    {
+        const std::wstring path = L"\\\\nas\\tree";
+        const Crawler crawler({});
+        const auto read = [&](int threads, bool gated) {
+            FileIndex index;
+            EntryId root = kNoEntry;
+            {
+                auto lock = index.writeLock();
+                root = ShareIndexer::ensureRoot(index, path);
+            }
+            std::mutex mutex;
+            std::vector<std::wstring> order;
+            share::Width width([] { return share::Width::Limit {1, false}; });
+            const Crawler::Gate gate {[&](std::stop_token stopped) { return width.enter(stopped); },
+                [&](std::optional<std::size_t> items) { width.leave(items); }};
+            std::stop_source stop;
+            crawler.sync(index, {{root, path, EntryFlag::Remote}}, threads, false, stop.get_token(),
+                [&](const Crawler::Root& dir, DirListing& out) {
+                    {
+                        std::lock_guard lock(mutex);
+                        order.push_back(dir.path);
+                    }
+                    out.clear();
+                    if (std::ranges::count(dir.path, L'\\') < 6) { // three levels of four folders
+                        for (const char* name : {"a", "b", "c", "d"})
+                            crawler.addToListing(out, dir, name, {}, EntryFlag::Remote | EntryFlag::Directory, true, 0, 0);
+                    }
+                    crawler.addToListing(out, dir, "file.txt", {}, EntryFlag::Remote, false, 0, 0);
+                    return true;
+                }, nullptr, nullptr, gated ? &gate : nullptr);
+            return order;
+        };
+        const std::vector<std::wstring> one = read(1, false);
+        QCOMPARE(one.size(), std::size_t {1 + 4 + 16 + 64});
+        QCOMPARE(read(8, true), one);
+    }
+
+    // A share read again every hour waits, once its time has come, for
+    // nobody to be at the computer, two hours at most. Other passes do not.
+    void sharePassDue()
+    {
+        using namespace std::chrono_literals;
+        QVERIFY(!ShareIndexer::passDue(-1s, false, true)); // not yet
+        QVERIFY(!ShareIndexer::passDue(-1s, true, true));
+        QVERIFY(ShareIndexer::passDue(0s, false, false)); // after the start, or to make sure: at its time
+        QVERIFY(ShareIndexer::passDue(0s, true, true)); // nobody there
+        QVERIFY(!ShareIndexer::passDue(0s, true, false)); // someone there: later
+        QVERIFY(!ShareIndexer::passDue(119min, true, false));
+        QVERIFY(ShareIndexer::passDue(119min, true, true)); // ... when they have left
+        QVERIFY(ShareIndexer::passDue(2h, true, false)); // or now, read gently (passWidth)
+    }
+
     // share::WidthTrial against servers that answer in known ways, while what
     // is read changes under it (now folders the server has in memory, now not).
     void shareWidthTrial_data()

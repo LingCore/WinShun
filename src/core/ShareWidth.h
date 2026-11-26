@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <functional>
 #include <mutex>
+#include <optional>
 #include <stop_token>
 
 namespace ws::share {
@@ -66,7 +67,8 @@ private:
 };
 
 // Lets as many folders be read at a time as the width is. enter() before a
-// folder, leave() after it, from any number of threads.
+// folder is taken, leave() after it, from any number of threads
+// (Crawler::Gate: before it is taken, which keeps the order of one thread).
 class Width {
 public:
     using Clock = std::chrono::steady_clock;
@@ -83,7 +85,9 @@ public:
     explicit Width(Policy policy, std::chrono::milliseconds window = std::chrono::milliseconds(500));
 
     bool enter(std::stop_token stop); // waits for a place; false when stopped instead
-    void leave(std::size_t items); // the folder is read (or was not: 0), with so many items
+    // The folder is read, with so many items (or could not be: 0); nothing:
+    // there was no folder to read.
+    void leave(std::optional<std::size_t> items);
 
     // For the diagnostics.
     int widest() const;

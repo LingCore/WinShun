@@ -720,7 +720,7 @@ bool Crawler::sync(FileIndex& index, std::vector<Root> roots, int threads, bool 
 }
 
 bool Crawler::sync(FileIndex& index, std::vector<Root> roots, int threads, bool lowPriority, std::stop_token stop,
-    const Lister& list, std::vector<EntryId>* deferRemovals, SyncStats* stats) const
+    const Lister& list, std::vector<EntryId>* deferRemovals, SyncStats* stats, const Gate* gate) const
 {
     struct Shared {
         std::mutex mutex;
@@ -741,15 +741,24 @@ bool Crawler::sync(FileIndex& index, std::vector<Root> roots, int threads, bool 
         std::vector<EntryId> matched; // scratch of reconcile(), kept for its capacity
         std::vector<Root> subdirs;
         for (;;) {
+            if (gate && !gate->enter(stop))
+                break;
             Root task;
+            bool took = false;
             {
                 std::unique_lock lock(shared.mutex);
                 shared.cv.wait(lock, stop, [&] { return !shared.stack.empty() || shared.busy == 0; });
-                if (stop.stop_requested() || shared.stack.empty())
-                    break;
-                task = std::move(shared.stack.back());
-                shared.stack.pop_back();
-                ++shared.busy;
+                if (!stop.stop_requested() && !shared.stack.empty()) {
+                    task = std::move(shared.stack.back());
+                    shared.stack.pop_back();
+                    ++shared.busy;
+                    took = true;
+                }
+            }
+            if (!took) {
+                if (gate)
+                    gate->leave(std::nullopt);
+                break;
             }
 
             const bool listed = list ? list(task, listing) : listDirectory(task, listing);
@@ -772,6 +781,8 @@ bool Crawler::sync(FileIndex& index, std::vector<Root> roots, int threads, bool 
             }
             subdirs.clear();
             shared.cv.notify_all();
+            if (gate)
+                gate->leave(listed ? listing.items.size() : 0);
         }
         shared.cv.notify_all();
 

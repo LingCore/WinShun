@@ -4,7 +4,6 @@
 #   slowdisk.sh MS
 set -e
 ms=${1:-10}
-apk add --no-cache device-mapper e2fsprogs >/dev/null 2>&1
 modprobe dm-delay
 pkill smbd 2>/dev/null || true
 sleep 1
@@ -12,7 +11,7 @@ umount /srv/slow 2>/dev/null || true
 dmsetup remove slow 2>/dev/null || true
 if [ ! -f /srv/slow.img ]; then
     truncate -s 2G /srv/slow.img
-    mkfs.ext4 -q -F /srv/slow.img
+    mkfs.ext4 -q -F -N 400000 /srv/slow.img
     made=no
 fi
 loop=$(losetup -j /srv/slow.img | cut -d: -f1 | head -1)

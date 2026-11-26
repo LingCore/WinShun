@@ -13,8 +13,13 @@ namespace {
 // four wide a quarter of the time (simulated with such noise), by these a tenth.
 constexpr double kGain = 1.5;
 constexpr double kLoss = 1.35;
-constexpr int kHoldFirst = 4; // windows from a trial that changed nothing to the next ...
-constexpr int kHoldMost = 64; // ... twice as many each time, up to this
+// Windows from a trial that changed nothing to the next, twice as many each
+// time: 8 s, then up to 2 minutes. Each trial of a server that answers one
+// after another is a second of its other users waiting twice as long; one
+// that answers side by side is found out by the trials that do change it,
+// which follow one another at once.
+constexpr int kHoldFirst = 16;
+constexpr int kHoldMost = 240;
 constexpr int kTrialWindows = 4; // the width there is and the one on trial, in turn
 constexpr int kMinFolders = 8; // a window has at least as many
 constexpr double kItemsAFolder = 64; // a folder of so many items is twice the work of an empty one
@@ -100,14 +105,16 @@ bool Width::enter(std::stop_token stop)
     return true;
 }
 
-void Width::leave(std::size_t items)
+void Width::leave(std::optional<std::size_t> items)
 {
     bool wider = false;
     {
         std::lock_guard lock(m_mutex);
         --m_reading;
-        m_work += 1.0 + static_cast<double>(items) / kItemsAFolder;
-        ++m_folders;
+        if (items) {
+            m_work += 1.0 + static_cast<double>(*items) / kItemsAFolder;
+            ++m_folders;
+        }
         const auto now = Clock::now();
         if (m_folders >= kMinFolders && now - m_since >= m_window) {
             const int was = m_width;

@@ -4870,15 +4870,11 @@ int runShare(QStringList args)
         std::vector<ws::EntryId> gone;
         ws::Crawler::SyncStats stats;
         ws::share::Width width([&] { return ws::share::Width::Limit {threads, tried}; });
+        const ws::Crawler::Gate gate {[&](std::stop_token stopped) { return width.enter(stopped); },
+            [&](std::optional<std::size_t> items) { width.leave(items); }};
         t.restart();
         crawler.sync(index, {{root, path, ws::EntryFlag::Remote}}, threads, false, stop.get_token(),
-            [&](const ws::Crawler::Root& dir, ws::DirListing& out) {
-                if (!width.enter(stop.get_token()))
-                    return false;
-                const bool read = lister(dir, out);
-                width.leave(read ? out.items.size() : 0);
-                return read;
-            }, &gone, &stats);
+            [&](const ws::Crawler::Root& dir, ws::DirListing& out) { return lister(dir, out); }, &gone, &stats, &gate);
         const double ms = msSince(t);
         std::printf("round %d: %.0f ms  folders %zu (%.0f/s, %.2f ms each)  at a time %.1f (%d at most)  items %zu  failed %zu"
                     "  denied %zu  gone %zu  problem %s (error %lu)%s\n",

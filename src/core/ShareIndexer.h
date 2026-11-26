@@ -175,6 +175,11 @@ public:
     // the pass faster (share::Width), and one where the share is read again
     // by itself, not asked for (`manual`): nobody waits for that pass.
     static share::Width::Limit passWidth(int threads, bool building, bool manual, bool userAway) noexcept;
+    // Whether a pass is to start, `late` after its time (negative: before
+    // it). One of those every hour (`forAway`) waits for nobody to be at
+    // the computer, two hours at most: it is read fast then, in nobody's
+    // way. The one after the start, and one read again to make sure, do not.
+    static bool passDue(std::chrono::steady_clock::duration late, bool forAway, bool userAway) noexcept;
 
 private:
     struct Share;

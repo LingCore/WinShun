@@ -164,8 +164,19 @@ public:
         // walk finds them as reading the MFT does, GitHub #350).
         std::vector<std::wstring> links;
     };
+    // Lets fewer of the `threads` work at a time, as the pass goes
+    // (share::Width). A thread enters before it takes a folder (false: the
+    // pass is stopped) and leaves after it, saying how many items the folder
+    // had, or nothing when there was none left to take. Before it takes one:
+    // let in one at a time, the threads read the folders in the order one
+    // thread does (a folder's subfolders right after it), not each holding
+    // a folder taken long before its turn.
+    struct Gate {
+        std::function<bool(std::stop_token)> enter;
+        std::function<void(std::optional<std::size_t> items)> leave;
+    };
     bool sync(FileIndex& index, std::vector<Root> roots, int threads, bool lowPriority, std::stop_token stop,
-        const Lister& list, std::vector<EntryId>* deferRemovals, SyncStats* stats) const;
+        const Lister& list, std::vector<EntryId>* deferRemovals, SyncStats* stats, const Gate* gate = nullptr) const;
 
     // Reads a folder from the disk (or a share), with each child's record number.
     bool listDirectory(const Root& dir, DirListing& out) const;
