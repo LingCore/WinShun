@@ -12,6 +12,7 @@
 #include "platform/ComWorker.h"
 #include "platform/ExternalPreview.h"
 #include "platform/PreviewHost.h"
+#include "platform/WindowEffects.h"
 #include "VideoView.h"
 
 #include <QCoreApplication>
@@ -1006,20 +1007,24 @@ void FilePreview::showWindow(QSize wanted)
     const QRect place = placeBeside(wanted);
     if (place.isValid() && m_window->geometry() != place)
         m_window->setGeometry(place);
-    const auto hwnd = reinterpret_cast<HWND>(m_window->winId());
     if (!m_window->isVisible()) {
         // Not activated: the launcher keeps the focus (and so stays open).
         m_window->setProperty("_q_showWithoutActivating", true);
         m_window->show();
         m_window->setProperty("_q_showWithoutActivating", QVariant());
     }
-    // Beside the launcher: just under it, both on top of other windows.
-    // Over its far side (no room beside it): in front of it.
-    if (m_overLauncher)
-        ::SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
-    else if (m_launcher && m_launcher->isVisible())
-        ::SetWindowPos(hwnd, reinterpret_cast<HWND>(m_launcher->winId()), 0, 0, 0, 0,
-            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+    restack();
+}
+
+// Beside the launcher: just under it. Over its far side (no room beside it):
+// in front of it. Among the windows the launcher is among: over every other
+// one, or, pinned and not kept so (or standing back for what it opened,
+// PinnedStacking), covered with it by the window in front.
+void FilePreview::restack()
+{
+    if (m_embedded || !m_window || !m_window->isVisible())
+        return;
+    win::stackBy(m_window, m_launcher, m_overLauncher);
     placeHandler(); // the handler's popup just above it again
 }
 

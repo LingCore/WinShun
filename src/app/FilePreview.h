@@ -125,6 +125,9 @@ public:
     // its frame ready), the launcher it goes beside, the settings.
     void setWindowFactory(std::function<QQuickWindow*()> factory) { m_makeWindow = std::move(factory); }
     void setLauncherWindow(QWindow* launcher);
+    // The launcher went over every other window, or back among them: its
+    // window goes with it, beside (or over) the launcher as before.
+    void restack();
     void setBuiltInOnly(bool on) { m_builtInOnly = on || m_embedded; } // 预览方式: 内置
     void setDark(bool dark);
     // Text files besides the usual ones (the content search's kinds).

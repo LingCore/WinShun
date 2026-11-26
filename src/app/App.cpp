@@ -854,6 +854,8 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     connect(m_launcher.get(), &Launcher::dismissRequested, this, [this] {
         if (!m_launcher->pinned())
             hideLauncher();
+        else
+            launcherOpenedSomething();
     });
     // Opened by typing in an Explorer window, Esc hands the keyboard back to
     // it (allowed: the launcher is in front), as closing a menu would; not a
@@ -1572,6 +1574,10 @@ bool App::createWindow()
         } else if (m_window && m_window->isActive()) {
             if (::GetForegroundWindow() == reinterpret_cast<HWND>(m_window->winId()))
                 stopLauncherRouting(); // in front after all (a click on it): its keys are its own
+            if (m_pinnedStacking.standsBack()) { // over the other windows again, if kept so
+                m_pinnedStacking.inFront();
+                applyLauncherPin();
+            }
             m_launcher->systemCommandDone();
             m_boxPressGrace.stop();
             lettersOnOpen();
@@ -2527,7 +2533,8 @@ void App::applyScreenshots()
                 return;
             }
             const HWND target = m_launcherTarget;
-            emit m_launcher->dismissRequested();
+            if (!m_launcher->pinned()) // pinned: it stays where it is, for the next one (nothing was opened)
+                hideLauncher();
             m_clipboard->pasteEntry(id, target);
         };
         hooks.copy = [this](qint64 id) { m_clipboard->pasteEntry(id, nullptr); };
@@ -6715,6 +6722,7 @@ void App::showLauncher(const QString& asked, const std::optional<taskbar::Spot>&
     m_boxPressGrace.stop();
     m_launcherShown.start();
     m_frontTakenBack = 0;
+    m_pinnedStacking.inFront();
     applyLauncherPin(); // left not topmost by a pin of before, perhaps
     m_idleTrim->used();
     if (!launcherShown()) { // what a screenshot of the history pastes into (jt, Enter)
@@ -8021,7 +8029,9 @@ void App::launcherLostFront()
             return;
         m_launcher->systemCommandDone();
     }
-    if (m_launcher->pinned()) { // stays up, behind nothing (topmost), until Esc
+    if (m_launcher->pinned()) { // stays up until Esc: over every window, or among them (PinnedStacking)
+        if (m_pinnedStacking.lostFront(PinnedStacking::Clock::now()))
+            applyLauncherPin(); // not to what it opened: a click elsewhere
         cancelTypingSelection();
         m_typingOrigin = {}; // used elsewhere now: a folder opened later is not for that tab
         m_boxPressGrace.stop();
@@ -8525,9 +8535,21 @@ void App::applyLauncherPin()
     if (!m_window || !m_window->handle())
         return;
     win::setTaskbarWindow(m_window, m_launcher->pinned() && !m_prewarming.load());
-    const bool topmost = !m_launcher->pinned() || m_settings.pinnedOnTop;
-    ::SetWindowPos(reinterpret_cast<HWND>(m_window->winId()), topmost ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0,
-        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+    win::setOnTop(m_window, m_pinnedStacking.onTop(m_launcher->pinned(), m_settings.pinnedOnTop));
+    if (m_preview)
+        m_preview->restack(); // with it: beside it still, and covered when it is
+}
+
+// Pinned, it stays as something is opened from it. What was opened is what
+// the user asked to see: the launcher (and its preview) stands back among the
+// other windows for it, kept over them or not, and is over them again once
+// it is in front itself (PinnedStacking).
+void App::launcherOpenedSomething()
+{
+    if (!launcherShown() || !m_launcher->pinned())
+        return;
+    m_pinnedStacking.opened(PinnedStacking::Clock::now());
+    applyLauncherPin();
 }
 
 void App::launcherPinnedChanged()

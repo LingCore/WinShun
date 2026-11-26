@@ -61,6 +61,7 @@ qt_add_executable(WinShun WIN32
     ContextMenuGuard.cpp ContextMenuGuard.h # a right-click on a window's top-left pixel crashed Qt Quick (QTBUG-146671)
     DialogBarVisibility.cpp DialogBarVisibility.h
     FrameReveal.cpp FrameReveal.h
+    PinnedStacking.h
     Elide.cpp Elide.h
     FileIconProvider.cpp FileIconProvider.h
     DragPicture.cpp DragPicture.h

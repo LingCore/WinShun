@@ -16269,7 +16269,8 @@ int runRuntime(const QStringList& args)
                     || args.contains(u"--activation-paste-check"_s) || args.contains(u"--entry-hotkey-check"_s)
                     || args.contains(u"--command-hotkey-check"_s)
                     || args.contains(u"--duplicates-check"_s) || args.contains(u"--field-focus-check"_s)
-                    || args.contains(u"--launcher-settings-check"_s) || args.contains(u"--launcher-open-check"_s))
+                    || args.contains(u"--launcher-settings-check"_s) || args.contains(u"--launcher-open-check"_s)
+                    || args.contains(u"--pinned-stacking-check"_s))
                 && profile.fileName().startsWith(u"WinShun-preview-")
                 && QDir::cleanPath(profile.absolutePath()).compare(QDir::cleanPath(QDir::tempPath()), Qt::CaseInsensitive) == 0)
                 QDir(profile.absoluteFilePath()).removeRecursively();
@@ -16335,6 +16336,8 @@ int runRuntime(const QStringList& args)
             return checkLauncherToSettings(app, args, out) ? 0 : 4; // its profile likewise
         if (args.contains(u"--launcher-open-check"_s))
             return checkLauncherOpen(app, args, out) ? 0 : 4; // its profile likewise
+        if (args.contains(u"--pinned-stacking-check"_s))
+            return checkPinnedStacking(app, args, out) ? 0 : 4; // its profile likewise
         if (args.contains(u"--search-shadow-check"_s))
             return checkSearchShadow(app, args, out) ? 0 : 4; // its profile likewise
         if (args.contains(u"--paste-plain-check"_s))

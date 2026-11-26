@@ -9187,8 +9187,8 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>pin;stay on top;front;cover;obscure;Ctrl+T;topmost;always on top</translation>
     </message>
     <message>
-        <source>按 Ctrl+T 钉住后，搜索框一直盖在别的窗口上面；关掉时点别的窗口会把它盖住，按打开 Win顺 的快捷键再回到前面</source>
-        <translation>After you pin the search box with Ctrl+T, it stays over other windows; off: clicking another window covers it, and the shortcut that opens WinShun brings it back to the front</translation>
+        <source>按 Ctrl+T 钉住后，搜索框盖在别的窗口上面，从它打开的文件和程序除外；关掉时点别的窗口会把它盖住，按打开 Win顺 的快捷键再回到前面</source>
+        <translation>After you pin the search box with Ctrl+T, it stays over other windows, except the files and programs opened from it; off: clicking another window covers it, and the shortcut that opens WinShun brings it back to the front</translation>
     </message>
     <message>
         <source>字母直达用的键</source>

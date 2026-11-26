@@ -5543,7 +5543,7 @@ Window {
                 SettingRow { // feedback 2026-11-16
                     title: qsTr("钉住时在最前")
                     keywords: qsTr("钉住;置顶;最前;盖住;遮挡;Ctrl+T;pin;topmost;always on top").split(";")
-                    description: qsTr("按 Ctrl+T 钉住后，搜索框一直盖在别的窗口上面；关掉时点别的窗口会把它盖住，按打开 Win顺 的快捷键再回到前面")
+                    description: qsTr("按 Ctrl+T 钉住后，搜索框盖在别的窗口上面，从它打开的文件和程序除外；关掉时点别的窗口会把它盖住，按打开 Win顺 的快捷键再回到前面")
 
                     ToggleSwitch {
                         objectName: "pinnedOnTopSwitch"

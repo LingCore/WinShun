@@ -105,6 +105,16 @@ void setCloaked(QWindow* window, bool cloaked);
 // fallback.
 void setTaskbarWindow(QWindow* window, bool on);
 
+// Over every other window (the topmost ones among themselves), or among the
+// rest: where it is in front until another window is. Neither activates it.
+void setOnTop(QWindow* window, bool on);
+bool isOnTop(QWindow* window);
+
+// A companion of `by` (its preview): among the same windows as `by` (over
+// every other, or not: it follows), just under it or just over it. `by`
+// hidden or none: over every other window. Not activated.
+void stackBy(QWindow* window, QWindow* by, bool over);
+
 // Gives a window the executable's IDI_ICON1 for ICON_BIG and ICON_SMALL at
 // the window's current DPI, refreshed across DPI changes and native handle
 // recreation. Leaves windows with an explicit QWindow::icon() untouched, and
