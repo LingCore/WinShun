@@ -5,9 +5,12 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <chrono>
+#include <iterator>
 #include <memory>
 #include <string_view>
 #include <unordered_set>
+#include <utility>
 
 namespace ws {
 
@@ -17,6 +20,9 @@ constexpr std::size_t kBufferBytes = 64 * 1024;
 constexpr std::size_t kVolumeBufferBytes = 1024 * 1024; // GitHub #52: lost events cost a walk
 constexpr DWORD kNotifyFilter = FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_DIR_NAME;
 constexpr DWORD kWriteFilter = FILE_NOTIFY_CHANGE_SIZE | FILE_NOTIFY_CHANGE_LAST_WRITE; // GitHub #114
+// How long changes wait to be handed over, and how many at most (run).
+constexpr std::chrono::milliseconds kSettle {50};
+constexpr std::size_t kMostSettling = 16 * 1024;
 
 struct Watch {
     std::wstring root;
@@ -250,6 +256,18 @@ void ChangeWatcher::run(std::stop_token stop)
         publish(ticket);
     };
 
+    // Changes handed over once they are kSettle old, with those that came
+    // meanwhile: what they name is looked at as it ended up. `mklink /J`
+    // makes an empty folder, then makes it a link (GitHub #460): looked at
+    // in between, the link would be taken for that empty folder for good.
+    std::vector<FsChange> settling;
+    auto handOverAt = std::chrono::steady_clock::time_point::max();
+    const auto handOver = [&] {
+        handOverAt = std::chrono::steady_clock::time_point::max();
+        if (std::vector<FsChange> ready = std::exchange(settling, {}); !ready.empty() && m_handler)
+            m_handler(std::move(ready));
+    };
+
     while (!stop.stop_requested()) {
         std::vector<HANDLE> handles;
         handles.reserve(watches.size() + 2);
@@ -258,10 +276,25 @@ void ChangeWatcher::run(std::stop_token stop)
         for (const auto& w : watches)
             handles.push_back(w->event.get());
 
-        const DWORD r = ::WaitForMultipleObjects(static_cast<DWORD>(handles.size()), handles.data(), FALSE, INFINITE);
+        DWORD timeout = INFINITE;
+        if (!settling.empty()) {
+            // Due: handed over before any more are read, which may never stop coming.
+            const auto left = std::chrono::ceil<std::chrono::milliseconds>(handOverAt - std::chrono::steady_clock::now());
+            if (left.count() <= 0) {
+                handOver();
+                continue;
+            }
+            timeout = static_cast<DWORD>(left.count());
+        }
+        const DWORD r = ::WaitForMultipleObjects(static_cast<DWORD>(handles.size()), handles.data(), FALSE, timeout);
         if (r == WAIT_OBJECT_0 || r == WAIT_FAILED)
             break;
+        if (r == WAIT_TIMEOUT) {
+            handOver();
+            continue;
+        }
         if (r == WAIT_OBJECT_0 + 1) {
+            handOver(); // the roots' events before they change (setRoots waits for the handler)
             apply();
             continue;
         }
@@ -296,8 +329,13 @@ void ChangeWatcher::run(std::stop_token stop)
             publish(0);
         }
 
-        if (!changes.empty() && m_handler)
-            m_handler(std::move(changes));
+        if (changes.empty())
+            continue;
+        if (settling.empty())
+            handOverAt = std::chrono::steady_clock::now() + kSettle;
+        settling.insert(settling.end(), std::make_move_iterator(changes.begin()), std::make_move_iterator(changes.end()));
+        if (settling.size() >= kMostSettling)
+            handOver(); // a burst (unpacking, a build): no more held than this
     }
 
     for (auto& w : watches)

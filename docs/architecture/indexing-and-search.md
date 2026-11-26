@@ -49,7 +49,7 @@
 ### 2.4 磁盘范围、热插拔、目录链接与普通用户模式
 
 - **磁盘筛选与热插拔**：`selectedDrives`（`std::optional`）区分全盘与空选；`isExternalVolume` 识别外接盘，未勾选时不持句柄防阻塞弹出。收到弹出/锁定通知时 `IndexService::suspendVolume` 发 `CloseVolume` 等服务释放句柄（≤2 秒），服务自身也监听设备通知主动放行。
-- **目录链接**：整盘 MFT 与遍历默认不跨重解析点；`IndexService::checkLink` 筛除排除路径、已索引共享、整盘目标、环路、低优先工具目录（如 `node_modules`）与系统兼容联接后，在独立路径下补扫并挂监视，子项不写入目标文件的 NTFS 记录号防别名冲突。
+- **目录链接**：整盘 MFT 与遍历默认不跨重解析点；`IndexService::checkLink` 筛除排除路径、已索引共享、整盘目标、环路、低优先规则命中的工具目录（`Crawler::isToolFolder`，如 `node_modules`；仅以点开头不算）与系统兼容联接后，在独立路径下补扫并挂监视，子项不写入目标文件的 NTFS 记录号防别名冲突。补扫链接时遇到的嵌套链接（`walkFolders` 交回）再经 `takeLinks` 逐层收录，按外层链接的真实位置（`GetFinalPathNameByHandleW`）判环；它们不在 MFT 里，重读磁盘时只要外层链接还在且自身仍是链接就保留，总数同受 256 上限。
 - **普通用户遍历模式**：无 USN 访问且非等待服务启动时启用 `IndexService::Options::folders`，仅索引选定目录（祖先仅存路径名），定期核对按用户空闲节流（`THREAD_MODE_BACKGROUND_BEGIN`）；卷根 `ChangeWatcher` 1 MB 缓冲（失败降 64 KB），事件丢失退避重核，卷根不可打开时降级逐目录监视（≤62 个）。
 
 ## 3. 网络共享、WebDAV 与 WSL

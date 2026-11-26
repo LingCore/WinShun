@@ -460,15 +460,13 @@ std::uint8_t Crawler::dirPriorityFlags(std::wstring_view fullPath, std::wstring_
     // Dot-folders (.git, .vscode, .cache, ...) hold tool data, not documents.
     if (name.size() > 1 && name[0] == L'.')
         return EntryFlag::LowPriority;
-    for (const auto& n : m_rules.lowPriorityNames) {
-        if (matchesNameRule(n, fullPath, name))
-            return EntryFlag::LowPriority;
-    }
-    for (const auto& p : m_rules.lowPriorityPaths) {
-        if (win32::equalsIgnoreCase(p, fullPath))
-            return EntryFlag::LowPriority;
-    }
-    return 0;
+    return isToolFolder(fullPath, name) ? EntryFlag::LowPriority : 0;
+}
+
+bool Crawler::isToolFolder(std::wstring_view fullPath, std::wstring_view name) const
+{
+    return std::ranges::any_of(m_rules.lowPriorityNames, [&](const std::wstring& n) { return matchesNameRule(n, fullPath, name); })
+        || std::ranges::any_of(m_rules.lowPriorityPaths, [&](const std::wstring& p) { return win32::equalsIgnoreCase(p, fullPath); });
 }
 
 namespace {

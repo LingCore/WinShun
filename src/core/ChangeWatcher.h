@@ -50,7 +50,9 @@ public:
     // Over SMB they come within a second or two.
     enum class Tell : std::uint8_t { Names, Writes };
 
-    // The handler runs on the watcher thread.
+    // The handler runs on the watcher thread, a moment (50 ms) after the
+    // first of the changes it is given: what was just made is looked at as
+    // it ended up (a directory link, not the empty folder made first).
     explicit ChangeWatcher(Handler handler, Tell tell = Tell::Names);
     ~ChangeWatcher();
 

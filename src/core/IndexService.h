@@ -24,6 +24,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <stop_token>
 #include <string>
 #include <string_view>
@@ -358,8 +359,10 @@ private:
     std::vector<std::wstring> prepareScope(std::stop_token stop, const Scope& scope,
         const std::vector<std::wstring>& roots, const Crawler& crawler, bool prune = true,
         const std::vector<std::wstring>& renewed = {});
+    // `links`: the directory links met in them, not gone into (a link in a
+    // link folder is found only so, GitHub #460).
     bool walkFolders(std::stop_token stop, FileIndex& index, const Crawler& crawler, std::vector<std::wstring> folders,
-        bool firstBuild);
+        bool firstBuild, std::vector<std::wstring>* links = nullptr);
     void setFolderStates(const std::vector<std::pair<std::wstring, FolderStatus::State>>& states,
         std::optional<std::int64_t> checked = {});
     void resetFolderStatuses(); // one for each chosen folder, keeping what is known of them
@@ -389,13 +392,15 @@ private:
     // otherwise found only at its real path. Never a folder excluded, nor the
     // link in one; nor, on an indexed disk, one to a whole disk, a loop, one
     // in a tool folder, or a system link. With why not, for the diagnostics
-    // (GitHub #364).
-    LinkCheck checkLink(std::wstring_view link, const Crawler& crawler) const;
-    // Worker thread: the links found on the volumes `read` (roots) replace
-    // what was known of them; those not seen before are walked (`walkNow`)
-    // or left to the walk of the pass under way. True when that changed.
+    // (GitHub #364). `outer`: the links it was met in, walking them (GitHub
+    // #460); one that leads back to where it or they really are is a loop.
+    LinkCheck checkLink(std::wstring_view link, const Crawler& crawler, std::span<const std::wstring> outer = {}) const;
     // Worker thread: the links onChanges told of (m_linksMade), taken as made since.
     void takeLinksMade(std::stop_token stop);
+    // Worker thread: the links found on the volumes `read` (roots) replace
+    // what was known of them; those not seen before are walked (`walkNow`),
+    // and the links met in them in turn, or left to the walk of the pass
+    // under way. True when that changed.
     bool takeLinks(std::stop_token stop, const std::vector<std::wstring>& read, const std::vector<std::wstring>& found,
         bool walkNow);
     std::unique_ptr<Followed> follow(std::size_t volume);
@@ -479,7 +484,8 @@ private:
     // MFT (or made since, as their journals tell) that checkLink() wants;
     // walked under their own paths as the explicit ones
     // (Options::extraFolders) are. Kept in scope.json; m_linksKnown false
-    // until a read of every followed volume has looked for them.
+    // until a read of every followed volume has looked for them, also while
+    // those kept were chosen by older rules (kLinkRules, GitHub #460).
     std::vector<std::wstring> m_autoLinks;
     bool m_linksKnown = false;
     std::vector<std::wstring> m_verifyOwed; // chosen folders owed a walk as soon as can be

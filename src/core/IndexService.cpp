@@ -23,6 +23,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <iterator>
 #include <optional>
 #include <utility>
 
@@ -95,10 +96,12 @@ bool isDriveRoot(std::wstring_view path)
     return path.size() == 2 && path[1] == L':';
 }
 
-// Whether a folder above `path` is one the crawler ranks low (a dot-folder,
-// node_modules, a program folder...): its own rule, not a second list. The
-// drive and the last part, `path` itself, are not looked at.
-bool inLowPriorityFolder(std::wstring_view path, const Crawler& crawler)
+// Whether a folder above `path` is one the crawler ranks low by a rule
+// (node_modules, AppData, a program folder...): its own rules, not a second
+// list. A dot-folder alone is not one: the links of .config, .claude or a
+// .skills link folder are the user's (GitHub #460). The drive and the last
+// part, `path` itself, are not looked at.
+bool inToolFolder(std::wstring_view path, const Crawler& crawler)
 {
     for (std::size_t slash = path.find(L'\\'); slash != std::wstring_view::npos;) {
         const std::size_t next = path.find(L'\\', slash + 1);
@@ -106,11 +109,57 @@ bool inLowPriorityFolder(std::wstring_view path, const Crawler& crawler)
             break;
         const std::wstring_view folder = path.substr(0, next);
         const std::wstring_view name = path.substr(slash + 1, next - slash - 1);
-        if (!name.empty() && (crawler.dirPriorityFlags(folder, name) & EntryFlag::LowPriority))
+        if (!name.empty() && crawler.isToolFolder(folder, name))
             return true;
         slash = next;
     }
     return false;
+}
+
+// Where `path` really is: its folder's final path, the links above it gone
+// through (C:\Users\me\.skills\a is D:\repo\a when .skills leads to D:\repo).
+// Empty when that folder does not open.
+std::wstring realLocation(std::wstring_view path)
+{
+    const std::size_t slash = path.find_last_of(L'\\');
+    if (slash == std::wstring_view::npos || slash < 2)
+        return {};
+    // "C:\" for a drive's own folders, not "C:", the current folder there.
+    const std::wstring_view folder = path.substr(0, slash == 2 ? 3 : slash);
+    const win32::UniqueHandle h(::CreateFileW(win32::longPath(folder).c_str(), FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr));
+    if (!h.valid())
+        return {};
+    std::wstring real(MAX_PATH, L'\0');
+    for (;;) {
+        const DWORD n = ::GetFinalPathNameByHandleW(h.get(), real.data(), static_cast<DWORD>(real.size()), FILE_NAME_NORMALIZED);
+        if (n == 0)
+            return {};
+        const bool fits = n < real.size();
+        real.resize(n); // n counts the ending null when it did not fit
+        if (fits)
+            break;
+    }
+    if (real.starts_with(LR"(\\?\UNC\)"))
+        real.replace(0, 8, LR"(\\)");
+    else if (real.starts_with(LR"(\\?\)"))
+        real.erase(0, 4);
+    if (real.ends_with(L'\\'))
+        real.pop_back();
+    real += path.substr(slash);
+    return real;
+}
+
+// GitHub #460: a link met walking other links (`outer`, those it is in) that
+// leads back to where it or one of them really is: walked, it would be met
+// again, one folder deeper each time.
+bool leadsBack(std::wstring_view link, std::wstring_view target, std::span<const std::wstring> outer)
+{
+    const auto back = [&](std::wstring_view path) {
+        const std::wstring real = realLocation(path);
+        return !real.empty() && (win32::equalsIgnoreCase(target, real) || isUnder(real, target));
+    };
+    return back(link) || std::ranges::any_of(outer, back);
 }
 
 int crawlThreads()
@@ -352,7 +401,13 @@ struct ScopeFile {
     // GitHub #350: the directory links walked for their targets
     // (IndexService::m_autoLinks); none in a file from before them.
     std::optional<std::vector<std::wstring>> links;
+    // ... chosen by the rules of now (kLinkRules); else kept until the disks
+    // are read again, which chooses anew.
+    bool linksCurrent = false;
 };
+
+// Which links are walked: 2, those in dot-folders and in link folders too (GitHub #460).
+constexpr int kLinkRules = 2;
 
 std::optional<std::pair<std::uint64_t, std::int64_t>> stampOf(const QString& path)
 {
@@ -391,6 +446,8 @@ bool writeScopeFile(const QString& snapshotPath, const ScopeFile& file)
         for (const std::wstring& link : *file.links)
             links.append(QString::fromStdWString(link));
         root.insert(u"links"_s, links);
+        if (file.linksCurrent)
+            root.insert(u"links_rules"_s, kLinkRules);
     }
     const QByteArray json = QJsonDocument(root).toJson();
     QSaveFile out(scopeFileOf(snapshotPath));
@@ -425,6 +482,7 @@ std::optional<ScopeFile> readScopeFile(const QString& snapshotPath, bool& stale)
         file.links.emplace();
         for (const QJsonValue& v : root.value(u"links"_s).toArray())
             file.links->push_back(v.toString().toStdWString());
+        file.linksCurrent = root.value(u"links_rules"_s).toInt() >= kLinkRules;
     }
     for (const QJsonValue& v : root.value(u"folders"_s).toArray()) {
         const QJsonObject o = v.toObject();
@@ -1320,8 +1378,9 @@ void IndexService::run(std::stop_token stop, Pass pass)
             if (snapshotRules && !(*snapshotRules == crawler->rules()) && !m_rulesBefore)
                 m_rulesBefore = *snapshotRules; // the rules were edited while we were not running
             m_scopedVolumes = scopeFile ? std::move(scopeFile->scoped) : std::vector<std::wstring> {};
-            m_linksKnown = scopeFile && scopeFile->links;
-            m_autoLinks = m_linksKnown ? std::move(*scopeFile->links) : std::vector<std::wstring> {};
+            // Chosen by older rules: walked until the disks are read again (GitHub #460).
+            m_linksKnown = scopeFile && scopeFile->links && scopeFile->linksCurrent;
+            m_autoLinks = scopeFile && scopeFile->links ? std::move(*scopeFile->links) : std::vector<std::wstring> {};
         } else {
             m_content->restore({}, 0); // clears out segment files nothing refers to
             setState(State::Building);
@@ -1469,7 +1528,8 @@ void IndexService::run(std::stop_token stop, Pass pass)
             // walked as after a startup rescan.
             if (walkNow)
                 toSync.push_back(i);
-            else if (pass == Pass::Startup && (m_options.rescanOnStartup || wasFollowed || scopeStale || linkFlagsMissing))
+            else if (pass == Pass::Startup
+                && (m_options.rescanOnStartup || wasFollowed || scopeStale || linkFlagsMissing || linksOwed))
                 walkLater.push_back(i); // let login settle first
         }
     }
@@ -1870,8 +1930,8 @@ std::vector<std::wstring> IndexService::prepareScope(
     return added;
 }
 
-bool IndexService::walkFolders(
-    std::stop_token stop, FileIndex& index, const Crawler& crawler, std::vector<std::wstring> folders, bool firstBuild)
+bool IndexService::walkFolders(std::stop_token stop, FileIndex& index, const Crawler& crawler, std::vector<std::wstring> folders,
+    bool firstBuild, std::vector<std::wstring>* links)
 {
     using State = FolderStatus::State;
     const auto scope = this->scope();
@@ -1961,6 +2021,8 @@ bool IndexService::walkFolders(
             const bool done = crawler.sync(index, {{id, path, inherited}}, threadsFor(volumeOf(path)), !firstBuild, stop,
                 {}, nullptr, &stats);
             setReading(path, false);
+            if (links)
+                links->insert(links->end(), std::make_move_iterator(stats.links.begin()), std::make_move_iterator(stats.links.end()));
             if (!done) {
                 setFolderStates({{path, State::Waiting}});
                 oweAgain(k);
@@ -2143,7 +2205,10 @@ bool IndexService::syncWithDisk(std::stop_token stop, const std::vector<std::siz
             if (!contains(folders, path))
                 folders.push_back(std::move(path));
         }
-        completed = !stop.stop_requested() && walkFolders(stop, *index, *crawler, std::move(folders), firstBuild);
+        std::vector<std::wstring> nested; // links in link folders (GitHub #460)
+        completed = !stop.stop_requested() && walkFolders(stop, *index, *crawler, std::move(folders), firstBuild, &nested);
+        if (completed && !nested.empty() && !scope->set())
+            takeLinks(stop, {}, nested, true);
     }
 
     {
@@ -2274,7 +2339,7 @@ bool IndexService::readJournal(Followed& f, std::stop_token stop)
     return true;
 }
 
-LinkCheck IndexService::checkLink(std::wstring_view link, const Crawler& crawler) const
+LinkCheck IndexService::checkLink(std::wstring_view link, const Crawler& crawler, std::span<const std::wstring> outer) const
 {
     LinkCheck check;
     if (crawler.isExcludedPath(link)) {
@@ -2294,6 +2359,10 @@ LinkCheck IndexService::checkLink(std::wstring_view link, const Crawler& crawler
     }
     if (crawler.isExcludedPath(target)) {
         check.verdict = LinkVerdict::TargetExcluded;
+        return check;
+    }
+    if (!outer.empty() && leadsBack(link, target, outer)) {
+        check.verdict = LinkVerdict::Loop; // on any disk, a share too
         return check;
     }
     if (unc::isUnc(target)) {
@@ -2328,7 +2397,7 @@ LinkCheck IndexService::checkLink(std::wstring_view link, const Crawler& crawler
         check.verdict = LinkVerdict::WholeDisk; // the disk twice over
     } else if (win32::equalsIgnoreCase(target, link) || isUnder(link, target) || isUnder(target, link)) {
         check.verdict = LinkVerdict::Loop; // a folder above the link also covers one found while walking another link
-    } else if (inLowPriorityFolder(link, crawler)) {
+    } else if (inToolFolder(link, crawler)) {
         check.verdict = LinkVerdict::ToolFolder;
     } else if (const PathProbe own = probePath(std::wstring(link));
                own.attributes != INVALID_FILE_ATTRIBUTES && (own.attributes & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM))) {
@@ -2409,6 +2478,11 @@ bool IndexService::takeLinks(
     constexpr std::size_t kMostLinks = 256;
     const auto crawler = this->crawler();
     const auto same = [](const std::wstring& a, const std::wstring& b) { return win32::equalsIgnoreCase(a, b); };
+    std::vector<std::wstring> before; // only this thread changes them
+    {
+        std::lock_guard lock(m_journalMutex);
+        before = m_autoLinks;
+    }
     std::vector<std::wstring> wanted;
     // GitHub #364: what was found and why each is walked or not, in the
     // diagnostics (no paths: the drives and kinds of what they lead to).
@@ -2420,7 +2494,11 @@ bool IndexService::takeLinks(
             return false;
         if (std::ranges::any_of(wanted, [&](const std::wstring& w) { return same(w, link); }))
             continue;
-        const LinkCheck check = checkLink(link, *crawler);
+        // The links it was met in, walking them (GitHub #460).
+        std::vector<std::wstring> outer;
+        for (const auto* list : {&before, &wanted})
+            std::ranges::copy_if(*list, std::back_inserter(outer), [&](const std::wstring& o) { return isUnder(link, o); });
+        const LinkCheck check = checkLink(link, *crawler, outer);
         const QString name = verdictName(check.verdict);
         counts.insert(name, counts.value(name).toInteger() + 1);
         if (described.size() < kMostDescribed)
@@ -2438,34 +2516,47 @@ bool IndexService::takeLinks(
         qInfo("WinShun: directory links: %lld found, %lld to walk under the link (%ls)", static_cast<long long>(found.size()),
             static_cast<long long>(wanted.size()), qUtf16Printable(QString::fromUtf8(QJsonDocument(counts).toJson(QJsonDocument::Compact))));
     }
+    // Those on the disks read are replaced by what was found there, but for
+    // the links in link folders (GitHub #460): met walking those, not in a
+    // disk's MFT, they stay while their folder does and they are still links.
+    const auto onRead = [&](const std::wstring& link) {
+        return std::ranges::any_of(read, [&](const std::wstring& root) { return win32::equalsIgnoreCase(volumeOf(link), root); });
+    };
+    std::vector<std::wstring> kept = wanted;
+    std::ranges::copy_if(before, std::back_inserter(kept), [&](const std::wstring& link) { return !onRead(link); });
+    std::vector<std::wstring> next = before;
+    std::erase_if(next, [&](const std::wstring& link) {
+        if (!onRead(link))
+            return false;
+        if (std::ranges::none_of(kept, [&](const std::wstring& outer) { return isUnder(link, outer); }))
+            return true;
+        const PathProbe probe = probePath(link);
+        return !Crawler::isDirectoryLink(probe.attributes, probe.reparseTag);
+    });
     std::vector<std::wstring> added;
+    std::size_t overLimit = 0;
+    for (std::wstring& link : wanted) {
+        if (std::ranges::any_of(next, [&](const std::wstring& n) { return same(n, link); }))
+            continue;
+        if (next.size() >= kMostLinks) {
+            ++overLimit;
+            continue;
+        }
+        if (std::ranges::none_of(before, [&](const std::wstring& n) { return same(n, link); }))
+            added.push_back(link);
+        next.push_back(std::move(link));
+    }
+    if (overLimit) {
+        qWarning("WinShun: directory links: %lld more to walk than the %lld taken, left out", static_cast<long long>(overLimit),
+            static_cast<long long>(kMostLinks));
+        diagnostics::record(u"directory-links-over-limit"_s,
+            {{u"left_out"_s, static_cast<qint64>(overLimit)}, {u"most"_s, static_cast<qint64>(kMostLinks)}});
+    }
+    std::ranges::sort(next);
     {
         std::lock_guard lock(m_journalMutex);
         if (!read.empty())
             m_linksKnown = true;
-        std::vector<std::wstring> next = m_autoLinks;
-        std::erase_if(next, [&](const std::wstring& link) {
-            return std::ranges::any_of(read, [&](const std::wstring& root) { return win32::equalsIgnoreCase(volumeOf(link), root); });
-        });
-        std::size_t overLimit = 0;
-        for (std::wstring& link : wanted) {
-            if (std::ranges::any_of(next, [&](const std::wstring& n) { return same(n, link); }))
-                continue;
-            if (next.size() >= kMostLinks) {
-                ++overLimit;
-                continue;
-            }
-            if (std::ranges::none_of(m_autoLinks, [&](const std::wstring& n) { return same(n, link); }))
-                added.push_back(link);
-            next.push_back(std::move(link));
-        }
-        if (overLimit) {
-            qWarning("WinShun: directory links: %lld more to walk than the %lld taken, left out", static_cast<long long>(overLimit),
-                static_cast<long long>(kMostLinks));
-            diagnostics::record(u"directory-links-over-limit"_s,
-                {{u"left_out"_s, static_cast<qint64>(overLimit)}, {u"most"_s, static_cast<qint64>(kMostLinks)}});
-        }
-        std::ranges::sort(next);
         if (next == m_autoLinks)
             return false;
         m_autoLinks = std::move(next);
@@ -2480,8 +2571,10 @@ bool IndexService::takeLinks(
                 roots.push_back(std::move(root));
         }
         std::vector<std::wstring> folders = prepareScope(stop, *scope(), roots, *crawler, false);
-        if (!stop.stop_requested())
-            walkFolders(stop, *m_index.load(), *crawler, std::move(folders), false);
+        std::vector<std::wstring> nested; // links in these (GitHub #460): as many deep as there are, kMostLinks in all
+        if (!stop.stop_requested() && walkFolders(stop, *m_index.load(), *crawler, std::move(folders), false, &nested)
+            && !nested.empty())
+            takeLinks(stop, {}, nested, true);
     }
     return true;
 }
@@ -2802,8 +2895,10 @@ IndexService::Save IndexService::writeSnapshot(const QString& path, std::vector<
                 if (!contains(scope.scoped, root))
                     scope.scoped.push_back(root);
             }
-            if (m_linksKnown)
+            if (m_linksKnown || !m_autoLinks.empty()) {
                 scope.links = m_autoLinks;
+                scope.linksCurrent = m_linksKnown;
+            }
         }
         scope.folders = folderStatuses();
         if (!writeScopeFile(path, scope))

@@ -191,6 +191,9 @@ public:
     bool isExcludedDir(std::wstring_view fullPath, std::wstring_view name) const;
     bool isExcludedPath(std::wstring_view fullPath) const; // the path or one of its ancestors
     std::uint8_t dirPriorityFlags(std::wstring_view fullPath, std::wstring_view name) const;
+    // Ranked low by a rule (node_modules, AppData, a program folder...), not
+    // only for its leading dot, which dirPriorityFlags takes as well.
+    bool isToolFolder(std::wstring_view fullPath, std::wstring_view name) const;
 
     // An excluded folder on the way to a kept one (CrawlRules::keptPaths),
     // or one between the two: in the index, it holds only the way there.
