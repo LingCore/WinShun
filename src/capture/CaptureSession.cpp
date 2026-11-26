@@ -1510,6 +1510,13 @@ bool CaptureSession::key(int key, Qt::KeyboardModifiers modifiers)
         if (!busy)
             act(static_cast<int>(Action::Qr));
         return true;
+    case Qt::Key_F:
+        // Shift+F: 公式识别 (F alone is the size panel, above).
+        if (!plain || !shift)
+            return false;
+        if (!busy)
+            finish(Action::Formula);
+        return true;
     case Qt::Key_Comma:
     case Qt::Key_Less:
     case Qt::Key_Period:
@@ -1944,7 +1951,7 @@ void CaptureSession::pinByHotkey()
 
 void CaptureSession::act(int action)
 {
-    if (!m_active || action < static_cast<int>(Action::Copy) || action > static_cast<int>(Action::OcrTranslate))
+    if (!m_active || action < static_cast<int>(Action::Copy) || action > static_cast<int>(Action::Formula))
         return;
     if (action == static_cast<int>(Action::Long) || action == static_cast<int>(Action::Record)) {
         // Its picture is the screen's, scrolled: annotations would be lost.

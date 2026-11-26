@@ -3236,6 +3236,41 @@
     </message>
 </context>
 <context>
+    <name>FormulaModelRow</name>
+    <message>
+        <source>公式识别模型</source>
+        <translation>Formula recognition model</translation>
+    </message>
+    <message>
+        <source>公式;数学;LaTeX;MathML;Word;Typst;识别;模型;下载;formula;math;equation</source>
+        <translation>formula;math;equation;LaTeX;MathML;Word;Typst;recognition;model;download</translation>
+    </message>
+    <message>
+        <source>已安装：截图或贴图后按 Shift + F，识别图中的公式为 LaTeX，可复制为 Word 公式、Markdown 或 Typst。</source>
+        <translation>Installed. Press Shift + F on a screenshot or a pin to read its formula as LaTeX, and copy it as a Word equation, Markdown or Typst.</translation>
+    </message>
+    <message>
+        <source>截图或贴图后按 Shift + F 识别图中的公式。需下载%1，可随时移除；识别在本机进行，图片不会上传。</source>
+        <translation>Press Shift + F on a screenshot or a pin to read the formula in it. Downloads %1 and can be removed at any time; recognition runs on this PC and no picture is uploaded.</translation>
+    </message>
+    <message>
+        <source>移除</source>
+        <translation>Remove</translation>
+    </message>
+    <message>
+        <source>取消</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>下载并安装</source>
+        <translation>Download and install</translation>
+    </message>
+    <message>
+        <source>从本地安装模型文件…</source>
+        <translation>Install from local files…</translation>
+    </message>
+</context>
+<context>
     <name>Gleaning</name>
     <message>
         <source>麦田</source>
@@ -3784,7 +3819,7 @@
     </message>
     <message>
         <source>PP-OCR 的文字识别（rec）模型，ONNX 格式，比如 PP-OCRv6 medium、PP-OCRv5 server 或韩文等其他语言的模型。没带字典的，把字典改成和模型同名的 .txt 放在旁边。</source>
-        <translation>A PP-OCR text recognition (rec) model in ONNX format, such as PP-OCRv6 medium, PP-OCRv5 server, or a model for Korean or another language. If it has no dictionary inside, put the dictionary beside it as a .txt with the model's name.</translation>
+        <translation>A PP-OCR text recognition (rec) model in ONNX format, such as PP-OCRv6 medium, PP-OCRv5 server, or a model for Korean or another language. If it has no dictionary inside, put the dictionary beside it as a .txt with the model&apos;s name.</translation>
     </message>
     <message>
         <source>高精度识别模型</source>
@@ -5480,93 +5515,6 @@ Send suggestions and problems on our website</translation>
     </message>
 </context>
 <context>
-    <name>RowActionsEditor</name>
-    <message>
-        <source>管理员运行</source>
-        <translation>Run as admin</translation>
-    </message>
-    <message>
-        <source>以管理员身份运行（只在程序上出现）</source>
-        <translation>Run as administrator (on programs only)</translation>
-    </message>
-    <message>
-        <source>打开位置</source>
-        <translation>Open location</translation>
-    </message>
-    <message>
-        <source>打开所在位置</source>
-        <translation>Open file location</translation>
-    </message>
-    <message>
-        <source>终端</source>
-        <translation>Terminal</translation>
-    </message>
-    <message>
-        <source>在终端中打开，Shift+点击以管理员身份</source>
-        <translation>Open in Terminal; Shift+click as administrator</translation>
-    </message>
-    <message>
-        <source>复制</source>
-        <translation>Copy</translation>
-    </message>
-    <message>
-        <source>复制文件或文件夹，可在资源管理器中粘贴</source>
-        <translation>Copy the file or folder, to paste in File Explorer</translation>
-    </message>
-    <message>
-        <source>复制路径</source>
-        <translation>Copy path</translation>
-    </message>
-    <message>
-        <source>复制完整路径</source>
-        <translation>Copy full path</translation>
-    </message>
-    <message>
-        <source>删除</source>
-        <translation>Delete</translation>
-    </message>
-    <message>
-        <source>删除（点两次，移到回收站）</source>
-        <translation>Delete (click twice; to the Recycle Bin)</translation>
-    </message>
-    <message>
-        <source>预览</source>
-        <translation>Preview</translation>
-    </message>
-    <message>
-        <source>不打开文件，在旁边预览内容</source>
-        <translation>Look at the file beside the box, without opening it</translation>
-    </message>
-    <message>
-        <source>复制名称</source>
-        <translation>Copy name</translation>
-    </message>
-    <message>
-        <source>复制文件名</source>
-        <translation>Copy the file name</translation>
-    </message>
-    <message>
-        <source>收藏</source>
-        <translation>Favorite</translation>
-    </message>
-    <message>
-        <source>加入收藏夹，已收藏的再点一次移除</source>
-        <translation>Add to favorites; click again on a favorite to remove it</translation>
-    </message>
-    <message>
-        <source>显示的按钮，从左到右；拖动调整顺序，点一下取消显示</source>
-        <translation>Buttons shown, left to right: drag to reorder, click to take one off</translation>
-    </message>
-    <message>
-        <source>现在结果行上没有按钮；点下面的按钮把它加上</source>
-        <translation>Rows have no buttons now; click one below to add it</translation>
-    </message>
-    <message>
-        <source>没有显示的，点一下加到最后</source>
-        <translation>Not shown: click to add at the end</translation>
-    </message>
-</context>
-<context>
     <name>ResultRow</name>
     <message>
         <source>打开设置</source>
@@ -5710,6 +5658,93 @@ Send suggestions and problems on our website</translation>
     <message>
         <source>已不存在</source>
         <translation>Missing</translation>
+    </message>
+</context>
+<context>
+    <name>RowActionsEditor</name>
+    <message>
+        <source>管理员运行</source>
+        <translation>Run as admin</translation>
+    </message>
+    <message>
+        <source>以管理员身份运行（只在程序上出现）</source>
+        <translation>Run as administrator (on programs only)</translation>
+    </message>
+    <message>
+        <source>打开位置</source>
+        <translation>Open location</translation>
+    </message>
+    <message>
+        <source>打开所在位置</source>
+        <translation>Open file location</translation>
+    </message>
+    <message>
+        <source>终端</source>
+        <translation>Terminal</translation>
+    </message>
+    <message>
+        <source>在终端中打开，Shift+点击以管理员身份</source>
+        <translation>Open in Terminal; Shift+click as administrator</translation>
+    </message>
+    <message>
+        <source>复制</source>
+        <translation>Copy</translation>
+    </message>
+    <message>
+        <source>复制文件或文件夹，可在资源管理器中粘贴</source>
+        <translation>Copy the file or folder, to paste in File Explorer</translation>
+    </message>
+    <message>
+        <source>复制路径</source>
+        <translation>Copy path</translation>
+    </message>
+    <message>
+        <source>复制完整路径</source>
+        <translation>Copy full path</translation>
+    </message>
+    <message>
+        <source>删除</source>
+        <translation>Delete</translation>
+    </message>
+    <message>
+        <source>删除（点两次，移到回收站）</source>
+        <translation>Delete (click twice; to the Recycle Bin)</translation>
+    </message>
+    <message>
+        <source>预览</source>
+        <translation>Preview</translation>
+    </message>
+    <message>
+        <source>不打开文件，在旁边预览内容</source>
+        <translation>Look at the file beside the box, without opening it</translation>
+    </message>
+    <message>
+        <source>复制名称</source>
+        <translation>Copy name</translation>
+    </message>
+    <message>
+        <source>复制文件名</source>
+        <translation>Copy the file name</translation>
+    </message>
+    <message>
+        <source>收藏</source>
+        <translation>Favorite</translation>
+    </message>
+    <message>
+        <source>加入收藏夹，已收藏的再点一次移除</source>
+        <translation>Add to favorites; click again on a favorite to remove it</translation>
+    </message>
+    <message>
+        <source>显示的按钮，从左到右；拖动调整顺序，点一下取消显示</source>
+        <translation>Buttons shown, left to right: drag to reorder, click to take one off</translation>
+    </message>
+    <message>
+        <source>现在结果行上没有按钮；点下面的按钮把它加上</source>
+        <translation>Rows have no buttons now; click one below to add it</translation>
+    </message>
+    <message>
+        <source>没有显示的，点一下加到最后</source>
+        <translation>Not shown: click to add at the end</translation>
     </message>
 </context>
 <context>
@@ -6678,6 +6713,14 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Clipboard · Single entries</translation>
     </message>
     <message>
+        <source>输入或粘贴文件夹路径，例如 D:\Work 或 %USERPROFILE%\Documents</source>
+        <translation>Type or paste a folder path, e.g. D:\Work or %USERPROFILE%\Documents</translation>
+    </message>
+    <message>
+        <source>输入或粘贴文件夹路径，例如 D:\Cache 或 %TEMP%</source>
+        <translation>Type or paste a folder path, e.g. D:\Cache or %TEMP%</translation>
+    </message>
+    <message>
         <source>在终端中打开</source>
         <translation>Open in Terminal</translation>
     </message>
@@ -7347,7 +7390,7 @@ Double-click grip: expand/collapse search panel</translation>
     </message>
     <message>
         <source>鼠标停在结果上或选中它时，行末尾出现的按钮：选要哪些，排成什么顺序。按钮只在用得上的结果上出现；不显示的，右键菜单里都还有</source>
-        <translation>The buttons at the end of a result's row while the mouse is on it or it is selected: which ones, and in which order. A button shows only on results it applies to; one left out stays in the right-click menu</translation>
+        <translation>The buttons at the end of a result&apos;s row while the mouse is on it or it is selected: which ones, and in which order. A button shows only on results it applies to; one left out stays in the right-click menu</translation>
     </message>
     <message>
         <source>缩略图;预览;图片;照片;视频;PDF;thumbnail;preview</source>
@@ -9163,10 +9206,6 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Choose a folder to index</translation>
     </message>
     <message>
-        <source>输入或粘贴文件夹路径，例如 D:\Work 或 %USERPROFILE%\Documents</source>
-        <translation>Type or paste a folder path, e.g. D:\Work or %USERPROFILE%\Documents</translation>
-    </message>
-    <message>
         <source>还没有选文件夹：本机磁盘上的文件都搜不到</source>
         <translation>No folders chosen yet: no file on this PC’s disks can be found</translation>
     </message>
@@ -9216,10 +9255,6 @@ Double-click grip: expand/collapse search panel</translation>
             <numerusform>Now every hour</numerusform>
             <numerusform>Now every %n hours</numerusform>
         </translation>
-    </message>
-    <message>
-        <source>输入或粘贴文件夹路径，例如 D:\Cache 或 %TEMP%</source>
-        <translation>Type or paste a folder path, e.g. D:\Cache or %TEMP%</translation>
     </message>
     <message>
         <source>你在这台电脑上没有管理员权限，装不了索引服务。Win顺 会索引你选的文件夹，并定时核对</source>
@@ -11543,7 +11578,7 @@ Double-click grip: expand/collapse search panel</translation>
     </message>
     <message>
         <source>%1 已是 Win顺 自己的快捷键，请换一个。</source>
-        <translation>%1 is already one of WinShun's own shortcuts. Please choose another.</translation>
+        <translation>%1 is already one of WinShun&apos;s own shortcuts. Please choose another.</translation>
     </message>
     <message>
         <source>最多 %1 条内容可以设快捷键，这一条没有生效。</source>
@@ -11551,11 +11586,11 @@ Double-click grip: expand/collapse search panel</translation>
     </message>
     <message>
         <source>剪贴板条目的快捷键不可用</source>
-        <translation>A clipboard entry's shortcut is unavailable</translation>
+        <translation>A clipboard entry&apos;s shortcut is unavailable</translation>
     </message>
     <message>
         <source>插件命令的快捷键不可用</source>
-        <translation>A plugin command's shortcut is unavailable</translation>
+        <translation>A plugin command&apos;s shortcut is unavailable</translation>
     </message>
     <message>
         <source>这个命令现在没有可用的关键字，快捷键打不开它，请先设好关键字。</source>
@@ -11563,7 +11598,7 @@ Double-click grip: expand/collapse search panel</translation>
     </message>
     <message>
         <source>%1 已用于剪贴板里的一条内容，请换一个。</source>
-        <translation>%1 is already a clipboard entry's shortcut. Please choose another.</translation>
+        <translation>%1 is already a clipboard entry&apos;s shortcut. Please choose another.</translation>
     </message>
     <message>
         <source>%1 已用于“%2”，请换一个。</source>
@@ -11575,7 +11610,7 @@ Double-click grip: expand/collapse search panel</translation>
     </message>
     <message>
         <source>%1 已用于“%2”，请换一个，或先去掉那一条的快捷键。</source>
-        <translation>%1 is already used for “%2”. Choose another, or remove that entry's shortcut first.</translation>
+        <translation>%1 is already used for “%2”. Choose another, or remove that entry&apos;s shortcut first.</translation>
     </message>
     <message>
         <source>文件夹菜单</source>
@@ -13986,6 +14021,37 @@ Content index: %5</translation>
     </message>
 </context>
 <context>
+    <name>ws::FormulaModel</name>
+    <message>
+        <source>约 %1 MB</source>
+        <translation>about %1 MB</translation>
+    </message>
+    <message>
+        <source>正在下载增强文字识别（公式识别要用它运行）…</source>
+        <translation>Downloading enhanced text recognition (formula recognition runs on it)…</translation>
+    </message>
+    <message>
+        <source>正在取消…</source>
+        <translation>Cancelling…</translation>
+    </message>
+    <message>
+        <source>请先安装增强文字识别，公式识别要用它运行。</source>
+        <translation>Install enhanced text recognition first: formula recognition runs on it.</translation>
+    </message>
+    <message>
+        <source>正在下载公式识别模型…</source>
+        <translation>Downloading the formula recognition model…</translation>
+    </message>
+    <message>
+        <source>选择公式识别模型的文件（三个文件放在同一个文件夹里）</source>
+        <translation>Choose the formula recognition model files (all three in one folder)</translation>
+    </message>
+    <message>
+        <source>公式识别模型</source>
+        <translation>Formula recognition model</translation>
+    </message>
+</context>
+<context>
     <name>ws::HealthMonitor</name>
     <message>
         <source>Win顺 主程序</source>
@@ -15447,66 +15513,6 @@ Content index: %5</translation>
 </context>
 <context>
     <name>ws::OcrPackage</name>
-    <message>
-        <source>这个文件不能用作识别模型。</source>
-        <translation>This file cannot be used as a recognition model.</translation>
-    </message>
-    <message>
-        <source>请先安装增强文字识别。</source>
-        <translation>Install enhanced text recognition first.</translation>
-    </message>
-    <message>
-        <source>这个文件不能用作识别模型：它不是 PP-OCR 的文字识别（rec）模型。</source>
-        <translation>This file cannot be used: it is not a PP-OCR text recognition (rec) model.</translation>
-    </message>
-    <message>
-        <source>这个模型里没有字典。把它的字典文件改成同名的 %1，和模型放在同一个文件夹里再选。</source>
-        <translation>This model has no dictionary inside. Name its dictionary file %1, put it in the model's folder and choose the model again.</translation>
-    </message>
-    <message>
-        <source>这个模型和旁边的字典 %1 对不上（字数不符），或不是 PP-OCR 的文字识别（rec）模型。</source>
-        <translation>This model does not match the dictionary %1 beside it (the character counts differ), or it is not a PP-OCR text recognition (rec) model.</translation>
-    </message>
-    <message>
-        <source>已取消。</source>
-        <translation>Cancelled.</translation>
-    </message>
-    <message>
-        <source>无法保存这个模型，请检查磁盘空间。</source>
-        <translation>Could not save this model. Check the free disk space.</translation>
-    </message>
-    <message>
-        <source>另一个窗口正在安装模型，请稍后再试。</source>
-        <translation>Another window is installing a model. Try again later.</translation>
-    </message>
-    <message>
-        <source>原来的模型正在使用，请关闭识别窗口后重试。</source>
-        <translation>The current model is in use. Close the recognition windows and try again.</translation>
-    </message>
-    <message>
-        <source>高精度模型未通过校验，请重新下载。</source>
-        <translation>The high-accuracy model failed verification. Download it again.</translation>
-    </message>
-    <message>
-        <source>无法创建高精度模型的安装目录。</source>
-        <translation>Could not create the folder for the high-accuracy model.</translation>
-    </message>
-    <message>
-        <source>另一个窗口正在安装高精度模型，完成后会自动可用。</source>
-        <translation>Another window is installing the high-accuracy model; it will be available when that finishes.</translation>
-    </message>
-    <message>
-        <source>无法保存高精度模型，请检查磁盘空间。</source>
-        <translation>Could not save the high-accuracy model. Check the free disk space.</translation>
-    </message>
-    <message>
-        <source>高精度模型正在使用，请关闭识别窗口后重试。</source>
-        <translation>The high-accuracy model is in use. Close the recognition windows and try again.</translation>
-    </message>
-    <message>
-        <source>无法完成高精度模型的安装。</source>
-        <translation>Could not finish installing the high-accuracy model.</translation>
-    </message>
     <message>
         <source>增强识别已安装，可以离线使用。</source>
         <translation>Enhanced recognition is installed and works offline.</translation>
@@ -18261,6 +18267,49 @@ Content index: %5</translation>
     </message>
 </context>
 <context>
+    <name>ws::formula</name>
+    <message>
+        <source>已取消，稍后可以重新下载。</source>
+        <translation>Cancelled. You can download it again later.</translation>
+    </message>
+    <message>
+        <source>公式识别模型无效。</source>
+        <translation>The formula recognition model is not valid.</translation>
+    </message>
+    <message>
+        <source>无法创建公式识别模型的安装目录。</source>
+        <translation>Could not create the folder for the formula recognition model.</translation>
+    </message>
+    <message>
+        <source>另一个窗口正在安装公式识别模型，完成后会自动可用。</source>
+        <translation>Another window is installing the formula recognition model; it will be available when that finishes.</translation>
+    </message>
+    <message>
+        <source>无法保存公式识别模型，请检查磁盘空间。</source>
+        <translation>Could not save the formula recognition model. Check the free disk space.</translation>
+    </message>
+    <message>
+        <source>所选文件夹里没有完整的公式识别模型：需要 %1，且与官方发布的文件一致。</source>
+        <translation>The chosen folder has no complete formula recognition model: it needs %1, the same as the published files.</translation>
+    </message>
+    <message>
+        <source>下载的模型文件未通过校验，请稍后重试。</source>
+        <translation>The downloaded model files failed verification. Try again later.</translation>
+    </message>
+    <message>
+        <source>下载没有完成，请检查网络后重试，或从本地安装模型文件。</source>
+        <translation>The download did not finish. Check the network and try again, or install from local files.</translation>
+    </message>
+    <message>
+        <source>公式识别模型正在使用，请关闭公式识别窗口后重试。</source>
+        <translation>The formula recognition model is in use. Close the formula recognition window and try again.</translation>
+    </message>
+    <message>
+        <source>无法完成公式识别模型的安装。</source>
+        <translation>Could not finish installing the formula recognition model.</translation>
+    </message>
+</context>
+<context>
     <name>ws::ocr</name>
     <message>
         <source>增强识别包无效，请重新下载。</source>
@@ -18309,6 +18358,66 @@ Content index: %5</translation>
     <message>
         <source>无法完成增强识别安装，原来的文件已保留。</source>
         <translation>Installation could not finish. Your existing recognition files have been kept.</translation>
+    </message>
+    <message>
+        <source>高精度模型未通过校验，请重新下载。</source>
+        <translation>The high-accuracy model failed verification. Download it again.</translation>
+    </message>
+    <message>
+        <source>无法创建高精度模型的安装目录。</source>
+        <translation>Could not create the folder for the high-accuracy model.</translation>
+    </message>
+    <message>
+        <source>另一个窗口正在安装高精度模型，完成后会自动可用。</source>
+        <translation>Another window is installing the high-accuracy model; it will be available when that finishes.</translation>
+    </message>
+    <message>
+        <source>无法保存高精度模型，请检查磁盘空间。</source>
+        <translation>Could not save the high-accuracy model. Check the free disk space.</translation>
+    </message>
+    <message>
+        <source>高精度模型正在使用，请关闭识别窗口后重试。</source>
+        <translation>The high-accuracy model is in use. Close the recognition windows and try again.</translation>
+    </message>
+    <message>
+        <source>无法完成高精度模型的安装。</source>
+        <translation>Could not finish installing the high-accuracy model.</translation>
+    </message>
+    <message>
+        <source>这个文件不能用作识别模型。</source>
+        <translation>This file cannot be used as a recognition model.</translation>
+    </message>
+    <message>
+        <source>请先安装增强文字识别。</source>
+        <translation>Install enhanced text recognition first.</translation>
+    </message>
+    <message>
+        <source>这个文件不能用作识别模型：它不是 PP-OCR 的文字识别（rec）模型。</source>
+        <translation>This file cannot be used: it is not a PP-OCR text recognition (rec) model.</translation>
+    </message>
+    <message>
+        <source>这个模型里没有字典。把它的字典文件改成同名的 %1，和模型放在同一个文件夹里再选。</source>
+        <translation>This model has no dictionary inside. Name its dictionary file %1, put it in the model&apos;s folder and choose the model again.</translation>
+    </message>
+    <message>
+        <source>这个模型和旁边的字典 %1 对不上（字数不符），或不是 PP-OCR 的文字识别（rec）模型。</source>
+        <translation>This model does not match the dictionary %1 beside it (the character counts differ), or it is not a PP-OCR text recognition (rec) model.</translation>
+    </message>
+    <message>
+        <source>已取消。</source>
+        <translation>Cancelled.</translation>
+    </message>
+    <message>
+        <source>无法保存这个模型，请检查磁盘空间。</source>
+        <translation>Could not save this model. Check the free disk space.</translation>
+    </message>
+    <message>
+        <source>另一个窗口正在安装模型，请稍后再试。</source>
+        <translation>Another window is installing a model. Try again later.</translation>
+    </message>
+    <message>
+        <source>原来的模型正在使用，请关闭识别窗口后重试。</source>
+        <translation>The current model is in use. Close the recognition windows and try again.</translation>
     </message>
 </context>
 <context>

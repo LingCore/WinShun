@@ -30,7 +30,8 @@ using namespace Qt::StringLiterals;
 namespace ws {
 namespace {
 constexpr qint64 kMaxArchive = 64ll << 20;
-QString tr(const char* text) { return QCoreApplication::translate("ws::OcrPackage", text); }
+// lupdate files a tr() in ws::ocr under "ws::ocr": the same here, or English never shows.
+QString tr(const char* text) { return QCoreApplication::translate("ws::ocr", text); }
 }
 
 namespace ocr {
@@ -419,6 +420,7 @@ OcrPackage::OcrPackage(QObject* parent, const QString& programFolder, download::
     m_watcher.addPath(ocr::componentsRoot());
     connect(&m_watcher, &QFileSystemWatcher::directoryChanged, this, &OcrPackage::refresh);
     refresh();
+    m_formula = new FormulaModel(this);
 }
 
 OcrPackage::~OcrPackage()

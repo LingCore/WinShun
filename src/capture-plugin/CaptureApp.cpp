@@ -8,6 +8,7 @@
 
 #include "Capture.h"
 #include "CaptureEditor.h"
+#include "CaptureFormula.h"
 #include "CaptureHistory.h"
 #include "CaptureOcr.h"
 #include "DiagnosticLog.h"
@@ -226,6 +227,8 @@ CaptureApp::CaptureApp(Protocol& protocol, QString appDir, QString dataDir, QObj
     QDir().mkpath(componentRoot);
     m_ocrWatcher.addPath(componentRoot);
     connect(&m_ocrWatcher, &QFileSystemWatcher::directoryChanged, this, [this] {
+        if (m_captureFormula)
+            m_captureFormula->refresh();
         if (m_captureOcr) {
             m_captureOcr->retry();
             if (m_resumeOcr && !m_captureOcr->needsPackage() && m_ocrWindow) {
@@ -275,7 +278,8 @@ CaptureApp::CaptureApp(Protocol& protocol, QString appDir, QString dataDir, QObj
     connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged, this, [this] {
         const bool dark = isDarkMode();
         win::setMenuTheme(dark);
-        for (QQuickWindow* window : {m_editWindow.data(), m_ocrWindow.data(), m_bubbleWindow.data(), m_settingsWindow.data()}) {
+        for (QQuickWindow* window : {m_editWindow.data(), m_ocrWindow.data(), m_formulaWindow.data(), m_bubbleWindow.data(),
+                 m_settingsWindow.data()}) {
             if (window)
                 win::setDarkFrame(window, dark);
         }
@@ -297,6 +301,7 @@ CaptureApp::~CaptureApp()
     m_editor.reset();
     m_editFrame.reset();
     closeCaptureOcr(true);
+    closeFormula(true);
     delete m_bubbleWindow.data();
     m_bubbleFrame.reset();
     delete m_settingsWindow.data();
@@ -318,10 +323,12 @@ void CaptureApp::start(const QJsonObject& appearance, bool hostHotkeys)
 // the HWND and detach their WindowFrame.
 bool CaptureApp::eventFilter(QObject* watched, QEvent* event)
 {
-    if (event->type() == QEvent::Close && (watched == m_ocrWindow || watched == m_settingsWindow)) {
+    if (event->type() == QEvent::Close && (watched == m_ocrWindow || watched == m_formulaWindow || watched == m_settingsWindow)) {
         event->ignore();
         if (watched == m_ocrWindow)
             closeCaptureOcr();
+        else if (watched == m_formulaWindow)
+            closeFormula();
         else
             m_settingsWindow->hide();
         return true;
@@ -338,7 +345,7 @@ void CaptureApp::requested(const QJsonValue& id, const QString& method, const QJ
         const QString text = params.value(u"text"_s).toString().trimmed();
         QJsonArray items;
         if (text == u"__selftest") { // whether each window's QML loads on this Win顺's Qt (made hidden, then let go of)
-            for (const QString& type : {u"EditWindow"_s, u"OcrPanel"_s, u"OcrBubble"_s, u"CaptureSettingsWindow"_s, u"LongCapturePanel"_s, u"RecordingPanel"_s,
+            for (const QString& type : {u"EditWindow"_s, u"OcrPanel"_s, u"FormulaPanel"_s, u"OcrBubble"_s, u"CaptureSettingsWindow"_s, u"LongCapturePanel"_s, u"RecordingPanel"_s,
                      u"PresenterOverlay"_s, u"PresenterToolbar"_s, u"PinGroupPrompt"_s}) {
                 QQmlComponent component(&m_qml, u"WinShun"_s, type);
                 const QString problem = component.isError() ? component.errorString().trimmed() : QString();
@@ -597,6 +604,7 @@ void CaptureApp::apply()
         };
         callbacks.closeCaptureSurface = [this] { m_protocol.tool(u"capture_surface_close"_s, {}); };
         callbacks.ocr = [this](const QImage& image, double dpr, const QRect& where) { showCaptureOcr(image, dpr, where); };
+        callbacks.formula = [this](const QImage& image, const QRect& where) { showFormula(image, where); };
         callbacks.ocrThen = [this](const QImage& image, double dpr, const QRect& where, capture::CaptureSession::Action then) {
             using Action = capture::CaptureSession::Action;
             if (then == Action::OcrTranslate) {
@@ -1015,7 +1023,7 @@ void CaptureApp::applyAppearance(const QJsonObject& a)
         QGuiApplication::setApplicationDisplayName(locale == u"en" ? u"WinShun"_s : u"Win顺"_s);
         m_qml.retranslate();
     }
-    for (QQuickWindow* window : {m_ocrWindow.data(), m_bubbleWindow.data(), m_settingsWindow.data()}) {
+    for (QQuickWindow* window : {m_ocrWindow.data(), m_formulaWindow.data(), m_bubbleWindow.data(), m_settingsWindow.data()}) {
         if (window)
             win::styleFramelessWindow(window, SystemTheme::backdropAvailable());
     }
@@ -1252,6 +1260,85 @@ void CaptureApp::closeCaptureOcr(bool destroy)
         m_quickOcr.reset();
         m_translateOcr.reset();
         m_captureOcr.reset(); // its thread, and the reader if still loaded
+    }
+}
+
+capture::CaptureFormula& CaptureApp::captureFormula()
+{
+    if (m_captureFormula)
+        return *m_captureFormula;
+    m_captureFormula = std::make_unique<capture::CaptureFormula>(m_appDir);
+    capture::CaptureFormula* formula = m_captureFormula.get();
+    // The model is Win顺's to fetch: the plugin does not go on the network.
+    formula->setModelCall([this](const QString& action, std::function<void(const QJsonObject&, const QString&)> answer) {
+        m_protocol.tool(u"formula_model"_s, {{u"action"_s, action}},
+            [answer = std::move(answer)](const QJsonValue& result, const QString& error) { answer(result.toObject(), error); });
+    });
+    formula->setFormat(m_settings.options().formulaFormat);
+    connect(formula, &capture::CaptureFormula::formatChanged, this, [this, formula] { m_settings.setFormulaFormat(formula->format()); });
+    connect(formula, &capture::CaptureFormula::copyTextRequested, this, [this](const QString& text) { copyText(text); });
+    // Word makes an equation of MathML in the "MathML" and "MathML Presentation"
+    // formats (as MathType puts it there) and of MathML as text; the text is
+    // for every other program too. Checked in Word 2026-11-26 (application/
+    // mathml+xml alone: refused), see docs/validation/formula-ocr.
+    connect(formula, &capture::CaptureFormula::copyMathMlRequested, this, [](const QString& mathMl) {
+        auto* data = new QMimeData;
+        data->setText(mathMl);
+        const QByteArray bytes = mathMl.toUtf8();
+        data->setData(u"application/x-qt-windows-mime;value=\"MathML\""_s, bytes);
+        data->setData(u"application/x-qt-windows-mime;value=\"MathML Presentation\""_s, bytes);
+        QGuiApplication::clipboard()->setMimeData(data);
+    });
+    connect(formula, &capture::CaptureFormula::copyImageRequested, this,
+        [this](const QImage& image) { copyImage(image, {}, true, false); });
+    connect(formula, &capture::CaptureFormula::closeRequested, this, [this] { closeFormula(); });
+    return *formula;
+}
+
+// 公式识别: one window, made the first time, beside the picture, taking the
+// focus (the LaTeX is edited there).
+void CaptureApp::showFormula(const QImage& image, const QRect& where)
+{
+    if (!m_formulaWindow) {
+        captureFormula();
+        m_formulaFrame = std::make_unique<WindowFrame>(false);
+        QQmlComponent component(&m_qml, u"WinShun"_s, u"FormulaPanel"_s);
+        QObject* object = component.createWithInitialProperties({
+            {u"formula"_s, QVariant::fromValue(m_captureFormula.get())},
+            {u"frame"_s, QVariant::fromValue(m_formulaFrame.get())},
+        });
+        auto* window = qobject_cast<QQuickWindow*>(object);
+        if (!window) {
+            qWarning().noquote() << "Screen capture: no formula window:" << component.errorString();
+            delete object;
+            return;
+        }
+        prepareWindow(window, true);
+        m_formulaFrame->setWindow(window);
+        window->installEventFilter(this);
+        m_formulaWindow = window;
+    }
+    captureFormula().read(image);
+    placeNear(m_formulaWindow, where);
+    m_formulaWindow->show();
+    m_formulaWindow->raise();
+    win::bringToFront(m_formulaWindow);
+    m_formulaWindow->requestActivate();
+}
+
+void CaptureApp::closeFormula(bool destroy)
+{
+    if (m_captureFormula)
+        m_captureFormula->discard();
+    if (m_formulaWindow) {
+        if (destroy)
+            delete m_formulaWindow.data(); // before its view-model
+        else
+            m_formulaWindow->hide();
+    }
+    if (destroy) {
+        m_formulaFrame.reset();
+        m_captureFormula.reset(); // its thread, and the reader if still loaded
     }
 }
 
@@ -1566,6 +1653,7 @@ capture::PinManager& CaptureApp::pins()
             saveToSource(pin, image, path);
         };
         callbacks.ocr = [this](const QImage& image, double dpr, const QRect& where) { showCaptureOcr(image, dpr, where); };
+        callbacks.formula = [this](const QImage& image, const QRect& where) { showFormula(image, where); };
         callbacks.ocrCopy = [this](const QImage& image, double dpr, const QRect& where) {
             captureOcrThen(image, dpr, where, OcrThen::Copy);
         };
@@ -1698,6 +1786,7 @@ capture::CaptureEditor* CaptureApp::editor()
         }
     };
     hooks.ocr = [this](const QImage& image, double dpr, const QRect& where) { showCaptureOcr(image, dpr, where); };
+    hooks.formula = [this](const QImage& image, const QRect& where) { showFormula(image, where); };
     hooks.smart = smartHooks();
     hooks.styles = [this] { return m_settings.options().annotateStyles; };
     hooks.stylesChanged = [this](const QString& json) {

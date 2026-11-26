@@ -45,6 +45,8 @@
 //     a following long copy cannot inherit its clipboard identity. No system clipboard writes.
 //
 // --preview-ocr <folder> checks the missing-component panel and installation signal.
+// --preview-formula <folder> [--components <dir>]: 公式识别's window in its states,
+// and with the model a real reading, each copy format and an edit that cannot be drawn.
 //
 // Nothing of the user's is read or written, and no hotkey, hook or
 // clipboard listener is set up. The log is <folder>\preview.log. The exit

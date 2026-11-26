@@ -40,4 +40,12 @@ struct OwnModel {
 QString ownFolder();
 OwnModel ownModel();
 
+// The formula reader's model (FormulaReader: Pix2Text's MFR 1.5, ~120 MB), a
+// component of its own run by the OCR package's ONNX Runtime: these files in
+// formulaFolder(), with a receipt once they are all there and checked.
+inline constexpr auto kFormulaVersion = u"formula-mfr-1.5";
+inline constexpr const char16_t* kFormulaFiles[] = {u"encoder_model.onnx", u"decoder_model.onnx", u"tokenizer.json"};
+QString formulaFolder(); // where it is installed, there or not
+QString formulaModel(); // that folder when the model is installed, else empty
+
 } // namespace ws::ocr

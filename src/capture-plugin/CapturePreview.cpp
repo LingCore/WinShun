@@ -7,7 +7,9 @@
 #include "AnnotationModel.h"
 #include "Capture.h"
 #include "CaptureSession.h"
+#include "CaptureFormula.h"
 #include "CaptureOcr.h"
+#include "FormulaPicture.h"
 #include "CapturePointer.h"
 #include "AnnotationStyles.h"
 #include "CaptureEditor.h"
@@ -70,6 +72,7 @@ constexpr auto kRecordingFlag = u"--preview-recording";
 constexpr auto kLongCaptureFlag = u"--preview-long-capture";
 constexpr auto kOcrFlag = u"--preview-ocr";
 constexpr auto kPresenterFlag = u"--preview-presenter";
+constexpr auto kFormulaFlag = u"--preview-formula";
 
 int g_warnings = 0;
 bool g_edges = false; // --edges (or --tree): every grab also writes <png>.edges.txt
@@ -482,6 +485,147 @@ int runSettings(const QStringList& args)
     }
     const bool saved = saveGrab(window, out.filePath(u"capture-settings.png"_s));
     return finish(window, ok && saved);
+}
+
+// --preview-formula <folder> [--components <dir>] [--ocr-dir <dir>] [--english] [--dark] [--scale 1.5]:
+// 公式识别's window (FormulaPanel.qml) in its states, formula-<state>.png. Win顺's
+// formula_model tool is played here: the model missing, being downloaded, its
+// download failed. With --components holding the model (formula-mfr-1.5) and
+// --app-dir ONNX Runtime, a formula drawn here is read for real, copied in each
+// format (the copies are caught: nothing reaches the clipboard), and edited into
+// one that cannot be drawn; a picture with no formula says so.
+int runFormula(const QStringList& args)
+{
+    const QDir out(valueAfter(args, kFormulaFlag));
+    QTranslator translator;
+    if (args.contains(u"--english"_s) && translator.load(u":/i18n/capture_en.qm"_s))
+        QCoreApplication::installTranslator(&translator);
+    // No model at first (an empty folder): the states before it is there.
+    ocr::setComponentsRoot(out.filePath(u"components"_s));
+    // ONNX Runtime: in --ocr-dir (a build folder has it with the words' reader), else Win顺's.
+    capture::CaptureFormula formula(valueAfter(args, u"--ocr-dir", valueAfter(args, u"--app-dir", qEnvironmentVariable("WS_APP_DIR"))));
+    QJsonObject state {{u"installed"_s, false}, {u"busy"_s, false}, {u"progress"_s, 0.0}, {u"status"_s, QString()},
+        {u"size"_s, u"115 MB"_s}};
+    formula.setModelCall([&state](const QString&, const std::function<void(const QJsonObject&, const QString&)>& answer) {
+        answer(state, {});
+    });
+    QString copied;
+    QString copiedAs;
+    QObject::connect(&formula, &capture::CaptureFormula::copyTextRequested, &formula, [&](const QString& text) {
+        copied = text;
+        copiedAs = u"text"_s;
+    });
+    QObject::connect(&formula, &capture::CaptureFormula::copyMathMlRequested, &formula, [&](const QString& text) {
+        copied = text;
+        copiedAs = u"mathml"_s;
+    });
+    WindowFrame frame(false);
+    QQmlApplicationEngine engine;
+    engine.addImportPath(QDir(valueAfter(args, u"--app-dir")).filePath(u"qml"_s));
+    QQmlComponent component(&engine, u"WinShun"_s, u"FormulaPanel"_s);
+    auto* window = qobject_cast<QQuickWindow*>(component.createWithInitialProperties({
+        {u"formula"_s, QVariant::fromValue(&formula)}, {u"frame"_s, QVariant::fromValue(&frame)}}));
+    if (!window) {
+        say(component.errorString());
+        return 3;
+    }
+    frame.setWindow(window);
+    showOffScreen(window);
+    const auto shot = [&](const QString& name) {
+        settle(window);
+        return saveGrab(window, out.filePath(u"formula-%1.png"_s.arg(name)));
+    };
+    const auto item = [&](const char* name) { return window->findChild<QQuickItem*>(QString::fromLatin1(name)); };
+
+    // As a capture of a formula on the screen at 100%: black on white.
+    const QString quadratic = u"x=\\frac{-b\\pm\\sqrt{b^{2}-4ac}}{2a}"_s;
+    const QImage picture = capture::FormulaPicture(quadratic, 22, Qt::black).image(1, 10, Qt::white);
+    bool all = !picture.isNull();
+
+    const auto check = [&](const QString& what, bool right) {
+        say(u"%1: %2"_s.arg(what, right ? u"ok"_s : u"FAIL"_s));
+        all = right && all;
+    };
+    formula.read(picture);
+    check(u"missing"_s, formula.model() == u"missing" && formula.modelSize() == u"115 MB" && !formula.busy());
+    all = shot(u"missing"_s) && all;
+    state[u"busy"_s] = true;
+    state[u"progress"_s] = 0.42;
+    formula.downloadModel();
+    check(u"downloading"_s, formula.model() == u"downloading" && qFuzzyCompare(formula.progress(), 0.42));
+    all = shot(u"downloading"_s) && all;
+    state[u"busy"_s] = false;
+    state[u"status"_s] = u"下载没有完成，请检查网络后重试，或从本地安装模型文件。"_s;
+    formula.cancelDownload();
+    check(u"failed"_s, formula.model() == u"missing" && formula.modelStatus() == state[u"status"_s].toString());
+    all = shot(u"failed"_s) && all;
+
+    // The model comes: the picture waiting for it is read.
+    const QString components = valueAfter(args, u"--components");
+    if (!components.isEmpty())
+        ocr::setComponentsRoot(components);
+    if (!formula.modelReady()) {
+        say(u"no model under --components with ONNX Runtime in --ocr-dir: the reading is not checked"_s);
+        return finish(window, all);
+    }
+    state[u"installed"_s] = true;
+    state[u"status"_s] = QString();
+    const auto waitRead = [&] {
+        QElapsedTimer clock;
+        clock.start();
+        while (formula.busy() && clock.elapsed() < 30000)
+            pump(50);
+        settle(window);
+    };
+    formula.refresh();
+    check(u"reading starts"_s, formula.busy() && formula.model() == u"ready");
+    all = shot(u"reading"_s) && all;
+    waitRead();
+    auto* source = item("formulaSource");
+    auto* drawing = item("formulaDrawing");
+    auto* copy = item("formulaCopy");
+    const QString read = formula.latex();
+    const bool readRight = formula.model() == u"ready" && !formula.busy() && formula.message().isEmpty() && source
+        && source->property("text").toString() == read && drawing && drawing->property("error").toString().isEmpty()
+        && read.contains(u"\\frac") && read.contains(u"\\sqrt");
+    say(u"read: %1 (unsure %2) -> %3"_s.arg(read, formula.unsure() ? u"yes"_s : u"no"_s, readRight ? u"ok"_s : u"FAIL"_s));
+    all = readRight && shot(u"ready"_s) && all;
+
+    // Each format, by the 复制 button as a click has it.
+    const std::pair<QString, QString> formats[] {{u"markdown"_s, u"$$\n"_s}, {u"typst"_s, u"$ "_s}, {u"latex"_s, QString()},
+        {u"word"_s, u"<math"_s}};
+    for (const auto& [name, start] : formats) {
+        formula.setFormat(name);
+        copied.clear();
+        if (copy)
+            QMetaObject::invokeMethod(copy, "clicked");
+        const bool right = !copied.isEmpty() && (start.isEmpty() ? copied == read : copied.startsWith(start))
+            && (copiedAs == u"mathml") == (name == u"word");
+        say(u"copy %1: %2 -> %3"_s.arg(name, copied.left(80).replace(u'\n', u' '), right ? u"ok"_s : u"FAIL"_s));
+        all = right && all;
+    }
+    all = shot(u"word"_s) && all; // 已复制 in the header, Word 公式 chosen
+
+    // Edited into one that cannot be drawn: said so, nothing to export.
+    if (source)
+        source->setProperty("text", u"\\frac{a}{b}}"_s);
+    settle(window);
+    auto* exportButton = item("formulaExport");
+    const bool broken = drawing && !drawing->property("error").toString().isEmpty() && exportButton
+        && !exportButton->property("enabled").toBool();
+    say(u"broken: %1 -> %2"_s.arg(drawing ? drawing->property("error").toString() : u"no drawing"_s, broken ? u"ok"_s : u"FAIL"_s));
+    all = broken && shot(u"broken"_s) && all;
+
+    // A picture with no formula in it.
+    QImage blank(240, 60, QImage::Format_RGB32);
+    blank.fill(Qt::white);
+    formula.read(blank);
+    waitRead();
+    const bool none = !formula.message().isEmpty() && !(copy && copy->property("enabled").toBool());
+    say(u"none: %1 -> %2"_s.arg(formula.message(), none ? u"ok"_s : u"FAIL"_s));
+    all = none && shot(u"none"_s) && all;
+    formula.setFormat(u"latex"_s);
+    return finish(window, all);
 }
 
 int runOcr(const QStringList& args)
@@ -1220,6 +1364,14 @@ int runSelectionKeys(const QStringList& args)
     int copies = 0;
     Capture::Callbacks callbacks;
     callbacks.copy = [&](const QImage& image, const QByteArray&, const QString&, const Capture::Callbacks::Read&) { copied = image; ++copies; };
+    QImage formulaPicture;
+    QRect formulaWhere;
+    int formulas = 0;
+    callbacks.formula = [&](const QImage& image, const QRect& where) {
+        formulaPicture = image;
+        formulaWhere = where;
+        ++formulas;
+    };
     Capture capture(&engine, std::move(callbacks));
     QQuickWindow* overlay = nullptr;
     CaptureSession* session = nullptr;
@@ -1325,6 +1477,15 @@ int runSelectionKeys(const QStringList& args)
     check(waitFor([&] { return !capture.busy(); }) && copies == 13 && copied == expected,
         "recalled and adjusted region exports exact current pixels");
     check(copied.save(out.filePath(u"selection-export.png"_s)), "saved exported pixels");
+    // Shift+F hands the area to 公式识别 (F alone is the size panel, --selection-size).
+    if (!begin()) { check(false, "capture reopened for formula"); return 4; }
+    key(Qt::Key_R);
+    const QRect formulaArea = session->selectionRect();
+    const QImage formulaExpected = screen->image().copy(formulaArea);
+    key(Qt::Key_F, Qt::ShiftModifier);
+    check(waitFor([&] { return !capture.busy(); }) && formulas == 1 && copies == 13 && formulaPicture == formulaExpected
+              && formulaWhere == QRect(screen->rect().topLeft() + formulaArea.topLeft(), formulaArea.size()),
+        "Shift+F handed the exact area and its place on the screen to formula recognition");
     if (!begin()) { check(false, "capture reopened for text input"); return 4; }
     key(Qt::Key_R);
     const QRect beforeText = session->selectionRect();
@@ -3375,7 +3536,7 @@ int runPresenter(const QStringList& args)
 bool wanted(const QStringList& args)
 {
     return args.contains(kCaptureToolsFlag) || args.contains(kRecordingFlag) || args.contains(kLongCaptureFlag) || args.contains(kOcrFlag) || args.contains(kSettingsFlag)
-        || args.contains(kPresenterFlag);
+        || args.contains(kPresenterFlag) || args.contains(kFormulaFlag);
 }
 
 void note(const QString& line)
@@ -3385,7 +3546,7 @@ void note(const QString& line)
 
 void prepare(const QStringList& args)
 {
-    const QString folder = valueAfter(args, args.contains(kPresenterFlag) ? kPresenterFlag : args.contains(kSettingsFlag) ? kSettingsFlag : args.contains(kOcrFlag) ? kOcrFlag : args.contains(kLongCaptureFlag) ? kLongCaptureFlag
+    const QString folder = valueAfter(args, args.contains(kFormulaFlag) ? kFormulaFlag : args.contains(kPresenterFlag) ? kPresenterFlag : args.contains(kSettingsFlag) ? kSettingsFlag : args.contains(kOcrFlag) ? kOcrFlag : args.contains(kLongCaptureFlag) ? kLongCaptureFlag
                                            : args.contains(kRecordingFlag) ? kRecordingFlag : kCaptureToolsFlag);
     if (!folder.isEmpty()) {
         QDir().mkpath(folder);
@@ -3416,11 +3577,13 @@ int run(const QStringList& args)
     const bool ocrMode = args.contains(kOcrFlag);
     const bool settingsMode = args.contains(kSettingsFlag);
     const bool presenterMode = args.contains(kPresenterFlag);
-    if (valueAfter(args, presenterMode ? kPresenterFlag : settingsMode ? kSettingsFlag : ocrMode ? kOcrFlag : longCaptureMode ? kLongCaptureFlag : recordingMode ? kRecordingFlag : kCaptureToolsFlag).isEmpty()) {
+    const bool formulaMode = args.contains(kFormulaFlag);
+    if (valueAfter(args, formulaMode ? kFormulaFlag : presenterMode ? kPresenterFlag : settingsMode ? kSettingsFlag : ocrMode ? kOcrFlag : longCaptureMode ? kLongCaptureFlag : recordingMode ? kRecordingFlag : kCaptureToolsFlag).isEmpty()) {
         std::fprintf(stderr, "usage: WinShunCapture --preview-capture-tools <folder> [--toolbar-drag] [--scale 1.5] [--dark] [--renderer d3d11]\n"
                              "       WinShunCapture --preview-recording <folder> --renderer d3d11 --auto [--gif] [--clicks]\n"
                              "       WinShunCapture --preview-long-capture <folder> --renderer d3d11 [--auto | --preview-over]\n"
                              "       WinShunCapture --preview-presenter <folder> [--laser] [--scale 2] [--renderer d3d11]\n"
+                             "       WinShunCapture --preview-formula <folder> [--components <dir>] [--english] [--dark] [--scale 1.5]\n"
                              "       (with --app-dir <Win顺's folder>, or WS_APP_DIR)\n");
         return 2;
     }
@@ -3430,6 +3593,8 @@ int run(const QStringList& args)
     SystemTheme::setBackdropAvailable(false); // plain colours, as a window without Mica
     SystemTheme::setUiStyle(valueAfter(args, u"--style", u"fluent"_s)); // --style fluent|brand|tactile
     SystemTheme::setUiSize(valueAfter(args, u"--size", u"standard"_s)); // --size dense|compact|standard|roomy
+    if (formulaMode)
+        return runFormula(args);
     if (presenterMode)
         return runPresenter(args);
     if (settingsMode)

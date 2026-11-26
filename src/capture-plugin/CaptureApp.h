@@ -33,6 +33,7 @@ class WindowFrame;
 namespace capture {
 class Capture;
 class CaptureEditor;
+class CaptureFormula;
 class CaptureOcr;
 class PinManager;
 class PinWindow;
@@ -91,6 +92,10 @@ private:
     capture::SmartHooks smartHooks();
     void showCaptureOcr(const QImage& image, double dpr, const QRect& where, const QStringList* texts = nullptr, bool translate = false);
     void closeCaptureOcr(bool destroy = false);
+    // 公式识别 (CaptureFormula, FormulaPanel.qml): as the OCR window, one window beside the picture.
+    capture::CaptureFormula& captureFormula();
+    void showFormula(const QImage& image, const QRect& where);
+    void closeFormula(bool destroy = false);
     // 截图翻译 (GitHub #191): a pin where the picture was taken, its words
     // translated in place once the translation is back (TranslateOverlay).
     // Whatever stands in the way (no reader, no service, an answer that does
@@ -194,6 +199,9 @@ private:
     std::unique_ptr<WindowFrame> m_ocrFrame;
     QPointer<QQuickWindow> m_ocrWindow;
     bool m_resumeOcr = false; // the original picture waits while the settings window installs OCR
+    std::unique_ptr<capture::CaptureFormula> m_captureFormula;
+    std::unique_ptr<WindowFrame> m_formulaFrame;
+    QPointer<QQuickWindow> m_formulaWindow;
     std::unique_ptr<WindowFrame> m_settingsFrame;
     QPointer<QQuickWindow> m_settingsWindow;
     QPointer<SavedWindowSize> m_settingsSize; // owned by m_settingsWindow (state.ini [SettingsWindow])

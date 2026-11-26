@@ -42,6 +42,7 @@ enum MenuCommand {
     TranslateCommand,
     CopyPictureCommand,
     OcrCopyCommand,
+    FormulaCommand,
     CloseGroupCommand,
     NewGroupMoveCommand,
     ShowAllGroupsCommand
@@ -137,6 +138,10 @@ PinWindow* PinManager::add(const QImage& image, QPoint origin, bool screenshot, 
             m_callbacks.ocr(pin->image(), pin->dpr(), pin->pictureRect());
     };
     host.ocrCopy = [this](PinWindow* pin) { copyWords(pin); };
+    host.formula = [this](PinWindow* pin) {
+        if (m_callbacks.formula)
+            m_callbacks.formula(pin->image(), pin->pictureRect());
+    };
     host.dark = m_callbacks.dark;
     host.accent = m_callbacks.accent;
     host.edge = m_callbacks.edge;
@@ -663,6 +668,11 @@ void PinManager::showMenu(PinWindow* pin, POINT at)
         items.push_back(command(OcrCommand, ocr + hint(KeyAction::PinOcr), 0xE8A5));
         if (!words)
             items.push_back(command(OcrCopyCommand, tr("复制全部文字") + hint(KeyAction::PinOcrCopy), 0xE8C8));
+        if (m_callbacks.formula) {
+            shell::MenuItem formula {FormulaCommand, tr("识别公式") + hint(KeyAction::PinFormula)};
+            formula.glyph = u"ph:function"_s;
+            items.push_back(std::move(formula));
+        }
         if (m_callbacks.translate && !pin->hasOtherSide())
             items.push_back(command(TranslateCommand, tr("翻译"), 0xE8C1, false, ocrAvailable));
         items.push_back(command(PickTextCommand, tr("选择文字") + hint(KeyAction::PinTextPick), 0xE8D2,
@@ -741,6 +751,10 @@ void PinManager::showMenu(PinWindow* pin, POINT at)
         break;
     case OcrCopyCommand:
         copyWords(pin);
+        break;
+    case FormulaCommand:
+        if (m_callbacks.formula)
+            m_callbacks.formula(pin->image(), pin->pictureRect());
         break;
     case OtherSideCommand:
         pin->showOtherSide();

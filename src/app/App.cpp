@@ -2998,6 +2998,28 @@ void App::setUpAppTools()
             shell::openUrl(text);
             done({});
         }});
+    // 公式识别's model for the screenshot plugin, which may not go on the
+    // network: `action` status, install (the OCR package first when it is
+    // not there) or cancel; the answer is the model's state then
+    // (FormulaModel::state), asked again while it is busy.
+    tools.push_back({u"formula_model"_s, plugin::Permission::Ui,
+        [this](const QString& pluginId, const QString&, const QJsonObject& arguments, std::function<void(mcp::ToolResult)> done) {
+            if (pluginId != kScreenshotPlugin) {
+                done(toolError(u"formula_model is only for winshun.capture"_s));
+                return;
+            }
+            FormulaModel* model = m_ocrPackage->formulaModel();
+            const QString action = arguments.value(u"action"_s).toString(u"status"_s);
+            if (action == u"install")
+                model->download();
+            else if (action == u"cancel")
+                model->cancel();
+            else if (action != u"status") {
+                done(toolError(u"action must be status, install or cancel"_s));
+                return;
+            }
+            done({model->state()});
+        }});
     tools.push_back({u"show_ocr_setup"_s, plugin::Permission::Ui,
         [this](const QString&, const QString&, const QJsonObject&, std::function<void(mcp::ToolResult)> done) {
             showSettings([](QQuickWindow* window) {

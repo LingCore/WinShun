@@ -215,6 +215,9 @@ add_custom_target(library_plugins ALL
     # What is compiled into WinShunCaptureApp.dll; Qt, ONNX Runtime and the OCR models are Win顺's.
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/third_party/zxing-cpp/LICENSE" "${library_plugins_dir}/winshun.capture/licenses/zxing-cpp.txt"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/third_party/miniz/LICENSE" "${library_plugins_dir}/winshun.capture/licenses/miniz.txt"
+    # 公式识别 draws formulas with MicroTeX and the Latin Modern Math font's outlines.
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/third_party/microtex/LICENSE" "${library_plugins_dir}/winshun.capture/licenses/microtex.txt"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/third_party/microtex/res/GUST-FONT-LICENSE.txt" "${library_plugins_dir}/winshun.capture/licenses/latinmodern-math.txt"
     # The table model of 复制为表格 (src/capture-plugin/CMakeLists.txt), PaddleOCR's.
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${WS_TABLE_MODEL}" "${library_plugins_dir}/winshun.capture/table/slanet-plus.onnx"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/third_party/ppocr/LICENSE" "${library_plugins_dir}/winshun.capture/licenses/paddleocr.txt"
@@ -232,7 +235,7 @@ qt_add_executable(wsbench tools/wsbench.cpp src/app/Settings.cpp
     src/switches-plugin/platform/SwitchTheme.cpp src/switches-plugin/platform/SystemSwitches.cpp # --switches
     src/app/platform/PaddleOcr.cpp src/app/platform/OcrTable.cpp src/app/platform/OcrFiles.cpp) # --ocr
 target_include_directories(wsbench PRIVATE src/app src/app/platform ${PROJECT_SOURCE_DIR}/src/switches-plugin) # Settings: the user's crawl rules for --sync
-target_link_libraries(wsbench PRIVATE wscore wsextract wsmcp wsplugin wscapture Qt6::Gui Qt6::Svg psapi winhttp advapi32 onnxruntime_headers
+target_link_libraries(wsbench PRIVATE wscore wsextract wsmcp wsplugin wscapture Qt6::Gui Qt6::Svg psapi winhttp advapi32 wsonnx
     windowsapp iphlpapi) # wsmcp: --mcp-host; wsplugin: --plugin; wscapture: --scroll-replay; advapi32: --open-probe; windowsapp, iphlpapi: --switches (the radios)
 add_dependencies(wsbench WinShunPluginHost bundled_plugins library_plugins) # --plugin starts it from next to wsbench; the bundled and library plugins next to it too
 set_target_properties(wsbench PROPERTIES WIN32_EXECUTABLE OFF)
@@ -278,7 +281,7 @@ target_include_directories(WinShunOcrTest PRIVATE ${PROJECT_SOURCE_DIR}/src/app 
 # kernel32 and user32 ahead of wscapture's windowsapp umbrella: the console
 # calls come from kernel32 itself, not API sets an older Windows 10 may lack.
 target_link_libraries(WinShunOcrTest PRIVATE kernel32 user32 winshun_options wscapture miniz Qt6::Gui Qt6::Sql
-    onnxruntime_headers dbghelp psapi shell32 ole32 version advapi32)
+    wsonnx dbghelp psapi shell32 ole32 version advapi32)
 target_compile_options(WinShunOcrTest PRIVATE /Z7)
 target_link_options(WinShunOcrTest PRIVATE /DEBUG /OPT:REF /OPT:ICF)
 set_target_properties(WinShunOcrTest PROPERTIES QT_QML_MODULE_NO_IMPORT_SCAN TRUE)

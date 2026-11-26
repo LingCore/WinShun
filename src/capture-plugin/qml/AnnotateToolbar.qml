@@ -29,7 +29,7 @@ Item {
     readonly property bool historyShown: shows("undo") || shows("redo")
     // The groups after the tools: undo and redo; pin and save; cancel and copy;
     // and in the second row OCR with QR, then long, record and delay.
-    readonly property bool recognizeShown: shows("ocr") || shows("qr") || shows("translate")
+    readonly property bool recognizeShown: shows("ocr") || shows("formula") || shows("qr") || shows("translate")
     readonly property bool modesShown: shows("long") || shows("record") || shows("delay")
     readonly property bool outputShown: shows("save") || (pinnable && shows("pin"))
     readonly property bool finishShown: shows("copy") || shows("cancel")
@@ -291,8 +291,9 @@ Item {
             onClicked: bar.annot.redo()
         }
 
-        Separator { visible: bar.editor && bar.shows("ocr") }
+        Separator { visible: bar.editor && (bar.shows("ocr") || bar.shows("formula")) }
         OcrButton { visible: bar.editor && bar.shows("ocr") }
+        FormulaButton { visible: bar.editor && bar.shows("formula") }
 
         Separator { visible: bar.outputShown }
 
@@ -358,6 +359,7 @@ Item {
         Separator { visible: bar.recognizeShown }
 
         OcrButton { visible: bar.shows("ocr") }
+        FormulaButton { visible: bar.shows("formula") }
         ActionButton { // GitHub #191: a pin where the selection is, its words translated in place
             id: translateButton
             visible: bar.shows("translate")
@@ -599,6 +601,13 @@ Item {
         tipText: bar.ocrAvailable ? qsTr("识别文字：识别图里的文字，可复制或拿去搜索")
                                   : qsTr("识别文字：安装增强文字识别后继续，安装后可离线使用")
         onClicked: bar.act(CaptureSession.Ocr)
+    }
+    component FormulaButton: ActionButton {
+        glyph: "ph:function"
+        name: qsTr("公式")
+        tipText: qsTr("公式识别：把图里的公式转成 LaTeX，可改、可复制为 Word 公式等")
+        tipKeys: bar.editor ? "" : "Shift+F"
+        onClicked: bar.act(CaptureSession.Formula)
     }
 
     // "?": every key, in a list by the toolbar.

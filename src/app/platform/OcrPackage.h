@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Download.h"
+#include "FormulaModel.h"
 
 #include <QObject>
 #include <QFileSystemWatcher>
@@ -117,6 +118,7 @@ class OcrPackage : public QObject {
     Q_PROPERTY(QString status READ status NOTIFY changed FINAL)
     Q_PROPERTY(QString downloadSize READ downloadSize CONSTANT FINAL)
     Q_PROPERTY(ws::OcrModel* preciseModel READ preciseModel CONSTANT FINAL)
+    Q_PROPERTY(ws::FormulaModel* formulaModel READ formulaModel CONSTANT FINAL)
 
 public:
     explicit OcrPackage(QObject* parent = nullptr, const QString& programFolder = {}, download::Fetcher fetcher = {});
@@ -132,6 +134,7 @@ public:
     void installFile(const QString& file); // local archives, including the full offline distribution
     void refresh();
     OcrModel* preciseModel() const { return m_precise; } // offered once this package is there
+    FormulaModel* formulaModel() const { return m_formula; } // runs on this package: fetches it first
 
 signals:
     void changed();
@@ -148,6 +151,7 @@ private:
     std::shared_ptr<std::atomic_bool> m_cancel;
     QFileSystemWatcher m_watcher;
     OcrModel* m_precise; // a child
+    FormulaModel* m_formula = nullptr; // a child
     std::jthread m_worker; // joined before the QObject and cancellation state are destroyed
 };
 

@@ -134,6 +134,7 @@ QString outcomeName(CaptureSession::Action action)
     case CaptureSession::Action::Long: return u"long"_s;
     case CaptureSession::Action::Record: return u"record"_s;
     case CaptureSession::Action::Qr: return u"qr"_s;
+    case CaptureSession::Action::Formula: return u"formula"_s;
     case CaptureSession::Action::Delay: return u"delay"_s;
     }
     return u"other"_s;
@@ -258,6 +259,7 @@ bool needsDesktopBand(CaptureSession::Action action, bool hasQuickPurpose)
     case Action::OcrSearch:
     case Action::OcrWeb:
     case Action::OcrTranslate:
+    case Action::Formula:
     case Action::Qr:
     case Action::Long:
     case Action::Record:
@@ -1547,6 +1549,10 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
     case CaptureSession::Action::OcrTranslate:
         if (m_callbacks.ocrThen)
             m_callbacks.ocrThen(picture, dpr, QRect(origin, picture.size()), action);
+        break;
+    case CaptureSession::Action::Formula:
+        if (m_callbacks.formula)
+            m_callbacks.formula(picture, QRect(origin, picture.size()));
         break;
     case CaptureSession::Action::Qr: {
         // Read off the GUI thread (a whole screen takes a few hundred ms); the

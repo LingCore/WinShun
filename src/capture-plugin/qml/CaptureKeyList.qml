@@ -58,6 +58,7 @@ QtObject {
         "?、F1", qsTranslate("AnnotateToolbar", "显示 / 隐藏屏幕角落的快捷键提示（只管这次截图）"),
         "C、Shift", qsTranslate("AnnotateToolbar", "复制颜色并结束截图；单按 Shift 换颜色格式（HEX、RGB、HSL）"),
         "Shift+C", qsTranslate("AnnotateToolbar", "识别选区里的文字并复制"),
+        "Shift+F", qsTranslate("AnnotateToolbar", "识别选区里的公式，转成 LaTeX、Word 公式等"),
         "R / Shift+R", qsTranslate("AnnotateToolbar", "恢复最近选区：向前 / 向后循环，最多 10 个；使用当前画面"),
         ",  .", qsTranslate("AnnotateToolbar", "翻看之前截图时的画面（整屏、选区和标注），. 往回翻"),
         "Q", qsTranslate("AnnotateToolbar", "识别选区里的二维码"),

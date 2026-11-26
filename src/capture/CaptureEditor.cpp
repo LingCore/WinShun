@@ -1193,6 +1193,12 @@ void CaptureEditor::act(int action)
             m_hooks.ocr(image, m_dpr, canvasOnScreen());
         break;
     }
+    case Action::Formula: {
+        const QImage image = m_model.composed();
+        if (!image.isNull() && m_hooks.formula)
+            m_hooks.formula(image, canvasOnScreen());
+        break;
+    }
     case Action::Cancel:
         close();
         break;
