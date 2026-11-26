@@ -50,9 +50,9 @@ SettingsSection {
     SettingRow {
         id: fileTypesRow
         title: qsTr("文件类型")
-        keywords: qsTr("类型;扩展名;后缀;筛选;前缀;快捷键;搜索范围;目录;顺序;排序;拖动;folder;filter;type;extension;order").split(";")
+        keywords: qsTr("类型;扩展名;后缀;筛选;前缀;快捷键;搜索范围;目录;顺序;排序;拖动;所有文件;只要文件;folder;filter;type;extension;order;all files").split(";")
         values: section.editor.fileTypes.map(t => t.name + " :" + t.keyword + " " + t.folder)
-        description: qsTr("前缀不区分大小写，留空停用。点文件夹图标可绑定一个文件夹（含子文件夹）；例如 cw + csv，输入“cw:”直接列出该范围的 CSV。拖动左边的把手调整顺序（文件夹也能移动），搜索框下的类型条上按住类型左右拖动也可以。Ctrl+Tab 按这个顺序切换。")
+        description: qsTr("扩展名填 * 表示所有文件（不含文件夹），只想分文件和文件夹时用。前缀不区分大小写，留空停用。点文件夹图标可绑定一个文件夹（含子文件夹）；例如 cw + csv，输入“cw:”直接列出该范围的 CSV。拖动左边的把手调整顺序（文件夹也能移动），搜索框下的类型条上按住类型左右拖动也可以。Ctrl+Tab 按这个顺序切换。")
 
         FlatButton {
             dpr: section.dpr
@@ -330,7 +330,7 @@ SettingsSection {
                 InputBox {
                     id: newExtensions
                     width: section.extensionsWidth + section.keywordWidth + 6
-                    placeholder: qsTr("扩展名，例如 dwg dxf")
+                    placeholder: qsTr("扩展名，例如 dwg dxf；* 为所有文件")
                     Accessible.name: qsTr("新类型扩展名")
                     onAccepted: addType.clicked()
                 }

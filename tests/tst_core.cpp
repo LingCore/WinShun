@@ -9890,6 +9890,124 @@ private slots:
         QVERIFY(matcher.match(index, index.entry(other)) >= 0);
     }
 
+    // A kind of every file ("*", kEveryFileExtension: 文件 beside 文件夹, for
+    // those who want the two alone): what 不限 finds less the folders, a file
+    // with no extension too; ext: typed still narrows it, the settings' skipped
+    // types stay out, and it is counted as the files found. In the index, in a
+    // folder walked on the disk, with nothing typed and in a bound folder.
+    void everyFileType()
+    {
+        const QString root = u"F:\\wseverytest\\"_s;
+        QTemporaryDir dir;
+        IndexService::Options options;
+        options.content.enabled = false;
+        IndexService service(dir.path() + u"/index"_s, options);
+        {
+            const auto index = service.index();
+            const auto lock = index->writeLock();
+            const EntryId f = index->addRoot("F:");
+            const EntryId test = index->add(f, "wseverytest", EntryFlag::Directory);
+            for (const char* name : {"report.docx", "report.PDF", "report", "report.bak", "budget.xlsx"})
+                index->add(test, name, 0);
+            index->add(test, "report photos", EntryFlag::Directory);
+            index->add(test, "report.old", EntryFlag::Directory); // a folder, though named as a file
+            const EntryId src = index->add(test, "src", EntryFlag::Directory);
+            index->add(src, "main.cpp", 0);
+            index->add(src, "report draft.txt", 0);
+            FileTime t = 1'700'000'000;
+            for (std::size_t i = 0; i < index->slotCount(); ++i)
+                index->setModified(static_cast<EntryId>(i), t += 100);
+        }
+        SearchEngine engine(&service);
+        QSignalSpy spy(&engine, &SearchEngine::resultsReady);
+        const QStringList every {QString::fromLatin1(kEveryFileExtension)};
+        const auto names = [&](SearchEngine::Request request) {
+            spy.clear();
+            engine.submit(std::move(request));
+            if (!spy.wait(5000))
+                return QStringList {u"(no results)"_s};
+            QStringList found;
+            for (const SearchResult& r : spy.at(0).at(1).value<SearchResults>())
+                found.append(r.path.mid(root.size()));
+            found.sort();
+            return found;
+        };
+        const auto search = [&](const QString& text, const QStringList& types, const QStringList& skipped = {}) {
+            SearchEngine::Request request;
+            request.text = text;
+            request.scope = Scope::Files;
+            request.extensions = types;
+            request.excludedTypes = skipped;
+            return names(std::move(request));
+        };
+        const QStringList files {u"report"_s, u"report.PDF"_s, u"report.bak"_s, u"report.docx"_s, u"src\\report draft.txt"_s};
+        QCOMPARE(search(u"report"_s, {}),
+            (QStringList {u"report"_s, u"report photos"_s, u"report.PDF"_s, u"report.bak"_s, u"report.docx"_s, u"report.old"_s,
+                u"src\\report draft.txt"_s}));
+        QCOMPARE(search(u"report"_s, every), files);
+        // With other kinds chosen too: every file all the same.
+        QCOMPARE(search(u"report"_s, {u"docx"_s, u"*"_s}), files);
+        QCOMPARE(search(u"report ext:pdf"_s, every), (QStringList {u"report.PDF"_s}));
+        QCOMPARE(search(u"report"_s, every, {u"bak"_s}),
+            (QStringList {u"report"_s, u"report.PDF"_s, u"report.docx"_s, u"src\\report draft.txt"_s}));
+        // A word alone is the name's, as in 不限: not every file of the folder so named.
+        QCOMPARE(search(u"src"_s, {}), (QStringList {u"src"_s}));
+        QCOMPARE(search(u"src"_s, every), QStringList());
+        QCOMPARE(search(u"src main"_s, every), (QStringList {u"src\\main.cpp"_s}));
+        QCOMPARE(search(u"photos | budget"_s, every), (QStringList {u"budget.xlsx"_s}));
+
+        // Nothing typed: the files written last; in a folder it is bound to, every file there.
+        SearchEngine::Request newest;
+        newest.scope = Scope::Files;
+        newest.extensions = every;
+        newest.startList = StartList::Modified;
+        const QStringList written = names(newest);
+        QVERIFY2(!written.isEmpty() && written.contains(u"report"_s) && !written.contains(u"report photos"_s)
+                && !written.contains(u"report.old"_s) && !written.contains(u"src"_s),
+            qPrintable(written.join(u", ")));
+        SearchEngine::Request bound;
+        bound.scope = Scope::Files;
+        bound.extensions = every;
+        bound.typeFolders = {root + u"src"_s};
+        QCOMPARE(names(bound), (QStringList {u"src\\main.cpp"_s, u"src\\report draft.txt"_s}));
+
+        // Counted as the files that match, whichever kind is chosen.
+        QSignalSpy counts(&engine, &SearchEngine::typeCounts);
+        SearchEngine::Request counted;
+        counted.text = u"report"_s;
+        counted.scope = Scope::Files;
+        counted.extensions = {u"docx"_s};
+        counted.countTypes = {{every, {}}, {{u"docx"_s, u"pdf"_s}, {}}, {every, {root + u"src"_s}}};
+        names(counted);
+        QVERIFY(QTest::qWaitFor([&] { return !counts.isEmpty(); }, 5000));
+        QCOMPARE(counts.last().at(1).value<NameTypeCounts>(), (NameTypeCounts {.all = 7, .folders = 2, .types = {5, 2, 1}}));
+
+        // A folder walked on the disk: its files alone.
+        QTemporaryDir disk;
+        QVERIFY(QDir(disk.path()).mkpath(u"report photos"_s));
+        for (const QString& name : {u"report"_s, u"report.txt"_s, u"report photos/report 1.jpg"_s}) {
+            QFile file(disk.filePath(name));
+            QVERIFY(file.open(QIODevice::WriteOnly));
+        }
+        QSignalSpy rows(&engine, &SearchEngine::driveResults);
+        QSignalSpy progress(&engine, &SearchEngine::driveProgress);
+        SearchEngine::Request walk;
+        walk.text = u"report"_s;
+        walk.scope = Scope::Files;
+        walk.extensions = every;
+        walk.walkFolder = QDir::toNativeSeparators(disk.path());
+        const quint64 id = engine.submit(std::move(walk));
+        QVERIFY(QTest::qWaitFor(
+            [&] { return !progress.isEmpty() && progress.last().at(2).toBool() && progress.last().at(0).toULongLong() == id; }, 5000));
+        QStringList walked;
+        for (const QList<QVariant>& batch : rows) {
+            for (const SearchResult& r : batch.at(1).value<SearchResults>())
+                walked.append(QDir(disk.path()).relativeFilePath(QDir::fromNativeSeparators(r.path)));
+        }
+        walked.sort();
+        QCOMPARE(walked, (QStringList {u"report"_s, u"report photos/report 1.jpg"_s, u"report.txt"_s}));
+    }
+
     // GitHub #132: Settings' skipped file names (wildcards, any case) leave
     // files so named out of names and the start list; a folder so named is
     // not a file; a word typed that is such a name shows them.

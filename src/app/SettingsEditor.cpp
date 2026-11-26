@@ -2928,7 +2928,7 @@ QString SettingsEditor::addFileType(const QString& name, const QString& extensio
     const FileTypes named = m_settings.namedFileTypes();
     if (std::ranges::any_of(named, [&](const FileType& t) { return t.name.compare(trimmed, Qt::CaseInsensitive) == 0; }))
         return tr("已有这个类型");
-    const QStringList exts = Settings::fileExtensions(extensions);
+    const QStringList exts = Settings::fileTypeExtensions(extensions);
     if (exts.isEmpty())
         return tr("填上扩展名，例如 md, log");
     m_settings.fileTypes.append({trimmed, exts, {}});
@@ -2959,7 +2959,7 @@ QString SettingsEditor::setFileTypeExtensions(int index, const QString& text)
 {
     if (index < 0 || index >= m_settings.fileTypes.size())
         return {};
-    const QStringList exts = Settings::fileExtensions(text);
+    const QStringList exts = Settings::fileTypeExtensions(text);
     if (exts.isEmpty())
         return tr("填上扩展名，例如 md, log");
     if (exts != m_settings.fileTypes[index].extensions) {

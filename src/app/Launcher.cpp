@@ -4430,6 +4430,9 @@ QJsonObject Launcher::pluginFilters() const
                           : QJsonValue(QDateTime::fromSecsSinceEpoch(value, QTimeZone::UTC).toString(Qt::ISODate));
     };
     QJsonArray kinds;
+    QStringList extensions = fileExtensions();
+    if (listsEveryFile(extensions))
+        extensions.clear(); // every file: no extension to narrow to, as the plugins read it (docs/plugins.md)
     if (m_fileType >= 0 && m_fileType < m_fileTypes.size()) {
         for (int type : selectedFileTypes())
             kinds.append(m_fileTypes[type].id.isEmpty() ? m_fileTypes[type].name : m_fileTypes[type].id);
@@ -4442,7 +4445,7 @@ QJsonObject Launcher::pluginFilters() const
     QJsonObject result {{u"modifiedFrom"_s, time(filter.after)}, {u"modifiedTo"_s, time(filter.before)},
         {u"minSize"_s, filter.minSize == 0 ? QJsonValue(QJsonValue::Null) : QJsonValue(qint64(unpackSize(filter.minSize)))},
         {u"maxSize"_s, filter.maxSize == kUnknownSize ? QJsonValue(QJsonValue::Null) : QJsonValue(qint64(unpackSize(filter.maxSize)))},
-        {u"kinds"_s, kinds}, {u"extensions"_s, QJsonArray::fromStringList(fileExtensions())},
+        {u"kinds"_s, kinds}, {u"extensions"_s, QJsonArray::fromStringList(extensions)},
         {u"folder"_s, m_folderFilter}};
     for (auto it = content.begin(); it != content.end(); ++it)
         result.insert(it.key(), it.value());
@@ -5091,6 +5094,8 @@ QStringList Launcher::fileExtensions() const
         for (int type : selectedFileTypes())
             extensions.append(m_fileTypes[type].extensions);
     }
+    if (listsEveryFile(extensions))
+        return {QString::fromLatin1(kEveryFileExtension)}; // with others chosen too: every file all the same
     extensions.removeDuplicates();
     return extensions;
 }
@@ -5116,6 +5121,8 @@ QStringList Launcher::contentTypeExtensions() const
     QStringList extensions;
     for (int type : m_contentTypes)
         extensions.append(m_fileTypes[type].extensions);
+    if (listsEveryFile(extensions))
+        return {}; // every file: any the content search reads
     extensions.removeDuplicates();
     return extensions;
 }
@@ -8295,7 +8302,7 @@ void Launcher::onPluginResults(std::uint64_t queryId, const QString& pluginId, c
         filtered.removeIf([&](const plugin::Item& item) {
             if (item.open.kind != plugin::Open::Kind::Path || !pathtext::inChosenFolders(typeFolders, item.open.target))
                 return true;
-            return !extensions.contains(QFileInfo(item.open.target).suffix(), Qt::CaseInsensitive);
+            return !listsEveryFile(extensions) && !extensions.contains(QFileInfo(item.open.target).suffix(), Qt::CaseInsensitive);
         });
     }
     if (m_panel) {
@@ -8332,7 +8339,8 @@ void Launcher::onPluginResults(std::uint64_t queryId, const QString& pluginId, c
             }
             const QStringList extensions = fileExtensions();
             const QString extension = QFileInfo(item.title).suffix().toLower();
-            return !extensions.isEmpty() && !extension.isEmpty() && !extensions.contains(extension, Qt::CaseInsensitive);
+            return !extensions.isEmpty() && !listsEveryFile(extensions) && !extension.isEmpty()
+                && !extensions.contains(extension, Qt::CaseInsensitive);
         });
     }
     m_merge->results(queryId, pluginId, commandId, filtered, partial, replace);

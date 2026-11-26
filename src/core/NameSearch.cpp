@@ -478,10 +478,16 @@ public:
     explicit TallyMap(const TypeTally& tally)
     {
         for (std::size_t type = 0; type < tally.types.size(); ++type) {
-            for (const std::string& extension : tally.types[type].extensions) {
+            const auto kind = static_cast<std::uint16_t>(type);
+            const std::vector<std::string>& extensions = tally.types[type].extensions;
+            if (std::ranges::find(extensions, std::string_view(kEveryFileExtension)) != extensions.end()) {
+                m_everyFile.push_back(kind); // its other extensions are files too: counted once
+                continue;
+            }
+            for (const std::string& extension : extensions) {
                 std::vector<std::uint16_t>& of = m_kinds[extension];
-                if (std::ranges::find(of, static_cast<std::uint16_t>(type)) == of.end())
-                    of.push_back(static_cast<std::uint16_t>(type));
+                if (std::ranges::find(of, kind) == of.end())
+                    of.push_back(kind);
             }
         }
     }
@@ -493,10 +499,13 @@ public:
         const auto found = m_kinds.find(text::foldAscii(extension));
         return found == m_kinds.end() ? nullptr : &found->second;
     }
+    // The kinds every file is of, whatever its extension.
+    const std::vector<std::uint16_t>& everyFile() const noexcept { return m_everyFile; }
 
 private:
     static constexpr std::size_t kLongest = 32;
     std::unordered_map<std::string, std::vector<std::uint16_t>> m_kinds;
+    std::vector<std::uint16_t> m_everyFile;
 };
 
 // The hits in the folder typed in first (NameSearchOptions::insideFirst),
@@ -666,14 +675,15 @@ NameSearchOutput search(const FileIndex& index, const NameMatcher& matcher, cons
                     if (e.isDir()) {
                         ++folderMatches;
                     } else {
+                        const auto tallyKind = [&](std::uint16_t type) {
+                            if (!typeUnder[type] || (*typeUnder[type])(e))
+                                ++typeMatches[type];
+                        };
                         std::size_t extLength = 0;
                         const std::string_view name = index.fileName(e, extLength);
-                        if (const auto* kinds = tallyMap->kindsOf(name.substr(name.size() - extLength))) {
-                            for (const std::uint16_t type : *kinds) {
-                                if (!typeUnder[type] || (*typeUnder[type])(e))
-                                    ++typeMatches[type];
-                            }
-                        }
+                        if (const auto* kinds = tallyMap->kindsOf(name.substr(name.size() - extLength)))
+                            std::ranges::for_each(*kinds, tallyKind);
+                        std::ranges::for_each(tallyMap->everyFile(), tallyKind);
                     }
                     if (options.countOnly)
                         continue;

@@ -444,6 +444,9 @@ struct Settings {
     bool moveStripChip(int from, int to);
     // "jpg, .PNG *.gif" → {"jpg", "png", "gif"}: lower case, no dots, each once.
     static QStringList fileExtensions(const QString& text);
+    // A kind of file's: fileExtensions, or with "*" (or "*.*") among them
+    // {kEveryFileExtension} alone, every file.
+    static QStringList fileTypeExtensions(const QString& text);
     // "~$*; Thumbs.db，*.tmp~" → {"~$*", "Thumbs.db", "*.tmp~"}: one name or
     // pattern each, between commas, semicolons or lines (a name may have
     // spaces), each once; what has a folder in it is none, nor wildcards

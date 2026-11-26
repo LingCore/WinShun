@@ -70,11 +70,20 @@ struct SortOrder {
     friend bool operator==(const SortOrder&, const SortOrder&) = default;
 };
 
+// The extension that stands for every file in a kind's list (FileType,
+// SearchEngine::Request::extensions and countTypes, TypeTally): a kind 文件
+// beside 文件夹, of files whatever their extension or none, never a folder.
+inline constexpr char kEveryFileExtension[] = "*";
+inline bool listsEveryFile(const QList<QString>& extensions)
+{
+    return extensions.contains(QLatin1StringView(kEveryFileExtension));
+}
+
 // A kind of file 文件 can be narrowed to (图片: jpg, png…), as the strip
 // under the search box offers them; its user's to name and change.
 struct FileType {
     QString name; // empty for a built-in one not renamed: named in the language shown (by id)
-    QList<QString> extensions; // without the dot, lower case
+    QList<QString> extensions; // without the dot, lower case; or kEveryFileExtension alone
     QString id; // a built-in one's ("pictures"); empty for its user's own
     QString keyword; // :keyword narrows a query to this type; empty disables it
     QString folder; // 搜索范围（含子文件夹）；留空使用整个索引

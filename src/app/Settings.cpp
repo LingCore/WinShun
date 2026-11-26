@@ -422,7 +422,7 @@ FileTypes readFileTypes(QSettings& s, const FileTypes& fallback)
         FileType type;
         type.id = s.value(u"Id"_s).toString().trimmed();
         type.name = s.value(u"Name"_s).toString().trimmed();
-        type.extensions = Settings::fileExtensions(s.value(u"Extensions"_s).toString());
+        type.extensions = Settings::fileTypeExtensions(s.value(u"Extensions"_s).toString());
         const bool builtIn = std::ranges::any_of(kBuiltInFileTypes, [&](const BuiltInFileType& b) { return type.id == QLatin1StringView(b.id); });
         if (!builtIn)
             type.id.clear();
@@ -774,11 +774,30 @@ FileTypes Settings::defaultFileTypes()
     return types;
 }
 
-QStringList Settings::fileExtensions(const QString& text)
+namespace {
+const QRegularExpression& extensionSeparators()
 {
     static const QRegularExpression separators(u"[\\s,;，；、]+"_s);
+    return separators;
+}
+} // namespace
+
+QStringList Settings::fileTypeExtensions(const QString& text)
+{
+    // "*", "*.*", as a Chinese input method may type them too ("＊。＊").
+    const auto everyFile = [](const QString& word) {
+        return (word.contains(u'*') || word.contains(u'＊'))
+            && std::ranges::all_of(word, [](QChar c) { return QStringView(u"*＊.。．").contains(c); });
+    };
+    if (std::ranges::any_of(text.split(extensionSeparators(), Qt::SkipEmptyParts), everyFile))
+        return {QString::fromLatin1(kEveryFileExtension)};
+    return fileExtensions(text);
+}
+
+QStringList Settings::fileExtensions(const QString& text)
+{
     QStringList extensions;
-    for (QString ext : text.split(separators, Qt::SkipEmptyParts)) {
+    for (QString ext : text.split(extensionSeparators(), Qt::SkipEmptyParts)) {
         while (ext.startsWith(u'*') || ext.startsWith(u'.'))
             ext.remove(0, 1);
         ext = ext.sliced(ext.lastIndexOf(u'.') + 1).toLower(); // "tar.gz": what comes after the last dot
