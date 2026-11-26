@@ -1265,10 +1265,10 @@ void Clipboard::onWritten(bool ok)
         m_focusTimer.start();
         return;
     }
-    // Minimized (a game that left full screen for the clipboard, GitHub #452):
-    // the window goes first, so nothing is over the game as it comes back and
-    // takes full screen again.
-    if (::IsIconic(m_pasteWindow))
+    // A game that left full screen for the clipboard (minimized itself, or
+    // only lost the focus to it, GitHub #452): the window goes first, so
+    // nothing is over the game as it comes back and takes full screen again.
+    if (m_targetLeft || ::IsIconic(m_pasteWindow))
         emit dismissRequested();
     paste::activate(m_pasteWindow); // the clipboard window loses the focus and goes (App)
     m_frontClock.invalidate();
@@ -1980,7 +1980,7 @@ void Clipboard::dismiss()
     }
     const HWND back = m_targetLeft && !m_pasting ? paste::usableTarget(m_target) : nullptr;
     emit dismissRequested();
-    if (back && ::IsIconic(back))
+    if (back && (::IsIconic(back) || !paste::isForeground(back)))
         paste::activate(back); // the game that left full screen for it: in front again
 }
 

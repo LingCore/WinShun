@@ -339,6 +339,7 @@ private:
         std::uint64_t at = 0;
         bool fullScreen = false; // a window covering its monitor in front
         bool exclusive = false; // Direct3D's own full screen
+        bool focusTaken = false; // so it opened with the focus, the game out of full screen for it
     };
     ClipOver m_clipOver;
     bool clipboardUnderLauncher() const; // opened from the launcher's search box

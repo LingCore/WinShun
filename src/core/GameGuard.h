@@ -100,10 +100,22 @@ inline IgnoreReason doubleCtrlIgnoreReason(const ForegroundFacts& facts, const G
 
 // The clipboard opens over the program in front without taking its focus,
 // and goes as a menu when another program comes to the front. A game in
-// exclusive full screen cannot have a window over it: Windows takes it out of
-// full screen as the panel shows, the game minimizes itself, and whatever was
-// behind it comes to the front. That is the panel's own doing, not its user
-// going elsewhere: it stays, with the focus (GitHub #452).
+// exclusive full screen cannot have a window over it. What Windows does with
+// one shown there without the focus differs: Windows 11 takes the game out of
+// full screen, Windows 10 22H2 leaves it, the panel up unseen with the game's
+// keys. So over one the panel opens with the focus, which takes the game out
+// of full screen everywhere (GitHub #452). The shell and Win顺's own windows
+// have no program in ForegroundFacts.
+inline bool panelTakesFocus(const ForegroundFacts& over) noexcept
+{
+    return over.exclusiveFullScreen && !over.program.isEmpty();
+}
+
+// Where the panel did open without the focus over a full-screen window (one
+// covering its monitor that Direct3D's state did not tell), that window may
+// still leave full screen as the panel shows and minimize itself, and whatever
+// was behind it comes to the front. That is the panel's own doing, not its
+// user going elsewhere: it stays, with the focus.
 //
 // Told from a switch of programs (Alt+Tab, Win+D out of a full-screen game
 // minimize it too) by the keys: none pressed since it opened. And soon: the
