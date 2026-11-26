@@ -35,6 +35,7 @@ enum class KeyAction {
     PinOcr, // the menu's 识别文字 (#212)
     PinCollapseEdge, // the menu's 收到屏幕顶边; again: back in full (#212)
     PinOcrCopy, // the menu's 复制文字 (OCR and copy all text, #423)
+    PinFormula, // the menu's 识别公式
 };
 
 enum class KeyContext { Capture, PinWindow };
@@ -85,6 +86,8 @@ inline constexpr std::array kActions {
         QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "收到屏幕顶边")},
     ActionInfo {KeyAction::PinOcrCopy, "PinOcrCopy", KeyContext::PinWindow,
         QKeyCombination(Qt::ShiftModifier, Qt::Key_C), QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "复制全部文字")},
+    ActionInfo {KeyAction::PinFormula, "PinFormula", KeyContext::PinWindow,
+        QKeyCombination(Qt::ShiftModifier, Qt::Key_F), QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "识别公式")},
 };
 
 inline constexpr std::size_t kCount = kActions.size();

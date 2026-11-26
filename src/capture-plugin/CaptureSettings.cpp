@@ -119,7 +119,7 @@ QString clashBefore(const std::vector<std::pair<QString, const char*>>& own, std
 
 QStringList CaptureOptions::toolbarButtonIds()
 {
-    return {u"undo"_s, u"redo"_s, u"copy"_s, u"save"_s, u"pin"_s, u"ocr"_s, u"translate"_s, u"long"_s, u"record"_s, u"qr"_s, u"delay"_s, u"cancel"_s, u"help"_s};
+    return {u"undo"_s, u"redo"_s, u"copy"_s, u"save"_s, u"pin"_s, u"ocr"_s, u"formula"_s, u"translate"_s, u"long"_s, u"record"_s, u"qr"_s, u"delay"_s, u"cancel"_s, u"help"_s};
 }
 
 QString CaptureOptions::normalizedToolbarHidden(const QString& text)
@@ -187,6 +187,8 @@ CaptureOptions CaptureOptions::load(const QString& file)
     o.historyCount = std::clamp(readOrDefault(s, u"Capture/HistoryCount"_s, d.historyCount), 0, 100);
     const QString format = readOrDefault(s, u"Capture/ColorFormat"_s, d.colorFormat).trimmed().toLower();
     o.colorFormat = format == u"rgb" || format == u"hsl" ? format : u"hex"_s;
+    const QString formula = readOrDefault(s, u"Formula/Format"_s, d.formulaFormat).trimmed().toLower();
+    o.formulaFormat = formula == u"markdown" || formula == u"word" || formula == u"typst" ? formula : u"latex"_s;
     o.sizePresets = capture::sizePresetsText(capture::parseSizePresets(listOrText(s, u"Capture/SizePresets"_s, d.sizePresets)));
     o.pinsHotkey = readOrDefault(s, u"Capture/PinsHotkey"_s, d.pinsHotkey).trimmed();
     o.pinsRestoreHotkey = readOrDefault(s, u"Capture/PinsRestoreHotkey"_s, d.pinsRestoreHotkey).trimmed();
@@ -278,6 +280,7 @@ void CaptureOptions::save(const QString& file) const
     s.setValue(u"Capture/DelaySeconds"_s, delay);
     s.setValue(u"Capture/HistoryCount"_s, historyCount);
     s.setValue(u"Capture/ColorFormat"_s, colorFormat);
+    s.setValue(u"Formula/Format"_s, formulaFormat);
     s.setValue(u"Capture/SizePresets"_s, sizePresets);
     s.setValue(u"Capture/PinsHotkey"_s, pinsHotkey);
     s.setValue(u"Capture/PinsRestoreHotkey"_s, pinsRestoreHotkey);

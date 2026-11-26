@@ -33,7 +33,8 @@ foreach(name IN LISTS shared_qml)
 endforeach()
 foreach(name IN ITEMS CaptureOverlay AnnotateToolbar AnnotateToolIcon AnnotateStylePanel AnnotateSmartHint AnnotateLayer AnnotateObjects
                       EditWindow OcrPanel OcrBubble LongCapturePanel RecordingPanel RecordingButton RecordingOptions CaptureOptions CaptureSettingsWindow CaptureSaveButton
-                      SettingsSearch CaptureKeyHints CaptureKeyList CaptureSizeBox PresenterOverlay PresenterToolbar PinGroupPrompt)
+                      SettingsSearch CaptureKeyHints CaptureKeyList CaptureSizeBox PresenterOverlay PresenterToolbar PinGroupPrompt
+                      FormulaPanel)
     list(APPEND capture_qml "${CMAKE_CURRENT_SOURCE_DIR}/qml/${name}.qml")
 endforeach()
 set_source_files_properties("${app_dir}/qml/Theme.qml" PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
@@ -75,6 +76,7 @@ qt_add_library(WinShunCaptureApp SHARED
     ${app_dir}/platform/IdleTrim.cpp ${app_dir}/platform/IdleTrim.h
     ${app_dir}/platform/Integrity.cpp ${app_dir}/platform/Integrity.h
     ${app_dir}/platform/PaddleOcr.cpp ${app_dir}/platform/PaddleOcr.h
+    ${app_dir}/platform/FormulaReader.cpp ${app_dir}/platform/FormulaReader.h
     ${app_dir}/platform/OcrTable.cpp ${app_dir}/platform/OcrTable.h
     ${app_dir}/platform/OcrFiles.cpp ${app_dir}/platform/OcrFiles.h
     ${app_dir}/platform/RegistryWatch.cpp ${app_dir}/platform/RegistryWatch.h
@@ -116,6 +118,8 @@ qt_add_qml_module(WinShunCaptureApp
         ../capture/CaptureSession.cpp ../capture/CaptureSession.h
         ../capture/CaptureEditor.cpp ../capture/CaptureEditor.h
         ../capture/CaptureOcr.cpp ../capture/CaptureOcr.h
+        ../capture/CaptureFormula.cpp ../capture/CaptureFormula.h
+        ../capture/FormulaView.cpp ../capture/FormulaView.h
         ../capture/LongCapture.cpp ../capture/LongCapture.h
         ../capture/Recorder.cpp ../capture/Recorder.h
         ../capture/PinManager.cpp ../capture/PinManager.h
@@ -166,7 +170,7 @@ qt_add_resources(WinShunCaptureApp "capture_phosphor"
 target_include_directories(WinShunCaptureApp PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR} ${app_dir} ${app_dir}/platform ${PROJECT_SOURCE_DIR}/src/core)
 target_link_libraries(WinShunCaptureApp PRIVATE
-    wscapture Qt6::Gui Qt6::Qml Qt6::Quick onnxruntime_headers
+    wscapture wsformula Qt6::Gui Qt6::Qml Qt6::Quick wsonnx
     advapi32 comctl32 d2d1 dwmapi dxgi gdi32 imm32 ole32 oleaut32 psapi shcore shell32 shlwapi user32 uxtheme windowscodecs
     mfplat mfreadwrite mfuuid delayimp)
 target_link_options(WinShunCaptureApp PRIVATE /DELAYLOAD:mfplat.dll /DELAYLOAD:mfreadwrite.dll)

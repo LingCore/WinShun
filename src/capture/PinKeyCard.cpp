@@ -115,6 +115,7 @@ std::vector<PinKeyRow> pinKeyRows(const CaptureKeys& keys, bool ocr, bool otherS
         add({KeyAction::PinOcrCopy}, menu(QT_TRANSLATE_NOOP("ws::capture::PinManager", "复制全部文字")));
         add({KeyAction::PinTextPick}, menu(QT_TRANSLATE_NOOP("ws::capture::PinManager", "选择文字")));
     }
+    add({KeyAction::PinFormula}, menu(QT_TRANSLATE_NOOP("ws::capture::PinManager", "识别公式")));
     if (otherSide) {
         rows.push_back({{u"Tab"_s}, translationShown ? menu(QT_TRANSLATE_NOOP("ws::capture::PinManager", "显示原文"))
                                                      : menu(QT_TRANSLATE_NOOP("ws::capture::PinManager", "显示译文"))});

@@ -107,6 +107,8 @@ public:
         // OcrTranslate: a pin with them translated in place (the app decides; the window when that cannot be).
         // Also what triggerOcr(OcrPurpose::Translate) (#356) hands over, as its picking ends.
         std::function<void(const QImage&, double dpr, const QRect& where, CaptureSession::Action then)> ocrThen;
+        // 公式识别 (Shift+F): the picture and where it is on the screen (physical; the formula window goes beside it).
+        std::function<void(const QImage&, const QRect& where)> formula;
         // 识别屏幕文字 (triggerOcr, #198): the region picked, to be read and its
         // words copied; it is in no history and is not the last capture.
         std::function<void(const QImage&, double dpr, const QRect& where)> readText;

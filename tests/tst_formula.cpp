@@ -284,6 +284,11 @@ private slots:
             }
         }
         QVERIFY(red);
+        // A brace closed that was never opened: nothing drawn, and why (the
+        // window says the formula is wrong). One left open is drawn as if closed.
+        const FormulaPicture extra(u"\\frac{a}{b}}"_s, 20, Qt::black);
+        QVERIFY(!extra.isValid() && !extra.error().isEmpty());
+        QVERIFY(FormulaPicture(u"\\frac{a}{b"_s, 20, Qt::black).isValid());
         // Nothing: no picture and no complaint.
         const FormulaPicture empty(u"  "_s, 20, Qt::black);
         QVERIFY(!empty.isValid() && empty.error().isEmpty());

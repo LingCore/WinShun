@@ -304,6 +304,14 @@
         <translation>Move toolbar</translation>
     </message>
     <message>
+        <source>公式</source>
+        <translation>Formula</translation>
+    </message>
+    <message>
+        <source>公式识别：把图里的公式转成 LaTeX，可改、可复制为 Word 公式等</source>
+        <translation>Formula: reads the formula in the picture as LaTeX, to edit and copy as a Word equation and more</translation>
+    </message>
+    <message>
         <source>选择：点选画好的标注，再移动、修改或删除</source>
         <translation>Select: click an annotation to move, change or delete it</translation>
     </message>
@@ -478,6 +486,10 @@
     <message>
         <source>显示 / 隐藏屏幕角落的快捷键提示（只管这次截图）</source>
         <translation>Show / hide the shortcut hints in the screen corner (this capture only)</translation>
+    </message>
+    <message>
+        <source>识别选区里的公式，转成 LaTeX、Word 公式等</source>
+        <translation>Read the formula in the selection as LaTeX, a Word equation and more</translation>
     </message>
     <message>
         <source>翻看之前截图时的画面（整屏、选区和标注），. 往回翻</source>
@@ -1264,6 +1276,10 @@
         <translation>Find controls in WinUI and similar programs</translation>
     </message>
     <message>
+        <source>公式识别</source>
+        <translation>Read formula</translation>
+    </message>
+    <message>
         <source>截图并直接贴图</source>
         <translation>Capture and pin</translation>
     </message>
@@ -1679,6 +1695,117 @@
     <message>
         <source>缩放</source>
         <translation>Zoom</translation>
+    </message>
+</context>
+<context>
+    <name>FormulaPanel</name>
+    <message>
+        <source>论文、公式编辑器</source>
+        <translation>Papers, editors</translation>
+    </message>
+    <message>
+        <source>笔记软件，$$ 包围</source>
+        <translation>Note apps, in $$</translation>
+    </message>
+    <message>
+        <source>Word 公式</source>
+        <translation>Word equation</translation>
+    </message>
+    <message>
+        <source>粘贴到 Word 即为公式</source>
+        <translation>Editable in Word</translation>
+    </message>
+    <message>
+        <source>Typst 文档</source>
+        <translation>Typst documents</translation>
+    </message>
+    <message>
+        <source>公式识别</source>
+        <translation>Formula recognition</translation>
+    </message>
+    <message>
+        <source>关闭</source>
+        <translation>Close</translation>
+    </message>
+    <message>
+        <source>原始图像</source>
+        <translation>Picture</translation>
+    </message>
+    <message>
+        <source>识别结果</source>
+        <translation>Result</translation>
+    </message>
+    <message>
+        <source>正在识别…</source>
+        <translation>Reading…</translation>
+    </message>
+    <message>
+        <source>在下面输入 LaTeX，这里显示公式。</source>
+        <translation>Type LaTeX below to see the formula here.</translation>
+    </message>
+    <message>
+        <source>公式有误，暂时无法显示，请检查括号是否成对。</source>
+        <translation>The formula has an error and cannot be shown. Check that the braces pair up.</translation>
+    </message>
+    <message>
+        <source>可能不准确，请对照原图检查</source>
+        <translation>May be inaccurate: check it against the picture</translation>
+    </message>
+    <message>
+        <source>LaTeX 源码</source>
+        <translation>LaTeX source</translation>
+    </message>
+    <message>
+        <source>复制格式</source>
+        <translation>Copy as</translation>
+    </message>
+    <message>
+        <source>导出</source>
+        <translation>Export</translation>
+    </message>
+    <message>
+        <source>复制为图片</source>
+        <translation>Copy as picture</translation>
+    </message>
+    <message>
+        <source>保存为 PNG…</source>
+        <translation>Save as PNG…</translation>
+    </message>
+    <message>
+        <source>保存为 SVG…</source>
+        <translation>Save as SVG…</translation>
+    </message>
+    <message>
+        <source>复制 %1</source>
+        <translation>Copy %1</translation>
+    </message>
+    <message>
+        <source>这个 Win顺 版本还不能下载公式识别模型，请先更新 Win顺。</source>
+        <translation>This version of WinShun cannot download the formula recognition model. Update WinShun first.</translation>
+    </message>
+    <message>
+        <source>正在下载公式识别模型… %1%</source>
+        <translation>Downloading the formula recognition model… %1%</translation>
+    </message>
+    <message>
+        <source>公式识别需要先下载识别模型（%1），之后在本机识别，图片不会上传。</source>
+        <translation>Formula recognition needs its model downloaded first (%1). It then reads on this PC, and no picture is uploaded.</translation>
+    </message>
+    <message>
+        <source>约 120 MB</source>
+        <translation>about 120 MB</translation>
+    </message>
+    <message>
+        <source>取消</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>重试</source>
+        <translation>Retry</translation>
+    </message>
+    <message>
+        <source>下载模型</source>
+        <translation>Download model</translation>
     </message>
 </context>
 <context>
@@ -2559,6 +2686,57 @@ The unfinished recording is kept at: %1</translation>
     </message>
 </context>
 <context>
+    <name>ws::capture::CaptureFormula</name>
+    <message>
+        <source>没有图片可以识别。</source>
+        <translation>There is no picture to read.</translation>
+    </message>
+    <message>
+        <source>公式识别模型无法加载，请在 Win顺 设置 › 剪贴板 › 公式识别模型中移除后重新下载。</source>
+        <translation>The formula recognition model could not be loaded. Remove it in WinShun Settings › Clipboard › Formula recognition model and download it again.</translation>
+    </message>
+    <message>
+        <source>识别没有完成，请再试一次。</source>
+        <translation>The reading did not finish. Try again.</translation>
+    </message>
+    <message>
+        <source>图中没有找到公式。</source>
+        <translation>No formula was found in the picture.</translation>
+    </message>
+    <message>
+        <source>已复制</source>
+        <translation>Copied</translation>
+    </message>
+    <message>
+        <source>公式有误，无法生成图片</source>
+        <translation>The formula has an error; no picture can be made</translation>
+    </message>
+    <message>
+        <source>已复制图片</source>
+        <translation>Picture copied</translation>
+    </message>
+    <message>
+        <source>保存公式</source>
+        <translation>Save formula</translation>
+    </message>
+    <message>
+        <source>SVG 矢量图</source>
+        <translation>SVG image</translation>
+    </message>
+    <message>
+        <source>PNG 图片</source>
+        <translation>PNG image</translation>
+    </message>
+    <message>
+        <source>无法保存到 %1</source>
+        <translation>Could not save to %1</translation>
+    </message>
+    <message>
+        <source>已保存</source>
+        <translation>Saved</translation>
+    </message>
+</context>
+<context>
     <name>ws::capture::CaptureKeys</name>
     <message>
         <source>贴到屏幕</source>
@@ -2583,6 +2761,10 @@ The unfinished recording is kept at: %1</translation>
     <message>
         <source>复制全部文字</source>
         <translation>Copy all text</translation>
+    </message>
+    <message>
+        <source>识别公式</source>
+        <translation>Read formula</translation>
     </message>
     <message>
         <source>收到屏幕顶边</source>
@@ -3051,6 +3233,10 @@ click here to cancel</translation>
         <translation>Save as…</translation>
     </message>
     <message>
+        <source>识别公式</source>
+        <translation>Read formula</translation>
+    </message>
+    <message>
         <source>置顶</source>
         <translation>Always on top</translation>
     </message>
@@ -3209,7 +3395,7 @@ click here to cancel</translation>
     </message>
     <message>
         <source>这台电脑录不了 2 倍尺寸，这一段按原尺寸保存。</source>
-        <translation>This computer cannot record at twice the size: this one was saved at the selection's own size.</translation>
+        <translation>This computer cannot record at twice the size: this one was saved at the selection&apos;s own size.</translation>
     </message>
     <message>
         <source>这台电脑没跟上 %1 帧/秒，实际约 %2 帧/秒。下次可以把画质换成“高清”，或选低一档的帧率。</source>

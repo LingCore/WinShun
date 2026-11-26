@@ -349,31 +349,32 @@ private slots:
     {
         CaptureKeys keys;
         std::vector<PinKeyRow> rows = pinKeyRows(keys, false, false, false);
-        QCOMPARE(texts(rows), QStringList({u"编辑"_s, u"复制"_s, u"保存到“屏幕截图”"_s, u"旋转与翻转"_s, u"缩放 / 透明度"_s,
-                                  u"收成小块"_s, u"关闭"_s}));
+        QCOMPARE(texts(rows), QStringList({u"编辑"_s, u"复制"_s, u"保存到“屏幕截图”"_s, u"识别公式"_s, u"旋转与翻转"_s,
+                                  u"缩放 / 透明度"_s, u"收成小块"_s, u"关闭"_s}));
         QCOMPARE(rows[0].keys, QStringList {keys.text(KeyAction::PinEdit)});
         QCOMPARE(rows[1].keys, QStringList {keys.text(KeyAction::PinCopy)});
-        QCOMPARE(rows[3].keys, QStringList({keys.text(KeyAction::PinRotateRight), keys.text(KeyAction::PinFlipHorizontal),
+        QCOMPARE(rows[3].keys, QStringList {keys.text(KeyAction::PinFormula)});
+        QCOMPARE(rows[4].keys, QStringList({keys.text(KeyAction::PinRotateRight), keys.text(KeyAction::PinFlipHorizontal),
                                    keys.text(KeyAction::PinFlipVertical)}));
-        QCOMPARE(rows[4].keys, QStringList({u"滚轮"_s, u"Ctrl+滚轮"_s}));
-        QCOMPARE(rows[6].keys, QStringList {keys.text(KeyAction::PinClose)});
+        QCOMPARE(rows[5].keys, QStringList({u"滚轮"_s, u"Ctrl+滚轮"_s}));
+        QCOMPARE(rows[7].keys, QStringList {keys.text(KeyAction::PinClose)});
 
         rows = pinKeyRows(keys, true, true, true); // text recognition there, a translated pin showing its translation
-        QCOMPARE(texts(rows), QStringList({u"编辑"_s, u"复制"_s, u"保存到“屏幕截图”"_s, u"识别文字"_s, u"复制全部文字"_s, u"选择文字"_s, u"显示原文"_s,
-                                  u"旋转与翻转"_s, u"缩放 / 透明度"_s, u"收成小块"_s, u"关闭"_s}));
+        QCOMPARE(texts(rows), QStringList({u"编辑"_s, u"复制"_s, u"保存到“屏幕截图”"_s, u"识别文字"_s, u"复制全部文字"_s, u"选择文字"_s,
+                                  u"识别公式"_s, u"显示原文"_s, u"旋转与翻转"_s, u"缩放 / 透明度"_s, u"收成小块"_s, u"关闭"_s}));
         QCOMPARE(rows[4].keys, QStringList {keys.text(KeyAction::PinOcrCopy)});
-        QCOMPARE(rows[6].keys, QStringList {u"Tab"_s});
-        QCOMPARE(texts(pinKeyRows(keys, false, true, false))[3], u"显示译文"_s);
+        QCOMPARE(rows[7].keys, QStringList {u"Tab"_s});
+        QCOMPARE(texts(pinKeyRows(keys, false, true, false))[4], u"显示译文"_s);
 
         keys.set(KeyAction::PinCopy, QKeyCombination()); // cleared in the settings
         keys.set(KeyAction::PinFlipHorizontal, QKeyCombination());
         keys.set(KeyAction::PinFlipVertical, QKeyCombination());
         keys.set(KeyAction::PinEdit, QKeyCombination(Qt::Key_F2));
         rows = pinKeyRows(keys, false, false, false);
-        QCOMPARE(texts(rows), QStringList({u"编辑"_s, u"保存到“屏幕截图”"_s, u"旋转与翻转"_s, u"缩放 / 透明度"_s, u"收成小块"_s,
-                                  u"关闭"_s}));
+        QCOMPARE(texts(rows), QStringList({u"编辑"_s, u"保存到“屏幕截图”"_s, u"识别公式"_s, u"旋转与翻转"_s, u"缩放 / 透明度"_s,
+                                  u"收成小块"_s, u"关闭"_s}));
         QCOMPARE(rows[0].keys, QStringList {u"F2"_s});
-        QCOMPARE(rows[2].keys, QStringList {keys.text(KeyAction::PinRotateRight)});
+        QCOMPARE(rows[3].keys, QStringList {keys.text(KeyAction::PinRotateRight)});
         keys.set(KeyAction::PinRotateRight, QKeyCombination());
         QVERIFY(!texts(pinKeyRows(keys, false, false, false)).contains(u"旋转与翻转"_s));
     }

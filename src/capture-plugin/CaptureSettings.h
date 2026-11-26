@@ -51,6 +51,8 @@ struct CaptureOptions {
     // for , and . in the overlay (capture::CaptureHistory); 0: none kept.
     int historyCount = 10;
     QString colorFormat = QStringLiteral("hex");
+    // What 公式识别's 复制 copies (CaptureFormula::format), kept as it was left.
+    QString formulaFormat = QStringLiteral("latex");
     // The sizes and shapes the size panel offers (#308), as capture::parseSizePresets reads them.
     QString sizePresets = capture::kDefaultSizePresets.toString();
     QString pinsHotkey;
@@ -219,6 +221,7 @@ public:
     void setCaptureControlsUia(bool v) { change(m_options.controlsUia, v); }
     bool captureWindowsOnly() const { return m_options.windowsOnly; }
     void setCaptureWindowsOnly(bool v) { change(m_options.windowsOnly, v); }
+    void setFormulaFormat(const QString& v) { change(m_options.formulaFormat, v); }
     int captureDelay() const { return m_options.delay; }
     void setCaptureDelay(int v);
     int captureHistoryCount() const { return m_options.historyCount; }

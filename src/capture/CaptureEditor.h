@@ -141,6 +141,7 @@ public:
         // Optional richer pin callback carrying `sourcePath` (#427); falls back to `pin` if unset.
         std::function<void(const QImage&, const QByteArray& project, QPoint origin, const QString& sourcePath)> pinWithSource;
         std::function<void(const QImage&, double dpr, const QRect& where)> ocr;
+        std::function<void(const QImage&, const QRect& where)> formula; // 公式识别
         // 智能打码: how the text is read and what is hidden (SmartRedact.h).
         SmartHooks smart;
         // What the tools remember ([Capture] AnnotateStyles, JSON).

@@ -38,6 +38,7 @@ public:
         std::function<void(PinWindow*, const QImage&, const QString& path)> saveSource;
         std::function<void(const QImage&, double dpr, const QRect& picture)> ocr;
         std::function<void(const QImage&, double dpr, const QRect& picture)> ocrCopy; // Shift+C / 复制文字 (#423)
+        std::function<void(const QImage&, const QRect& picture)> formula; // Shift+F / 识别公式
         std::function<void(PinWindow*)> translate; // 翻译: its words translated in place (#191); empty: not offered
         std::function<void(PinWindow*)> edit; // 编辑: the editing window opens on it
         std::function<void(PinWindow*)> closing; // a pin is about to close (pixels still intact, #446)
