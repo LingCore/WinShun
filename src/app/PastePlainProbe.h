@@ -35,4 +35,11 @@ bool entryHotkeyChordFree();
 // (what Ctrl+V or the first quick paste key would paste instead).
 bool seedEntryHotkey(const QString& clipboardFolder);
 bool checkEntryHotkey(App& app, const QStringList& args, const QDir& output);
+
+// --probe-runtime <folder> --duplicates-check [--keep-place]: 保留重复项 on
+// the real clipboard: copies as a program makes them, one after another,
+// twice at once, and after a paste from the history (with 粘贴后保持位置 on
+// for --keep-place). The history seeded and the chord as for
+// --entry-hotkey-check. See the .cpp.
+bool checkDuplicates(App& app, const QStringList& args, const QDir& output);
 }

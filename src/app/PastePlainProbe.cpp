@@ -14,6 +14,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
+#include <QScopeGuard>
 
 #include <algorithm>
 #include <cstdio>
@@ -535,6 +536,164 @@ bool checkEntryHotkey(App& app, const QStringList&, const QDir& output)
         check(restored, "the clipboard as it was could not be put back");
     }
     QFile::remove(scriptPath);
+    return finish();
+}
+
+namespace {
+const QString kRepeatedText = u"WinShun 保留重复项 duplicates 5524"_s;
+
+// A copy as a program makes it, which only the Win顺 under test records
+// (ClipboardWatcher::read's test copy; putOnClipboard keeps it from the rest).
+bool copyAsProgram(const QString& text)
+{
+    const QByteArray words(reinterpret_cast<const char*>(text.utf16()), (text.size() + 1) * static_cast<qsizetype>(sizeof(char16_t)));
+    return putOnClipboard({{CF_UNICODETEXT, words}, {::RegisterClipboardFormatW(L"WinShun.Test.Copy"), QByteArray(1, '\1')}});
+}
+} // namespace
+
+// --probe-runtime <folder> --duplicates-check [--keep-place] (WINSHUN_TEST_NO_CLIP_HISTORY set)
+// The production App beside the Win顺 that runs, 保留重复项 on (粘贴后保持位置
+// too for --keep-place), its history seeded as for --entry-hotkey-check.
+// On the real clipboard, read by the App's own watcher at the times they
+// come: the same words copied, copied again over a second later (two
+// entries), then written twice 150 ms apart (one more, not two: one copy of
+// a program that writes twice). The older seeded entry is then pasted into a
+// text box of another process by its shortcut, pressed for real (no entry
+// added; on top unless its place is kept), and its words copied over a second
+// after: an entry of its own on top either way, the pasted one still there.
+// The clipboard as it was is put back, nothing of this in any other history.
+// Into duplicates.json.
+bool checkDuplicates(App& app, const QStringList& args, const QDir& output)
+{
+    QJsonObject report;
+    bool ok = true;
+    const auto check = [&](bool condition, const char* what) {
+        if (!condition) {
+            ok = false;
+            std::fprintf(stderr, "duplicates: FAILED: %s\n", what);
+        }
+    };
+    const auto finish = [&] {
+        report.insert(u"passed"_s, ok);
+        QFile file(output.filePath(u"duplicates.json"_s));
+        const bool saved = file.open(QIODevice::WriteOnly) && file.write(QJsonDocument(report).toJson()) > 0;
+        std::fprintf(stderr, "duplicates: %s\n", ok ? "passed" : "FAILED");
+        return ok && saved;
+    };
+    const bool keepPlace = args.contains(u"--keep-place"_s);
+    report.insert(u"keep_place"_s, keepPlace);
+    check(qEnvironmentVariableIsSet("WINSHUN_TEST_NO_CLIP_HISTORY"), "WINSHUN_TEST_NO_CLIP_HISTORY not set: the copies would be in the histories");
+    pump(1500); // started, its hotkeys registered
+    check(chordOurs(kEntryKey), "the entry's hotkey is not registered");
+    check(EntryHotkeyProbe::duplicatesKept(app), "保留重复项 is not on in the history");
+    const ClipStore& store = EntryHotkeyProbe::store(app);
+    check(store.keepsPlaceOnPaste() == keepPlace, "粘贴后保持位置 is not as asked");
+    const auto entries = [&store] { return static_cast<int>(store.clips().size()); };
+    const auto count = [&store](const QString& text) {
+        return static_cast<int>(std::ranges::count(store.clips(), text, &Clip::text));
+    };
+    const auto top = [&store] { return store.clips().empty() ? QString() : store.clips().front().text; };
+    // The seeded two, and what was on the clipboard as it started if it is recorded.
+    const int seeded = entries();
+    report.insert(u"entries_at_start"_s, seeded);
+    check(seeded >= 2 && seeded <= 3 && count(kEntryText) == 1 && count(kRepeatedText) == 0, "the history is not the seeded entries");
+    if (!ok)
+        return finish();
+
+    bool savedOk = false;
+    const std::vector<Item> before = saveClipboard(savedOk);
+    check(savedOk, "the clipboard could not be read to be put back");
+    if (!ok)
+        return finish();
+    bool restored = false;
+    const auto putBack = qScopeGuard([&] {
+        if (!restored)
+            putOnClipboard(before);
+    });
+
+    // Copied, and copied again over a second later: two entries.
+    check(copyAsProgram(kRepeatedText), "the first copy could not be written");
+    pump(1200);
+    report.insert(u"after_first_copy"_s, count(kRepeatedText));
+    check(count(kRepeatedText) == 1 && top() == kRepeatedText, "the first copy is not in the history");
+    check(copyAsProgram(kRepeatedText), "the second copy could not be written");
+    pump(1200);
+    report.insert(u"after_second_copy"_s, count(kRepeatedText));
+    check(count(kRepeatedText) == 2, "the same words copied twice running are not two entries");
+    // Written twice at once: one copy.
+    check(copyAsProgram(kRepeatedText), "the third copy could not be written");
+    pump(150);
+    check(copyAsProgram(kRepeatedText), "the third copy could not be written again");
+    pump(1200);
+    report.insert(u"after_double_write"_s, count(kRepeatedText));
+    check(count(kRepeatedText) == 3, "a copy written twice at once is not one more entry");
+    check(entries() == seeded + 3, "the history is not three entries more before the paste");
+    if (!ok)
+        return finish();
+
+    // The older seeded entry pasted by its shortcut.
+    const QString resultPath = output.filePath(u"target.json"_s);
+    const QString scriptPath = output.filePath(u"target.ps1"_s);
+    QFile::remove(resultPath);
+    {
+        QFile script(scriptPath);
+        check(script.open(QIODevice::WriteOnly) && script.write(kTargetScript) > 0, "the target's script not written");
+    }
+    const auto scriptGone = qScopeGuard([&] { QFile::remove(scriptPath); });
+    qint64 pid = 0;
+    const bool started = ok && QProcess::startDetached(u"powershell.exe"_s,
+        {u"-NoProfile"_s, u"-STA"_s, u"-ExecutionPolicy"_s, u"Bypass"_s, u"-File"_s, QDir::toNativeSeparators(scriptPath),
+            QDir::toNativeSeparators(resultPath)}, {}, &pid);
+    check(started, "the target did not start");
+    const auto targetGone = qScopeGuard([&] {
+        if (pid <= 0)
+            return;
+        if (const HANDLE process = ::OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, static_cast<DWORD>(pid))) {
+            if (::WaitForSingleObject(process, 3000) == WAIT_TIMEOUT)
+                ::TerminateProcess(process, 1);
+            ::CloseHandle(process);
+        }
+    });
+    HWND target = nullptr;
+    QElapsedTimer limit;
+    limit.start();
+    while (started && !(target = findTarget(pid)) && limit.elapsed() < 20'000)
+        pump(100);
+    check(target, "the target's window never came");
+    if (ok) {
+        waitForQuietInput();
+        bringToFront(target);
+        pump(600);
+        check(inFront(target), "the target could not be brought to the front (no key sent)");
+        if (ok && inFront(target)) // checked again just before the keys
+            pressChord(kEntryKey);
+        limit.restart();
+        while (ok && !QFile::exists(resultPath) && limit.elapsed() < 12'000)
+            pump(100);
+        pump(1200); // the paste's own clipboard change read back, and past the time of one copy
+        QFile result(resultPath);
+        const QJsonObject got = result.open(QIODevice::ReadOnly) ? QJsonDocument::fromJson(result.readAll()).object() : QJsonObject();
+        report.insert(u"target_text"_s, got.value(u"text"_s).toString());
+        report.insert(u"entries_after_paste"_s, entries());
+        report.insert(u"top_after_paste"_s, top());
+        if (ok) {
+            check(got.value(u"text"_s).toString() == kEntryText, "the target did not get the entry's words");
+            check(entries() == seeded + 3, "the paste added an entry to the history");
+            check((top() == kEntryText) != keepPlace, keepPlace ? "the pasted entry left its place" : "the pasted entry is not on top");
+        }
+    }
+    // What was pasted, copied after: an entry of its own, on top.
+    if (ok) {
+        check(copyAsProgram(kEntryText), "the copy after the paste could not be written");
+        pump(1200);
+        report.insert(u"pasted_words_entries"_s, count(kEntryText));
+        report.insert(u"entries_after_copy"_s, entries());
+        check(count(kEntryText) == 2, "what was pasted, copied again, is not an entry of its own");
+        check(entries() == seeded + 4 && top() == kEntryText, "the copy after the paste is not on top");
+    }
+    restored = putOnClipboard(before) || putOnClipboard(before);
+    report.insert(u"clipboard_restored"_s, restored);
+    check(restored, "the clipboard as it was could not be put back");
     return finish();
 }
 

@@ -76,6 +76,7 @@ struct Formats {
     UINT canIncludeInHistory = ::RegisterClipboardFormatW(L"CanIncludeInClipboardHistory");
     UINT viewerIgnore = ::RegisterClipboardFormatW(L"Clipboard Viewer Ignore");
     UINT ours = ::RegisterClipboardFormatW(L"WinShun.ClipboardEntry"); // see ClipWrite::id
+    UINT testCopy = ::RegisterClipboardFormatW(L"WinShun.Test.Copy"); // see ClipboardWatcher::read
 };
 
 const Formats& formats()
@@ -732,9 +733,13 @@ void ClipboardWatcher::read()
     }
     // Not for the history: passwords and the like. Known without opening
     // the clipboard, which would get in their way.
+    // A live test's own copy (WINSHUN_TEST_NO_CLIP_HISTORY, --duplicates-check):
+    // marked to stay out of Windows' history and of the Win顺 that runs, and
+    // recorded here all the same, as the copy of a program that it stands for.
+    const bool testCopy = ::IsClipboardFormatAvailable(f.testCopy) && qEnvironmentVariableIsSet("WINSHUN_TEST_NO_CLIP_HISTORY");
     if (!ours
-        && (!options.record || ::IsClipboardFormatAvailable(f.excludeMonitoring)
-            || ::IsClipboardFormatAvailable(f.viewerIgnore))) {
+        && (!options.record
+            || (!testCopy && (::IsClipboardFormatAvailable(f.excludeMonitoring) || ::IsClipboardFormatAvailable(f.viewerIgnore))))) {
         m_lastSequence = sequence;
         diagnostic[u"outcome"_s] = options.record ? u"monitoring-excluded"_s : u"disabled"_s;
         return;
@@ -811,7 +816,7 @@ void ClipboardWatcher::read()
         DWORD value = 1;
         if (flag.size() >= static_cast<qsizetype>(sizeof value))
             std::memcpy(&value, flag.constData(), sizeof value);
-        if (value == 0) {
+        if (value == 0 && !testCopy) {
             diagnostic[u"outcome"_s] = u"history-excluded"_s;
             return;
         }

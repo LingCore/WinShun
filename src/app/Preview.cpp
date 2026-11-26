@@ -15844,7 +15844,10 @@ int runRuntime(const QStringList& args)
         }
         settings.pastePlainHotkey = QString(kPastePlainProbeChord);
     }
-    const bool entryHotkey = args.contains(u"--entry-hotkey-check"_s);
+    const bool duplicatesCheck = args.contains(u"--duplicates-check"_s);
+    const bool entryHotkey = duplicatesCheck || args.contains(u"--entry-hotkey-check"_s);
+    if (duplicatesCheck)
+        settings.clipboardKeepPlace = args.contains(u"--keep-place"_s);
     if (entryHotkey) { // an entry's own shortcut: a chord nobody else has
         if (!entryHotkeyChordFree()) {
             qWarning("entry hotkey: %s is someone else's already", qPrintable(QString(kEntryHotkeyProbeChord)));
@@ -15969,6 +15972,7 @@ int runRuntime(const QStringList& args)
                     || args.contains(u"--clipboard-animation-check"_s) || args.contains(u"--settings-motion-check"_s)
                     || args.contains(u"--search-shadow-check"_s) || args.contains(u"--paste-plain-check"_s)
                     || args.contains(u"--activation-paste-check"_s) || args.contains(u"--entry-hotkey-check"_s)
+                    || args.contains(u"--duplicates-check"_s)
                     || args.contains(u"--launcher-settings-check"_s) || args.contains(u"--launcher-open-check"_s))
                 && profile.fileName().startsWith(u"WinShun-preview-")
                 && QDir::cleanPath(profile.absolutePath()).compare(QDir::cleanPath(QDir::tempPath()), Qt::CaseInsensitive) == 0)
@@ -16043,6 +16047,8 @@ int runRuntime(const QStringList& args)
             return checkActivationPaste(app, args, out) ? 0 : 4; // its profile likewise
         if (args.contains(u"--entry-hotkey-check"_s))
             return checkEntryHotkey(app, args, out) ? 0 : 4; // its profile likewise
+        if (args.contains(u"--duplicates-check"_s))
+            return checkDuplicates(app, args, out) ? 0 : 4; // its profile likewise
         if (args.contains(u"--settings-reopen-check"_s))
             return probeSettingsReopen(app, args, out, report) ? 0 : 4;
         if (args.contains(u"--settings-motion-check"_s))
