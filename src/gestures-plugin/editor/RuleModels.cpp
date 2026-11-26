@@ -41,7 +41,11 @@ QString gestureWords(const std::string& on, bool chinese)
     const QString stroke = strokeWords(parsed->stroke);
     const QString trigger = parsed->trigger == gestures::MouseButton::Any ? QString() : qstr(gestures::buttonTitle(parsed->trigger, chinese));
     const QString chord = parsed->chord == gestures::MouseButton::Any ? QString() : qstr(gestures::buttonTitle(parsed->chord, chinese));
+    const QString keys = qstr(gestures::modifiersTitle(parsed->modifiers)); // "Shift", "Ctrl+Alt"; empty for none
     if (parsed->stroke.empty() && !chord.isEmpty()) {
+        if (!keys.isEmpty())
+            return trigger.isEmpty() ? Text::tr("按住 %1 和手势键，再点%2").arg(keys, chord)
+                                     : Text::tr("按住 %1 和%2，再点%3").arg(keys, trigger, chord);
         if (!trigger.isEmpty())
             return Text::tr("按住%1，再点%2").arg(trigger, chord);
         return Text::tr("按住手势键，再点%1").arg(chord);
@@ -49,6 +53,8 @@ QString gestureWords(const std::string& on, bool chinese)
     QString body = stroke;
     if (!chord.isEmpty())
         body = Text::tr("%1，再点%2").arg(body, chord);
+    if (!keys.isEmpty())
+        return trigger.isEmpty() ? Text::tr("按住 %1，%2").arg(keys, body) : Text::tr("按住 %1 和%2，%3").arg(keys, trigger, body);
     if (!trigger.isEmpty())
         return Text::tr("按住%1，%2").arg(trigger, body);
     return body;
@@ -144,7 +150,7 @@ int RulesModel::rowCount(const QModelIndex& parent) const
 QHash<int, QByteArray> RulesModel::roleNames() const
 {
     return {
-        {SourceRowRole, "sourceRow"}, {OnRole, "on"}, {ArrowsRole, "arrows"}, {DescriptionRole, "description"},
+        {SourceRowRole, "sourceRow"}, {OnRole, "on"}, {ArrowsRole, "arrows"}, {KeysRole, "keys"}, {DescriptionRole, "description"},
         {WhereRole, "where"}, {WhereTitleRole, "whereTitle"},
         {TriggerButtonRole, "triggerButton"}, {TriggerButtonTitleRole, "triggerButtonTitle"}, {TriggerButtonDisabledRole, "triggerButtonDisabled"},
         {SelectionRole, "selection"}, {AppsRole, "apps"},
@@ -166,8 +172,14 @@ QVariant RulesModel::data(const QModelIndex& index, int role) const
     switch (role) {
     case SourceRowRole: return index.row();
     case OnRole: return QString::fromStdString(rule.on);
-    case ArrowsRole:
-        return key ? qstr(gestures::triggerTitle(rule.on, m_chinese)) : qstr(gestures::gestureBadge(rule.on, m_chinese));
+    case ArrowsRole: {
+        if (key)
+            return qstr(gestures::triggerTitle(rule.on, m_chinese));
+        // The keys held go above it in the tile (KeysRole): long combinations stay legible.
+        const auto g = gestures::parseGestureTrigger(rule.on);
+        return qstr(gestures::gestureBadge(g ? gestures::formatGestureTrigger(g->trigger, g->stroke, g->chord) : rule.on, m_chinese));
+    }
+    case KeysRole: return qstr(gestures::modifiersTitle(rule.modifiers()));
     case DescriptionRole:
         // A shortcut's section says it is for selected text: only one that is not says so.
         if (key)
@@ -312,7 +324,7 @@ bool RulesModel::setTriggerButton(int row, gestures::MouseButton button)
         return false;
     if (parsed->trigger == button)
         return true;
-    const std::string nextOn = gestures::formatGestureTrigger(button, parsed->stroke, parsed->chord);
+    const std::string nextOn = gestures::formatGestureTrigger(button, parsed->stroke, parsed->chord, parsed->modifiers);
     if (nextOn.empty())
         return false;
     probe.on = nextOn;
@@ -401,8 +413,9 @@ void RulesFilter::setMode(int mode)
 {
     if (m_mode == mode)
         return;
+    beginFilterChange();
     m_mode = mode;
-    invalidateFilter();
+    endFilterChange(Direction::Rows);
     emit modeChanged();
 }
 
@@ -410,8 +423,9 @@ void RulesFilter::setApp(const QString& app)
 {
     if (m_app == app)
         return;
+    beginFilterChange();
     m_app = app;
-    invalidateFilter();
+    endFilterChange(Direction::Rows);
     emit appChanged();
 }
 

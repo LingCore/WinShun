@@ -25,6 +25,7 @@ constexpr int kStroke = 24; // logical pixels along a direction: it counts
 constexpr UINT kSelectionWaitMs = 250; // let go before the selection is known: waited for this long at most
 constexpr int kAskSeconds = 5; // 关机 and the like: this long to change one's mind
 constexpr int kEscapeHotkey = 0x4753;
+constexpr int kEscapeWithKeysHotkey = 0x4754; // Esc with the keys a gesture is drawn with (a hotkey takes those exactly)
 constexpr std::size_t kMostShortcuts = 32; // the rules' shortcuts: hotkey ids 1 to this
 
 enum : UINT {
@@ -44,6 +45,7 @@ enum : UINT {
     kRun, // l: new std::function<void()>
     kLook,
     kShortcuts, // the rules, paused or recording changed: the shortcuts registered again
+    kMask, // a press taken with Ctrl, Alt or Shift held: their lone release is masked (maskHeldKeys)
     // To the hook thread.
     kAbort, // Esc while drawing
 };
@@ -51,7 +53,9 @@ constexpr UINT_PTR kFrameTimer = 1;
 constexpr UINT_PTR kPendingTimer = 2;
 constexpr UINT_PTR kScreenOffTimer = 3;
 constexpr UINT_PTR kShortcutTimer = 4;
+constexpr UINT_PTR kHeldKeysTimer = 5;
 constexpr ULONGLONG kShortcutLetGoMs = 1000; // a shortcut's modifiers held longer: it acts all the same
+constexpr ULONGLONG kHeldKeysLetGoMs = 5000; // a gesture's keys held longer: it is dropped (it would press the wrong keys)
 
 Engine* g_engine = nullptr;
 
@@ -59,6 +63,7 @@ struct StartPayload {
     POINT down {};
     HWND under = nullptr;
     MouseButton button = MouseButton::Right;
+    Modifiers modifiers = 0;
 };
 
 struct WheelPayload {
@@ -252,6 +257,43 @@ bool anyButtonDown()
         || (::GetAsyncKeyState(VK_XBUTTON1) & 0x8000) || (::GetAsyncKeyState(VK_XBUTTON2) & 0x8000);
 }
 
+bool keyDown(int vk)
+{
+    return (::GetAsyncKeyState(vk) & 0x8000) != 0;
+}
+
+// Ctrl, Alt and Shift held now, as a gesture's keys.
+Modifiers heldModifiers()
+{
+    return static_cast<Modifiers>((keyDown(VK_CONTROL) ? kModCtrl : 0) | (keyDown(VK_MENU) ? kModAlt : 0)
+        | (keyDown(VK_SHIFT) ? kModShift : 0));
+}
+
+bool winDown()
+{
+    return keyDown(VK_LWIN) || keyDown(VK_RWIN);
+}
+
+UINT hotkeyModifiers(Modifiers modifiers)
+{
+    return ((modifiers & kModCtrl) ? MOD_CONTROL : 0) | ((modifiers & kModAlt) ? MOD_ALT : 0) | ((modifiers & kModShift) ? MOD_SHIFT : 0);
+}
+
+// An unassigned key pressed and let go while a modifier is held, so letting
+// go of that modifier alone does nothing: Alt opens no menu bar (nor focuses
+// a browser's menu button), Win no Start menu, Shift switches no input
+// method. (#175)
+void maskHeldKeys()
+{
+    INPUT mask[2] {};
+    mask[0].type = INPUT_KEYBOARD;
+    mask[0].ki.wVk = kMaskKey;
+    mask[0].ki.dwExtraInfo = kWinShunOwnInput;
+    mask[1] = mask[0];
+    mask[1].ki.dwFlags = KEYEVENTF_KEYUP;
+    ::SendInput(2, mask, sizeof(INPUT));
+}
+
 bool extendedKey(std::uint16_t vk)
 {
     switch (vk) {
@@ -433,16 +475,15 @@ LRESULT CALLBACK Engine::mouseProc(int code, WPARAM wParam, LPARAM lParam)
     return ::CallNextHookEx(nullptr, code, wParam, lParam);
 }
 
-// Whether the right button pressed at `pt` may make a gesture; the window
-// under it and its program.
-bool Engine::eligible(POINT pt, HWND& under, std::wstring& program)
+// Whether `button` pressed at `pt` may make a gesture; the window under it,
+// its program and the keys held with it. With Ctrl, Alt or Shift held only
+// when a gesture is set for those keys there (else Shift + right click,
+// Ctrl + right drag and the like stay the program's); never with Win.
+bool Engine::eligible(POINT pt, MouseButton button, HWND& under, std::wstring& program, Modifiers& modifiers)
 {
-    if (m_paused)
+    if (m_paused || winDown())
         return false;
-    for (const int key : {VK_CONTROL, VK_SHIFT, VK_MENU, VK_LWIN, VK_RWIN}) {
-        if (::GetAsyncKeyState(key) & 0x8000)
-            return false;
-    }
+    modifiers = heldModifiers();
     under = ::WindowFromPoint(pt);
     const HWND root = under ? ::GetAncestor(under, GA_ROOT) : nullptr;
     if (!root)
@@ -461,7 +502,7 @@ bool Engine::eligible(POINT pt, HWND& under, std::wstring& program)
         return false;
     if (!s->settings.fullScreen && root == ::GetForegroundWindow() && fullScreen(root))
         return false;
-    return true;
+    return modifiers == 0 || modifiersMatter(s->settings.rules, modifiers, button, program);
 }
 
 // Whether a corner or an edge may do its rule over the window in front.
@@ -500,7 +541,7 @@ void Engine::applySessionResult(const SessionResult& res, POINT at)
     if (res.startHoldTimer)
         m_holdTimer = ::SetTimer(nullptr, 0, kHoldMs, nullptr);
     if (res.startBeforeMove) {
-        auto* payload = new StartPayload {m_down, m_under, res.button};
+        auto* payload = new StartPayload {m_down, m_under, res.button, m_modifiers};
         if (!::PostMessageW(m_window, kStart, 0, reinterpret_cast<LPARAM>(payload)))
             delete payload;
     }
@@ -561,21 +602,27 @@ bool Engine::onMouse(WPARAM message, const MSLLHOOKSTRUCT& info)
             if (wantTrigger) {
                 HWND under = nullptr;
                 std::wstring program;
-                ok = eligible(info.pt, under, program);
+                Modifiers modifiers = 0;
+                ok = eligible(info.pt, *btn, under, program, modifiers);
                 if (ok) {
                     const double scale = scaleAt(info.pt);
                     m_down = info.pt;
                     m_under = under;
                     m_pressedRoot = ::GetAncestor(under, GA_ROOT);
                     m_program = std::move(program);
+                    m_modifiers = modifiers;
                     m_downZone = zoneOfPoint(info.pt);
                     startDist = static_cast<int>(std::lround(kStartDistance * scale));
                     stroke = static_cast<int>(std::lround(kStroke * scale));
                 }
             }
-            const Context ctx {.zone = m_downZone, .selection = false, .program = m_program, .button = m_session.activeButton()};
+            const Context ctx {.zone = m_downZone, .selection = false, .program = m_program, .button = m_session.activeButton(),
+                .modifiers = m_modifiers};
             const SessionResult res = m_session.onButtonDown(*btn, info.pt.x, info.pt.y, startDist, stroke, ok, s->settings, ctx, stillDown);
             applySessionResult(res, info.pt);
+            // Taken with keys held: whatever it turns into, their release must not act alone.
+            if (ok && res.startHoldTimer && m_modifiers != 0)
+                ::PostMessageW(m_window, kMask, 0, 0);
             return res.swallow;
         }
         const SessionResult res = m_session.onButtonUp(*btn, info.pt.x, info.pt.y);
@@ -592,7 +639,8 @@ bool Engine::onMouse(WPARAM message, const MSLLHOOKSTRUCT& info)
     if (message == WM_MOUSEWHEEL) {
         const std::shared_ptr<const Shared> s = shared();
         const int delta = static_cast<short>(HIWORD(info.mouseData));
-        const Context ctx {.zone = m_downZone, .selection = false, .program = m_program, .button = m_session.activeButton()};
+        const Context ctx {.zone = m_downZone, .selection = false, .program = m_program, .button = m_session.activeButton(),
+            .modifiers = m_modifiers};
         const SessionResult res = m_session.onWheel(delta, s->wheel, s->settings, ctx);
         applySessionResult(res, info.pt);
         return res.swallow;
@@ -715,7 +763,7 @@ LRESULT Engine::onWindowMessage(HWND window, UINT message, WPARAM wParam, LPARAM
     case kStart: {
         std::unique_ptr<StartPayload> payload(reinterpret_cast<StartPayload*>(lParam));
         if (payload)
-            began(payload->down, payload->under, payload->button);
+            began(payload->down, payload->under, payload->button, payload->modifiers);
         return 0;
     }
     case kMove: {
@@ -753,6 +801,8 @@ LRESULT Engine::onWindowMessage(HWND window, UINT message, WPARAM wParam, LPARAM
             ::DefWindowProcW(window, WM_SYSCOMMAND, SC_MONITORPOWER, 2);
         } else if (wParam == kShortcutTimer) {
             shortcutLetGo();
+        } else if (wParam == kHeldKeysTimer) {
+            heldKeysLetGo();
         }
         return 0;
     case kEnd: {
@@ -825,35 +875,25 @@ LRESULT Engine::onWindowMessage(HWND window, UINT message, WPARAM wParam, LPARAM
     case kShortcuts:
         registerShortcuts();
         return 0;
+    case kMask:
+        if (heldModifiers() != 0)
+            maskHeldKeys();
+        return 0;
     case WM_HOTKEY:
-        if (wParam == kEscapeHotkey) {
-            ::UnregisterHotKey(window, kEscapeHotkey);
-            m_escape = false;
+        if (wParam == kEscapeHotkey || wParam == kEscapeWithKeysHotkey) {
+            unregisterEscape();
             ::PostThreadMessageW(m_hookThreadId, kAbort, 0, 0);
         } else if (wParam >= 1 && wParam <= m_shortcuts.size()) {
             const std::string& on = m_shortcuts[wParam - 1];
             unsigned mods = 0;
             unsigned vk = 0;
             if (hotkeyOf(on, &mods, &vk) && shortcutNeedsMask(mods)) {
-                const bool held = ((mods & MOD_ALT) && (::GetAsyncKeyState(VK_MENU) & 0x8000))
-                    || ((mods & MOD_WIN) && ((::GetAsyncKeyState(VK_LWIN) & 0x8000) || (::GetAsyncKeyState(VK_RWIN) & 0x8000)))
-                    || ((mods & MOD_SHIFT) && (::GetAsyncKeyState(VK_SHIFT) & 0x8000));
-                if (held) {
-                    // RegisterHotKey swallowed the main key, leaving the foreground window
-                    // with only the modifier press/release. Masking while held prevents
-                    // Chrome/Edge from focusing the three-dots menu button on Alt release,
-                    // Win32 apps from opening the menu bar, Win from opening Start, and
-                    // Shift from switching the input method.
-                    INPUT mask[2] {};
-                    mask[0].type = INPUT_KEYBOARD;
-                    mask[0].ki.wVk = kMaskKey;
-                    mask[0].ki.dwExtraInfo = kWinShunOwnInput;
-                    mask[1].type = INPUT_KEYBOARD;
-                    mask[1].ki.wVk = kMaskKey;
-                    mask[1].ki.dwFlags = KEYEVENTF_KEYUP;
-                    mask[1].ki.dwExtraInfo = kWinShunOwnInput;
-                    ::SendInput(2, mask, sizeof(INPUT));
-                }
+                // RegisterHotKey swallowed the main key, leaving the foreground window
+                // with only the modifier press/release: masked while still held.
+                const bool held = ((mods & MOD_ALT) && keyDown(VK_MENU)) || ((mods & MOD_WIN) && winDown())
+                    || ((mods & MOD_SHIFT) && keyDown(VK_SHIFT));
+                if (held)
+                    maskHeldKeys();
             }
             m_shortcutHeld = on;
             m_shortcutAt = ::GetTickCount64();
@@ -877,7 +917,7 @@ LRESULT Engine::onWindowMessage(HWND window, UINT message, WPARAM wParam, LPARAM
 // A gesture began at `down` over `under`: where it is, which program's, and
 // (when a rule could care) the words selected there, asked for at once so
 // the hint can say what will happen before the button is let go.
-void Engine::began(POINT down, HWND under, MouseButton button)
+void Engine::began(POINT down, HWND under, MouseButton button, Modifiers modifiers)
 {
     const std::shared_ptr<const Shared> s = shared();
     m_target = {};
@@ -886,6 +926,7 @@ void Engine::began(POINT down, HWND under, MouseButton button)
     m_target.at = down;
     m_target.context.program = programOfWindow(m_target.root);
     m_target.context.button = button;
+    m_target.context.modifiers = modifiers;
     m_target.context.zone = zoneOfPoint(down);
     m_points.assign(1, down);
     m_gesture.clear();
@@ -895,12 +936,12 @@ void Engine::began(POINT down, HWND under, MouseButton button)
     m_selection.clear();
     ++m_ask;
     const auto wantsWords = [&] {
-        if (selectionMatters(s->settings.rules, "", m_target.context.program, m_target.context.button))
+        if (selectionMatters(s->settings.rules, "", m_target.context.program, m_target.context.button, modifiers))
             return true;
         return std::ranges::any_of(s->settings.rules, [&](const Rule& r) {
             return r.action.kind == Action::Kind::Builtin && takesSelection(r.action.builtin)
                 && (r.triggerButton() == MouseButton::Any || r.triggerButton() == m_target.context.button)
-                && (r.apps.empty() || listed(r.apps, m_target.context.program));
+                && r.modifiers() == modifiers && (r.apps.empty() || listed(r.apps, m_target.context.program));
         });
     };
     m_selectionAsked = m_target.root && m_target.root == ::GetAncestor(::GetForegroundWindow(), GA_ROOT) && wantsWords();
@@ -914,16 +955,24 @@ void Engine::began(POINT down, HWND under, MouseButton button)
                 delete carried;
         });
     }
-    // Esc while drawing: nothing on release.
+    // Esc while drawing: nothing on release; with the keys it is drawn with still held, too.
     m_escape = ::RegisterHotKey(m_window, kEscapeHotkey, MOD_NOREPEAT, VK_ESCAPE) != 0;
+    m_escapeWithKeys = modifiers != 0
+        && ::RegisterHotKey(m_window, kEscapeWithKeysHotkey, MOD_NOREPEAT | hotkeyModifiers(modifiers), VK_ESCAPE) != 0;
+}
+
+void Engine::unregisterEscape()
+{
+    if (m_escape)
+        ::UnregisterHotKey(m_window, kEscapeHotkey);
+    if (m_escapeWithKeys)
+        ::UnregisterHotKey(m_window, kEscapeWithKeysHotkey);
+    m_escape = m_escapeWithKeys = false;
 }
 
 void Engine::hideTrail()
 {
-    if (m_escape) {
-        ::UnregisterHotKey(m_window, kEscapeHotkey);
-        m_escape = false;
-    }
+    unregisterEscape();
     m_drawing = false;
     if (m_timer) {
         ::KillTimer(m_window, kFrameTimer);
@@ -945,8 +994,11 @@ Engine::Hint Engine::hintFor(const std::string& gesture) const
     const std::shared_ptr<const Shared> s = shared();
     const bool zh = s->look.chinese;
     Hint hint;
+    const Modifiers held = m_target.context.modifiers; // drawn with these keys: said first ("Shift ↓→")
     if (tooLongGesture(gesture)) {
         hint.arrows = fromUtf8(arrows(gesture.substr(0, kMaxDirections)));
+        if (held != 0)
+            hint.arrows = modifiersTitle(held) + L' ' + hint.arrows;
         hint.action = zh ? L"太长了，松开不做什么" : L"Too long: nothing on release";
         return hint;
     }
@@ -954,9 +1006,11 @@ Engine::Hint Engine::hintFor(const std::string& gesture) const
     const auto parsed = parseGestureTrigger(gesture);
     if (parsed && parsed->stroke.empty() && parsed->chord != MouseButton::Any) {
         const MouseButton active = m_target.context.button != MouseButton::Any ? m_target.context.button : parsed->trigger;
-        hint.arrows = gestureBadge(formatGestureTrigger(active, "", parsed->chord), zh);
+        hint.arrows = gestureBadge(formatGestureTrigger(active, "", parsed->chord, held), zh);
     } else if (rule && rule->triggerButton() != MouseButton::Any) {
         hint.arrows = gestureBadge(rule->on, zh);
+    } else if (parsed) {
+        hint.arrows = gestureBadge(formatGestureTrigger(parsed->trigger, parsed->stroke, parsed->chord, parsed->modifiers | held), zh);
     } else {
         hint.arrows = gestureBadge(gesture, zh);
     }
@@ -1377,8 +1431,45 @@ void Engine::finish(const std::string& gesture, POINT end)
     m_target.at = end;
     m_target.words = m_selection;
     const std::shared_ptr<const Shared> s = shared();
-    if (const Rule* rule = match(s->settings.rules, gesture, m_target.context))
+    const Rule* rule = match(s->settings.rules, gesture, m_target.context);
+    if (!rule || rule->action.kind == Action::Kind::Nothing || rule->action.kind == Action::Kind::Invalid)
+        return;
+    if (heldModifiers() == 0 && !winDown() && m_heldKeysWaiting.empty()) {
         perform(*rule, m_target);
+        return;
+    }
+    // Keys still held (those it was drawn with, most likely): it acts once
+    // they are let go, after any gesture already waiting for them.
+    if (m_heldKeysWaiting.empty())
+        m_heldKeysSince = ::GetTickCount64();
+    m_heldKeysWaiting.push_back({*rule, m_target});
+    heldKeysLetGo();
+}
+
+// What a gesture does may press keys, which Ctrl, Alt, Shift or Win still
+// held would change (关闭标签页's Ctrl+W under a held Shift is Ctrl+Shift+W,
+// which closes the whole window): those waiting act once they are all let
+// go, checked every 15 ms. Held five seconds, they are dropped instead, with
+// a note: by then the gesture is not what the user has in mind.
+void Engine::heldKeysLetGo()
+{
+    if (m_heldKeysWaiting.empty())
+        return;
+    if (heldModifiers() != 0 || winDown()) {
+        if (::GetTickCount64() - m_heldKeysSince < kHeldKeysLetGoMs) {
+            ::SetTimer(m_window, kHeldKeysTimer, 15, nullptr);
+            return;
+        }
+        ::KillTimer(m_window, kHeldKeysTimer);
+        const POINT at = m_heldKeysWaiting.back().second.at;
+        m_heldKeysWaiting.clear();
+        const bool zh = shared()->look.chinese;
+        note(at, NoteIcon::Info, zh ? L"按着的键一直没松开，手势没有执行" : L"The keys were held too long: the gesture was not done");
+        return;
+    }
+    ::KillTimer(m_window, kHeldKeysTimer);
+    for (const auto& [rule, target] : std::exchange(m_heldKeysWaiting, {}))
+        perform(rule, target);
 }
 
 // The wheel, a corner, an edge: nothing was asked for beforehand, so the

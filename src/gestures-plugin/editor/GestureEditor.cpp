@@ -373,6 +373,8 @@ void GestureEditor::useSample()
     add("D+l", gestures::builtinAction(gestures::Builtin::ReopenTab));
     add("r:+l", gestures::builtinAction(gestures::Builtin::CloseTab));
     add("x1:U", gestures::builtinAction(gestures::Builtin::NewTab));
+    add("shift:L", gestures::builtinAction(gestures::Builtin::PrevTab));
+    add("shift:R", gestures::builtinAction(gestures::Builtin::NextTab));
     add("cw", gestures::builtinAction(gestures::Builtin::Shutdown), {}, gestures::Zone::BottomRight);
     add("corner:tl", gestures::builtinAction(gestures::Builtin::TaskView));
     add("corner:br", gestures::openAction(L"C:\\Windows\\System32\\notepad.exe"));
@@ -572,7 +574,7 @@ QVariantList GestureEditor::buttonChoices(int row) const
              gestures::MouseButton::Middle, gestures::MouseButton::X1, gestures::MouseButton::X2}) {
         if (parsed->trigger == cand)
             continue;
-        const std::string nextOn = gestures::formatGestureTrigger(cand, parsed->stroke, parsed->chord);
+        const std::string nextOn = gestures::formatGestureTrigger(cand, parsed->stroke, parsed->chord, parsed->modifiers);
         if (nextOn.empty())
             continue;
         gestures::Rule probe = rules[static_cast<std::size_t>(row)];

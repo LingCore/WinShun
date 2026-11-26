@@ -13,8 +13,9 @@
 // Never taken: a window of an administrator's program (Windows would drop
 // the click sent again, UIPI; while one is in front the hook sees nothing
 // anyway), a program in the exclusions, a full-screen window unless asked,
-// a press with Ctrl, Shift, Alt or Win held, touch and pen, and input other
-// programs send.
+// a press with Win held, one with Ctrl, Alt or Shift held unless a gesture
+// is set for those keys there ("shift:DR"; it then acts once they are let
+// go), touch and pen, and input other programs send.
 //
 // The rules' shortcuts ("key:Ctrl+Alt+T") are hotkeys of the window thread
 // (RegisterHotKey): pressed, the rule acts on the window in front, at the
@@ -122,16 +123,17 @@ private:
     void onHoldTimer();
     void onDwellTimer();
     void watchScreen(POINT pt);
-    bool eligible(POINT pt, HWND& under, std::wstring& program);
+    bool eligible(POINT pt, MouseButton button, HWND& under, std::wstring& program, Modifiers& modifiers);
     bool frontEligible(std::wstring* program);
     void endPress();
 
     // The window thread.
     void windowThread(std::promise<bool>* ready);
     LRESULT onWindowMessage(HWND window, UINT message, WPARAM wParam, LPARAM lParam);
-    void began(POINT down, HWND under, MouseButton button);
+    void began(POINT down, HWND under, MouseButton button, Modifiers modifiers);
     void render();
     void hideTrail();
+    void unregisterEscape();
     // What the hint by the trail says, in its parts: the arrows on a chip,
     // then the corner the rule is for, what letting go does and the words
     // it does it on.
@@ -144,6 +146,7 @@ private:
     };
     Hint hintFor(const std::string& gesture) const;
     void finish(const std::string& gesture, POINT end);
+    void heldKeysLetGo();
     void perform(const Rule& rule, const Target& target);
     void performBuiltin(Builtin builtin, const Target& target);
     void textAction(Builtin builtin, const Target& target);
@@ -186,6 +189,7 @@ private:
     // m_under's top-level window can be another one by the next notch.
     HWND m_pressedRoot = nullptr;
     std::wstring m_program; // of the window pressed on, a file name in lower case
+    Modifiers m_modifiers = 0; // Ctrl, Alt, Shift held when it was pressed
     Zone m_downZone = Zone::Anywhere;
     UINT_PTR m_holdTimer = 0;
     UINT_PTR m_dwellTimer = 0;
@@ -200,6 +204,9 @@ private:
     std::vector<std::string> m_shortcutsTaken; // told last (shortcutsRegistered)
     std::string m_shortcutHeld; // pressed, its Ctrl, Alt, Shift or Win not let go yet (shortcutLetGo)
     ULONGLONG m_shortcutAt = 0; // when (GetTickCount64)
+    // Gestures done while keys were still held, in order, waiting for them to be let go (heldKeysLetGo).
+    std::vector<std::pair<Rule, Target>> m_heldKeysWaiting;
+    ULONGLONG m_heldKeysSince = 0; // when the first began to wait (GetTickCount64)
     std::vector<POINT> m_points;
     std::string m_gesture; // what it reads as so far: directions or a circle
     Target m_target; // the gesture's, from its start
@@ -215,6 +222,7 @@ private:
     POINT m_pendingEnd {};
     bool m_pending = false;
     bool m_escape = false; // Esc registered while drawing
+    bool m_escapeWithKeys = false; // and Esc with the keys it is drawn with
     double m_scale = 1.0;
     bool m_dirty = false;
     bool m_shown = false;

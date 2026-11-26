@@ -144,9 +144,10 @@ void showOffScreen(QQuickWindow* window)
 }
 
 // A mouse event for the window, from the position in it: for the preview's drawn gestures (nothing reaches the desktop).
-void sendMouse(QQuickWindow* window, QEvent::Type type, const QPointF& at, Qt::MouseButton button, Qt::MouseButtons buttons)
+void sendMouse(QQuickWindow* window, QEvent::Type type, const QPointF& at, Qt::MouseButton button, Qt::MouseButtons buttons,
+    Qt::KeyboardModifiers modifiers = Qt::NoModifier)
 {
-    QMouseEvent event(type, at, window->mapToGlobal(at), button, buttons, Qt::NoModifier);
+    QMouseEvent event(type, at, window->mapToGlobal(at), button, buttons, modifiers);
     QCoreApplication::sendEvent(window, &event);
 }
 
@@ -404,7 +405,7 @@ extern "C" __declspec(dllexport) int winshunGesturesEditorMain(const wchar_t* ho
             settle(window, 3);
         }
         const QString path = option(u"--preview"_s);
-        // --draw DR (or D+l, r:+l, x1:U): a gesture drawn or chorded on the pad
+        // --draw DR (or D+l, r:+l, x1:U, shift:DR): a gesture drawn or chorded on the pad
         // (a picture of it mid-gesture too); --then builtin:close | keys:F5 | cancel.
         if (const QString drawn = option(u"--draw"_s); !drawn.isEmpty()) {
             QQuickItem* pad = findItem(window->contentItem(), u"padArea"_s);
@@ -426,23 +427,26 @@ extern "C" __declspec(dllexport) int winshunGesturesEditorMain(const wchar_t* ho
             const QString stroke = parsed ? QString::fromStdString(parsed->stroke) : drawn;
             const bool hasChord = parsed && parsed->chord != gestures::MouseButton::Any;
             const Qt::MouseButton chordBtn = hasChord ? qtButtonOf(parsed->chord) : Qt::NoButton;
+            const gestures::Modifiers held = parsed ? parsed->modifiers : gestures::Modifiers {0};
+            const Qt::KeyboardModifiers keys = (held & gestures::kModCtrl ? Qt::ControlModifier : Qt::NoModifier)
+                | (held & gestures::kModAlt ? Qt::AltModifier : Qt::NoModifier) | (held & gestures::kModShift ? Qt::ShiftModifier : Qt::NoModifier);
             const QPointF start = pad->mapToScene(QPointF(pad->width() / 2 - 20, pad->height() / 2 + (stroke.startsWith(u'U') ? 30 : -30)));
             const QList<QPointF> points = stroke.isEmpty() ? QList<QPointF> {start} : gesturePoints(stroke, start);
-            sendMouse(window, QEvent::MouseButtonPress, points.first(), trig, trig);
+            sendMouse(window, QEvent::MouseButtonPress, points.first(), trig, trig, keys);
             for (qsizetype i = 1; i < points.size(); ++i) {
-                sendMouse(window, QEvent::MouseMove, points[i], Qt::NoButton, trig);
+                sendMouse(window, QEvent::MouseMove, points[i], Qt::NoButton, trig, keys);
                 if (!hasChord && i == points.size() * 3 / 4) {
                     settle(window, 2);
                     window->grabWindow().save(path + u".drag.png"_s, "PNG");
                 }
             }
             if (hasChord) {
-                sendMouse(window, QEvent::MouseButtonPress, points.last(), chordBtn, trig | chordBtn);
+                sendMouse(window, QEvent::MouseButtonPress, points.last(), chordBtn, trig | chordBtn, keys);
                 settle(window, 2);
                 window->grabWindow().save(path + u".drag.png"_s, "PNG");
-                sendMouse(window, QEvent::MouseButtonRelease, points.last(), chordBtn, trig);
+                sendMouse(window, QEvent::MouseButtonRelease, points.last(), chordBtn, trig, keys);
             }
-            sendMouse(window, QEvent::MouseButtonRelease, points.last(), trig, Qt::NoButton);
+            sendMouse(window, QEvent::MouseButtonRelease, points.last(), trig, Qt::NoButton, keys);
             settle(window, 3);
             say(u"drawn %1: %2 row(s)"_s.arg(drawn).arg(editor.rules()->rowCount()));
         }

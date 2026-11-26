@@ -13,6 +13,7 @@ Item {
     // The rules model's roles.
     required property int sourceRow
     required property string arrows
+    required property string keys // held with the button: "Shift", "Ctrl+Alt"; empty for none
     required property string description
     required property string whereTitle
     required property string triggerButton
@@ -90,25 +91,40 @@ Item {
         }
     }
 
-    Rectangle { // the gesture: a tag, not a button
+    Rectangle { // the gesture: a tag, not a button; the keys held with it on a line of their own above
         id: tile
         x: row.width < 560 ? 14 : 18
         anchors.verticalCenter: parent.verticalCenter
         width: row.width < 560 ? 56 : 64
-        height: 32
+        height: Math.max(32, tileText.implicitHeight + 6)
         radius: Theme.smallControlRadius
         color: Theme.tagFill
 
-        Text {
+        Column {
+            id: tileText
             anchors.centerIn: parent
             width: parent.width - 8
-            horizontalAlignment: Text.AlignHCenter
-            text: row.arrows
-            color: Theme.text
-            font.pixelSize: row.arrows.length <= 2 ? 18 : 14
-            font.weight: Theme.fontStrong
-            fontSizeMode: Text.HorizontalFit
-            minimumPixelSize: 10
+
+            Text {
+                width: parent.width
+                visible: row.keys.length > 0
+                horizontalAlignment: Text.AlignHCenter
+                text: row.keys
+                color: Theme.subtext
+                font.pixelSize: Theme.fontCaption
+                fontSizeMode: Text.HorizontalFit
+                minimumPixelSize: 9
+            }
+            Text {
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                text: row.arrows
+                color: Theme.text
+                font.pixelSize: row.arrows.length <= 2 ? 18 : 14
+                font.weight: Theme.fontStrong
+                fontSizeMode: Text.HorizontalFit
+                minimumPixelSize: 10
+            }
         }
     }
 

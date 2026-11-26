@@ -6,6 +6,7 @@
 
 - **画手势**：上下左右组合（最多 6 段），还能**画圈**（顺时针、逆时针）。默认：← 后退，→ 前进，↑ 回到顶部，↓ 到底部，↓→ 关闭窗口，↓← 最小化，↑↓ 打开 Win顺 搜索框。
 - **换按键、组合手势**（#436）：设置窗口“常规”页的“触发手势的鼠标按键”里，右键、中键、侧键（后退）、侧键（前进）可以同时启用几个，至少留一个。左键只能当组合手势的第二个键，平常的点击和拖动不受影响。组合手势是按住手势键再点另一个键（比如按住右键点左键），也可以先画一段再点（比如画 ↓ 再点左键）。录手势时可以选它只认当时按的那个键，还是任意启用的键都算。
+- **按住 Ctrl、Alt 或 Shift 画**（#472）：同一个手势按着这些键画是另一个手势，比如平常 → 是前进，按住 Shift 画 → 可以设成切到下一个标签页。在设置窗口的画板上按住这些键画就能录。没设带键手势的地方，按着这些键点右键还是程序原来的功能（比如 Shift+右键的扩展菜单）。动作在松开按键后才执行，松开 Alt 不会打开菜单栏，松开 Shift 不会切换输入法。
 - **选中文字后画**：先选中一段文字再画，手势就用这段字。默认：↓ 复制，↑ 网页搜索，→ 翻译（结果显示在气泡里，点一下复制；翻译服务的密钥不对时气泡里直接说明，#444）。没选中文字时，还是平常的手势。选中的文字由 Win顺 用 Windows 的 UI 自动化来读，不经过剪贴板，剪贴板里原来的东西不会被换掉。浏览器、VS Code、微信等用 Chromium 做的程序和 Firefox 里不读（一读它们就打开整套无障碍功能，变慢，VS Code 还会进入屏幕阅读器模式），在那里还是平常的手势。
 - **选中文字后按快捷键**：在设置窗口“选中文字时”一页下面加一个快捷键（比如 Ctrl+Alt+T），选中文字后按它就翻译，动作可以改成复制、网页搜索等。这个在浏览器、VS Code、微信里也能用：Win顺 读不到时，替你按一下 Ctrl+C 读出选中的字，读完马上把剪贴板原样放回去，Win顺 自己的剪贴板历史里不会多一条（Windows 的剪贴板历史 Win+V 会记下这段字）。快捷键被别的程序占用时，设置里会标红。在浏览器里用要 Win顺 0.42.0 或更新的版本。
 - **屏幕分区**：同一个手势在屏幕四个角上画可以做不同的事，比如只在右下角画圈才关机。角上的范围是屏幕宽、高各五分之一。
@@ -19,7 +20,7 @@
 
 - **按键照常用**：只是点一下手势键，菜单或它原来的功能照常（先接住这一下，松开后原样补上）。要用这个键拖动（比如右键拖文件），按住先停一下再拖。
 - **反悔**：画到一半按 Esc 或点一下左键，松开就什么都不做（左键已设成组合手势时，点它就是那个组合）。
-- 按着 Ctrl、Shift、Alt 或 Win 时不画手势。
+- 按着 Win 时不画手势；按着 Ctrl、Alt、Shift 时，只有设了带这几个键的手势才画，别的照常。
 - **不用手势的地方**：设置里列的程序；全屏的游戏、幻灯片、视频（设置里可以打开）；触摸和笔。
 - **管理员身份运行的窗口里用不了**：Windows 不让普通权限的程序拦截、补发这些窗口里的鼠标操作，鼠标按键在那里和平常一样。
 - 输入 `手势`（或 `gestures`）列出设好的手势，第一行 Enter 暂停或恢复；暂停会记住，重启后还是暂停。
@@ -47,6 +48,7 @@ A resident C++ plugin from the plugin library (Settings → Plugins → Plugin l
 
 - **Gestures**: up to 6 directions, and **circles** (clockwise, counter-clockwise). Defaults: ← back, → forward, ↑ top, ↓ bottom, ↓→ close the window, ↓← minimize, ↑↓ WinShun's search box.
 - **Other buttons and chords** (#436): under 常规 › 触发手势的鼠标按键, any of the right, middle, back and forward buttons can start gestures, at least one of them. The left button only ever completes a chord, so ordinary clicks and drags are untouched. A chord is a gesture button held and another button clicked (hold right, click left), or a stroke followed by a click (draw ↓, then click left). When recording a gesture, choose whether it belongs to the button pressed or to any enabled one.
+- **With Ctrl, Alt or Shift held** (#472): a gesture drawn with these keys held is a gesture of its own: → goes forward, Shift + → can switch to the next tab. Hold them while drawing on the settings pad to record one. Where no such gesture is set, a right click with them held does what it always did (Shift + right click: the extended menu). The action runs once the keys are let go, and letting go of Alt or Shift no longer opens a menu bar or switches the input method.
 - **With words selected**: select some text first, then draw, and the gesture acts on it. Defaults: ↓ copy, ↑ web search, → translate (in a bubble; click it to copy; a refused translation key is named there, #444). WinShun reads the selection through UI Automation, never the clipboard, so what is on it stays. Browsers, VS Code, WeChat and other Chromium programs, and Firefox, are not read (asked, they turn their whole accessibility on and get slower; VS Code goes into its screen reader mode): the plain gestures hold there.
 - **Shortcuts for selected text**: add a shortcut (e.g. Ctrl+Alt+T) at the bottom of the 选中文字时 page; select some text and press it to translate, or set it to copy, search the web and so on. It works in browsers, VS Code and WeChat too: where WinShun cannot read the selection, it presses Ctrl+C for you and puts the clipboard back at once, without a new entry in its own clipboard history (Windows' own, Win+V, keeps the words). A shortcut another program holds is marked in red. Browsers need WinShun 0.42.0 or later.
 - **Screen corners for gestures**: the same gesture can do something else when drawn in a corner of the screen (a fifth of its width and height), e.g. a circle in the bottom right shuts down.
@@ -56,7 +58,7 @@ A resident C++ plugin from the plugin library (Settings → Plugins → Plugin l
 - **Actions**: page, tab, window, text, WinShun, media and system actions (lock, screen off, sleep, shut down, restart, sign out), any keys, open a program, file, folder or address, or type some text.
 - **Shut down, restart, sign out and sleep count down first**: a card counts down 5 seconds; Esc or Cancel stops it. Programs with unsaved work can still hold Windows up.
 
-A plain click of a gesture button still does what it did (the menu for the right button); to drag with it, hold still a moment first. Esc or a left click while drawing cancels (unless the left button completes a chord there). Not with Ctrl, Shift, Alt or Win held, not in the programs listed in the settings, full-screen games and video (unless turned on), touch and pen, or windows run as administrator. `gestures` lists them; Enter on the first row pauses or resumes. Gestures changed in 1.0 are carried over.
+A plain click of a gesture button still does what it did (the menu for the right button); to drag with it, hold still a moment first. Esc or a left click while drawing cancels (unless the left button completes a chord there). Not with Win held, nor with Ctrl, Alt or Shift unless a gesture is set for those keys; not in the programs listed in the settings, full-screen games and video (unless turned on), touch and pen, or windows run as administrator. `gestures` lists them; Enter on the first row pauses or resumes. Gestures changed in 1.0 are carried over.
 
 Recent versions: **2.1.3** middle and side buttons, several at once, and chords (#436); a refused translation key is named (#444); rebuilt with WinShun 0.45.0's shared code. **2.1.2** a 1 px edge on the cards and bubbles on Windows 10; rebuilt with WinShun 0.44.0. **2.1.1** shortcuts with `Alt`, `Win` or `Shift` no longer leave the browser's “…” button, a menu bar, Start or an input-method switch behind; the settings window has its border, shadow and corners back on Windows 11 (#419). **2.1.0** shortcuts for selected text; right button + wheel keeps switching tabs in browsers. **2.0.0** selected-text gestures, circles, screen corners, hot corners, rubbed edges, per-program rules, more actions and the new settings window.
 

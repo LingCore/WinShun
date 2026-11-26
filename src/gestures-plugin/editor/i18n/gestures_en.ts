@@ -308,6 +308,10 @@
 <context>
     <name>GesturePad</name>
     <message>
+        <source>Win 键留给系统用，请换成 Ctrl、Alt 或 Shift</source>
+        <translation>The Win key belongs to Windows: use Ctrl, Alt or Shift instead</translation>
+    </message>
+    <message>
         <source>左键只能作为组合手势的第二个按键，请先按住右键、中键或侧键</source>
         <translation>The left button only works as the second button in a combo — hold Right, Middle or a side button first</translation>
     </message>
@@ -334,6 +338,10 @@
     <message>
         <source>按住手势键画方向，或点另一个键组合，松开选动作</source>
         <translation>Hold a trigger button to draw, or click a second mouse button for a chord; release to choose an action</translation>
+    </message>
+    <message>
+        <source>同时按住 Ctrl、Alt 或 Shift 画，是另一个手势</source>
+        <translation>Draw with Ctrl, Alt or Shift held for a gesture of its own</translation>
     </message>
     <message>
         <source>已记录组合键，松开后选它要做的事</source>
@@ -415,6 +423,14 @@
         <translation>, then </translation>
     </message>
     <message>
+        <source>按住 %1 和手势键，再点%2</source>
+        <translation>Hold %1 + trigger, click %2</translation>
+    </message>
+    <message>
+        <source>按住 %1 和%2，再点%3</source>
+        <translation>Hold %1 + %2, click %3</translation>
+    </message>
+    <message>
         <source>按住%1，再点%2</source>
         <translation>Hold %1, click %2</translation>
     </message>
@@ -425,6 +441,14 @@
     <message>
         <source>%1，再点%2</source>
         <translation>%1, then click %2</translation>
+    </message>
+    <message>
+        <source>按住 %1，%2</source>
+        <translation>%1: %2</translation>
+    </message>
+    <message>
+        <source>按住 %1 和%2，%3</source>
+        <translation>%1 + %2: %3</translation>
     </message>
     <message>
         <source>按住%1，%2</source>

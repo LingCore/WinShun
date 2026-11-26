@@ -166,6 +166,24 @@ bool hasTriggerButton(const std::vector<MouseButton>& buttons, MouseButton butto
 const wchar_t* buttonTitle(MouseButton button, bool chinese); // 右键 / Right button ...
 const wchar_t* buttonShortTitle(MouseButton button, bool chinese); // 右 / R, 侧1 / X1 ...
 
+// ---- keys held with the button ----
+
+// Ctrl, Alt and Shift held when the trigger button goes down make a gesture
+// of their own ("shift:DR" is not "DR"); Win is left to Windows. A set of
+// them as bits.
+using Modifiers = std::uint8_t;
+inline constexpr Modifiers kModCtrl = 1;
+inline constexpr Modifiers kModAlt = 2;
+inline constexpr Modifiers kModShift = 4;
+// As the rules keep them: "ctrl+shift" (lower case, in Windows' order Ctrl,
+// Alt, Shift); "" for none.
+std::string modifiersId(Modifiers modifiers);
+// "Shift+Ctrl", "alt" (any case, any order, each once) -> the set; null for
+// anything else, an empty text among it.
+std::optional<Modifiers> parseModifiers(std::string_view id);
+// "Ctrl+Shift", for the hint and the settings; empty for none.
+std::wstring modifiersTitle(Modifiers modifiers);
+
 // ---- the rules ----
 
 enum class Zone { Anywhere, TopLeft, TopRight, BottomLeft, BottomRight };
@@ -173,17 +191,23 @@ const char* zoneId(Zone zone); // "", "tl", "tr", "bl", "br"
 std::optional<Zone> zoneById(std::string_view id);
 const wchar_t* zoneTitle(Zone zone, bool chinese); // 左上角 …; empty for Anywhere
 
-// A gesture trigger parsed: [ (r|m|x1|x2) ":" ] [ stroke ] [ "+" (l|r|m|x1|x2) ].
-// Either stroke is non-empty ("DR", "cw", "m:U", "D+l") or chord is non-Any ("+l", "r:+l", "x1:+r").
+// A gesture trigger parsed:
+// [ keys ":" ] [ (r|m|x1|x2) ":" ] [ stroke ] [ "+" (l|r|m|x1|x2) ], keys
+// being Ctrl, Alt and Shift held ("shift", "ctrl+alt"). Either stroke is
+// non-empty ("DR", "cw", "m:U", "D+l", "shift:DR") or chord is non-Any
+// ("+l", "r:+l", "x1:+r", "ctrl:r:+l").
 struct ParsedGesture {
     MouseButton trigger = MouseButton::Any;
     std::string stroke;
     MouseButton chord = MouseButton::Any;
+    Modifiers modifiers = 0;
     bool operator==(const ParsedGesture&) const = default;
 };
 std::optional<ParsedGesture> parseGestureTrigger(std::string_view on);
-std::string formatGestureTrigger(MouseButton trigger, std::string_view stroke, MouseButton chord = MouseButton::Any);
-// Compact label for the HUD chip and rule tile: "↓→", "↓+左", "右+左", "侧1 ↑".
+// Empty when the parts make no trigger.
+std::string formatGestureTrigger(MouseButton trigger, std::string_view stroke, MouseButton chord = MouseButton::Any,
+    Modifiers modifiers = 0);
+// Compact label for the HUD chip and rule tile: "↓→", "↓+左", "右+左", "侧1 ↑", "Shift ↓→".
 std::wstring gestureBadge(std::string_view on, bool chinese);
 
 struct ParsedWheel {
@@ -195,7 +219,7 @@ std::optional<ParsedWheel> parseWheelTrigger(std::string_view on);
 std::string formatWheelTrigger(MouseButton trigger, bool up);
 
 // What sets a rule off ("on"): a gesture drawn or chorded ("DR", "cw", "m:U",
-// "D+l", "r:+l"), the pointer pushed into a corner ("corner:tl" …) or rubbed
+// "D+l", "r:+l", "shift:DR"), the pointer pushed into a corner ("corner:tl" …) or rubbed
 // along an edge ("edge:top" …), the wheel turned with a trigger button held
 // ("wheel:up" / "wheel:down" or "<btn>:wheel:up|down"), or a shortcut pressed
 // ("key:Ctrl+Alt+T").
@@ -235,6 +259,8 @@ struct Rule {
     Action action;
     bool operator==(const Rule&) const = default;
     MouseButton triggerButton() const;
+    // The keys a gesture is drawn with (none for the other triggers).
+    Modifiers modifiers() const;
     // More specific rules win: a program's over a specific trigger button's
     // over the selection's over a corner's over the rest.
     int specificity() const
@@ -252,10 +278,14 @@ struct Context {
     bool selection = false; // words selected in the window under the pointer
     std::wstring program; // that window's program, a file name in lower case
     MouseButton button = MouseButton::Any; // the trigger button held (Right/Middle/X1/X2), or Any
+    // Ctrl, Alt, Shift held when it went down: only the gestures drawn with
+    // exactly these keys hold (and no wheel rule).
+    Modifiers modifiers = 0;
 };
 
 // The rule for `on` in `context`, the most specific that holds (the first of
-// those equally specific); null when none.
+// those equally specific); null when none. The keys of a gesture are those
+// in `on` and the context's.
 const Rule* match(const std::vector<Rule>& rules, std::string_view on, const Context& context);
 // Whether pressing `chord` right now (with `stroke` drawn so far while holding
 // `context.button`) could trigger an active (non-Nothing) rule (either plain
@@ -264,7 +294,13 @@ bool chordMatches(const std::vector<Rule>& rules, std::string_view stroke, Mouse
 // Whether a rule for words selected could hold for a gesture started with
 // `prefix` (directions so far; empty: any) in `program`: then it is worth
 // asking for the selection.
-bool selectionMatters(const std::vector<Rule>& rules, std::string_view prefix, std::wstring_view program, MouseButton button = MouseButton::Any);
+bool selectionMatters(const std::vector<Rule>& rules, std::string_view prefix, std::wstring_view program,
+    MouseButton button = MouseButton::Any, Modifiers modifiers = 0);
+// Whether a gesture drawn with `modifiers` held and `button` (Any: any) could
+// do something in `program`: only then is a press with those keys taken
+// (else Shift + right click, Ctrl + right drag and the like stay the
+// program's).
+bool modifiersMatter(const std::vector<Rule>& rules, Modifiers modifiers, MouseButton button, std::wstring_view program);
 // Whether any rule that does something is set off by this kind of trigger:
 // the corners and edges are watched only then.
 bool anyFor(const std::vector<Rule>& rules, TriggerKind kind);

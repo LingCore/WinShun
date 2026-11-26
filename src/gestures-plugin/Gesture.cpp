@@ -698,6 +698,81 @@ const wchar_t* buttonShortTitle(MouseButton button, bool chinese)
     return L"";
 }
 
+// ---- keys held with the button ----
+
+namespace {
+
+constexpr Modifiers kAllModifiers = kModCtrl | kModAlt | kModShift;
+
+struct ModifierName {
+    Modifiers bit;
+    std::string_view id;
+    const wchar_t* title;
+};
+// In Windows' order, as shortcuts are written.
+constexpr ModifierName kModifierNames[] = {
+    {kModCtrl, "ctrl", L"Ctrl"},
+    {kModAlt, "alt", L"Alt"},
+    {kModShift, "shift", L"Shift"},
+};
+
+} // namespace
+
+std::string modifiersId(Modifiers modifiers)
+{
+    std::string out;
+    for (const ModifierName& m : kModifierNames) {
+        if (modifiers & m.bit) {
+            if (!out.empty())
+                out += '+';
+            out += m.id;
+        }
+    }
+    return out;
+}
+
+std::optional<Modifiers> parseModifiers(std::string_view id)
+{
+    Modifiers out = 0;
+    std::string token;
+    const auto take = [&]() -> bool {
+        for (const ModifierName& m : kModifierNames) {
+            if (token == m.id) {
+                if (out & m.bit)
+                    return false; // twice
+                out |= m.bit;
+                token.clear();
+                return true;
+            }
+        }
+        return false;
+    };
+    for (const char c : id) {
+        if (c == '+') {
+            if (!take())
+                return std::nullopt;
+        } else {
+            token += c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c;
+        }
+    }
+    if (!take())
+        return std::nullopt;
+    return out;
+}
+
+std::wstring modifiersTitle(Modifiers modifiers)
+{
+    std::wstring out;
+    for (const ModifierName& m : kModifierNames) {
+        if (modifiers & m.bit) {
+            if (!out.empty())
+                out += L'+';
+            out += m.title;
+        }
+    }
+    return out;
+}
+
 // ---- the rules ----
 
 const char* zoneId(Zone zone)
@@ -738,11 +813,30 @@ std::optional<ParsedGesture> parseGestureTrigger(std::string_view on)
     if (on.empty())
         return std::nullopt;
     ParsedGesture out;
-    if (const std::size_t colon = on.find(':'); colon != std::string_view::npos) {
-        const auto btn = buttonByShortId(on.substr(0, colon));
+    // Before the stroke: the keys held ("shift:"), then the trigger button ("r:"), each optional.
+    const auto takeButton = [&](std::string_view head) {
+        const auto btn = buttonByShortId(head);
         if (!btn || !isTriggerButton(*btn))
-            return std::nullopt;
+            return false;
         out.trigger = *btn;
+        return true;
+    };
+    if (std::size_t colon = on.find(':'); colon != std::string_view::npos) {
+        const std::string_view head = on.substr(0, colon);
+        if (buttonByShortId(head)) {
+            if (!takeButton(head))
+                return std::nullopt;
+        } else if (const auto keys = parseModifiers(head)) {
+            out.modifiers = *keys;
+            if (colon = on.find(':', colon + 1); colon != std::string_view::npos) {
+                if (!takeButton(on.substr(head.size() + 1, colon - head.size() - 1)))
+                    return std::nullopt;
+            } else {
+                colon = head.size();
+            }
+        } else {
+            return std::nullopt;
+        }
         on.remove_prefix(colon + 1);
         if (on.find(':') != std::string_view::npos)
             return std::nullopt;
@@ -769,9 +863,9 @@ std::optional<ParsedGesture> parseGestureTrigger(std::string_view on)
     return out;
 }
 
-std::string formatGestureTrigger(MouseButton trigger, std::string_view stroke, MouseButton chord)
+std::string formatGestureTrigger(MouseButton trigger, std::string_view stroke, MouseButton chord, Modifiers modifiers)
 {
-    if (trigger != MouseButton::Any && !isTriggerButton(trigger))
+    if ((trigger != MouseButton::Any && !isTriggerButton(trigger)) || (modifiers & ~kAllModifiers))
         return {};
     if (trigger != MouseButton::Any && chord == trigger)
         return {};
@@ -782,6 +876,10 @@ std::string formatGestureTrigger(MouseButton trigger, std::string_view stroke, M
         return {};
     }
     std::string out;
+    if (modifiers != 0) {
+        out += modifiersId(modifiers);
+        out += ':';
+    }
     if (trigger != MouseButton::Any) {
         out += buttonShortId(trigger);
         out += ':';
@@ -811,6 +909,9 @@ std::wstring gestureBadge(std::string_view on, bool chinese)
         out += L'+';
         out += buttonShortTitle(parsed->chord, chinese);
     }
+    // The keys before it, a space apart ("Shift +左", not "Shift+左": a chord is not a key).
+    if (parsed->modifiers != 0)
+        out = modifiersTitle(parsed->modifiers) + L' ' + out;
     return out;
 }
 
@@ -955,6 +1056,12 @@ MouseButton Rule::triggerButton() const
     return MouseButton::Any;
 }
 
+Modifiers Rule::modifiers() const
+{
+    const auto g = parseGestureTrigger(on);
+    return g ? g->modifiers : Modifiers {0};
+}
+
 bool Rule::sameCase(const Rule& other) const
 {
     return on == other.on && where == other.where && selection == other.selection && sameApps(apps, other.apps);
@@ -970,6 +1077,8 @@ const Rule* match(const std::vector<Rule>& rules, std::string_view on, const Con
             const auto rg = parseGestureTrigger(r.on);
             if (!rg || rg->stroke != g->stroke || rg->chord != g->chord)
                 continue;
+            if (rg->modifiers != (g->modifiers | context.modifiers))
+                continue; // the keys held: exactly those, none for none
             const MouseButton active = g->trigger != MouseButton::Any ? g->trigger : context.button;
             if (rg->trigger != MouseButton::Any && active != MouseButton::Any && rg->trigger != active)
                 continue;
@@ -979,8 +1088,8 @@ const Rule* match(const std::vector<Rule>& rules, std::string_view on, const Con
                 continue;
         } else if (w) {
             const auto rw = parseWheelTrigger(r.on);
-            if (!rw || rw->up != w->up)
-                continue;
+            if (!rw || rw->up != w->up || context.modifiers != 0)
+                continue; // with keys held the wheel is the program's (Shift + wheel scrolls sideways)
             const MouseButton active = w->trigger != MouseButton::Any ? w->trigger : context.button;
             if (rw->trigger != MouseButton::Any && active != MouseButton::Any && rw->trigger != active)
                 continue;
@@ -1021,13 +1130,14 @@ bool chordMatches(const std::vector<Rule>& rules, std::string_view stroke, Mouse
     return false;
 }
 
-bool selectionMatters(const std::vector<Rule>& rules, std::string_view prefix, std::wstring_view program, MouseButton button)
+bool selectionMatters(const std::vector<Rule>& rules, std::string_view prefix, std::wstring_view program, MouseButton button,
+    Modifiers modifiers)
 {
     return std::ranges::any_of(rules, [&](const Rule& r) {
         if (!r.selection || r.action.kind == Action::Kind::Nothing)
             return false;
         const auto parsed = parseGestureTrigger(r.on);
-        if (!parsed)
+        if (!parsed || parsed->modifiers != modifiers)
             return false;
         if (parsed->trigger != MouseButton::Any && button != MouseButton::Any && parsed->trigger != button)
             return false;
@@ -1037,6 +1147,20 @@ bool selectionMatters(const std::vector<Rule>& rules, std::string_view prefix, s
             return true;
         const bool circle = parsed->stroke == kClockwise || parsed->stroke == kCounterClockwise;
         return circle || std::string_view(parsed->stroke).starts_with(prefix);
+    });
+}
+
+bool modifiersMatter(const std::vector<Rule>& rules, Modifiers modifiers, MouseButton button, std::wstring_view program)
+{
+    return std::ranges::any_of(rules, [&](const Rule& r) {
+        if (r.action.kind == Action::Kind::Nothing)
+            return false;
+        const auto parsed = parseGestureTrigger(r.on);
+        if (!parsed || parsed->modifiers != modifiers)
+            return false;
+        if (parsed->trigger != MouseButton::Any && button != MouseButton::Any && parsed->trigger != button)
+            return false;
+        return r.apps.empty() || listed(r.apps, program);
     });
 }
 
@@ -1105,8 +1229,12 @@ std::optional<std::vector<Rule>> parseRules(std::string_view json)
         const TriggerKind kind = triggerKind(r.on);
         if (kind == TriggerKind::Unknown)
             continue;
-        if (kind == TriggerKind::Gesture)
+        if (kind == TriggerKind::Gesture) {
+            // Written by hand: "Shift+Ctrl:DR" is "ctrl+shift:DR".
+            const auto g = parseGestureTrigger(r.on);
+            r.on = formatGestureTrigger(g->trigger, g->stroke, g->chord, g->modifiers);
             r.where = zoneById(o["where"].toString()).value_or(Zone::Anywhere);
+        }
         if (kind == TriggerKind::Gesture || kind == TriggerKind::Key)
             r.selection = o["selection"].toBool();
         if (kind == TriggerKind::Gesture || kind == TriggerKind::Wheel || kind == TriggerKind::Key) {

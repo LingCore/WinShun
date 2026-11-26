@@ -32,7 +32,8 @@ public:
     enum Role {
         SourceRowRole = Qt::UserRole + 1,
         OnRole,
-        ArrowsRole, // "↓→", "↓+左", "侧1 ↑"; a shortcut's keys: "Ctrl+Alt+T"
+        ArrowsRole, // "↓→", "↓+左", "侧1 ↑" (without the keys held); a shortcut's keys: "Ctrl+Alt+T"
+        KeysRole, // the keys a gesture is drawn with: "Shift", "Ctrl+Alt"; empty for none
         DescriptionRole, // "向下，再向右", "按住右键，再点左键"
         WhereRole, // gestures::Zone as a number
         WhereTitleRole, // "任何位置", "从右下角开始画"

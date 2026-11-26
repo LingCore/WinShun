@@ -33,8 +33,10 @@ Item {
         pinTrigger: pad.effectivePin
         enabledButtons: pad.editor.buttons
 
-        onFinished: (gesture, tooLong, leftPrimaryChord) => {
-            if (leftPrimaryChord) {
+        onFinished: (gesture, tooLong, leftPrimaryChord, winHeld) => {
+            if (winHeld) {
+                pad.message = qsTr("Win 键留给系统用，请换成 Ctrl、Alt 或 Shift")
+            } else if (leftPrimaryChord) {
                 pad.message = qsTr("左键只能作为组合手势的第二个按键，请先按住右键、中键或侧键")
             } else if (tooLong) {
                 pad.message = qsTr("最多 6 段，画简单一点")
@@ -135,6 +137,15 @@ Item {
                 wrapMode: Text.Wrap
                 text: pad.message.length > 0 ? pad.message : qsTr("按住手势键画方向，或点另一个键组合，松开选动作")
                 color: pad.message.length > 0 ? Theme.danger : Theme.subtext
+                font.pixelSize: Theme.fontCaption
+            }
+            Text { // the keys make gestures of their own: said quietly, once nothing else is
+                width: parent.width
+                visible: pad.message.length === 0
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.Wrap
+                text: qsTr("同时按住 Ctrl、Alt 或 Shift 画，是另一个手势")
+                color: Theme.faint
                 font.pixelSize: Theme.fontCaption
             }
         }

@@ -24,6 +24,13 @@ std::optional<gestures::MouseButton> fromQtButton(Qt::MouseButton button)
     }
 }
 
+// Ctrl, Alt and Shift held with the button: a gesture of their own, as the engine reads them.
+gestures::Modifiers fromQtModifiers(Qt::KeyboardModifiers modifiers)
+{
+    return static_cast<gestures::Modifiers>((modifiers & Qt::ControlModifier ? gestures::kModCtrl : 0)
+        | (modifiers & Qt::AltModifier ? gestures::kModAlt : 0) | (modifiers & Qt::ShiftModifier ? gestures::kModShift : 0));
+}
+
 } // namespace
 
 PadReader::PadReader(QObject* parent)
@@ -144,7 +151,7 @@ std::string PadReader::buildGesture() const
     if (tooLong())
         return {};
     const std::string stroke = m_chordButton != gestures::MouseButton::Any ? m_chordStroke : m_recognizer.gesture();
-    return gestures::formatGestureTrigger(effectiveTrigger(), stroke, m_chordButton);
+    return gestures::formatGestureTrigger(effectiveTrigger(), stroke, m_chordButton, m_modifiers);
 }
 
 QString PadReader::gesture() const
@@ -169,6 +176,8 @@ void PadReader::begin(double x, double y, double dpr)
     m_chordButton = gestures::MouseButton::Any;
     m_chordStroke.clear();
     m_leftPrimaryChord = false;
+    m_modifiers = 0;
+    m_winHeld = false;
     m_recognizer.reset(static_cast<int>(std::lround(x * m_dpr)), static_cast<int>(std::lround(y * m_dpr)),
         static_cast<int>(std::lround(kStrokeLogical * m_dpr)));
     emit changed();
@@ -186,6 +195,8 @@ void PadReader::clear()
     m_drawing = false;
     m_completed = false;
     m_leftPrimaryChord = false;
+    m_modifiers = 0;
+    m_winHeld = false;
     m_primaryButton = gestures::MouseButton::Any;
     m_chordButton = gestures::MouseButton::Any;
     m_chordStroke.clear();
@@ -230,6 +241,9 @@ bool PadReader::eventFilter(QObject* watched, QEvent* event)
             m_drawing = true;
             m_completed = false;
             m_leftPrimaryChord = false;
+            // The keys held as it goes down, as the engine reads them then; Win never makes a gesture.
+            m_modifiers = fromQtModifiers(me->modifiers());
+            m_winHeld = me->modifiers().testFlag(Qt::MetaModifier);
             m_primaryButton = *btn;
             m_chordButton = gestures::MouseButton::Any;
             m_chordStroke.clear();
@@ -284,8 +298,9 @@ bool PadReader::eventFilter(QObject* watched, QEvent* event)
         const QString finalGesture = std::exchange(m_pendingGesture, {});
         const bool finalTooLong = std::exchange(m_pendingTooLong, false);
         const bool leftChord = std::exchange(m_leftPrimaryChord, false);
+        const bool winHeld = m_winHeld;
         clear();
-        emit finished(finalGesture, finalTooLong, leftChord);
+        emit finished(winHeld ? QString() : finalGesture, finalTooLong, leftChord, winHeld);
     }
     return true;
 }

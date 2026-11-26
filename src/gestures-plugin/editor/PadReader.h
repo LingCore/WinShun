@@ -33,8 +33,8 @@ class PadReader : public QObject {
     Q_PROPERTY(QStringList enabledButtons READ enabledButtons WRITE setEnabledButtons NOTIFY enabledButtonsChanged)
     Q_PROPERTY(bool drawing READ drawing NOTIFY changed)
     Q_PROPERTY(QVariantList points READ points NOTIFY changed)
-    Q_PROPERTY(QString gesture READ gesture NOTIFY changed) // "DR", "cw", "D+l", "+l", "x1:U"
-    Q_PROPERTY(QString arrows READ arrows NOTIFY changed) // localized live badge: "↓→", "↓+左", "侧1 ↑"
+    Q_PROPERTY(QString gesture READ gesture NOTIFY changed) // "DR", "cw", "D+l", "+l", "x1:U", "shift:DR"
+    Q_PROPERTY(QString arrows READ arrows NOTIFY changed) // localized live badge: "↓→", "↓+左", "侧1 ↑", "Shift ↓→"
     Q_PROPERTY(bool tooLong READ tooLong NOTIFY changed)
     Q_PROPERTY(bool hasChord READ hasChord NOTIFY changed)
 
@@ -76,8 +76,9 @@ signals:
     void changed();
     // Emitted once all pressed buttons are released after a recording ends.
     // `leftPrimaryChord` is true if the user tried to start a multi-button chord
-    // with the left button (which is only supported as the second button).
-    void finished(const QString& gesture, bool tooLong, bool leftPrimaryChord);
+    // with the left button (which is only supported as the second button);
+    // `winHeld` if Win was held as it began (no gesture then: Win is Windows').
+    void finished(const QString& gesture, bool tooLong, bool leftPrimaryChord, bool winHeld);
 
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
@@ -101,6 +102,8 @@ private:
     bool m_drawing = false;
     bool m_completed = false;
     bool m_leftPrimaryChord = false;
+    gestures::Modifiers m_modifiers = 0; // Ctrl, Alt, Shift held as the primary button went down
+    bool m_winHeld = false;
     gestures::MouseButton m_primaryButton = gestures::MouseButton::Any;
     gestures::MouseButton m_chordButton = gestures::MouseButton::Any;
     std::string m_chordStroke;

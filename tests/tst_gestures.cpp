@@ -691,6 +691,150 @@ private slots:
         QVERIFY(!selectionMatters({selChord}, "", L"notepad.exe", MouseButton::X1));
     }
 
+    // #472: Ctrl, Alt, Shift held with the button make gestures of their own.
+    void keysHeldMakeGesturesOfTheirOwn()
+    {
+        // The keys as kept, read and titled.
+        QCOMPARE(modifiersId(kModShift), std::string("shift"));
+        QCOMPARE(modifiersId(kModShift | kModCtrl | kModAlt), std::string("ctrl+alt+shift"));
+        QCOMPARE(modifiersId(0), std::string());
+        QCOMPARE(parseModifiers("Shift+CTRL"), std::optional<Modifiers>(Modifiers(kModCtrl | kModShift)));
+        QVERIFY(!parseModifiers("shift+shift").has_value());
+        QVERIFY(!parseModifiers("win").has_value());
+        QVERIFY(!parseModifiers("ctrl+").has_value());
+        QVERIFY(!parseModifiers("").has_value());
+        QCOMPARE(modifiersTitle(kModCtrl | kModShift), std::wstring(L"Ctrl+Shift"));
+
+        // The grammar: keys first, then the button, then the stroke and the chord.
+        QCOMPARE(parseGestureTrigger("shift:DR"), std::optional<ParsedGesture>(ParsedGesture {MouseButton::Any, "DR", MouseButton::Any, kModShift}));
+        QCOMPARE(parseGestureTrigger("ctrl+alt:x1:U"), std::optional<ParsedGesture>(ParsedGesture {MouseButton::X1, "U", MouseButton::Any, Modifiers(kModCtrl | kModAlt)}));
+        QCOMPARE(parseGestureTrigger("shift:r:+l"), std::optional<ParsedGesture>(ParsedGesture {MouseButton::Right, "", MouseButton::Left, kModShift}));
+        QCOMPARE(parseGestureTrigger("alt:D+l"), std::optional<ParsedGesture>(ParsedGesture {MouseButton::Any, "D", MouseButton::Left, kModAlt}));
+        QCOMPARE(parseGestureTrigger("Shift:cw")->modifiers, kModShift); // by hand, any case
+        QVERIFY(!parseGestureTrigger("r:shift:DR").has_value()); // the keys come first
+        QVERIFY(!parseGestureTrigger("win:DR").has_value());
+        QVERIFY(!parseGestureTrigger("shift:").has_value());
+        QVERIFY(!parseGestureTrigger("shift:l:D").has_value());
+        QVERIFY(!parseGestureTrigger("shift:r:m:D").has_value());
+        QVERIFY(!parseGestureTrigger("shift:wheel:up").has_value());
+        QVERIFY(!parseWheelTrigger("shift:wheel:up").has_value());
+        QCOMPARE(triggerKind("shift:wheel:up"), TriggerKind::Unknown);
+        QCOMPARE(triggerKind("ctrl+shift:r:DR"), TriggerKind::Gesture);
+        QCOMPARE(formatGestureTrigger(MouseButton::Right, "DR", MouseButton::Any, Modifiers(kModShift | kModCtrl)), std::string("ctrl+shift:r:DR"));
+        QCOMPARE(formatGestureTrigger(MouseButton::Any, "", MouseButton::Left, kModAlt), std::string("alt:+l"));
+        QCOMPARE(formatGestureTrigger(MouseButton::Any, "D", MouseButton::Any, 8), std::string()); // no such key
+
+        // How it shows: the keys first, a space apart.
+        QCOMPARE(gestureBadge("shift:DR", true), std::wstring(L"Shift ↓→"));
+        QCOMPARE(gestureBadge("ctrl+shift:x1:U", true), std::wstring(L"Ctrl+Shift 侧1 ↑"));
+        QCOMPARE(gestureBadge("shift:r:+l", false), std::wstring(L"Shift R+L"));
+        QCOMPARE(gestureBadge("shift:+l", true), std::wstring(L"Shift +左"));
+        QCOMPARE(triggerTitle("alt:cw", true), std::wstring(L"Alt ↻"));
+
+        // Kept as JSON: written by hand in any case and order, kept as written by the settings.
+        const auto read = parseRules(R"({"version":2,"rules":[
+            {"on":"Shift+Ctrl:DR","do":"close"},
+            {"on":"shift:R","do":"nexttab"},
+            {"on":"shift:R","selection":true,"do":"translate"},
+            {"on":"win:R","do":"copy"},
+            {"on":"shift:wheel:up","do":"volumeup"}]})");
+        QVERIFY(read.has_value());
+        QCOMPARE(read->size(), std::size_t(3));
+        QCOMPARE((*read)[0].on, std::string("ctrl+shift:DR"));
+        QCOMPARE((*read)[0].modifiers(), Modifiers(kModCtrl | kModShift));
+        QVERIFY(parseRules(rulesJson(*read)).value() == *read);
+        Rule plainR;
+        plainR.on = "R";
+        QVERIFY(!plainR.sameCase((*read)[1])); // "R" and "shift:R" are two gestures
+
+        // Which holds: exactly the keys held, none for none.
+        std::vector<Rule> rules = defaultRules(); // R -> forward, wheel -> tabs
+        rules.insert(rules.end(), read->begin(), read->end());
+        Context plain;
+        plain.button = MouseButton::Right;
+        QCOMPARE(match(rules, "R", plain)->action.builtin, Builtin::Forward);
+        Context shift = plain;
+        shift.modifiers = kModShift;
+        QCOMPARE(match(rules, "R", shift)->action.builtin, Builtin::NextTab);
+        QCOMPARE(match(rules, "shift:R", plain)->action.builtin, Builtin::NextTab); // the keys written in the trigger
+        QVERIFY(match(rules, "L", shift) == nullptr); // Shift + left: none set, not the plain back
+        Context ctrlShift = plain;
+        ctrlShift.modifiers = kModCtrl | kModShift;
+        QVERIFY(match(rules, "R", ctrlShift) == nullptr); // Ctrl+Shift is not Shift
+        QCOMPARE(match(rules, "DR", ctrlShift)->action.builtin, Builtin::Close);
+        QVERIFY(match(rules, "DR", shift) == nullptr);
+        QCOMPARE(match(rules, "DR", plain)->action.builtin, Builtin::Close); // the default ↓→
+        Context shiftWords = shift;
+        shiftWords.selection = true;
+        QCOMPARE(match(rules, "R", shiftWords)->action.builtin, Builtin::Translate);
+        // The wheel with keys held stays the program's (Shift + wheel scrolls sideways).
+        QCOMPARE(match(rules, "wheel:up", plain)->action.builtin, Builtin::PrevTab);
+        QVERIFY(match(rules, "wheel:up", shift) == nullptr);
+
+        // A press with keys held is taken only where a gesture with them does something.
+        QVERIFY(modifiersMatter(rules, kModShift, MouseButton::Right, L"chrome.exe"));
+        QVERIFY(modifiersMatter(rules, kModCtrl | kModShift, MouseButton::Middle, L"chrome.exe"));
+        QVERIFY(!modifiersMatter(rules, kModCtrl, MouseButton::Right, L"explorer.exe")); // Ctrl + right drag copies files
+        QVERIFY(!modifiersMatter(rules, kModAlt, MouseButton::Right, L"explorer.exe"));
+        Rule photoshopAlt;
+        photoshopAlt.on = "alt:x1:U";
+        photoshopAlt.apps = {L"photoshop.exe"};
+        photoshopAlt.action = keysAction(L"Ctrl+Z");
+        Rule offAlt;
+        offAlt.on = "alt:U"; // does nothing: never takes a press
+        const std::vector<Rule> altRules {photoshopAlt, offAlt};
+        QVERIFY(modifiersMatter(altRules, kModAlt, MouseButton::X1, L"photoshop.exe"));
+        QVERIFY(!modifiersMatter(altRules, kModAlt, MouseButton::Right, L"photoshop.exe")); // only with side 1
+        QVERIFY(!modifiersMatter(altRules, kModAlt, MouseButton::X1, L"notepad.exe")); // only in Photoshop
+
+        // Chords and the words selected heed the keys too.
+        Rule shiftRocker;
+        shiftRocker.on = "shift:r:+l";
+        shiftRocker.action = builtinAction(Builtin::CloseTab);
+        const std::vector<Rule> rockers {shiftRocker};
+        QVERIFY(chordMatches(rockers, "", MouseButton::Left, shift));
+        QVERIFY(!chordMatches(rockers, "", MouseButton::Left, plain));
+        QVERIFY(selectionMatters(rules, "", L"notepad.exe", MouseButton::Right, kModShift)); // shift:R with words
+        QVERIFY(!selectionMatters(*read, "", L"notepad.exe", MouseButton::Right, kModAlt));
+
+        // The session: the press with Shift held, drawn right, the chord with Shift held.
+        Settings settings;
+        settings.rules = rules;
+        settings.rules.push_back(shiftRocker);
+        {
+            GestureSession s;
+            QVERIFY(s.onButtonDown(MouseButton::Right, 100, 100, 6, 24, true, settings, shift).swallow);
+            s.onMove(140, 100);
+            const auto up = s.onButtonUp(MouseButton::Right, 140, 100);
+            QCOMPARE(up.event, SessionResult::Event::End);
+            QCOMPARE(match(settings.rules, up.gesture, shift)->action.builtin, Builtin::NextTab);
+        }
+        {
+            GestureSession s;
+            QVERIFY(s.onButtonDown(MouseButton::Right, 100, 100, 6, 24, true, settings, shift).swallow);
+            const auto left = s.onButtonDown(MouseButton::Left, 100, 100, 6, 24, false, settings, shift);
+            QVERIFY(left.swallow);
+            QCOMPARE(left.gesture, std::string("+l"));
+            const auto leftUp = s.onButtonUp(MouseButton::Left, 100, 100);
+            QCOMPARE(leftUp.event, SessionResult::Event::End);
+            QCOMPARE(match(settings.rules, leftUp.gesture, shift)->action.builtin, Builtin::CloseTab);
+            QVERIFY(s.onButtonUp(MouseButton::Right, 100, 100).swallow);
+        }
+        {
+            // Without Shift the left click cancels as before (no plain rocker is set).
+            GestureSession s;
+            QVERIFY(s.onButtonDown(MouseButton::Right, 100, 100, 6, 24, true, settings, plain).swallow);
+            QCOMPARE(s.onButtonDown(MouseButton::Left, 100, 100, 6, 24, false, settings, plain).event, SessionResult::Event::Cancel);
+        }
+        {
+            // Shift held: the wheel is not taken (no wheel rule for keys), the press still replays as a click.
+            GestureSession s;
+            QVERIFY(s.onButtonDown(MouseButton::Right, 100, 100, 6, 24, true, settings, shift).swallow);
+            QVERIFY(!s.onWheel(WHEEL_DELTA, true, settings, shift).swallow);
+            QCOMPARE(s.onButtonUp(MouseButton::Right, 100, 100).event, SessionResult::Event::Click);
+        }
+    }
+
     void sessionStateMachineIssue436()
     {
         Settings settings;
