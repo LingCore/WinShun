@@ -34,7 +34,7 @@ QVariant call(Clipboard* object, const QString& name, const QVariantList& values
         u"heldRow"_s, u"paste"_s, u"quickPaste"_s, u"copy"_s, u"dragOut"_s, u"copyText"_s,
         u"togglePin"_s, u"remove"_s, u"undo"_s, u"moveToGroup"_s, u"canMove"_s, u"moveRow"_s,
         u"addGroup"_s, u"enterGroup"_s, u"renameGroup"_s, u"toggleSelected"_s, u"selectRange"_s, u"clearSelection"_s,
-        u"selectAll"_s, u"cycleCategory"_s, u"cycleSeparator"_s, u"dismiss"_s, u"wantKeys"_s,
+        u"selectAll"_s, u"cycleCategory"_s, u"cycleSeparator"_s, u"dismiss"_s, u"wantKeys"_s, u"wantFocus"_s,
         u"turnOn"_s, u"preview"_s, u"menuItems"_s, u"categoryMenuItems"_s, u"trigger"_s,
         u"triggerCategory"_s, u"groupNameRequested"_s, u"pasteText"_s, u"setNote"_s, u"setText"_s,
         u"adjustUiSize"_s};

@@ -404,6 +404,16 @@ public:
     Q_INVOKABLE void cycleSeparator();
     Q_INVOKABLE void dismiss(); // Esc, Win+V again: back to the field it came from, or closed (pinned: the keys given back)
     Q_INVOKABLE void wantKeys() { emit keysWanted(); } // the search field clicked: acquire or refresh routing
+    // The search field clicked while the keys come from the program in front:
+    // typed in from here on, so the window takes the focus after all. Routed
+    // keys are letters; an input method composes only where the focus is
+    // (Chinese by 双拼 or 五笔, which no pinyin search stands in for). The
+    // routing is refreshed first: it goes on if Windows refuses the focus.
+    Q_INVOKABLE void wantFocus()
+    {
+        emit keysWanted();
+        emit focusNeeded();
+    }
     Q_INVOKABLE void turnOn(); // the history, from the window's button
     Q_INVOKABLE void openShortcutSettings() { emit shortcutSettingsRequested(); } // the shortcut panel's last row
     // Ctrl++ / Ctrl+- / Ctrl+0: step 剪贴板大小 (+1 larger, -1 smaller, 0 reset to follow).

@@ -2023,8 +2023,12 @@
         <translation>Search the clipboard</translation>
     </message>
     <message>
-        <source>直接打拼音：tupian → 图片</source>
+        <source>打拼音：tupian → 图片</source>
         <translation>Type pinyin: tupian → 图片</translation>
+    </message>
+    <message>
+        <source>打拼音能找到中文；要用输入法，点一下搜索框</source>
+        <translation>Pinyin finds Chinese; click the search box for the input method</translation>
     </message>
     <message>
         <source>松开粘贴</source>

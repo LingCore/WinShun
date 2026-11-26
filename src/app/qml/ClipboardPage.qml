@@ -775,10 +775,13 @@ Item {
     // the program in front (Clipboard.pinyinHintRequested): meant to switch
     // to Chinese, which no input method does without the keyboard focus, and
     // the window keeps off it (GitHub #42). Pinyin finds Chinese anyway, and
-    // that is said: by the empty field until the window hides, else in the
-    // key hints' place until a key is typed, 5 s at most.
+    // a click in the field gives it the focus for the input method. Both are
+    // said: pinyin by the empty field until the window hides or has the
+    // focus (no longer than fits beside its buttons), and both in the key
+    // hints' place until a key is typed, 5 s at most.
     property bool pinyinHint: false // the empty field's placeholder says it
-    readonly property string pinyinHintText: qsTr("直接打拼音：tupian → 图片")
+    readonly property string pinyinHintText: qsTr("打拼音：tupian → 图片")
+    readonly property string pinyinNoteText: qsTr("打拼音能找到中文；要用输入法，点一下搜索框")
     Timer { id: pinyinHintTimer; interval: 5000 } // the footer says it while running
 
     Connections {
@@ -827,6 +830,8 @@ Item {
         function onKeysRoutedChanged() {
             if (page.clipboard.keysRouted)
                 input.selectAll()
+            else
+                page.pinyinHint = false // the input method's here now
         }
         function onContextMenuKeyPressed() { if (!page.findingGroup) page.openContextMenu(list.currentIndex) }
         function onGroupSearchRequested() { page.findingGroup ? page.cancelGroupSearch() : page.beginGroupSearch() }
@@ -835,8 +840,7 @@ Item {
                 return // nothing is typed into a search
             if (input.text.length === 0)
                 page.pinyinHint = true
-            else
-                pinyinHintTimer.restart()
+            pinyinHintTimer.restart() // below: the click that brings the input method
         }
         function onNoteRequested(id, note, color) {
             page.notingId = id
@@ -957,6 +961,7 @@ Item {
                 onActiveFocusChanged: numberHints.reset()
 
                 Text {
+                    objectName: "clipboardSearchPlaceholder"
                     anchors.fill: parent
                     verticalAlignment: Text.AlignVCenter
                     text: page.findingGroup ? qsTr("输入分组名，回车进入")
@@ -969,12 +974,16 @@ Item {
                     visible: input.text.length === 0 && input.preeditText.length === 0
                 }
 
-                // A passive tap leaves TextInput's caret and selection alone.
-                // Recover routing on an explicit click without taking the
-                // foreground from a field that closes when it loses focus.
+                // A click in the field asks to type in it: the window takes
+                // the focus after all, and an input method composes here
+                // (Chinese by 双拼 or 五笔; the routed keys are letters, for
+                // pinyin alone). Opening still takes none, so what closes
+                // without the focus (VS Code's quick open) only closes for
+                // this click. A passive tap: TextInput's caret and selection
+                // are its own. The field hidden, a click only recovers routing.
                 TapHandler {
                     enabled: page.clipboard.keysRouted
-                    onTapped: page.clipboard.wantKeys()
+                    onTapped: page.fieldShown ? page.clipboard.wantFocus() : page.clipboard.wantKeys()
                 }
 
                 // Pinned, the keys with the program in front: a click asks
@@ -1667,16 +1676,17 @@ Item {
             // from the program in front, which is when no input method has them.
             Text {
                 id: pinyinNote
+                objectName: "clipboardInputMethodNote"
                 readonly property bool shown: pinyinHintTimer.running && page.selectedCount === 0
                                               && page.clipboard.keysRouted && !holdNote.shown
                 anchors.right: infoButton.left
                 anchors.rightMargin: 8
                 anchors.verticalCenter: parent.verticalCenter
-                width: Math.min(implicitWidth, footer.width - hints.reserved)
+                width: Math.min(implicitWidth, footer.width - hints.reserved - statusLabel.implicitWidth) // never over the status
                 opacity: shown ? 1 : 0
                 visible: opacity > 0
                 Behavior on opacity { enabled: SystemTheme.animations && (page.Window.window?.visible ?? false); NumberAnimation { duration: 150 } }
-                text: page.pinyinHintText
+                text: page.pinyinNoteText
                 textFormat: Text.PlainText
                 color: Theme.faint
                 font.pixelSize: page.metrics.uiBody

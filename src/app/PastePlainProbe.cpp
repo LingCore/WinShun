@@ -16,7 +16,9 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QGuiApplication>
 #include <QProcess>
+#include <QQuickItem>
 #include <QQuickWindow>
 #include <QScopeGuard>
 
@@ -914,6 +916,221 @@ bool checkActivationPaste(App&, const QStringList& args, const QDir& output)
     const bool restored = putOnClipboard(before) || putOnClipboard(before);
     report.insert(u"clipboard_restored"_s, restored);
     check(restored, "the clipboard as it was could not be put back");
+    return finish();
+}
+
+namespace {
+
+const QString kFocusEntry = u"WinShun 点搜索框用输入法 field focus 7741"_s;
+const QString kFocusOther = u"WinShun another entry 7742"_s;
+const QString kFocusTyped = u"输入法"_s;
+
+// As an input method hands its words over: characters, no keys (VK_PACKET).
+// They reach only the window with the keyboard focus.
+void typeText(const QString& text)
+{
+    std::vector<INPUT> keys;
+    for (const QChar c : text) {
+        for (const bool up : {false, true}) {
+            INPUT key {};
+            key.type = INPUT_KEYBOARD;
+            key.ki.wScan = c.unicode();
+            key.ki.dwFlags = KEYEVENTF_UNICODE | (up ? KEYEVENTF_KEYUP : 0);
+            keys.push_back(key);
+        }
+    }
+    ::SendInput(static_cast<UINT>(keys.size()), keys.data(), sizeof(INPUT));
+}
+
+// A left click there, the pointer put back after. Only onto `window`.
+bool clickAt(HWND window, POINT at)
+{
+    POINT was {};
+    ::GetCursorPos(&was);
+    ::SetCursorPos(at.x, at.y);
+    pump(120);
+    const bool onIt = ::GetAncestor(::WindowFromPoint(at), GA_ROOT) == window;
+    if (onIt) {
+        INPUT buttons[2] {};
+        buttons[0].type = buttons[1].type = INPUT_MOUSE;
+        buttons[0].mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
+        buttons[1].mi.dwFlags = MOUSEEVENTF_LEFTUP;
+        ::SendInput(2, buttons, sizeof(INPUT));
+        pump(120);
+    }
+    ::SetCursorPos(was.x, was.y);
+    return onIt;
+}
+
+} // namespace
+
+bool seedFieldFocus(const QString& clipboardFolder)
+{
+    ClipStore store(clipboardFolder);
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (!store.open(now))
+        return false;
+    ClipCapture entry;
+    entry.text = kFocusEntry;
+    entry.source = u"Field focus probe"_s;
+    ClipCapture newer = entry;
+    newer.text = kFocusOther;
+    const bool seeded = store.add(entry, now - 2000) != 0 && store.add(newer, now - 1000) != 0;
+    store.flush();
+    return seeded;
+}
+
+// --probe-runtime <folder> --field-focus-check (WINSHUN_TEST_NO_CLIP_HISTORY set)
+// The production App beside the Win顺 that runs, its clipboard's hotkey
+// Ctrl+Alt+Shift+F21 and two entries in its history (seedFieldFocus). A text
+// box of another process is brought to the front and the chord pressed for
+// real: the clipboard opens over it without the focus, its keys routed. Then
+// its search field is clicked for real (only while the pointer is on the
+// clipboard's window). Passed: the window is in front with the field in
+// focus and no keys routed; 输入法, typed as an input method hands words over
+// (characters, which go to the focus alone), is the search and leaves the one
+// entry that has it; Enter pastes that entry into the box. The clipboard as it
+// was is saved first and put back after, marked so that no history records it.
+// Into field-focus.json.
+bool checkFieldFocus(App&, const QStringList&, const QDir& output)
+{
+    QJsonObject report;
+    bool ok = true;
+    const auto check = [&](bool condition, const char* what) {
+        if (!condition) {
+            ok = false;
+            std::fprintf(stderr, "field focus: FAILED: %s\n", what);
+        }
+    };
+    const auto finish = [&] {
+        report.insert(u"passed"_s, ok);
+        QFile file(output.filePath(u"field-focus.json"_s));
+        const bool saved = file.open(QIODevice::WriteOnly) && file.write(QJsonDocument(report).toJson()) > 0;
+        std::fprintf(stderr, "field focus: %s\n", ok ? "passed" : "FAILED");
+        return ok && saved;
+    };
+    check(qEnvironmentVariableIsSet("WINSHUN_TEST_NO_CLIP_HISTORY"), "WINSHUN_TEST_NO_CLIP_HISTORY not set: the paste would be in the histories");
+    pump(1500); // started, its hotkeys registered
+    const bool ours = chordOurs(kActivationKey);
+    report.insert(u"hotkey_registered"_s, ours);
+    check(ours, "the clipboard's hotkey is not registered");
+    if (!ok)
+        return finish();
+
+    bool savedOk = false;
+    const std::vector<Item> before = saveClipboard(savedOk);
+    report.insert(u"clipboard_saved_formats"_s, static_cast<int>(before.size()));
+    check(savedOk, "the clipboard could not be read to be put back");
+    if (!ok)
+        return finish();
+    const QString resultPath = output.filePath(u"target.json"_s);
+    const QString scriptPath = output.filePath(u"target.ps1"_s);
+    QFile::remove(resultPath);
+    {
+        QFile script(scriptPath);
+        check(script.open(QIODevice::WriteOnly) && script.write(kTargetScript) > 0, "the target's script not written");
+    }
+    qint64 pid = 0;
+    const bool started = ok && QProcess::startDetached(u"powershell.exe"_s,
+        {u"-NoProfile"_s, u"-STA"_s, u"-ExecutionPolicy"_s, u"Bypass"_s, u"-File"_s, QDir::toNativeSeparators(scriptPath),
+            QDir::toNativeSeparators(resultPath)}, {}, &pid);
+    check(started, "the target did not start");
+    HWND target = nullptr;
+    QElapsedTimer limit;
+    limit.start();
+    while (started && !(target = findTarget(pid)) && limit.elapsed() < 20'000)
+        pump(100);
+    check(target, "the target's window never came");
+
+    bool changed = false; // the user's clipboard may be replaced (the paste): to be put back
+    if (ok) {
+        waitForQuietInput();
+        bringToFront(target);
+        pump(600);
+        check(inFront(target), "the target could not be brought to the front (no key sent)");
+        if (ok && inFront(target))
+            pressChord(kActivationKey); // the clipboard over it, its keys routed
+        pump(900);
+        QQuickWindow* window = nullptr;
+        for (QWindow* candidate : QGuiApplication::topLevelWindows()) {
+            if (candidate->isVisible() && QByteArray(candidate->metaObject()->className()).startsWith("ClipboardWindow_"))
+                window = qobject_cast<QQuickWindow*>(candidate);
+        }
+        auto* clipboard = window ? qobject_cast<Clipboard*>(window->property("clipboard").value<QObject*>()) : nullptr;
+        auto* field = window ? window->findChild<QQuickItem*>(u"clipboardSearchField"_s) : nullptr;
+        check(window && clipboard && field, "the clipboard's window did not open");
+        if (ok) {
+            const auto hwnd = reinterpret_cast<HWND>(window->winId());
+            report.insert(u"opened_without_focus"_s, inFront(target));
+            report.insert(u"opened_keys_routed"_s, clipboard->keysRouted());
+            check(inFront(target) && clipboard->keysRouted(), "the clipboard did not open over the target with its keys routed");
+
+            // What a Shift alone under a Chinese layout brings up: pinyin in the
+            // field, and below it the click that brings the input method, each in full.
+            emit clipboard->pinyinHintRequested();
+            pump(400);
+            const auto shownInFull = [&](const QString& name, QStringView word) {
+                auto* text = window->findChild<QQuickItem*>(name);
+                const QString said = text ? text->property("text").toString() : QString();
+                report.insert(name, said);
+                return text && text->isVisible() && said.contains(word) && !text->property("truncated").toBool();
+            };
+            check(shownInFull(u"clipboardSearchPlaceholder"_s, u"拼音"), "the field does not say pinyin finds Chinese, or is cut off");
+            check(shownInFull(u"clipboardInputMethodNote"_s, u"输入法"), "nothing says how to use the input method, or it is cut off");
+            window->grabWindow().save(output.filePath(u"field-hint.png"_s));
+
+            // The field's middle, in the screen's pixels.
+            const QPointF middle = field->mapToScene(QPointF(field->width() / 2, field->height() / 2)) * window->devicePixelRatio();
+            POINT at {qRound(middle.x()), qRound(middle.y())};
+            ::ClientToScreen(hwnd, &at);
+            const bool clicked = ok && clickAt(hwnd, at);
+            check(clicked, "the search field is not under the pointer (no click made)");
+            pump(500);
+            const bool front = ::GetForegroundWindow() == hwnd;
+            report.insert(u"window_in_front_after_click"_s, front);
+            report.insert(u"keys_routed_after_click"_s, clipboard->keysRouted());
+            report.insert(u"field_has_focus"_s, field->hasActiveFocus());
+            check(front, "the clipboard's window did not take the focus on the click");
+            check(!clipboard->keysRouted(), "the keys are still routed after the click");
+            check(field->hasActiveFocus(), "the search field does not have the focus");
+            if (ok && ::GetForegroundWindow() == hwnd) { // checked again just before the keys
+                typeText(kFocusTyped);
+                pump(500);
+                report.insert(u"query"_s, clipboard->query());
+                report.insert(u"rows"_s, clipboard->items()->count());
+                check(clipboard->query() == kFocusTyped, "what was typed as an input method does is not the search");
+                check(clipboard->items()->count() == 1, "the search did not leave the one entry that has the words");
+                window->grabWindow().save(output.filePath(u"field-typed.png"_s));
+            }
+            if (ok && ::GetForegroundWindow() == hwnd) {
+                changed = true;
+                pressKey(VK_RETURN);
+                limit.restart();
+                while (!QFile::exists(resultPath) && limit.elapsed() < 12'000)
+                    pump(100);
+                pump(500);
+                QFile result(resultPath);
+                const QJsonObject got = result.open(QIODevice::ReadOnly) ? QJsonDocument::fromJson(result.readAll()).object() : QJsonObject();
+                const QString text = got.value(u"text"_s).toString();
+                report.insert(u"target_text"_s, text);
+                check(text == kFocusEntry, "Enter did not paste the entry into the target");
+                std::fprintf(stderr, "field focus: target got \"%s\"\n", qPrintable(text));
+            }
+        }
+    }
+    if (pid > 0) {
+        if (const HANDLE process = ::OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, static_cast<DWORD>(pid))) {
+            if (::WaitForSingleObject(process, 3000) == WAIT_TIMEOUT)
+                ::TerminateProcess(process, 1);
+            ::CloseHandle(process);
+        }
+    }
+    if (changed) {
+        const bool restored = putOnClipboard(before) || putOnClipboard(before);
+        report.insert(u"clipboard_restored"_s, restored);
+        check(restored, "the clipboard as it was could not be put back");
+    }
+    QFile::remove(scriptPath);
     return finish();
 }
 

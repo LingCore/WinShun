@@ -49,6 +49,15 @@ bool commandHotkeyChordFree();
 bool seedCommandHotkey(Settings& settings);
 bool checkCommandHotkey(App& app, const QStringList& args, const QDir& output);
 
+// --probe-runtime <folder> --field-focus-check: the clipboard opened by its
+// own hotkey over a text box of another process (no focus taken, the keys
+// routed), its search field clicked for real: the window takes the focus,
+// Chinese typed as an input method gives it lands in the search, and Enter
+// still pastes into the box. The clipboard's chord as for
+// --activation-paste-check. See the .cpp.
+bool seedFieldFocus(const QString& clipboardFolder); // before the App starts: the two entries of its history
+bool checkFieldFocus(App& app, const QStringList& args, const QDir& output);
+
 // --probe-runtime <folder> --duplicates-check [--keep-place]: 保留重复项 on
 // the real clipboard: copies as a program makes them, one after another,
 // twice at once, and after a paste from the history (with 粘贴后保持位置 on
