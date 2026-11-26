@@ -161,9 +161,9 @@ void SavedWindowSize::setWindow(QWindow* window)
     m_window = window;
     m_default = window->size();
     m_wanted = m_saved.isEmpty() ? m_default : m_saved;
+    hook(); // first: a window not made yet gets its first handle here, no new one to hook again
     window->installEventFilter(this);
     connect(window, &QWindow::windowStateChanged, this, &SavedWindowSize::stateChanged);
-    hook();
 }
 
 void SavedWindowSize::hook()

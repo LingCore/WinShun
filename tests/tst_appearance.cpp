@@ -17,6 +17,7 @@
 #include <QQmlEngine>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QRegularExpression>
 #include <QSettings>
 #include <QScreen>
 #include <QScopeGuard>
@@ -1098,6 +1099,40 @@ private slots:
         click(Qt::Key_Minus, Qt::ControlModifier | Qt::KeypadModifier, -1);
         click(Qt::Key_0, Qt::ControlModifier, 0);
         click(Qt::Key_0, Qt::ControlModifier | Qt::KeypadModifier, 0);
+    }
+
+    // A window handed over before it has a native handle (the preview's,
+    // made by its factory): the handle made then is its first, not a new one
+    // to hook again with a warning. One really made anew is still followed.
+    void windowFrameTakesAWindowNotYetMade_data()
+    {
+        QTest::addColumn<bool>("madeAnew");
+        QTest::newRow("first handle") << false;
+        QTest::newRow("handle made anew") << true;
+    }
+    void windowFrameTakesAWindowNotYetMade()
+    {
+        QFETCH(bool, madeAnew);
+        QWindow window;
+        window.setFlags(Qt::Window | Qt::FramelessWindowHint);
+        window.setGeometry(140, 140, 320, 200);
+        QVERIFY(!window.handle());
+        WindowFrame frame(true);
+        const auto styled = [&] {
+            const auto hwnd = reinterpret_cast<HWND>(window.winId());
+            return (::GetWindowLongPtrW(hwnd, GWL_STYLE) & WS_THICKFRAME) != 0; // ownFrame's WS_OVERLAPPEDWINDOW
+        };
+        if (!madeAnew)
+            QTest::failOnWarning(QRegularExpression(u"new native handle"_s));
+        frame.setWindow(&window);
+        QVERIFY(window.handle());
+        QVERIFY(styled());
+        if (madeAnew) {
+            window.destroy();
+            QTest::ignoreMessage(QtWarningMsg, QRegularExpression(u"new native handle"_s));
+            window.create();
+            QVERIFY(styled());
+        }
     }
 
     // WindowFrame + WS_EX_LAYERED (both panel-style setResizable and ownFrame

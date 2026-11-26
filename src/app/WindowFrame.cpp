@@ -334,8 +334,10 @@ WindowFrame::~WindowFrame()
 void WindowFrame::setWindow(QWindow* window)
 {
     m_window = window;
-    window->installEventFilter(this);
+    // Hooked first: a window not made yet gets its native handle here, its
+    // first, before the filter would take that for one made anew.
     attach();
+    window->installEventFilter(this);
     // The frame's dark mode as it is shown too, not only as it activates
     // (WM_NCACTIVATE above): the clipboard and the preview open without the focus.
     win::keepDarkFrameOnShow(window);
