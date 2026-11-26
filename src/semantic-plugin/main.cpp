@@ -307,6 +307,7 @@ private:
         if (method == "initialize") {
             m_locale = params["locale"].toString();
             m_dataDir = params["dataDir"].toString();
+            m_settingsLinks = params["capabilities"]["settingsLinks"].toBool();
             applySettings(params["settings"]);
             respond(id, Json::Object {{"protocolVersion", "1"}, {"name", "winshun.semantic"}});
             m_store = std::make_unique<Store>(folder());
@@ -497,6 +498,9 @@ private:
         m_wire.send(Json::Object {{"method", "winshun/status"}, {"params", std::move(report)}});
     }
 
+    // A row about the 本地模型 plugin's trouble opens its card on Enter.
+    bool opensLocalModels(const Provider& p) const { return p.id == "local" && m_settingsLinks; }
+
     Items statusItems(bool alone) const
     {
         const Status s = status();
@@ -514,7 +518,8 @@ private:
             break;
         case Phase::NoService:
             items.push_back(Item("status", zh("先选一个模型服务", "Pick a model service first"),
-                zh("设置 → 插件 → 按意思找：本机的 Ollama，或者填一个云服务的密钥", "Settings → Plugins → Search by meaning: Ollama on this PC, or a cloud service's key"))
+                zh("设置 → 插件 → 按意思找：本地模型（离线）、本机的 Ollama，或者填一个云服务的密钥",
+                    "Settings → Plugins → Search by meaning: the local model (offline), Ollama on this PC, or a cloud service's key"))
                     .withIcon(icon).invalid());
             break;
         case Phase::NoContentIndex:
@@ -555,6 +560,11 @@ private:
             items.push_back(Item("retry", zh("语义索引停下了：", "The semantic index stopped: ") + s.error, zh("回车重试", "Enter tries again"))
                                 .withIcon("glyph:U+E7BA") // Warning
                                 .withActions({{"retry", zh("重试", "Try again"), "Enter"}}));
+            if (opensLocalModels(p))
+                items.push_back(Item("localmodel", zh("打开“本地模型”的设置", "Open Local models' settings"),
+                    zh("下载嵌入模型、看它的状态", "Download the embedding model, see how it stands"))
+                                    .withIcon("glyph:U+E713") // Settings
+                                    .withUrl(kLocalModelCard));
             break;
         }
         return items;
@@ -573,16 +583,22 @@ private:
             p = m_provider;
         }
         std::vector<float> vector;
-        if (const auto it = m_queryCache.find(text); it != m_queryCache.end()) {
+        const std::string cacheKey = p.signature() + '\n' + text; // another model: other vectors
+        if (const auto it = m_queryCache.find(cacheKey); it != m_queryCache.end()) {
             vector = it->second;
         } else {
             const Embedded e = embed(p, {text}, true, chinese());
-            if (!e.error.empty() || e.vectors.empty())
-                return {Item("error", e.error.empty() ? zh("模型没有回答", "No answer from the model") : e.error).withIcon("glyph:U+E7BA").invalid()};
+            if (!e.error.empty() || e.vectors.empty()) {
+                Item row("error", e.error.empty() ? zh("模型没有回答", "No answer from the model") : e.error);
+                row.withIcon("glyph:U+E7BA");
+                if (opensLocalModels(p))
+                    return {row.withUrl(kLocalModelCard)};
+                return {row.invalid()};
+            }
             vector = e.vectors.front();
             if (m_queryCache.size() > 64)
                 m_queryCache.clear();
-            m_queryCache.emplace(text, vector);
+            m_queryCache.emplace(cacheKey, vector);
         }
         const std::size_t limit = std::min<std::size_t>(kResults, static_cast<std::size_t>(std::max<long long>(1, params["limit"].toInt(kResults))));
         Items items;
@@ -779,6 +795,22 @@ private:
                     return;
                 p = m_provider;
                 generation = m_generation;
+            }
+            if (p.modelFromService) {
+                // The 本地模型 plugin's embedding model, asked every pass: with
+                // another one there the index is another one too.
+                std::string model;
+                if (const std::string error = localModel(p, chinese(), model); !error.empty()) {
+                    ++failures;
+                    setPhase(Phase::Failed, error);
+                    rest(std::chrono::minutes(std::min(30, 1 << std::min(failures, 5))));
+                    continue;
+                }
+                const std::lock_guard lock(m_mutex);
+                if (m_generation != generation)
+                    continue;
+                setModel(m_provider, model);
+                p = m_provider;
             }
             if (!p.configured()) {
                 setPhase(Phase::NoService);
@@ -1009,6 +1041,7 @@ private:
     Inbox m_inbox;
     std::string m_locale = "zh";
     std::string m_dataDir;
+    bool m_settingsLinks = false; // Win顺 opens another plugin's card from a row (0.49.0)
     std::unique_ptr<Store> m_store; // made and opened by the indexer; searched by the main thread once it has files
     std::unordered_map<std::string, std::vector<float>> m_queryCache;
     std::thread m_indexer;

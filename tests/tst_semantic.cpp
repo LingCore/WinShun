@@ -1,15 +1,20 @@
 // The winshun.semantic plugin's pieces that need no Win顺 and no model
 // (src/semantic-plugin): passages, the vector store, the settings of the
-// model services.
+// model services, and how the 本地模型 plugin is asked which model it runs
+// (a local server plays it).
 
 #include "Chunker.h"
 #include "Embedder.h"
 #include "Store.h"
 
+#include <QTcpServer>
+#include <QTcpSocket>
 #include <QTemporaryDir>
 #include <QTest>
 
+#include <chrono>
 #include <cmath>
+#include <future>
 #include <random>
 
 using namespace Qt::StringLiterals;
@@ -227,6 +232,87 @@ private slots:
         QVERIFY(q.signature() != providerFrom(Json::Object {{"provider", "ollama"}}, true).signature());
         QCOMPARE(providerFrom(Json::Object {{"provider", "nonsense"}}, true).id, std::string("none"));
         QVERIFY(!providerFrom(Json::Object {}, true).configured());
+    }
+
+    // The 本地模型 plugin: no key, its own port, and the model it says it runs.
+    void localProvider()
+    {
+        using winshun::Json;
+        Provider p = providerFrom(Json::Object {{"provider", "local"}}, true);
+        QVERIFY(p.local && p.modelFromService);
+        QVERIFY(!p.configured()); // until the model is known
+        QCOMPARE(p.endpoint, std::string("http://127.0.0.1:39281/v1"));
+        setModel(p, "qwen3-embedding-0.6b");
+        QVERIFY(p.configured());
+        QVERIFY(p.queryPrefix.starts_with("Instruct:")); // its family's prefix
+        Provider other = p;
+        setModel(other, "bge-m3-q4_k_m");
+        QVERIFY(other.queryPrefix.empty());
+        QVERIFY(other.signature() != p.signature()); // another model: another index
+        // A model named in the settings is taken as said.
+        p = providerFrom(Json::Object {{"provider", "local"}, {"model", "my-model"}, {"endpoint", "http://127.0.0.1:40000/v1"}}, true);
+        QVERIFY(!p.modelFromService && p.configured());
+    }
+
+    void localModelIsAsked()
+    {
+        using winshun::Json;
+        // The plugin's relay, played: /v1/models as told, /v1/embeddings refused as it refuses.
+        // (No raw strings: moc loses the class after one with a quote before its parenthesis.)
+        const auto json = [](const Json& value) { return QByteArray::fromStdString(value.dump()); };
+        const Json chat = Json::Object {{"id", "qwen3.5-2b"}, {"kind", "chat"}};
+        const Json embedding = Json::Object {{"id", "bge-m3"}, {"kind", "embedding"}};
+        QByteArray models = json(Json::Object {{"object", "list"}, {"data", Json::Array {chat, embedding}}});
+        const QByteArray refusal = json(Json::Object {{"error",
+            Json::Object {{"message", "还没下载嵌入模型"}, {"type", "winshun_local_model"}, {"code", "no_model"}}}});
+        int probes = 0;
+        QTcpServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost));
+        connect(&server, &QTcpServer::newConnection, &server, [&] {
+            while (QTcpSocket* socket = server.nextPendingConnection()) {
+                connect(socket, &QTcpSocket::readyRead, socket, [&, socket] {
+                    const QByteArray request = socket->peek(1 << 16);
+                    const qsizetype head = request.indexOf("\r\n\r\n");
+                    if (head < 0)
+                        return;
+                    const bool post = request.startsWith("POST ");
+                    if (post && !request.mid(head + 4).contains(']')) // its body is still to come
+                        return;
+                    socket->readAll();
+                    probes += post;
+                    const QByteArray body = post ? refusal : models;
+                    socket->write((post ? "HTTP/1.1 503 Service Unavailable\r\n" : "HTTP/1.1 200 OK\r\n")
+                        + QByteArray("Content-Type: application/json\r\nConnection: close\r\nContent-Length: ") + QByteArray::number(body.size())
+                        + "\r\n\r\n" + body);
+                    socket->disconnectFromHost();
+                });
+                connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+            }
+        });
+        const Provider p = providerFrom(
+            Json::Object {{"provider", "local"}, {"endpoint", "http://127.0.0.1:" + std::to_string(server.serverPort()) + "/v1"}}, true);
+        const auto ask = [&](std::string& model) {
+            auto answer = std::async(std::launch::async, [&] { return localModel(p, true, model); });
+            while (answer.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready)
+                QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+            return answer.get();
+        };
+        std::string model;
+        QCOMPARE(ask(model), std::string());
+        QCOMPARE(model, std::string("bge-m3")); // the one that embeds, not the one that chats
+        QCOMPARE(probes, 0);
+
+        // None yet: it is asked for one, and its own words come back.
+        models = json(Json::Object {{"object", "list"}, {"data", Json::Array {chat}}});
+        model.clear();
+        QCOMPARE(ask(model), std::string("还没下载嵌入模型"));
+        QVERIFY(model.empty());
+        QCOMPARE(probes, 1);
+
+        // Not running: said so, with where to turn it on.
+        server.close();
+        const std::string away = ask(model);
+        QVERIFY2(away.find("没在运行") != std::string::npos, away.c_str());
     }
 };
 

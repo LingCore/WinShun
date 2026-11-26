@@ -23,7 +23,9 @@
 #include <chrono>
 #include <future>
 #include <memory>
+#include <mutex>
 
+using namespace Qt::StringLiterals;
 using winshun::Json;
 
 namespace {
@@ -57,6 +59,69 @@ bool validUtf8(const std::string& s)
     const auto back = Json::parse(Json::quote(s));
     return back && back->toString() == s;
 }
+
+tr::Settings local()
+{
+    return tr::settingsFrom(Json::Object {{"provider", "local"}});
+}
+
+QString text(const std::string& s) { return QString::fromStdString(s); }
+
+// One server-sent event of a chat completion, as llama.cpp sends it.
+QByteArray sse(const char* content)
+{
+    const Json data(Json::Object {{"choices", Json::Array {Json::Object {{"delta", Json::Object {{"content", content}}}}}}});
+    return "data: " + QByteArray::fromStdString(data.dump()) + "\n\n";
+}
+
+QByteArray chunk(const QByteArray& data) { return QByteArray::number(data.size(), 16) + "\r\n" + data + "\r\n"; }
+
+// WinShunTranslate.exe spoken to as Win顺 speaks to it: the answers by id,
+// and how many times it asked to be asked again (winshun/refresh).
+class Runner {
+public:
+    Runner()
+    {
+        QObject::connect(&process, &QProcess::readyReadStandardOutput, &process, [this] {
+            output += process.readAllStandardOutput();
+            while (output.contains('\n')) {
+                const auto end = output.indexOf('\n');
+                const auto message = Json::parse(output.first(end).toStdString());
+                output.remove(0, end + 1);
+                if (message && (*message)["id"].isNumber())
+                    replies[(*message)["id"].toInt()] = *message;
+                else if (message && (*message)["method"].toString() == "winshun/refresh")
+                    ++refreshes;
+            }
+        });
+        process.start(QCoreApplication::applicationDirPath() + QStringLiteral("/WinShunTranslate.exe"));
+    }
+    ~Runner()
+    {
+        if (process.state() != QProcess::NotRunning) {
+            process.kill();
+            process.waitForFinished();
+        }
+    }
+
+    void send(const char* method, Json params, int id = 0)
+    {
+        Json message(Json::Object {{"jsonrpc", "2.0"}, {"method", method}, {"params", std::move(params)}});
+        if (id)
+            message.set("id", id);
+        process.write(QByteArray::fromStdString(message.dump()) + '\n');
+    }
+    bool answered(long long id, int ms = 5000)
+    {
+        return QTest::qWaitFor([&] { return replies.contains(id); }, ms);
+    }
+    Json item(long long id, int index = 0) { return replies[id]["result"]["items"].toArray()[index]; }
+
+    QProcess process;
+    QByteArray output;
+    std::map<long long, Json> replies;
+    int refreshes = 0;
+};
 
 } // namespace
 
@@ -131,6 +196,308 @@ private slots:
         send("shutdown", Json::Object {}, 4);
         QVERIFY(QTest::qWaitFor([&] { return process.state() == QProcess::NotRunning; }));
         QCOMPARE(process.exitCode(), 0);
+    }
+
+    // A chat service typed to in the launcher: the reply as it comes, asked
+    // again (rerun, refresh) until it is all there; the local models' own
+    // "not yet" as a row that opens their settings card.
+    void protocolStreamsAnAnswerThatTakesLong()
+    {
+        QTcpServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost, 0));
+        QByteArray request;
+        QObject::connect(&server, &QTcpServer::newConnection, &server, [&] {
+            while (auto* socket = server.nextPendingConnection()) {
+                auto input = std::make_shared<QByteArray>();
+                QObject::connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+                QObject::connect(socket, &QTcpSocket::readyRead, socket, [&, socket, input, sent = false]() mutable {
+                    input->append(socket->readAll());
+                    if (sent || !input->contains("\r\n\r\n") || !input->endsWith('}'))
+                        return;
+                    sent = true;
+                    request = *input;
+                    // One request a connection (Connection: close), so that
+                    // WinHTTP does not send the next on this one.
+                    if (input->contains("Fehler")) {
+                        const QByteArray body = R"({"error":{"code":503,"type":"winshun_local_model","message":"no model yet"}})";
+                        socket->write("HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: "
+                            + QByteArray::number(body.size()) + "\r\n\r\n" + body);
+                        socket->disconnectFromHost();
+                        return;
+                    }
+                    if (!input->contains(R"("stream":true)")) {
+                        const QByteArray body = R"({"choices":[{"message":{"content":"你好"}}]})";
+                        socket->write("HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: " + QByteArray::number(body.size()) + "\r\n\r\n" + body);
+                        socket->disconnectFromHost();
+                        return;
+                    }
+                    socket->write("HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n");
+                    socket->write(chunk(sse("你")));
+                    QTimer::singleShot(2200, socket, [socket] {
+                        socket->write(chunk(sse("好") + "data: [DONE]\n\n"));
+                        socket->write("0\r\n\r\n");
+                        socket->disconnectFromHost();
+                    });
+                });
+            }
+        });
+        QTemporaryDir data;
+        QVERIFY(data.isValid());
+        Runner plugin;
+        QVERIFY(plugin.process.waitForStarted());
+        plugin.send("initialize", Json::Object {{"locale", "en"}, {"dataDir", data.path().toStdString()},
+            {"capabilities", Json::Object {{"settingsLinks", true}}},
+            {"settings", Json::Object {{"provider", "local"}, {"endpoint", "http://127.0.0.1:" + std::to_string(server.serverPort()) + "/v1"}}}}, 1);
+        QVERIFY(plugin.answered(1));
+
+        QElapsedTimer elapsed;
+        elapsed.start();
+        plugin.send("query", Json::Object {{"queryId", 1}, {"command", "tr"}, {"text", "Hallo"}}, 2);
+        QVERIFY(plugin.answered(2));
+        QVERIFY2(elapsed.elapsed() < 2000, qPrintable(QString::number(elapsed.elapsed())));
+        QVERIFY(request.contains("POST /v1/chat/completions HTTP/1.1"));
+        QVERIFY(request.contains(R"("stream":true)"));
+        QVERIFY(!request.contains("Authorization"));
+        QCOMPARE(text(plugin.item(2)["id"].toString()), u"working"_s);
+        QCOMPARE(text(plugin.item(2)["title"].toString()), u"你"_s);
+        QCOMPARE(plugin.replies[2]["result"]["rerun"].toInt(), 2LL);
+        QCOMPARE(plugin.replies[2]["result"]["cache"].toInt(), 0LL);
+
+        QVERIFY(QTest::qWaitFor([&] { return plugin.refreshes >= 2; }, 5000)); // the rest came, then the end
+        QVERIFY(elapsed.elapsed() > 2200);
+        plugin.send("query", Json::Object {{"queryId", 2}, {"command", "tr"}, {"text", "Hallo"}}, 3);
+        QVERIFY(plugin.answered(3, 1000));
+        QCOMPARE(text(plugin.item(3)["title"].toString()), u"你好"_s);
+        QCOMPARE(plugin.replies[3]["result"]["cache"].toInt(), 300LL);
+        QVERIFY(!plugin.replies[3]["result"].has("rerun"));
+
+        plugin.send("query", Json::Object {{"queryId", 3}, {"command", "tr"}, {"text", "Fehler"}}, 4);
+        QVERIFY(plugin.answered(4, 2000));
+        QCOMPARE(text(plugin.item(4)["id"].toString()), u"setup"_s);
+        QCOMPARE(text(plugin.item(4)["title"].toString()), u"The local model cannot translate yet: no model yet"_s);
+        QCOMPARE(text(plugin.item(4)["open"]["url"].toString()), u"winshun:settings/plugin/winshun.localmodel"_s);
+
+        // A command call (translate_text, the AI) is answered in one go.
+        plugin.send("query", Json::Object {{"queryId", 4}, {"command", "tr"}, {"text", "Hallo Welt"}, {"source", "command"}}, 5);
+        QVERIFY(plugin.answered(5, 5000));
+        QCOMPARE(text(plugin.item(5)["title"].toString()), u"你好"_s);
+
+        plugin.send("shutdown", Json::Object {}, 6);
+        QVERIFY(QTest::qWaitFor([&] { return plugin.process.state() == QProcess::NotRunning; }));
+        QCOMPARE(plugin.process.exitCode(), 0);
+    }
+
+    // Nothing listening at the local models' address: what to start.
+    void protocolSaysWhatToStart()
+    {
+        quint16 port = 0;
+        {
+            QTcpServer probe;
+            QVERIFY(probe.listen(QHostAddress::LocalHost, 0));
+            port = probe.serverPort(); // free again when it closes
+        }
+        QTemporaryDir data;
+        QVERIFY(data.isValid());
+        Runner plugin;
+        QVERIFY(plugin.process.waitForStarted());
+        plugin.send("initialize", Json::Object {{"locale", "zh"}, {"dataDir", data.path().toStdString()},
+            {"settings", Json::Object {{"provider", "local"}, {"endpoint", "http://127.0.0.1:" + std::to_string(port) + "/v1"}}}}, 1);
+        QVERIFY(plugin.answered(1));
+        plugin.send("query", Json::Object {{"queryId", 1}, {"command", "tr"}, {"text", "hello"}}, 2);
+        QVERIFY(plugin.answered(2));
+        long long last = 2;
+        if (plugin.item(2)["id"].toString() == "working") {
+            // Windows tries a refused connection on this computer again for
+            // about two seconds: the answer comes after a refresh.
+            QVERIFY(QTest::qWaitFor([&] { return plugin.refreshes > 0; }, 8000));
+            plugin.send("query", Json::Object {{"queryId", 2}, {"command", "tr"}, {"text", "hello"}}, 3);
+            QVERIFY(plugin.answered(3));
+            last = 3;
+        }
+        QCOMPARE(text(plugin.item(last)["id"].toString()), u"setup"_s);
+        QCOMPARE(text(plugin.item(last)["title"].toString()), u"本地模型没有在运行"_s);
+        // An older Win顺 cannot open another plugin's card: its own settings.
+        QCOMPARE(text(plugin.item(last)["open"]["url"].toString()), u"winshun:settings"_s);
+        plugin.send("shutdown", Json::Object {}, 4);
+        QVERIFY(QTest::qWaitFor([&] { return plugin.process.state() == QProcess::NotRunning; }));
+    }
+
+    void localService()
+    {
+        const tr::Settings s = local();
+        QCOMPARE(s.endpoint, std::string(tr::kLocalEndpoint));
+        QCOMPARE(s.model, std::string("local"));
+        QVERIFY(!tr::needsKey(s));
+        QVERIFY(tr::chatService(s));
+        QVERIFY(tr::loopback("http://127.0.0.1:39281/v1"));
+        QVERIFY(tr::loopback("http://LOCALHOST:11434/v1"));
+        QVERIFY(tr::loopback("http://[::1]:1234/v1"));
+        QVERIFY(tr::loopback("http://user@127.0.0.1/v1"));
+        QVERIFY(!tr::loopback("https://127.0.0.1.example.com/v1"));
+        QVERIFY(!tr::loopback("https://api.openai.com/v1?host=127.0.0.1"));
+        QVERIFY(!tr::loopback("127.0.0.1:11434"));
+
+        // Ollama or LM Studio as "OpenAI-compatible": no key needed, none sent.
+        auto ollama = tr::settingsFrom(Json::Object {{"provider", "openai"}, {"endpoint", "http://localhost:11434/v1"}});
+        QVERIFY(!tr::needsKey(ollama));
+        QVERIFY(tr::buildRequest(ollama, "hi", "zh").authorization.empty());
+        QVERIFY(tr::needsKey(tr::settingsFrom(Json::Object {{"provider", "openai"}})));
+        QVERIFY(tr::needsKey(tr::settingsFrom(Json::Object {{"provider", "deepl"}})));
+        QVERIFY(!tr::chatService(tr::settingsFrom(Json::Object {{"provider", "microsoft"}})));
+        // Its port changed in the local models' settings: the endpoint says so.
+        QCOMPARE(tr::settingsFrom(Json::Object {{"provider", "local"}, {"endpoint", "http://127.0.0.1:40000/v1"}}).endpoint,
+            std::string("http://127.0.0.1:40000/v1"));
+    }
+
+    void localRequest()
+    {
+        const auto content = [](const tr::Request& r) { return text(parse(r.body)["messages"].toArray()[0]["content"].toString()); };
+        tr::Request r = tr::buildRequest(local(), "你好", "en");
+        QCOMPARE(r.url, std::string("http://127.0.0.1:39281/v1/chat/completions"));
+        QVERIFY(r.authorization.empty());
+        Json body = parse(r.body);
+        QCOMPARE(body["messages"].toArray().size(), std::size_t(1)); // no system prompt: HY-MT has none
+        QCOMPARE(content(r), u"将以下文本翻译为英语，注意只需要输出翻译后的结果，不要额外解释：\n\n你好"_s);
+        QCOMPARE(body["chat_template_kwargs"]["enable_thinking"].toBool(), false);
+        QCOMPARE(body["max_tokens"].toInt(), 256LL);
+        QVERIFY(!body.has("stream"));
+        QVERIFY(parse(tr::buildRequest(local(), "你好", "en", false, true).body)["stream"].toBool());
+
+        QCOMPARE(content(tr::buildRequest(local(), "hello", "zh")), u"将以下文本翻译为中文，注意只需要输出翻译后的结果，不要额外解释：\n\nhello"_s);
+        QCOMPARE(content(tr::buildRequest(local(), "hello", "ja")),
+            u"Translate the following segment into Japanese, without additional explanation.\n\nhello"_s);
+        QVERIFY(content(tr::buildRequest(local(), "one\n\ntwo", "zh")).endsWith(u"\n\n1. one\n2. two\n"_s));
+        QVERIFY(content(tr::buildRequest(local(), "one\ntwo", "zh")).contains(u"以下 2 行文本"_s));
+
+        // A long text may take as long an answer; a short one not much.
+        QCOMPARE(parse(tr::buildRequest(local(), std::string(1000, 'a'), "zh").body)["max_tokens"].toInt(), 3064LL);
+        QCOMPARE(parse(tr::buildRequest(local(), std::string(9000, 'a'), "zh").body)["max_tokens"].toInt(), 8192LL);
+
+        body = parse(tr::buildRequest(local(), "serendipity", "zh", true, false).body);
+        QCOMPARE(body["response_format"]["type"].toString(), std::string("json_object"));
+        QVERIFY(text(body["messages"].toArray()[0]["content"].toString()).contains(u"\"serendipity\""_s));
+    }
+
+    void localNumberedAnswers()
+    {
+        QCOMPARE(text(tr::answerFromText(local(), "1. 甲\n2) 乙\n3、丙", 3).text), u"甲\n乙\n丙"_s);
+        // One missing, or not numbered: kept as it came.
+        QCOMPARE(text(tr::answerFromText(local(), "1. 甲\n2. 乙", 3).text), u"1. 甲\n2. 乙"_s);
+        QCOMPARE(text(tr::answerFromText(local(), "甲\n乙", 2).text), u"甲\n乙"_s);
+        QCOMPARE(text(tr::answerFromText(local(), "1. 甲\n3. 乙", 2).text), u"1. 甲\n3. 乙"_s);
+        // One line sent: a number that is part of the text stays.
+        QCOMPARE(text(tr::answerFromText(local(), "1. 甲", 1).text), u"1. 甲"_s);
+        // The array other models are asked for is read too.
+        QCOMPARE(text(tr::answerFromText(local(), R"(["甲","乙"])", 2).text), u"甲\n乙"_s);
+        QCOMPARE(text(tr::answerFromText(openai(), "1. 甲\n2. 乙", 2).text), u"1. 甲\n2. 乙"_s);
+
+        const std::string reply = R"({"choices":[{"message":{"content":"1. 甲\n2. 乙"}}]})";
+        QCOMPARE(text(tr::parseAnswer(local(), reply, true, 2).text), u"甲\n乙"_s);
+    }
+
+    void streamReader()
+    {
+        tr::StreamReader reader;
+        const QByteArray stream = ": comment\r\nevent: message\r\n" + sse("Hel") + sse("lo") + "data: [DONE]\n\n";
+        for (qsizetype i = 0; i < stream.size(); i += 7) // in pieces that cut lines anywhere
+            reader.feed(std::string_view(stream.constData() + i, std::min<qsizetype>(7, stream.size() - i)));
+        QVERIFY(reader.events());
+        QVERIFY(reader.done());
+        QVERIFY(reader.error().empty());
+        QCOMPARE(reader.text(), std::string("Hello"));
+
+        tr::StreamReader partial;
+        partial.feed(sse("你").toStdString() + "data: {\"choi");
+        QCOMPARE(text(partial.text()), u"你"_s);
+        QVERIFY(!partial.done());
+
+        tr::StreamReader failed;
+        failed.feed("data: {\"error\":{\"message\":\"context full\"}}\n\n");
+        QCOMPARE(failed.error(), std::string("context full"));
+
+        tr::StreamReader plain; // a server that does not stream
+        plain.feed(R"({"choices":[{"message":{"content":"x"}}]})");
+        QVERIFY(!plain.events());
+        QVERIFY(plain.text().empty());
+    }
+
+    void localRows()
+    {
+        QCOMPARE(tr::localModelMessage(R"({"error":{"type":"winshun_local_model","message":"loading"}})"), std::string("loading"));
+        QVERIFY(tr::localModelMessage(R"({"error":{"type":"server_error","message":"x"}})").empty());
+        QVERIFY(tr::localModelMessage("not json").empty());
+
+        winshun::Item row = tr::localModelRow("还没有模型", true, true);
+        QCOMPARE(text(row.title), u"本地模型还不能用：还没有模型"_s);
+        QCOMPARE(text(row.open["url"].toString()), u"winshun:settings/plugin/winshun.localmodel"_s);
+        QVERIFY(row.valid);
+        QCOMPARE(text(tr::localModelRow("x", false, false).open["url"].toString()), u"winshun:settings"_s);
+
+        row = tr::notRunningRow(local(), "127.0.0.1:39281", true, true);
+        QCOMPARE(text(row.open["url"].toString()), u"winshun:settings/plugin/winshun.localmodel"_s);
+        const auto ollama = tr::settingsFrom(Json::Object {{"provider", "openai"}, {"endpoint", "http://127.0.0.1:11434/v1"}});
+        row = tr::notRunningRow(ollama, "127.0.0.1:11434", false, true);
+        QCOMPARE(text(row.title), u"No model server is running here (127.0.0.1:11434)"_s);
+        QCOMPARE(text(row.open["url"].toString()), u"winshun:settings"_s);
+
+        row = tr::streamingRow("hello", "", "zh", false, true);
+        QCOMPARE(text(row.title), u"翻译中…"_s);
+        QCOMPARE(text(row.subtitle), u"hello"_s);
+        QVERIFY(!row.valid);
+        row = tr::streamingRow("hello", "", "zh", true, true);
+        QCOMPARE(text(row.subtitle), u"本地模型加载中，第一次要几秒…"_s);
+        row = tr::streamingRow("hello", " 你好", "zh", false, false);
+        QCOMPARE(text(row.title), u"你好"_s);
+        QCOMPARE(text(row.subtitle), u"→ Chinese · translating…"_s);
+    }
+
+    // A streamed answer: each piece as it comes, and the whole in the body.
+    void httpStreamsAndSaysWhatIsNotRunning()
+    {
+        QTcpServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost, 0));
+        QObject::connect(&server, &QTcpServer::newConnection, &server, [&] {
+            QTcpSocket* socket = server.nextPendingConnection();
+            QObject::connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+            QObject::connect(socket, &QTcpSocket::readyRead, socket, [socket, sent = false]() mutable {
+                socket->readAll();
+                if (std::exchange(sent, true))
+                    return;
+                socket->write("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n" + chunk(sse("a")));
+                QTimer::singleShot(300, socket, [socket] { socket->write(chunk(sse("b")) + "0\r\n\r\n"); });
+            });
+        });
+        const std::string url = "http://127.0.0.1:" + std::to_string(server.serverPort()) + "/v1/chat/completions";
+        std::vector<std::string> pieces;
+        std::mutex mutex;
+        auto result = std::async(std::launch::async, [&] {
+            return tr::post(url, "{}", {}, 3000, nullptr, {}, [&](std::string_view piece) {
+                const std::lock_guard lock(mutex);
+                pieces.emplace_back(piece);
+            });
+        });
+        QVERIFY(QTest::qWaitFor([&] { return result.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready; }, 3000));
+        const tr::Response response = result.get();
+        QCOMPARE(response.error, DWORD(0));
+        QCOMPARE(response.host, "127.0.0.1:" + std::to_string(server.serverPort()));
+        QVERIFY(pieces.size() >= 2);
+        std::string joined;
+        for (const std::string& piece : pieces)
+            joined += piece;
+        QCOMPARE(joined, response.body);
+        tr::StreamReader reader;
+        reader.feed(response.body);
+        QCOMPARE(reader.text(), std::string("ab"));
+
+        quint16 closed = 0; // a port nothing listens at (WinHTTP keeps the one above open)
+        {
+            QTcpServer probe;
+            QVERIFY(probe.listen(QHostAddress::LocalHost, 0));
+            closed = probe.serverPort();
+        }
+        const tr::Response refused = tr::post("http://127.0.0.1:" + std::to_string(closed) + "/v1/chat/completions", "{}", {}, 8000);
+        QVERIFY2(tr::notConnected(refused), qPrintable(QString::number(refused.error)));
+        QCOMPARE(text(tr::networkError(refused, true)), text("本机的 " + refused.host + " 没有程序在回答"));
     }
 
     void providerPresetsAndMicrosoftRequest()

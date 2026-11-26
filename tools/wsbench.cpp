@@ -196,7 +196,8 @@
 //                      MB and the process's peak commit so far (one query
 //                      at --limit 100,50000: the large limit should not
 //                      move it)
-//   wsbench --plugin FOLDER --query "TEXT" [--runs N] [--setting KEY=VALUE ...] [--action ID] [--app-dir DIR]
+//   wsbench --plugin FOLDER --query "TEXT" [--runs N] [--setting KEY=VALUE ...] [--action ID] [--status-action ID]
+//           [--linger MS] [--data DIR] [--app-dir DIR]
 //                      a plugin (src/plugin) as the app runs it: checks its
 //                      plugin.json, starts it through WinShunPluginHost.exe
 //                      (next to wsbench), prints the items of the first
@@ -207,7 +208,12 @@
 //                      gives the plugin a declared setting's value (what the
 //                      settings page would); --action runs that action on
 //                      the first item of the first answer and prints the
-//                      effects. A plugin with `elevated`: what its start
+//                      effects; --status-action clicks a button of its
+//                      card once its status offers it; the status lines
+//                      are printed as they change; --linger keeps it
+//                      running that long after; --data keeps the plugins'
+//                      data folders there (a download stays). A plugin
+//                      with `elevated`: what its start
 //                      comes to is printed (wsbench run as administrator
 //                      plays an elevated Win顺); --confirm-elevated first
 //                      confirms its files as the card's 确认 does
@@ -4965,8 +4971,18 @@ int runPlugin(QStringList args)
         lingerMs = std::max(0, args[at + 1].toInt());
         args.remove(at, 2);
     }
+    QString statusActionId; // --status-action ID: click that button of the plugin's card once its status offers it
+    if (const qsizetype at = args.indexOf(u"--status-action"_s); at >= 0 && at + 1 < args.size()) {
+        statusActionId = args[at + 1];
+        args.remove(at, 2);
+    }
+    QString dataRoot; // --data DIR: the plugins' data folders there, kept after (a download, a model)
+    if (const qsizetype at = args.indexOf(u"--data"_s); at >= 0 && at + 1 < args.size()) {
+        dataRoot = QDir::fromNativeSeparators(args[at + 1]);
+        args.remove(at, 2);
+    }
     if (folder.isEmpty() || query.isEmpty()) {
-        std::printf("usage: wsbench --plugin FOLDER --query \"TEXT\" [--runs N] [--setting KEY=VALUE ...] [--action ID [--linger MS]] [--app-dir DIR]\n");
+        std::printf("usage: wsbench --plugin FOLDER --query \"TEXT\" [--runs N] [--setting KEY=VALUE ...] [--action ID] [--status-action ID] [--linger MS] [--data DIR] [--app-dir DIR]\n");
         return 1;
     }
     const QFileInfo info(folder);
@@ -4990,11 +5006,16 @@ int runPlugin(QStringList args)
         !manifest->runtime ? "zero-code" : manifest->runtime->mode == ws::plugin::RunMode::Resident ? "resident" : "once",
         static_cast<long long>(manifest->commands.size()));
 
+    // A number setting given on the command line is a number, as the page saves it.
+    for (const ws::plugin::Setting& setting : manifest->settings) {
+        if (setting.type == u"number" && pluginSettings.value(setting.key).isString())
+            pluginSettings.insert(setting.key, pluginSettings.value(setting.key).toString().toDouble());
+    }
     QTemporaryDir temp;
     ws::plugin::Host::Options options;
     options.userPluginDir = temp.path() + u"/plugins"_s;
     options.bundledPluginDir = info.absolutePath();
-    options.dataRoot = temp.path() + u"/data"_s;
+    options.dataRoot = dataRoot.isEmpty() ? temp.path() + u"/data"_s : dataRoot;
     options.runnerExe = QCoreApplication::applicationDirPath() + u"/WinShunPluginHost.exe"_s;
     options.appDir = appDir;
     options.version = QStringLiteral(WINSHUN_VERSION "-bench");
@@ -5003,6 +5024,21 @@ int runPlugin(QStringList args)
     if (!pluginSettings.isEmpty())
         host.setPluginSettings(manifest->id, pluginSettings);
     QObject::connect(&host, &ws::plugin::Host::logged, [](const QString& line) { std::printf("  log: %s\n", qUtf8Printable(line)); });
+    // What its card would show (winshun/status), each time it changes.
+    QObject::connect(&host, &ws::plugin::Host::reportChanged, [&host](const QString& id) {
+        const std::optional<ws::plugin::Host::Report> report = host.state(id).report;
+        if (!report) {
+            std::printf("  status: (none)\n");
+            return;
+        }
+        QStringList buttons;
+        for (const ws::plugin::Host::Report::Action& a : report->actions)
+            buttons += a.id + u'=' + a.title;
+        const QString progress = report->progress >= 0 ? u" %1%"_s.arg(report->progress * 100, 0, 'f', 1) : QString();
+        std::printf("  status: [%s]%s %s%s\n", qUtf8Printable(report->tone), qUtf8Printable(progress), qUtf8Printable(report->text),
+            buttons.isEmpty() ? "" : qUtf8Printable(u" {"_s + buttons.join(u", "_s) + u'}'));
+        std::fflush(stdout);
+    });
     if (manifest->permissions.has(ws::plugin::Permission::Elevated)) {
         std::printf("elevated: Win顺 here %s\n", host.hostElevated() ? "is elevated" : "is not elevated");
         if (confirmElevated) {
@@ -5153,6 +5189,28 @@ int runPlugin(QStringList args)
             while (!linger.hasExpired())
                 QCoreApplication::processEvents(QEventLoop::AllEvents | QEventLoop::WaitForMoreEvents, 50);
         }
+    }
+    if (!statusActionId.isEmpty()) {
+        // The card's button, once the status offers it (as a click on it).
+        const QDeadlineTimer offered(15000);
+        const auto offers = [&] {
+            const std::optional<ws::plugin::Host::Report> report = host.state(manifest->id).report;
+            return report && std::ranges::any_of(report->actions, [&](const auto& a) { return a.id == statusActionId; });
+        };
+        while (!offers() && !offered.hasExpired())
+            QCoreApplication::processEvents(QEventLoop::AllEvents | QEventLoop::WaitForMoreEvents, 50);
+        if (offers()) {
+            std::printf("status action %s\n", qUtf8Printable(statusActionId));
+            host.statusAction(manifest->id, statusActionId);
+        } else {
+            std::printf("status action %s: not offered in 15 s\n", qUtf8Printable(statusActionId));
+            actionOk = false;
+        }
+    }
+    if (actionId.isEmpty() && lingerMs > 0) {
+        const QDeadlineTimer linger(lingerMs);
+        while (!linger.hasExpired())
+            QCoreApplication::processEvents(QEventLoop::AllEvents | QEventLoop::WaitForMoreEvents, 50);
     }
     host.shutdown();
     return cold && actionOk ? 0 : 1;

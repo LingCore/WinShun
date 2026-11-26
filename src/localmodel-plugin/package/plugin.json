@@ -1,0 +1,45 @@
+{
+  "manifest": 1,
+  "id": "winshun.localmodel",
+  "name": {"zh": "本地模型", "en": "Local models"},
+  "version": "1.0.0",
+  "description": {"zh": "在这台电脑上运行 AI 模型，断网也能用：“翻译”选“本地模型”就能离线翻译，“按意思找”选“本地模型”就能离线按意思找文件，内容不出本机。可一键下载推荐的模型，也可以导入自己的 .gguf 模型文件（Ollama、LM Studio 下好的都行）。有显卡就用显卡，没有就用 CPU；不用时自动释放内存", "en": "Runs an AI model on this computer, with no network needed: set Translate's service to Local model to translate offline, or Search by meaning's to find files by meaning offline, and nothing leaves this PC. Download a recommended model in one click, or use a .gguf model file of your own (from Ollama or LM Studio too). The GPU when there is one, else the CPU; the memory is freed when idle"},
+  "author": "LingCore",
+  "homepage": "https://github.com/LingCore/WinShun",
+  "license": "MIT",
+  "minWinShun": "0.49.0",
+  "runtime": {"mode": "resident", "program": "WinShunLocalModel.exe", "start": "eager", "sandbox": "normal", "timeoutMs": 3000, "idleExitSec": 0, "memoryMB": 16384},
+  "permissions": [
+    "processes",
+    "network",
+    {"network:listen": ["TCP 39281，只有本机能连（127.0.0.1） / TCP 39281, this computer only (127.0.0.1)"]},
+    {"files:read": ["你选的模型文件（.gguf） / The model files you choose (.gguf)"]}
+  ],
+  "commands": [{
+    "id": "status",
+    "keyword": ["llm", "本地模型"],
+    "title": {"zh": "本地模型", "en": "Local models"},
+    "description": {"zh": "看本地模型的状态，下载模型、释放内存", "en": "The local model's state; download a model, free the memory"},
+    "icon": "ph:cpu",
+    "hint": {"zh": "回车打开设置", "en": "Enter opens the settings"}
+  }],
+  "settings": [
+    {"key": "model", "type": "choice", "title": {"zh": "模型", "en": "Model"}, "hint": {"zh": "推荐的模型在上面的卡片上点“下载”，从 ModelScope 下载（国内快），下好后断网也能用", "en": "For a recommended model click Download on the card above: it comes from ModelScope and works offline from then on"}, "options": [
+      {"value": "qwen3.5-2b", "title": {"zh": "Qwen3.5 2B（通用，翻译、问答都行，1.2 GB）", "en": "Qwen3.5 2B (general: translates and answers, 1.2 GB)"}},
+      {"value": "hy-mt1.5-1.8b", "title": {"zh": "混元 HY-MT1.5 1.8B（腾讯的翻译模型，只做翻译，1.1 GB）", "en": "HY-MT1.5 1.8B (Tencent's translation model, translation only, 1.1 GB)"}},
+      {"value": "file", "title": {"zh": "自己的模型文件（.gguf）", "en": "My own model file (.gguf)"}}
+    ], "default": "qwen3.5-2b"},
+    {"key": "modelFile", "type": "file", "extensions": ["gguf"], "title": {"zh": "模型文件（.gguf）", "en": "Model file (.gguf)"}, "hint": {"zh": "上面选“自己的模型文件”时用。要对话模型（文件名常带 Instruct、Chat 或 it），2B–8B、Q4_K_M 的较合适；mmproj 文件不行，嵌入模型选到最下面的“嵌入模型文件”里", "en": "For “My own model file” above. A chat model (Instruct, Chat or it in the name); 2B–8B at Q4_K_M suits most PCs. Not an mmproj file; an embedding model goes under Embedding model file at the bottom"}},
+    {"key": "gpu", "type": "choice", "title": {"zh": "显卡", "en": "GPU"}, "hint": {"zh": "NVIDIA、AMD、Intel 显卡都行（Vulkan）；显存不够时自动改用 CPU", "en": "NVIDIA, AMD or Intel (Vulkan); the CPU instead when the GPU has too little memory"}, "options": [
+      {"value": "auto", "title": {"zh": "有显卡就用（更快）", "en": "Use it when there is one (faster)"}},
+      {"value": "off", "title": {"zh": "只用 CPU", "en": "The CPU only"}}
+    ], "default": "auto"},
+    {"key": "idleMinutes", "type": "number", "title": {"zh": "空闲多久释放内存", "en": "Free the memory after"}, "hint": {"zh": "模型加载后要占 1–2 GB 内存，这么久没用到就释放；下次用到时再加载，要几秒", "en": "A loaded model takes 1–2 GB of memory: it is let go of after this long unused, and loaded again (a few seconds) when needed"}, "min": 1, "max": 60, "step": 1, "unit": {"zh": "分钟", "en": "min"}, "default": 5},
+    {"key": "port", "type": "number", "title": {"zh": "本机接口端口", "en": "Local API port"}, "hint": {"zh": "别的程序可以用 http://127.0.0.1:端口/v1 调用模型（OpenAI 兼容，模型名随意），只有本机能连", "en": "Other programs can use the model at http://127.0.0.1:<port>/v1 (OpenAI-compatible, any model name); only this computer can connect"}, "min": 1024, "default": 39281},
+    {"key": "embedModel", "type": "choice", "title": {"zh": "嵌入模型（“按意思找”用）", "en": "Embedding model (for Search by meaning)"}, "hint": {"zh": "“按意思找”把模型服务选成“本地模型”时用它：建索引和查找都在本机算，不上传。只用翻译的话不用管，也不用下载", "en": "Used when Search by meaning's model service is Local model: indexing and searching are computed on this PC, nothing is uploaded. Not needed (nor downloaded) for translation alone"}, "options": [
+      {"value": "qwen3-embedding-0.6b", "title": {"zh": "Qwen3-Embedding 0.6B（多语言，610 MB）", "en": "Qwen3-Embedding 0.6B (multilingual, 610 MB)"}},
+      {"value": "file", "title": {"zh": "自己的模型文件（.gguf）", "en": "My own model file (.gguf)"}}
+    ], "default": "qwen3-embedding-0.6b"},
+    {"key": "embedFile", "type": "file", "extensions": ["gguf"], "title": {"zh": "嵌入模型文件（.gguf）", "en": "Embedding model file (.gguf)"}, "hint": {"zh": "上面选“自己的模型文件”时用。要嵌入模型，比如 bge-m3、Qwen3-Embedding；换了模型，“按意思找”会重新建索引", "en": "For “My own model file” above. An embedding model such as bge-m3 or Qwen3-Embedding; after a change Search by meaning builds its index again"}}
+  ]
+}

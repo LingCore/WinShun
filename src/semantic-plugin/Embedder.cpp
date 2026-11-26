@@ -24,6 +24,7 @@ struct Preset {
     int batch;
 };
 constexpr Preset kPresets[] = {
+    {"local", "本地模型", "Local models", "http://127.0.0.1:39281/v1", "", true, 8},
     {"ollama", "Ollama（本机）", "Ollama (this PC)", "http://127.0.0.1:11434/v1", "qwen3-embedding:0.6b", true, 10},
     {"lmstudio", "LM Studio（本机）", "LM Studio (this PC)", "http://127.0.0.1:1234/v1", "", true, 10},
     {"siliconflow", "硅基流动", "SiliconFlow", "https://api.siliconflow.cn/v1", "BAAI/bge-m3", false, 10},
@@ -102,45 +103,59 @@ struct Response {
     DWORD error = 0; // WinHTTP's, when no answer came
 };
 
-HINTERNET session()
+// A server on this computer is never reached through a proxy, whatever the
+// system's proxy settings say.
+bool loopback(const Url& url)
 {
+    return url.host == L"127.0.0.1" || url.host == L"localhost" || url.host == L"[::1]" || url.host == L"::1";
+}
+
+HINTERNET session(bool direct)
+{
+    if (direct) {
+        static Handle s(::WinHttpOpen(L"WinShun-Semantic/1.0", WINHTTP_ACCESS_TYPE_NO_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
+        return s.h;
+    }
     // The system's proxy settings (WPAD and the user's), as a browser would.
     static Handle s(::WinHttpOpen(L"WinShun-Semantic/1.0", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME,
         WINHTTP_NO_PROXY_BYPASS, 0));
     return s.h;
 }
 
-Response post(const Url& url, const std::string& body, const std::string& key, int timeoutMs)
+// POST with a body, or GET when there is none (null).
+Response send(const Url& url, const std::string* body, const std::string& key, int timeoutMs)
 {
     Response r;
-    if (!session()) {
+    const HINTERNET http = session(loopback(url));
+    if (!http) {
         r.error = ::GetLastError();
         return r;
     }
-    Handle connection(::WinHttpConnect(session(), url.host.c_str(), url.port, 0));
+    Handle connection(::WinHttpConnect(http, url.host.c_str(), url.port, 0));
     if (!connection) {
         r.error = ::GetLastError();
         return r;
     }
-    Handle request(::WinHttpOpenRequest(connection.h, L"POST", url.path.c_str(), nullptr, WINHTTP_NO_REFERER,
+    Handle request(::WinHttpOpenRequest(connection.h, body ? L"POST" : L"GET", url.path.c_str(), nullptr, WINHTTP_NO_REFERER,
         WINHTTP_DEFAULT_ACCEPT_TYPES, url.secure ? WINHTTP_FLAG_SECURE : 0));
     if (!request) {
         r.error = ::GetLastError();
         return r;
     }
     ::WinHttpSetTimeouts(request.h, timeoutMs, timeoutMs, timeoutMs, timeoutMs);
-    std::wstring headers = L"Content-Type: application/json\r\n";
+    std::wstring headers = body ? L"Content-Type: application/json\r\n" : L"";
     if (!key.empty())
         headers += L"Authorization: Bearer " + winshun::wide(key) + L"\r\n";
-    if (!::WinHttpSendRequest(request.h, headers.c_str(), static_cast<DWORD>(headers.size()), const_cast<char*>(body.data()),
-            static_cast<DWORD>(body.size()), static_cast<DWORD>(body.size()), 0)
+    const DWORD size = body ? static_cast<DWORD>(body->size()) : 0;
+    if (!::WinHttpSendRequest(request.h, headers.empty() ? WINHTTP_NO_ADDITIONAL_HEADERS : headers.c_str(), static_cast<DWORD>(headers.size()),
+            body ? const_cast<char*>(body->data()) : WINHTTP_NO_REQUEST_DATA, size, size, 0)
         || !::WinHttpReceiveResponse(request.h, nullptr)) {
         r.error = ::GetLastError();
         return r;
     }
-    DWORD size = sizeof r.status;
+    DWORD statusSize = sizeof r.status;
     ::WinHttpQueryHeaders(request.h, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_HEADER_NAME_BY_INDEX,
-        &r.status, &size, WINHTTP_NO_HEADER_INDEX);
+        &r.status, &statusSize, WINHTTP_NO_HEADER_INDEX);
     for (;;) {
         DWORD available = 0;
         if (!::WinHttpQueryDataAvailable(request.h, &available)) {
@@ -168,6 +183,9 @@ std::string networkError(DWORD error, const Provider& p, bool chinese)
     switch (error) {
     case ERROR_WINHTTP_CANNOT_CONNECT:
     case ERROR_WINHTTP_CONNECTION_ERROR:
+        if (p.id == "local")
+            return chinese ? "“本地模型”插件没在运行：在 设置 → 插件 里装上并打开它"
+                           : "The Local models plugin is not running: install and enable it under Settings → Plugins";
         if (p.local)
             return chinese ? "连不上 " + p.name + "：它在运行吗？" : "Cannot reach " + p.name + ": is it running?";
         return chinese ? "连不上 " + p.endpoint + "：检查网络或代理" : "Cannot reach " + p.endpoint + ": check the network or proxy";
@@ -196,6 +214,13 @@ std::string serviceMessage(const std::string& body)
     if ((*json)["message"].isString())
         return (*json)["message"].toString();
     return body.substr(0, 200);
+}
+
+// An answer of the 本地模型 plugin itself (not of the model): {"error": {"type": "winshun_local_model"}}.
+bool fromLocalModels(const std::string& body)
+{
+    const auto json = winshun::Json::parse(body);
+    return json && (*json)["error"]["type"].toString() == "winshun_local_model";
 }
 
 void normalize(std::vector<float>& v)
@@ -248,8 +273,46 @@ Provider providerFrom(const winshun::Json& settings, bool chinese)
         p.local = e.find("://127.0.0.1") != std::string::npos || e.find("://localhost") != std::string::npos;
     }
     p.key = winshun::trim(settings["apiKey"].toString());
+    p.modelFromService = p.id == "local" && p.model.empty();
     prefixesFor(p);
     return p;
+}
+
+void setModel(Provider& provider, const std::string& model)
+{
+    provider.model = model;
+    provider.queryPrefix.clear();
+    provider.docPrefix.clear();
+    prefixesFor(provider);
+}
+
+std::string localModel(const Provider& provider, bool chinese, std::string& model)
+{
+    const auto models = crack(provider.endpoint + "/models");
+    const auto embeddings = crack(provider.endpoint + "/embeddings");
+    if (!models || !embeddings)
+        return chinese ? "接口地址不对：" + provider.endpoint : "Not a valid endpoint: " + provider.endpoint;
+    const Response listed = send(*models, nullptr, {}, kQueryTimeoutMs);
+    if (listed.error)
+        return networkError(listed.error, provider, chinese);
+    if (const auto json = winshun::Json::parse(listed.body)) {
+        for (const winshun::Json& entry : (*json)["data"].toArray()) {
+            if (entry["kind"].toString() == "embedding" && entry["id"].isString()) {
+                model = entry["id"].toString();
+                return {};
+            }
+        }
+    }
+    // None it can run now: asked for one, it says why (and offers the
+    // download on its card from then on).
+    const std::string probe = R"({"input":["."]})";
+    const Response r = send(*embeddings, &probe, {}, kQueryTimeoutMs);
+    if (r.error)
+        return networkError(r.error, provider, chinese);
+    if (r.status != 200 && fromLocalModels(r.body))
+        return serviceMessage(r.body);
+    return chinese ? "“本地模型”里没有嵌入模型：在它的设置里下载或选一个"
+                   : "Local models has no embedding model: download or pick one in its settings";
 }
 
 Embedded embed(const Provider& provider, const std::vector<std::string>& texts, bool query, bool chinese)
@@ -268,7 +331,8 @@ Embedded embed(const Provider& provider, const std::vector<std::string>& texts, 
             input.push_back(prefix + texts[i]);
         const winshun::Json request = winshun::Json::Object {{"model", provider.model}, {"input", winshun::Json(std::move(input))},
             {"encoding_format", "float"}};
-        const Response r = post(*url, request.dump(), provider.key, query ? kQueryTimeoutMs : kBatchTimeoutMs);
+        const std::string body = request.dump();
+        const Response r = send(*url, &body, provider.key, query ? kQueryTimeoutMs : kBatchTimeoutMs);
         if (r.error) {
             out.error = networkError(r.error, provider, chinese);
             out.retryLater = true;
@@ -276,6 +340,11 @@ Embedded embed(const Provider& provider, const std::vector<std::string>& texts, 
         }
         if (r.status != 200) {
             const std::string said = serviceMessage(r.body);
+            if (fromLocalModels(r.body)) { // its own words say what to do (download, wait, look at its card)
+                out.error = said;
+                out.retryLater = true;
+                return out;
+            }
             if (r.status == 401 || r.status == 403)
                 out.error = (chinese ? "密钥不对或没有权限：" : "The key was refused: ") + said;
             else if (r.status == 404)
@@ -285,7 +354,7 @@ Embedded embed(const Provider& provider, const std::vector<std::string>& texts, 
             else
                 out.error = (chinese ? "服务拒绝了：" : "The service refused: ") + said;
             out.retryLater = r.status == 429 || r.status >= 500;
-            out.badInput = r.status == 400 || r.status == 413 || r.status == 422;
+            out.badInput = r.status == 400 || r.status == 413 || r.status == 422; // llama.cpp: 400 for a text past its context
             return out;
         }
         const auto json = winshun::Json::parse(r.body);

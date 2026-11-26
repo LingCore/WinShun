@@ -61,7 +61,7 @@
 
 ## 3. 官方插件一览
 
-当前仓库包含 **20 个官方插件**（4 个随包 + 16 个插件库）：
+当前仓库包含 **21 个官方插件**（4 个随包 + 17 个插件库）：
 
 | 插件 ID | 源码目录 | 二进制 / 入口 | 分发与运行模式 | 核心职责与要点 |
 |---|---|---|---|---|
@@ -72,9 +72,10 @@
 | `winshun.web` | `src/web-plugin` | 无（`webSearch: true`） | 插件库 · 宿主内零代码 | 网页搜索、自定义站点与图标、搜索建议（存 `[Plugin.winshun.web]`） |
 | `winshun.capture` | `src/capture-plugin` + `src/capture` | `WinShunCapture.exe` + `*App.dll` | 插件库（安装包附带副本）· `resident`（`eager`/`normal`） | 截图、标注、贴图、长截图、录屏、演示白板与 OCR；详见 [capture-and-recording.md](capture-and-recording.md) |
 | `winshun.ocr-search` | `src/ocr-search-plugin` | `WinShunOcrSearch.exe` + `*App.dll` | 插件库 · `resident`（`eager`/`strict`/`contentSearch`） | 图片/扫描 PDF/文档内嵌图本地 OCR 倒排索引（SQLite 默认 ≤512 MiB），隔离后台工作进程（单文件 60 s 无进展跳过） |
-| `winshun.semantic` | `src/semantic-plugin` | `WinShunSemantic.exe`（无 Qt） | 插件库 · `resident`（`eager`/`strict`） | “按意思找”：经 `winshun:content` 复用内容索引，OpenAI 兼容 `/embeddings`，int8 mmap 向量段，首次前先估算并写入 `consent.txt` |
+| `winshun.semantic` | `src/semantic-plugin` | `WinShunSemantic.exe`（无 Qt） | 插件库 · `resident`（`eager`/`strict`） | “按意思找”：经 `winshun:content` 复用内容索引，OpenAI 兼容 `/embeddings`，int8 mmap 向量段，首次前先估算并写入 `consent.txt`。`local` 服务（1.1.0）走 `winshun.localmodel` 的本机接口：每轮先 `GET /models` 取 `kind` 为 `embedding` 的那个模型名记入签名（换了嵌入模型即另建索引），没有时发一次探测请求拿到它自己说的原因；它的错误行 Enter 打开“本地模型”卡片 |
 | `winshun.devtools` | `src/devtools-plugin` | `WinShunDevTools.exe` + `*App.dll` | 插件库 · `resident`（`lazy`/`normal`） | JSON 格式化/压缩/转义及共享宿主 Qt 的树形查看器 |
-| `winshun.translate` | `src/translate-plugin` | `WinShunTranslate.exe`（无 Qt） | 插件库 · `resident`（`lazy`） | 翻译与 AI 词典（`tr`/`dict`）；异步 WinHTTP 单调截止时间（无逐请求 watchdog 线程，响应 ≤8 MiB）；服务回 401/403 时给 `setup` 行（“翻译服务的密钥不对或没有权限（接口返回 401）”，Enter 打开插件设置），402/429/5xx 给直说原因的普通错误行；宿主 `translate_text` 把这一行的标题作为 `message` 随状态 `service` 交回，仍会继续尝试下一个翻译插件（#444） |
+| `winshun.translate` | `src/translate-plugin` | `WinShunTranslate.exe`（无 Qt） | 插件库 · `resident`（`lazy`） | 翻译与 AI 词典（`tr`/`dict`）；异步 WinHTTP 单调截止时间（无逐请求 watchdog 线程，响应 ≤8 MiB）；服务回 401/403 时给 `setup` 行（“翻译服务的密钥不对或没有权限（接口返回 401）”，Enter 打开插件设置），402/429/5xx 给直说原因的普通错误行；宿主 `translate_text` 把这一行的标题作为 `message` 随状态 `service` 交回，仍会继续尝试下一个翻译插件（#444）。`local` 服务走 `winshun.localmodel` 的本机接口（不要密钥、不走代理；Ollama 等本机 OpenAI 兼容地址同样免密钥）：启动器里对聊天类服务按“文本+服务+目标语言”建后台任务，SSE 流式读入，查询最多等 1.5 s，没完就回已到的译文和 `rerun`，到字和结束时 `refresh()`；命令调用（`translate_text`、AI）仍一次请求、25 s 内回答 |
+| `winshun.localmodel` | `src/localmodel-plugin` | `WinShunLocalModel.exe`（无 Qt）+ `llama\llama-server.exe`（llama.cpp b12359，Vulkan 版，构建时按 SHA256 下载） | 插件库 · `resident`（`eager`/`normal`，`memoryMB` 16384） | 本地模型：常驻的只有自写中转（`Relay`，`127.0.0.1:39281`，查 Host/Origin 防 DNS 重绑定与外站网页），收到要模型的请求才由 `Engine` 起 llama-server（随机端口、`--cache-ram 0`、`--ctx-checkpoints 2`、`-lv 4` 读设备与卸载层数），空闲超时或换模型就停；`/health`、`/v1/models` 不加载模型；显卡失败自动改 CPU，自己退出（多为内存）时卡片写明原因。推荐模型（Qwen3.5 2B、HY-MT1.5 1.8B）钉在 ModelScope 的提交上，多连接分块下载（`.part.map` 续传）后核对大小与 SHA-256；自选 .gguf 先读 GGUF 头拒绝 mmproj、LoRA 和选错种类的模型。两个 `Engine` 各带一个 llama-server：对话模型，和嵌入模型（`--embedding`，默认 Qwen3-Embedding 0.6B；`/v1/embeddings` 的请求归它，其余归对话模型），各自按需加载、空闲释放；`/v1/models` 用 `kind` 标出两者。嵌入模型在有请求要过它之后（`embed.wanted`）才出现在卡片上，只翻译的用户看不到。显存在 Windows 上也计入进程提交内存，所以上限放到 16 GB |
 | `winshun.bookmarks` | `src/bookmarks-plugin` | `WinShunBookmarks.exe`（无 Qt） | 插件库 · `once` | Chrome/Edge/Firefox 书签与浏览历史（`bm`/`bh`），查完即退无常驻 |
 | `winshun.localsend` | `src/localsend-plugin` | `WinShunLocalSend.exe`（无 Qt） | 插件库 · `resident`（`eager`/`normal`） | 局域网传输（LocalSend v2）：Schannel 自签证书 + CNG 持久密钥、组播 `224.0.0.167:53317` + `/24` 发现、`.wspart` 落盘与 MOTW |
 | `winshun.sync` | `src/sync-plugin` | `WinShunSync.exe`（无 Qt） | 插件库 · `resident`（`eager`/`normal`） | 跨设备剪贴板同步（ShunSync v1，与 Mac顺 互通），详见 [shunsync-protocol.md](../shunsync-protocol.md) |

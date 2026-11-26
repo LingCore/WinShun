@@ -183,6 +183,9 @@ struct Setting {
     // card and not found by the settings search (0.41.0): for a value the
     // plugin's own settings window edits. Older Win顺 show it as a row.
     bool hidden = false;
+    // A file's kinds (0.49.0), lower case without the dot: what the picker
+    // lists first ("所有文件" too). Older Win顺 list every file.
+    QStringList extensions;
     bool slider() const noexcept { return min && max; }
     bool bounded() const noexcept { return min || max || step; } // its values are fitted
     int decimals() const; // the digits after the point its steps need (step's, min's, max's)

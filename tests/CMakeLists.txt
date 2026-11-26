@@ -1554,7 +1554,7 @@ qt_add_executable(tst_semantic tst_semantic.cpp
     ${PROJECT_SOURCE_DIR}/src/semantic-plugin/Chunker.cpp ${PROJECT_SOURCE_DIR}/src/semantic-plugin/Store.cpp
     ${PROJECT_SOURCE_DIR}/src/semantic-plugin/Embedder.cpp)
 target_include_directories(tst_semantic PRIVATE ${PROJECT_SOURCE_DIR}/src/semantic-plugin ${PROJECT_SOURCE_DIR}/src/plugins-sdk)
-target_link_libraries(tst_semantic PRIVATE winshun_options Qt6::Test winhttp)
+target_link_libraries(tst_semantic PRIVATE winshun_options Qt6::Test Qt6::Network winhttp)
 
 # winshun.localsend's pieces (src/localsend-plugin, the wslocalsend library):
 # names from other devices made safe, files written whole or not at all,
@@ -1682,6 +1682,20 @@ target_compile_definitions(tst_translate PRIVATE WINSHUN_TRANSLATE_MANIFEST="${P
 set_target_properties(tst_translate PROPERTIES WIN32_EXECUTABLE FALSE)
 add_test(NAME tst_translate COMMAND tst_translate)
 set_tests_properties(tst_translate PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
+# winshun.localmodel's pieces (src/localmodel-plugin, the wslocalmodel
+# library), with no model: GGUF files of the test's own, the recommended
+# models against the manifest, llama-server's arguments and log, the relay
+# on 127.0.0.1 (passed on, refused, answered itself), the engine without a
+# model, and a download that breaks off and goes on, against local servers.
+qt_add_executable(tst_localmodel tst_localmodel.cpp)
+target_include_directories(tst_localmodel PRIVATE ${PROJECT_SOURCE_DIR}/src/plugins-sdk)
+target_link_libraries(tst_localmodel PRIVATE wslocalmodel Qt6::Test)
+target_compile_definitions(tst_localmodel PRIVATE WINSHUN_LOCALMODEL_MANIFEST="${PROJECT_SOURCE_DIR}/src/localmodel-plugin/package/plugin.json")
+set_target_properties(tst_localmodel PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_localmodel COMMAND tst_localmodel)
+set_tests_properties(tst_localmodel PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
 # The backup service (src/app/Backup) as Win顺's tools backup_export and

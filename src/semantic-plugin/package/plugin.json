@@ -2,8 +2,8 @@
   "manifest": 1,
   "id": "winshun.semantic",
   "name": {"zh": "按意思找", "en": "Search by meaning"},
-  "version": "1.0.6",
-  "description": {"zh": "? 一句话：按文档讲的是什么来找，不用记得原词。用你选的模型（本机的 Ollama，或云服务的密钥）", "en": "? a sentence: finds documents by what they are about, not by their words. Uses the model you pick (Ollama on this PC, or a cloud service's key)"},
+  "version": "1.1.0",
+  "description": {"zh": "? 一句话：按文档讲的是什么来找，不用记得原词。用你选的模型（“本地模型”插件或 Ollama，都在本机、不上传；或云服务的密钥）", "en": "? a sentence: finds documents by what they are about, not by their words. Uses the model you pick (the Local models plugin or Ollama, on this PC with nothing uploaded; or a cloud service's key)"},
   "author": "LingCore",
   "homepage": "https://github.com/LingCore/WinShun",
   "license": "MIT",
@@ -22,6 +22,7 @@
   "settings": [
     {"key": "provider", "type": "choice", "title": {"zh": "模型服务", "en": "Model service"}, "options": [
       {"value": "none", "title": {"zh": "未设置", "en": "Not set"}},
+      {"value": "local", "title": {"zh": "本地模型（离线，用“本地模型”插件）", "en": "Local model (offline, with the Local models plugin)"}},
       {"value": "ollama", "title": {"zh": "Ollama（本机，不上传）", "en": "Ollama (this PC, nothing uploaded)"}},
       {"value": "lmstudio", "title": {"zh": "LM Studio（本机，不上传）", "en": "LM Studio (this PC, nothing uploaded)"}},
       {"value": "siliconflow", "title": {"zh": "硅基流动", "en": "SiliconFlow"}},
@@ -29,8 +30,8 @@
       {"value": "openai", "title": "OpenAI"},
       {"value": "custom", "title": {"zh": "其他 OpenAI 兼容接口", "en": "Another OpenAI-compatible API"}}
     ], "default": "none"},
-    {"key": "apiKey", "type": "password", "title": {"zh": "API 密钥", "en": "API key"}, "hint": {"zh": "云服务要填；本机的 Ollama、LM Studio 不用。存在 Windows 凭据管理器里", "en": "For cloud services; not for Ollama or LM Studio. Kept in Windows Credential Manager"}},
-    {"key": "model", "type": "text", "title": {"zh": "模型", "en": "Model"}, "hint": {"zh": "留空用推荐的：Ollama qwen3-embedding:0.6b，硅基流动 BAAI/bge-m3，百炼 text-embedding-v4，OpenAI text-embedding-3-small", "en": "Empty for the recommended one: Ollama qwen3-embedding:0.6b, SiliconFlow BAAI/bge-m3, Model Studio text-embedding-v4, OpenAI text-embedding-3-small"}, "default": ""},
+    {"key": "apiKey", "type": "password", "title": {"zh": "API 密钥", "en": "API key"}, "hint": {"zh": "云服务要填；本地模型和本机的 Ollama、LM Studio 不用。存在 Windows 凭据管理器里", "en": "For cloud services; not for the local model, Ollama or LM Studio. Kept in Windows Credential Manager"}},
+    {"key": "model", "type": "text", "title": {"zh": "模型", "en": "Model"}, "hint": {"zh": "留空用推荐的：本地模型用它设置里选的嵌入模型，Ollama qwen3-embedding:0.6b，硅基流动 BAAI/bge-m3，百炼 text-embedding-v4，OpenAI text-embedding-3-small", "en": "Empty for the recommended one: the local model's own choice of embedding model, Ollama qwen3-embedding:0.6b, SiliconFlow BAAI/bge-m3, Model Studio text-embedding-v4, OpenAI text-embedding-3-small"}, "default": ""},
     {"key": "endpoint", "type": "text", "title": {"zh": "接口地址", "en": "Endpoint"}, "hint": {"zh": "留空用服务的默认地址；其他接口填到 /v1 为止", "en": "Empty for the service's own; for another API, up to /v1"}, "default": ""},
     {"key": "folders", "type": "text", "title": {"zh": "只看这些文件夹", "en": "Only these folders"}, "hint": {"zh": "用分号隔开，例如 %USERPROFILE%\\Documents;D:\\工作。留空是内容索引里的全部（系统和程序文件夹除外）", "en": "Separated by semicolons, e.g. %USERPROFILE%\\Documents;D:\\Work. Empty: all of the content index (but system and program folders)"}, "default": ""},
     {"key": "types", "type": "choice", "title": {"zh": "文件类型", "en": "File types"}, "options": [
