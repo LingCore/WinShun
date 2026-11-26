@@ -4754,9 +4754,10 @@ int runShare(QStringList args)
         args.remove(at, 2);
     }
     options.shortNames = args.removeAll(u"--short-names"_s) > 0;
+    const bool tried = args.removeAll(u"--tried"_s) > 0; // as with someone at the computer: share::Width finds how many
     const bool lifecycle = args.removeAll(u"--indexer"_s) > 0;
     if (args.isEmpty()) {
-        std::printf("wsbench --share \\\\host\\share [--threads N] [--rounds N] [--buffer KB] [--short-names] [--watch S] [--indexer]\n");
+        std::printf("wsbench --share \\\\host\\share [--threads N] [--tried] [--rounds N] [--buffer KB] [--short-names] [--watch S] [--indexer]\n");
         return 1;
     }
     const std::wstring path = ws::unc::normalize(args.first().toStdWString());
@@ -4868,15 +4869,22 @@ int runShare(QStringList args)
         ws::share::Lister lister(crawler, path, options, stop);
         std::vector<ws::EntryId> gone;
         ws::Crawler::SyncStats stats;
+        ws::share::Width width([&] { return ws::share::Width::Limit {threads, tried}; });
         t.restart();
         crawler.sync(index, {{root, path, ws::EntryFlag::Remote}}, threads, false, stop.get_token(),
-            [&](const ws::Crawler::Root& dir, ws::DirListing& out) { return lister(dir, out); }, &gone, &stats);
+            [&](const ws::Crawler::Root& dir, ws::DirListing& out) {
+                if (!width.enter(stop.get_token()))
+                    return false;
+                const bool read = lister(dir, out);
+                width.leave(read ? out.items.size() : 0);
+                return read;
+            }, &gone, &stats);
         const double ms = msSince(t);
-        std::printf("round %d: %.0f ms  folders %zu (%.0f/s, %.2f ms each)  items %zu  failed %zu  denied %zu  gone %zu"
-                    "  problem %s (error %lu)%s\n",
+        std::printf("round %d: %.0f ms  folders %zu (%.0f/s, %.2f ms each)  at a time %.1f (%d at most)  items %zu  failed %zu"
+                    "  denied %zu  gone %zu  problem %s (error %lu)%s\n",
             r + 1, ms, stats.listed, stats.listed / (ms / 1000.0), ms / std::max<std::size_t>(1, stats.listed),
-            stats.items, stats.failed, lister.deniedFolders(), gone.size(), problemName(lister.problem()),
-            lister.firstError(), lister.stoppedPass() ? "  [pass stopped]" : "");
+            width.mean(), width.widest(), stats.items, stats.failed, lister.deniedFolders(), gone.size(),
+            problemName(lister.problem()), lister.firstError(), lister.stoppedPass() ? "  [pass stopped]" : "");
     }
     {
         const auto lock = index.readLock();

@@ -7676,21 +7676,113 @@ private slots:
         QVERIFY(index.findPath(L"C:\\a") != kNoEntry);
     }
 
-    // A share read again by itself while someone is at the computer is read
-    // two folders at a time: eight at once kept a NAS from answering that
-    // person's file manager. The first read, one asked for and one with
-    // nobody there go as fast as they did.
-    void sharePassThreads()
+    // With nobody at the computer a share is read as wide as ever. With
+    // someone there, as many folders at a time as make the pass faster, and
+    // one where it is read again by itself: each one more made that person's
+    // file manager wait once more on the same NAS.
+    void sharePassWidth()
     {
-        QCOMPARE(ShareIndexer::passThreads(16, true, false, false), 16); // building
-        QCOMPARE(ShareIndexer::passThreads(16, true, false, true), 16);
-        QCOMPARE(ShareIndexer::passThreads(16, false, false, false), 2); // by itself, the user there
-        QCOMPARE(ShareIndexer::passThreads(16, false, false, true), 8); // nobody there
-        QCOMPARE(ShareIndexer::passThreads(16, false, true, false), 8); // 立即核对
-        QCOMPARE(ShareIndexer::passThreads(64, false, false, false), 2);
-        QCOMPARE(ShareIndexer::passThreads(1, false, false, false), 2); // never fewer than a verification had
-        QCOMPARE(ShareIndexer::passThreads(1, false, true, true), 2);
-        QCOMPARE(ShareIndexer::passThreads(1, true, false, false), 1);
+        using Limit = share::Width::Limit;
+        QCOMPARE(ShareIndexer::passWidth(16, true, false, true), (Limit {16, false})); // building, nobody there
+        QCOMPARE(ShareIndexer::passWidth(16, false, false, true), (Limit {8, false})); // read again
+        QCOMPARE(ShareIndexer::passWidth(16, false, true, true), (Limit {8, false}));
+        QCOMPARE(ShareIndexer::passWidth(16, true, false, false), (Limit {16, true})); // building, someone there
+        QCOMPARE(ShareIndexer::passWidth(16, false, true, false), (Limit {8, true})); // 立即核对
+        QCOMPARE(ShareIndexer::passWidth(16, false, false, false), (Limit {1, true})); // by itself
+        QCOMPARE(ShareIndexer::passWidth(64, false, false, false), (Limit {1, true}));
+        QCOMPARE(ShareIndexer::passWidth(1, false, false, true), (Limit {2, false})); // never fewer than a verification had
+        QCOMPARE(ShareIndexer::passWidth(1, true, false, false), (Limit {1, true}));
+    }
+
+    // share::WidthTrial against servers that answer in known ways, while what
+    // is read changes under it (now folders the server has in memory, now not).
+    void shareWidthTrial_data()
+    {
+        QTest::addColumn<int>("server");
+        QTest::addColumn<int>("settled");
+        QTest::newRow("one after another (a NAS with slow disks)") << 0 << 1;
+        QTest::newRow("side by side (Windows)") << 1 << 16;
+        QTest::newRow("four side by side") << 2 << 4;
+        QTest::newRow("a fifth faster each time it is twice as wide: not worth it") << 3 << 1;
+    }
+
+    void shareWidthTrial()
+    {
+        QFETCH(int, server);
+        QFETCH(int, settled);
+        const auto rate = [server](int width) -> double { // folders a second
+            switch (server) {
+            case 0: return 100;
+            case 1: return 100.0 * width;
+            case 2: return 100.0 * std::min(width, 4);
+            default: return 100.0 * std::pow(1.2, std::log2(width));
+            }
+        };
+        share::WidthTrial trial(16);
+        QCOMPARE(trial.width(), 1);
+        const int windows = 400;
+        int wider = 0; // windows read wider than pays
+        for (int i = 0; i < windows; ++i) {
+            if (i == 16 && server == 1)
+                QCOMPARE(trial.width(), 16); // found out in 16 windows
+            wider += trial.width() > settled;
+            trial.window(rate(trial.width()) * (1.0 + 0.5 * std::sin(i / 7.0)) * 0.5, 0.5);
+        }
+        QCOMPARE(trial.settled(), settled);
+        QVERIFY2(wider * 10 <= windows, qPrintable(u"%1 of %2 windows wider than pays"_s.arg(wider).arg(windows)));
+
+        share::WidthTrial one(1); // nothing to try
+        for (int i = 0; i < 50; ++i)
+            one.window(100, 0.5);
+        QCOMPARE(one.width(), 1);
+    }
+
+    // share::Width lets in as many readers as its limit says, asks for the
+    // limit again as the pass goes, and gives up waiting when the pass stops.
+    void shareWidthLetsInAsManyAsItsLimit()
+    {
+        std::atomic<int> most {3};
+        share::Width width([&] { return share::Width::Limit {most.load(), false}; }, std::chrono::milliseconds(1));
+        std::atomic<int> reading {0};
+        std::atomic<int> widest {0};
+        std::stop_source stop;
+        const auto read = [&](int folders) {
+            for (int i = 0; i < folders; ++i) {
+                if (!width.enter(stop.get_token()))
+                    return;
+                const int now = ++reading;
+                int seen = widest.load();
+                while (now > seen && !widest.compare_exchange_weak(seen, now)) { }
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                --reading;
+                width.leave(10);
+            }
+        };
+        const auto readers = [&](int threads, int folders) {
+            std::vector<std::jthread> pool;
+            for (int i = 0; i < threads; ++i)
+                pool.emplace_back(read, folders);
+        };
+        readers(8, 20);
+        QCOMPARE(widest.load(), 3);
+        QCOMPARE(width.widest(), 3);
+
+        most = 1; // someone is back at the computer
+        read(20); // ... which the end of a window finds out
+        widest = 0;
+        readers(8, 10);
+        QCOMPARE(widest.load(), 1);
+        QVERIFY(width.mean() < 3.0);
+
+        QVERIFY(width.enter(stop.get_token())); // the one place
+        bool entered = true;
+        {
+            std::jthread waiting([&] { entered = width.enter(stop.get_token()); });
+            std::this_thread::sleep_for(std::chrono::milliseconds(30));
+            stop.request_stop();
+        }
+        QVERIFY(!entered);
+        width.leave(0);
     }
 
     // Excluded names count from the share on: a server called like an

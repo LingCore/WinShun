@@ -6,6 +6,7 @@
 #include "ShareLister.h"
 #include "ShareRetry.h"
 #include "ShareScan.h"
+#include "ShareWidth.h"
 
 #include <atomic>
 #include <chrono>
@@ -89,7 +90,7 @@ public:
         std::vector<std::wstring> excludedFiles; // share::Lister::Options
         std::chrono::minutes verifyEvery {std::chrono::hours(1)}; // followed live; 0: on start and when asked only
         std::chrono::minutes verifyEveryUnwatched {std::chrono::hours(1)}; // the server does not tell
-        int threads = 16; // folders read at a time when building; fewer when verifying (passThreads)
+        int threads = 16; // folders read at a time at most when building; fewer when verifying (passWidth)
         bool watch = true; // follow changes live where the server tells of them; else verifyEveryUnwatched
         share::RetryTimes retry; // a server that cannot be reached, tried again (taken when a share starts)
         // WebDAV tells of nothing either (GitHub #114): its server is asked
@@ -167,12 +168,13 @@ public:
         Failed, // the server went away, or a folder would not be read
     };
     static bool believesGone(std::size_t missing, std::size_t live, Read read) noexcept;
-    // Folders of a share read at a time by a pass, of Options::threads:
-    // all of them the first time (`building`), half to read it again when
-    // that was asked for (`manual`) or nobody is at the computer
-    // (win32::userAway), and two when it is read again by itself with
-    // someone there, whose file manager on the same server is not to wait.
-    static int passThreads(int threads, bool building, bool manual, bool userAway) noexcept;
+    // Folders of a share read at a time by a pass, of Options::threads: at
+    // most all of them the first time (`building`), half to read it again.
+    // With someone at the computer (win32::userAway says not), whose file
+    // manager on the same server is not to wait: as many of those as make
+    // the pass faster (share::Width), and one where the share is read again
+    // by itself, not asked for (`manual`): nobody waits for that pass.
+    static share::Width::Limit passWidth(int threads, bool building, bool manual, bool userAway) noexcept;
 
 private:
     struct Share;
