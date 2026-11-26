@@ -5021,6 +5021,13 @@ bool checkShortcutPanels(QQmlEngine* engine, const QDir& output)
         for (const QString& key : absent)
             check(!keys.contains(key), name + u": leaves out " + key);
         check(visualNamed(tip->contentItem(), u"shortcutLink"_s) != nullptr, name + u": the last row leads to all shortcuts"_s);
+        { // what a key does in a menu's words at this 界面大小, as the capture's and the pin's key cards
+            const QObject* theme = engine->singletonInstance<QObject*>(u"WinShun"_s, u"Theme"_s);
+            const QQuickItem* words = visualNamed(tip->contentItem(), u"shortcutText"_s);
+            const int size = words ? words->property("font").value<QFont>().pixelSize() : 0;
+            check(theme && size == theme->property("menuTextSize").toInt(),
+                name + u": the keys' words at the menus' size (%1 px)"_s.arg(size));
+        }
         settle(tip, 2);
         saveGrab(tip, output.filePath(u"shortcut-panel-%1.png"_s.arg(name)));
         click(window, elsewhere);

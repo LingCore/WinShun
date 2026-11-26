@@ -168,7 +168,10 @@ class PinKeyCard {
 public:
     // Its colours (the 界面风格's, as the capture's card: the menu's body and
     // edge, the words, the line above the footer, a keycap's outline and
-    // words) and corners, logical px.
+    // words), corners and type, logical px. The type is a menu's at the
+    // 界面大小 (Theme.menuTextSize, menuCaptionSize, keycapHeight), as the
+    // capture's card has it: what a row does in the menus' words, the keycaps
+    // and the footer in their captions; 紧凑's here.
     struct Look {
         QColor background;
         QColor edge;
@@ -181,6 +184,9 @@ public:
         QColor shadow;
         qreal radius = 8;
         qreal keyRadius = 4;
+        int textSize = 14;
+        int captionSize = 12;
+        int keyHeight = 20;
         static Look fallback(bool dark);
     };
 
@@ -200,7 +206,7 @@ public:
 
     // The card's size without its shadow (device px), and what it shows,
     // shadow round it, off screen (tests, previews).
-    static QSize cardSize(const std::vector<PinKeyRow>& rows, double dpr);
+    static QSize cardSize(const std::vector<PinKeyRow>& rows, double dpr, const Look& look);
     static QImage picture(const std::vector<PinKeyRow>& rows, double dpr, const Look& look);
     static int shadowMargin(double dpr);
 

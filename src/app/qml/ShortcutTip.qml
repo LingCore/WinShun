@@ -10,7 +10,9 @@ import WinShun
 // (nothing typed: just the search box and the footer). It never takes the
 // focus; the mouse works on its last row. `host` is the launcher or the
 // clipboard: the screen area and the native styling of the window (rounded,
-// shadowed).
+// shadowed). A menu's type at the 界面大小, as every key list (the capture's
+// and the pin's cards): what a key does in the menus' words, the keycaps,
+// headings and the last row in their captions.
 Window {
     id: tip
 
@@ -124,7 +126,7 @@ Window {
                                 y: tip.onPixel((cap.height - height) / 2 + capPart.out("contentOffsetY", 0))
                                 text: cell.modelData.text
                                 color: capPart.out("foreground", Theme.subtext)
-                                font.pixelSize: Theme.uiCaption
+                                font.pixelSize: Theme.menuCaptionSize
                             }
                         }
                     }
@@ -133,9 +135,10 @@ Window {
                         id: labelCell
 
                         Text {
+                            objectName: "shortcutText"
                             text: cell.modelData.text
                             color: Theme.text
-                            font.pixelSize: Theme.fontCaption
+                            font.pixelSize: Theme.menuTextSize
                         }
                     }
 
@@ -158,7 +161,7 @@ Window {
                                 anchors.bottomMargin: 2
                                 text: cell.modelData.text
                                 color: Theme.subtext
-                                font.pixelSize: Theme.fontCaption
+                                font.pixelSize: Theme.menuCaptionSize
                                 font.weight: Theme.fontStrong
                             }
                         }
@@ -186,7 +189,7 @@ Window {
                 anchors.verticalCenter: parent.verticalCenter
                 text: qsTr("全部快捷键…") + "  ›"
                 color: linkArea.pressed ? Theme.subtext : Theme.accent
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.menuCaptionSize
                 font.underline: linkArea.containsMouse
             }
 

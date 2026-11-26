@@ -27,14 +27,16 @@ int px(double logical, double dpr)
     return static_cast<int>(std::lround(logical * dpr));
 }
 
-// The capture's card (CaptureKeyHints.qml), in device px.
+// The capture's card (CaptureKeyHints.qml), in device px: its type the
+// look's (a menu's at the 界面大小).
 struct Metrics {
-    explicit Metrics(double dpr)
+    Metrics(double dpr, const PinKeyCard::Look& look)
         : padX(px(12, dpr))
         , padY(px(10, dpr))
         , rowGap(px(6, dpr))
         , columnGap(px(12, dpr))
-        , capHeight(px(20, dpr))
+        , capHeight(px(look.keyHeight, dpr))
+        , rowHeight(px(std::max(look.keyHeight, look.textSize + 6), dpr))
         , capPad(px(6, dpr))
         , capGap(px(4, dpr))
         , footerGap(px(8, dpr))
@@ -43,8 +45,8 @@ struct Metrics {
         , textFont(QGuiApplication::font())
         , capFont(QGuiApplication::font())
     {
-        textFont.setPixelSize(px(14, dpr)); // Theme.fontCaption
-        capFont.setPixelSize(px(12, dpr));
+        textFont.setPixelSize(px(look.textSize, dpr));
+        capFont.setPixelSize(px(look.captionSize, dpr));
     }
     int capWidth(const QFontMetrics& caps, const QString& label) const
     {
@@ -58,7 +60,7 @@ struct Metrics {
         return width;
     }
 
-    int padX, padY, rowGap, columnGap, capHeight, capPad, capGap, footerGap, footerSpacing, edge;
+    int padX, padY, rowGap, columnGap, capHeight, rowHeight, capPad, capGap, footerGap, footerSpacing, edge;
     QFont textFont;
     QFont capFont;
 };
@@ -163,19 +165,19 @@ int PinKeyCard::shadowMargin(double dpr)
     return px(8, dpr);
 }
 
-QSize PinKeyCard::cardSize(const std::vector<PinKeyRow>& rows, double dpr)
+QSize PinKeyCard::cardSize(const std::vector<PinKeyRow>& rows, double dpr, const Look& look)
 {
-    const Metrics m(dpr);
+    const Metrics m(dpr, look);
     const Columns c = columns(rows, m, tr("截图设置里可关闭"));
     const int count = static_cast<int>(rows.size());
-    const int grid = count * m.capHeight + std::max(0, count - 1) * m.rowGap;
+    const int grid = count * m.rowHeight + std::max(0, count - 1) * m.rowGap;
     return QSize(c.inner() + 2 * m.padX, grid + 2 * m.footerGap + m.edge + m.capHeight + 2 * m.padY);
 }
 
 QImage PinKeyCard::picture(const std::vector<PinKeyRow>& rows, double dpr, const Look& look)
 {
     const int s = shadowMargin(dpr);
-    const QSize card = cardSize(rows, dpr);
+    const QSize card = cardSize(rows, dpr, look);
     QImage canvas(card.width() + 2 * s, card.height() + 2 * s, QImage::Format_ARGB32_Premultiplied);
     paint(canvas, rows, dpr, look);
     return canvas;
@@ -183,7 +185,7 @@ QImage PinKeyCard::picture(const std::vector<PinKeyRow>& rows, double dpr, const
 
 void PinKeyCard::paint(QImage& canvas, const std::vector<PinKeyRow>& rows, double dpr, const Look& look)
 {
-    const Metrics m(dpr);
+    const Metrics m(dpr, look);
     const QString offText = tr("截图设置里可关闭");
     const Columns c = columns(rows, m, offText);
     const int s = shadowMargin(dpr);
@@ -234,20 +236,21 @@ void PinKeyCard::paint(QImage& canvas, const std::vector<PinKeyRow>& rows, doubl
     int y = card.top() + m.padY;
     for (const PinKeyRow& row : rows) {
         int x = left;
+        const int capY = y + (m.rowHeight - m.capHeight) / 2; // the keycaps amid the row, as the words
         for (qsizetype i = 0; i < row.keys.size(); ++i) {
             if (i > 0) {
                 x += m.capGap;
                 painter.setFont(m.capFont);
                 painter.setPen(look.faint);
-                painter.drawText(QRect(x, y, slash, m.capHeight), Qt::AlignCenter, u"/"_s);
+                painter.drawText(QRect(x, capY, slash, m.capHeight), Qt::AlignCenter, u"/"_s);
                 x += slash + m.capGap;
             }
-            x += drawCap(x, y, row.keys[i]);
+            x += drawCap(x, capY, row.keys[i]);
         }
         painter.setFont(m.textFont);
         painter.setPen(look.text);
-        painter.drawText(QRect(left + c.keys, y, c.text + m.padX, m.capHeight), Qt::AlignLeft | Qt::AlignVCenter, row.text);
-        y += m.capHeight + m.rowGap;
+        painter.drawText(QRect(left + c.keys, y, c.text + m.padX, m.rowHeight), Qt::AlignLeft | Qt::AlignVCenter, row.text);
+        y += m.rowHeight + m.rowGap;
     }
     y += m.footerGap - (rows.empty() ? 0 : m.rowGap);
     painter.fillRect(QRect(left, y, c.inner(), m.edge), look.divider); // the line above the footer (the style's separator)
@@ -306,7 +309,7 @@ bool PinKeyCard::create()
 
 bool PinKeyCard::show(const std::vector<PinKeyRow>& rows, const QRect& work, const QRect& avoid, double dpr, const Look& look)
 {
-    const QSize card = cardSize(rows, dpr);
+    const QSize card = cardSize(rows, dpr, look);
     const QRect place = rows.empty() ? QRect() : pinKeyCardPlace(card, work, avoid, px(16, dpr), px(12, dpr));
     if (place.isEmpty() || !create()) {
         hide();
