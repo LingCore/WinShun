@@ -1039,6 +1039,8 @@ qt_add_executable(tst_clipimage tst_clipimage.cpp
     ${PROJECT_SOURCE_DIR}/src/app/PhosphorGlyph.cpp
     ${PROJECT_SOURCE_DIR}/src/app/Phosphor.cpp
     ${PROJECT_SOURCE_DIR}/src/app/TextLineSpacing.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/WindowPlacer.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/FrameReveal.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/ClipboardWatcher.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/WindowEffects.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/Foreground.cpp)

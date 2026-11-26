@@ -5,6 +5,7 @@
 #include "PhosphorGlyph.h"
 #include "SystemTheme.h"
 #include "TextLineSpacing.h"
+#include "WindowPlacer.h"
 #include "platform/ClipboardWatcher.h"
 
 #include <QBuffer>
@@ -199,6 +200,7 @@ private slots:
         qmlRegisterType<ColorSwatch>("WinShun", 1, 0, "ColorSwatch");
         qmlRegisterType<PhosphorGlyph>("WinShun", 1, 0, "PhosphorGlyph");
         qmlRegisterType<TextLineSpacing>("WinShun", 1, 0, "TextLineSpacing"); // ClipPreview's selectable text
+        qmlRegisterType<WindowPlacer>("WinShun", 1, 0, "WindowPlacer"); // ClipPictureViewer's place and size
     }
 
     void codecsAndOriginals_data()
@@ -973,7 +975,8 @@ private slots:
     }
 
     // GitHub #414: the picture large beside the clipboard window, fitted in
-    // the room there; the wheel's zoom and back to fitted with a new picture.
+    // the room there; else past its list; the wheel's zoom and back to fitted
+    // with a new picture, once it is read.
     void pictureViewerBesideTheWindow()
     {
         QTest::failOnWarning(QRegularExpression(u"TypeError|ReferenceError|Cannot assign|Binding loop"_s));
@@ -1017,13 +1020,21 @@ private slots:
         QVERIFY(QMetaObject::invokeMethod(view, "zoomAt", Q_ARG(QVariant, 2.0), Q_ARG(QVariant, 50.0), Q_ARG(QVariant, 50.0)));
         QVERIFY(std::abs(view->property("scale").toReal() - fitted * 2) < 1e-6);
         auto* caption = named(u"clipboardPictureViewerCaption"_s);
-        QVERIFY(caption);
-        QVERIFY(caption->property("text").toString().endsWith(u"%1%"_s.arg(qRound(fitted * 2 * 100))));
+        auto* zoomed = named(u"clipboardPictureViewerScale"_s);
+        QVERIFY(caption && zoomed);
+        QCOMPARE(caption->property("text").toString(), u"PNG"_s);
+        QCOMPARE(zoomed->property("text").toString(), u" · %1%"_s.arg(qRound(fitted * 2 * 100)));
         object->setProperty("source", QUrl::fromLocalFile(QStringLiteral(WINSHUN_TEST_DATA "/clipboard-animated.gif")).toString());
-        QCOMPARE(view->property("zoom").toReal(), 0.0); // a new picture: fitted again
+        QCOMPARE(view->property("zoom").toReal(), fitted * 2); // the one before, until the next is read
+        QTRY_COMPARE(view->property("zoom").toReal(), 0.0); // then the next: fitted again
 
-        // No room beside it: over the middle of the screen.
+        // No room beside it: past its list, over its preview (the list kept clear)...
+        object->setProperty("listWidth", 480);
         object->setProperty("hostRect", QRectF(300, 100, 1320, 500));
+        QCOMPARE(viewer->x(), 300 + 480 + 8);
+        QVERIFY(viewer->x() + viewer->width() <= 1920 - 8);
+        // ...and with no room there either: over the middle of the screen.
+        object->setProperty("listWidth", 1320);
         QCOMPARE(viewer->x(), int(std::round((1920 - viewer->width()) / 2.0)));
         viewer->close();
 

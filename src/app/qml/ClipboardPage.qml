@@ -320,6 +320,7 @@ Item {
                 popupHost: page.clipboard
                 open: page.pictureViewOpen && clipWindow !== null && clipWindow.visible
                 hostRect: clipWindow ? Qt.rect(clipWindow.x, clipWindow.y, clipWindow.width, clipWindow.height) : Qt.rect(0, 0, 0, 0)
+                listWidth: page.previewOpen ? page.listWidth : page.width
                 availableArea: page.frame.availableArea(page)
                 source: page.viewedSource
                 pixels: page.viewedFilePicture ? page.viewedFile.imageSize

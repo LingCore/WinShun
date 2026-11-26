@@ -426,6 +426,7 @@ qt_add_qml_module(WinShun
         Backup.cpp Backup.h BackupFiles.cpp BackupFiles.h
         ClipBackupFiles.cpp ClipBackupFiles.h
         WindowFrame.cpp WindowFrame.h
+        WindowPlacer.cpp WindowPlacer.h # moved and sized in one go; resized, off the screen until drawn so (GitHub #414)
 )
 
 # The UI is written in Chinese; English comes from i18n/winshun_en.ts, built

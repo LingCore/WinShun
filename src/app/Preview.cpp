@@ -9715,7 +9715,22 @@ bool checkClipboardPictureView(QQmlEngine* engine, const QDir& output, const QSt
                                                        .save(&buffer, "PNG"),
             "the picture could not be made");
     }
+    QByteArray tallPng; // shown next while the one before is large
+    {
+        QBuffer buffer(&tallPng);
+        check(buffer.open(QIODevice::WriteOnly) && drawn({700, 1800}, QColor(0xd9, 0xf2, 0xe0), QColor(0xf1, 0xfa, 0xf3))
+                                                       .save(&buffer, "PNG"),
+            "the tall picture could not be made");
+    }
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    ClipCapture tall;
+    tall.kind = ClipKind::Image;
+    tall.imageData = tallPng;
+    tall.hash = "picture-view-tall";
+    tall.width = 700;
+    tall.height = 1800;
+    tall.source = u"PixPin"_s;
+    store.add(tall, now - 3000);
     store.add(ClipCapture {.kind = ClipKind::Files, .text = pictureFile, .source = u"资源管理器"_s}, now - 2000);
     store.add(ClipCapture {.kind = ClipKind::Text, .text = u"一段文字"_s, .source = u"记事本"_s}, now - 1000);
     ClipCapture picture;
@@ -9811,9 +9826,10 @@ bool checkClipboardPictureView(QQmlEngine* engine, const QDir& output, const QSt
         const QRect host = window->geometry();
         const QRect area = large->screen()->availableGeometry();
         check(area.contains(large->geometry()), "the large picture is not on the screen");
-        check(!large->geometry().intersects(host) || large->geometry().center().x() == area.center().x()
-                  || std::abs(large->geometry().center().x() - area.center().x()) <= 1,
-            "the large picture covers the window without being in the middle of the screen");
+        // Beside the window, or past its list (over its preview): the list stays to be pointed at.
+        const QRect list(host.topLeft(), QSize(page->property("listWidth").toInt(), host.height()));
+        check(!large->geometry().intersects(list) || std::abs(large->geometry().center().x() - area.center().x()) <= 1,
+            "the large picture covers the list without being in the middle of the screen");
         check(large->width() > zoom->width() && large->height() > zoom->height(), "the large picture is not larger");
         settle(large);
         check(saveGrab(large, output.filePath(u"clipboard-picture-viewer.png"_s)), "the large picture did not render");
@@ -9825,6 +9841,52 @@ bool checkClipboardPictureView(QQmlEngine* engine, const QDir& output, const QSt
             "the large picture does not zoom");
         settle(large);
         check(saveGrab(large, output.filePath(u"clipboard-picture-viewer-zoomed.png"_s)), "the zoomed picture did not render");
+
+        // Another picture while it is large: the one before stays until the
+        // next is read, in every frame (never "正在加载图片…", never nothing),
+        // then the window takes the next one's size in one go (it only grows)
+        // and is on the screen again.
+        QList<QSize> sizes {large->size()};
+        const auto sized = [&] {
+            if (sizes.back() != large->size())
+                sizes.push_back(large->size());
+        };
+        const QMetaObject::Connection byWidth = QObject::connect(large, &QWindow::widthChanged, large, sized);
+        const QMetaObject::Connection byHeight = QObject::connect(large, &QWindow::heightChanged, large, sized);
+        int frames = 0;
+        int empty = 0;
+        const QMetaObject::Connection everyFrame = QObject::connect(large, &QQuickWindow::afterAnimating, large, [&] {
+            ++frames;
+            auto* shown = visualNamed(large->contentItem(), u"clipboardPictureViewerImage"_s);
+            auto* waiting = visualNamed(large->contentItem(), u"clipboardPictureViewerWaiting"_s);
+            if (!shown || shown->property("status").toInt() != 1 || (waiting && waiting->isVisible()))
+                ++empty;
+        }, Qt::DirectConnection);
+        const QString first = image ? image->property("source").toString() : QString();
+        const QSize before = large->size();
+        entries->setProperty("currentIndex", 3);
+        check(waitFor([&] {
+            auto* shown = viewerItem(u"clipboardPictureViewerImage"_s);
+            return shown && shown->property("status").toInt() == 1 && shown->property("source").toString() != first;
+        }, 5000), "the next picture does not take the one before's place");
+        settle(large);
+        QObject::disconnect(byWidth);
+        QObject::disconnect(byHeight);
+        QObject::disconnect(everyFrame);
+        check(viewer() == large && frames > 0 && empty == 0, "going to the next picture shows nothing or 正在加载图片… in between");
+        check(sizes.size() <= 2 && large->width() >= before.width() && large->height() >= before.height(),
+            "the window does not take the next picture's size in one go");
+        check(!isCloaked(reinterpret_cast<HWND>(large->winId())), "the window stays off the screen after taking its size");
+        auto* caption = viewerItem(u"clipboardPictureViewerCaption"_s);
+        check(caption && caption->property("text").toString().contains(u"700 × 1800"_s)
+                  && !caption->property("truncated").toBool(),
+            "the next picture's size is not said whole under it");
+        check(saveGrab(large, output.filePath(u"clipboard-picture-viewer-next.png"_s)), "the next picture did not render");
+        say(u"picture view: %1 frame(s) going to the next picture, sizes %2"_s.arg(frames).arg([&] {
+            QStringList shown;
+            for (const QSize& size : sizes) shown << u"%1×%2"_s.arg(size.width()).arg(size.height());
+            return shown.join(u" → "_s);
+        }()));
     }
     check(page->property("pictureViewOpen").toBool(), "the page does not know the picture is shown large");
 
@@ -9868,6 +9930,13 @@ bool checkClipboardPictureView(QQmlEngine* engine, const QDir& output, const QSt
     if (QQuickWindow* large = viewer()) {
         settle(large);
         check(saveGrab(large, output.filePath(u"clipboard-picture-file-viewer.png"_s)), "the large picture file did not render");
+        // ↓ to the next row, a copied picture: the same window shows it.
+        press(Qt::Key_Down);
+        check(waitFor([&] {
+            image = viewerItem(u"clipboardPictureViewerImage"_s);
+            return viewer() == large && image && image->property("status").toInt() == 1
+                && !image->property("source").toString().startsWith(u"image://clippreview/"_s);
+        }, 5000), "↓ from the picture file does not show the next picture large");
     }
 
     // The poster (--gallery-image): a day's copies, the picture's row open
