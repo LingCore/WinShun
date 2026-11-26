@@ -34,11 +34,21 @@ namespace {
 // screenshot's text is at its size already), a tall picture is looked at in
 // strips rather than shrunk, a long thin one in tiles across, lines are cut
 // from the picture as it is, and a very long line is read in parts. Memory
-// stays that of a 2000 x 2000 screenshot whatever the picture's shape.
+// stays that of a 2000 x 512 strip whatever the picture's shape.
 constexpr int kMaxWidth = 2000; // wider: made smaller to find the text in it
 constexpr int kMinSide = 30; // narrower: made larger
-constexpr int kStrip = 2000; // the height looked at in one go…
+// The height looked at in one go. Finding the lines takes ~80 bytes a pixel
+// looked at, for as long as it lasts: a whole 1920 x 1080 screenshot at once
+// was 184 MB on top of the program's own, each time a picture was copied
+// (GitHub #467); in strips of 512 rows it is a third of that, for a tenth of
+// a second more (1440 x 1440: +168 MB in 250 ms at once, +59 MB in 360 ms).
+constexpr int kStrip = 512;
 constexpr int kOverlap = 160; // … overlapping, so a line is whole in one of them
+// Text higher than the overlap is not whole in any strip (a poster's title):
+// a tile with such a line cut by a strip's edge is looked at again in strips
+// this high, as every picture was before.
+constexpr int kTallStrip = 2000;
+constexpr double kCutEdge = 3; // a box within this of a strip's cut edge was cut by it
 constexpr float kPixelThreshold = 0.3f; // a pixel is text
 constexpr float kBoxThreshold = 0.5f; // a box is text: its pixels' mean
 constexpr double kUnclip = 1.6; // how far a box grows around its text
@@ -1098,28 +1108,42 @@ bool PaddleOcr::find(
                 tile = padded;
             }
             // Strip by strip; a box belongs to the strip its middle is in, away
-            // from where it overlaps the next.
+            // from where it overlaps the next. False, with nothing kept of the
+            // tile, when a box that is this strip's reaches the edge the strip
+            // was cut at: a line higher than the overlap, whole in no strip.
             const int height = tile.height();
-            for (int top = 0;;) {
-                const int strip = std::min(kStrip, height - top);
-                const bool last = top + strip >= height;
-                const double from = top == 0 ? -1 : top + kOverlap / 2.0;
-                const double to = last ? height + 1.0 : top + strip - kOverlap / 2.0;
-                for (Quad quad : d->detect(strip == height ? tile : tile.copy(0, top, tile.width(), strip))) {
-                    const double middle = top + (quad[0].y() + quad[2].y()) / 2;
-                    if (middle < from || middle >= to)
-                        continue;
-                    for (QPointF& p : quad) // to the picture's own pixels
-                        p = QPointF(std::clamp((p.x() + left) / scale, 0.0, static_cast<double>(picture.width())),
-                            std::clamp((p.y() + top - padding) / scale, 0.0, static_cast<double>(picture.height())));
-                    tileBoxes.emplace_back(tiles, quad);
+            const auto lookDown = [&](int most) {
+                const std::size_t before = tileBoxes.size();
+                for (int top = 0;;) {
+                    const int strip = std::min(most, height - top);
+                    const bool last = top + strip >= height;
+                    const double from = top == 0 ? -1 : top + kOverlap / 2.0;
+                    const double to = last ? height + 1.0 : top + strip - kOverlap / 2.0;
+                    for (Quad quad : d->detect(strip == height ? tile : tile.copy(0, top, tile.width(), strip))) {
+                        const auto [highest, lowest] = std::ranges::minmax(quad, {}, &QPointF::y);
+                        const double middle = top + (quad[0].y() + quad[2].y()) / 2;
+                        if (middle < from || middle >= to)
+                            continue;
+                        if (most < kTallStrip && ((top > 0 && highest.y() <= kCutEdge) || (!last && lowest.y() >= strip - kCutEdge))) {
+                            trace([&] { return u"a line cut by a strip of %1 rows: looked at again in higher ones"_s.arg(most); });
+                            tileBoxes.resize(before);
+                            return false;
+                        }
+                        for (QPointF& p : quad) // to the picture's own pixels
+                            p = QPointF(std::clamp((p.x() + left) / scale, 0.0, static_cast<double>(picture.width())),
+                                std::clamp((p.y() + top - padding) / scale, 0.0, static_cast<double>(picture.height())));
+                        tileBoxes.emplace_back(tiles, quad);
+                    }
+                    if (options.progress)
+                        options.progress();
+                    if (last)
+                        break;
+                    top += strip - kOverlap;
                 }
-                if (options.progress)
-                    options.progress();
-                if (last)
-                    break;
-                top += strip - kOverlap;
-            }
+                return true;
+            };
+            if (!lookDown(kStrip))
+                lookDown(kTallStrip);
             ++tiles;
             if (lastTile)
                 break;

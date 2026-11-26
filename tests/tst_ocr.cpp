@@ -382,10 +382,70 @@ private slots:
             QVERIFY2(words.count(u"第%1行"_s.arg(i)) == 1, qPrintable(u"line %1"_s.arg(i)));
     }
 
+    // A screenshot's lines are looked for in strips of 512 rows, not in the
+    // whole of it at once (GitHub #467: ~80 bytes a pixel looked at, 184 MB
+    // for 1920 x 1080 each time one was copied); every line read once.
+    void screenshotLookedAtInStrips()
+    {
+        QStringList lines;
+        for (int i = 0; i < 38; ++i)
+            lines.append(u"第%1行 文字识别"_s.arg(i));
+        const QImage screen = drawn(lines, 14, Qt::black, Qt::white);
+        QVERIFY(screen.height() > 1000 && screen.height() < 2000);
+        static QStringList steps;
+        steps.clear();
+        ws::PaddleOcr::setTrace([](const QString& step) { steps.append(step); });
+        const QString words = read(screen);
+        ws::PaddleOcr::setTrace(nullptr);
+        static const QRegularExpression detect(u"^detect (\\d+) x (\\d+)$"_s);
+        int detections = 0;
+        for (const QString& step : std::as_const(steps)) {
+            if (const QRegularExpressionMatch m = detect.match(step); m.hasMatch()) {
+                ++detections;
+                QVERIFY2(m.captured(2).toInt() <= 512, qPrintable(step));
+            }
+            QVERIFY2(!step.contains(u"looked at again"_s), qPrintable(step));
+        }
+        QVERIFY(detections >= 3);
+        for (int i = 0; i < 38; ++i)
+            QVERIFY2(words.count(u"第%1行"_s.arg(i)) == 1, qPrintable(u"line %1 in: %2"_s.arg(i).arg(words)));
+    }
+
+    // A title higher than the strips' overlap is whole in none of them: cut
+    // by a strip's edge, its picture is looked at again in strips as high as
+    // before, and it is read whole, once.
+    void tallTitleAcrossAStrip()
+    {
+        QImage poster(1400, 900, QImage::Format_RGB32);
+        poster.fill(Qt::white);
+        {
+            QPainter painter(&poster);
+            QFont font(u"Microsoft YaHei UI"_s);
+            font.setPixelSize(260);
+            font.setBold(true);
+            painter.setFont(font);
+            painter.setPen(Qt::black);
+            painter.drawText(QRect(0, 300, 1400, 320), Qt::AlignCenter, u"WinShun"_s); // rows ~330 to ~590: across row 512
+            font.setPixelSize(20);
+            font.setBold(false);
+            painter.setFont(font);
+            painter.drawText(60, 80, u"上面的小字照常读"_s);
+        }
+        static QStringList steps;
+        steps.clear();
+        ws::PaddleOcr::setTrace([](const QString& step) { steps.append(step); });
+        const QString words = read(poster);
+        ws::PaddleOcr::setTrace(nullptr);
+        QVERIFY2(std::ranges::any_of(steps, [](const QString& step) { return step.contains(u"looked at again"_s); }),
+            qPrintable(steps.join(u" | "_s)));
+        QCOMPARE(words.count(u"WinShun"_s, Qt::CaseInsensitive), 1);
+        QVERIFY2(words.contains(u"上面的小字照常读"_s), qPrintable(words));
+    }
+
     // A strip of text 35 px high and 33 000 wide, as a user copied one: it
     // was looked at as 28 062 x 7014 (the width kept for the text's height,
     // then padded to a quarter of it), several GB, and Win顺 ended. Now the
-    // reading takes no more than a 2000 x 2000 screenshot's: looked at in
+    // reading takes no more than a 2000 x 512 strip's: looked at in
     // tiles across, read in parts, every piece of it once.
     void veryWideStrip()
     {
@@ -436,7 +496,7 @@ private slots:
         for (int i = 0; i < 120; ++i)
             lines.append(u"第%1行 文字识别"_s.arg(i));
         const QImage tall = drawn(lines, 14, Qt::black, Qt::white);
-        QCOMPARE(tall.width(), 336); // not made smaller: strips of 2000 rows overlapping by 160
+        QCOMPARE(tall.width(), 336); // not made smaller: strips of 512 rows overlapping by 160
         QVERIFY(tall.height() > 2000 && tall.height() <= 2000 + 1840);
         QString error;
         const std::unique_ptr<ws::PaddleOcr> ocr = ws::PaddleOcr::load(QCoreApplication::applicationDirPath(), 2, &error);
@@ -450,8 +510,8 @@ private slots:
         QCOMPARE(watched.size(), plain.size());
         for (qsizetype i = 0; i < plain.size(); ++i)
             QCOMPARE(watched[i].text, plain[i].text);
-        // Two strips, then at least one call per 6 lines read (some boxes
-        // read too poorly are dropped after reading, so not fewer calls).
+        // Two strips at the least, then one call or more per 6 lines read (some
+        // boxes read too poorly are dropped after reading, so not fewer calls).
         QVERIFY2(calls >= 2 + (plain.size() + 5) / 6, qPrintable(u"%1 calls"_s.arg(calls)));
         int left = 3;
         options.progress = [&] {
