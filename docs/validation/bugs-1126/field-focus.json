@@ -1,0 +1,16 @@
+{
+    "clipboardInputMethodNote": "打拼音能找到中文；要用输入法，点一下搜索框",
+    "clipboardSearchPlaceholder": "打拼音：tupian → 图片",
+    "clipboard_restored": true,
+    "clipboard_saved_formats": 5,
+    "field_has_focus": true,
+    "hotkey_registered": true,
+    "keys_routed_after_click": false,
+    "opened_keys_routed": true,
+    "opened_without_focus": true,
+    "passed": true,
+    "query": "输入法",
+    "rows": 1,
+    "target_text": "WinShun 点搜索框用输入法 field focus 7741",
+    "window_in_front_after_click": true
+}
