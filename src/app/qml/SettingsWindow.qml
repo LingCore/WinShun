@@ -339,7 +339,12 @@ Window {
     // 按键一览 shown: its sections all made at once (else one at a time, filling).
     property bool shortcutsWanted: false
     onShortcutsWantedChanged: if (shortcutsWanted) makeShortcuts(shortcutSections.length)
-    onCurrentPageChanged: if (currentPage === keysPage && currentTab === keysListTab) shortcutsWanted = true
+    onCurrentPageChanged: {
+        if (currentPage === keysPage && currentTab === keysListTab)
+            shortcutsWanted = true
+        if (leftPagesIdle)
+            leftPages.restart() // half a minute from the last move
+    }
     onCurrentTabChanged: if (currentPage === keysPage && currentTab === keysListTab) shortcutsWanted = true
 
     // Closed a while ago (App, half a minute after the window was hidden): the
@@ -348,14 +353,47 @@ Window {
     // of them once the search was used, stayed for as long as Win顺 ran:
     // ~250 MB at 150% (GitHub #459, 587 MB of 窗口和数据 on a larger screen).
     function unloadPages(): void {
-        if (visible)
+        if (!visible)
+            putPagesAway(false)
+    }
+    // Open, too: the pages left behind go half a minute after the last move
+    // to another one, all but the one on show. They stayed for as long as the
+    // window was open, which is hours when it is left open to look at 运行状况
+    // (GitHub #467: 250 to 430 MB of 窗口和数据 with the window open). A page
+    // gone back to is made again (20–120 ms) where it was left (navHistory).
+    // Not while the search has them (it looks in every page), nor during a
+    // dialog or a hotkey being recorded.
+    property int leftPagesMs: 30000
+    property bool leftPagesGone: false // putPagesAway(true) put some away, and has not said so yet
+    readonly property bool leftPagesIdle: visible && !searching && !fillFast && navPending < 0 && !modalOpen
+                                          && !editor.recordingHotkey
+    onLeftPagesIdleChanged: leftPagesIdle ? leftPages.restart() : leftPages.stop()
+    Timer {
+        id: leftPages
+        interval: window.leftPagesMs
+        onTriggered: window.putPagesAway(true)
+    }
+    // One page per turn of the event loop: `shown`, all but the one on show
+    // (stopped by anything that ends leftPagesIdle); hidden, all but the first.
+    function putPagesAway(shown: bool): void {
+        if (shown ? !leftPagesIdle : visible)
             return
-        for (let i = pageSlots.length - 1; i > 0; --i) {
+        const kept = shown ? currentPage : 0
+        if (shown)
+            fillTimer.stop() // the search's filling, left unfinished: not made again behind this
+        for (let i = pageSlots.length - 1; i >= 0; --i) {
+            if (i === kept || (shown && i === navHovered)) // pointed at: about to be gone to (hoverNav)
+                continue
             if (pageSlots[i].unload()) {
                 allPagesLoaded = false
-                Qt.callLater(window.unloadPages)
+                leftPagesGone = shown
+                Qt.callLater(window.putPagesAway, shown)
                 return
             }
+        }
+        if (leftPagesGone) { // their memory back now, not when the window is next left (App, IdleTrim.freed)
+            leftPagesGone = false
+            editor.pagesPutAway()
         }
         if (keysSlot.item === null) { // 按键一览's sections went with their page: made again as on a first opening
             shortcutsWanted = false

@@ -15473,6 +15473,51 @@ bool probeSettingsReopen(App& app, const QStringList& args, const QDir& out, QJs
             u"unload_page_made_again"_s);
         js(window, u"loadAllPages()"_s);
         check(js(window, u"searchReady"_s).toBool() && js(window, others).toInt() == 10, u"unload_search_ready_again"_s);
+
+        // Left open: the pages left behind go too, all but the one on show
+        // (SettingsWindow.putPagesAway, GitHub #467), and one gone back to is
+        // made again where it was left. Not while the search has them.
+        const QString made = u"[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].filter(i => pageItem(i) !== null).join(',')"_s;
+        // What Task Manager's 内存 follows: the freed pages' memory is given back
+        // at once though the window is in use (App, IdleTrim::freed).
+        const auto workingSetMb = [] {
+            PROCESS_MEMORY_COUNTERS counters {sizeof counters};
+            GetProcessMemoryInfo(GetCurrentProcess(), &counters, sizeof counters);
+            return static_cast<double>(counters.WorkingSetSize) / (1024.0 * 1024.0);
+        };
+        const double openWithPages = workingSetMb();
+        js(window, u"leftPagesMs = 300"_s);
+        js(window, u"showPage(scopePage)"_s);
+        pump(300);
+        const int leftAt = js(window, u"flick.contentY = Math.min(120, Math.max(0, flick.contentHeight - flick.height)); flick.contentY"_s).toInt();
+        guiThreadIdle(4000); // put away one per turn, then given back a second later, on a thread
+        check(js(window, made).toString() == js(window, u"String(scopePage)"_s).toString()
+                && js(window, u"visible && !allPagesLoaded && !searchReady"_s).toBool(),
+            u"left_pages_put_away"_s);
+        const double openAfter = workingSetMb();
+        report.insert(u"left_pages_working_set_mb"_s, QJsonObject {{u"with_pages"_s, std::round(openWithPages)}, {u"after"_s, std::round(openAfter)}});
+        say(u"settings pages left behind put away: working set with all pages %1 MB, after %2 MB"_s.arg(std::round(openWithPages)).arg(std::round(openAfter)));
+        check(openWithPages - openAfter > 50, u"left_pages_give_memory_back"_s);
+        js(window, u"showPage(resultsPage)"_s);
+        guiThreadIdle(1500);
+        check(js(window, made).toString() == js(window, u"String(resultsPage)"_s).toString(), u"left_pages_follow_the_page_on_show"_s);
+        js(window, u"navigateBack()"_s);
+        pump(400);
+        check(js(window, u"currentPage === scopePage && pageItem(scopePage) !== null"_s).toBool()
+                && js(window, u"Math.round(flick.contentY)"_s).toInt() == leftAt,
+            u"left_page_made_again_where_it_was"_s);
+        js(window, u"searchBox.setText('a')"_s); // the search makes them all, and keeps them while it is on
+        QElapsedTimer filling;
+        filling.start();
+        while (filling.elapsed() < 5000 && !js(window, u"searchReady"_s).toBool())
+            pump(20);
+        guiThreadIdle(1500);
+        check(js(window, u"searchReady"_s).toBool() && js(window, others).toInt() == 10, u"left_pages_kept_for_the_search"_s);
+        js(window, u"searchBox.clear()"_s);
+        guiThreadIdle(2500);
+        check(js(window, made).toString() == js(window, u"String(currentPage)"_s).toString(), u"left_pages_put_away_after_the_search"_s);
+        js(window, u"leftPagesMs = 30000"_s);
+
         app.setSettingsUnloadAfter(60'000); // not during what follows
         close(window);
     }

@@ -239,10 +239,19 @@ void IdleTrim::check()
         return;
     }
     m_waitingFor = nullptr;
-    if (m_trimming.load(std::memory_order_acquire)) {
-        m_timer.start(kRecheckMs);
+    trim();
+    m_timer.start(kRecheckMs);
+}
+
+void IdleTrim::freed()
+{
+    trim();
+}
+
+void IdleTrim::trim()
+{
+    if (m_trimming.load(std::memory_order_acquire))
         return;
-    }
     if (const WorkingSet now = privateWorkingSet(); now.bytes > m_floor.load() + kTrimAbove) {
         const SIZE_T bytes = now.bytes;
         PageSet keep = m_keep ? m_keep() : PageSet();
@@ -291,7 +300,6 @@ void IdleTrim::check()
             tell(much);
         });
     }
-    m_timer.start(kRecheckMs);
 }
 
 } // namespace ws

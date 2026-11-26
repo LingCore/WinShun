@@ -4668,6 +4668,15 @@ void App::showSettingsNow(const std::function<void(QQuickWindow*)>& at)
         connect(editor, &SettingsEditor::edited, this, &App::settingsEdited);
         editor->setMonitor(m_health.get());
         connect(editor, &SettingsEditor::giveBackMemoryRequested, this, &App::giveMemoryBack);
+        // Pages put away with the window open: what they held is free in the
+        // heap and still in the working set. Given back once their objects
+        // are gone (destroy() is a deleteLater), though the window is in use.
+        connect(editor, &SettingsEditor::pagesPutAwayWhileOpen, this, [this] {
+            QTimer::singleShot(1s, this, [this] {
+                if (m_idleTrim)
+                    m_idleTrim->freed();
+            });
+        });
         connect(editor, &SettingsEditor::recordingHotkeyChanged, this, &App::applyHotkey);
         connect(editor, &SettingsEditor::recordingHotkeyChanged, this, &App::applyClipboardHotkeys);
         connect(editor, &SettingsEditor::recordingHotkeyChanged, this, &App::applyTaskbarHotkeys);

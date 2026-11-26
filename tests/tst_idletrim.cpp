@@ -94,6 +94,24 @@ private slots:
         QVERIFY(true);
     }
 
+    // In use, nothing is given back by itself; freed() gives back all the same
+    // (the settings' pages put away with the window open, GitHub #467).
+    void freedGivesBackWhileInUse()
+    {
+        const DirtyMemory memory(40);
+        QVERIFY(memory.data != nullptr);
+        ws::IdleTrim trim([]() -> const char* { return nullptr; }, [] { return true; });
+        trim.setAfterUse(20);
+        trim.used();
+        QTest::qWait(200); // several checks over: in use each time
+        QVERIFY(!trim.trimmed());
+        QCOMPARE(trim.lastTrim().atMs, qint64 {0});
+        trim.freed();
+        QTRY_VERIFY_WITH_TIMEOUT(trim.lastTrim().atMs > 0, 2000);
+        QVERIFY(trim.trimmed());
+        QVERIFY(trim.lastTrim().megabytes >= 30);
+    }
+
     // What the diagnostics package says of it (summary.json "idle_trim").
     void statusTellsWhatHoldsTheMemory()
     {

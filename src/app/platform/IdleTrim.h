@@ -54,6 +54,11 @@ public:
     // from the disk again: seconds (GitHub #111, "the first hotkey after an
     // hour away took several seconds"). Speed before a few MB.
     void resumed();
+    // Much was just freed while a window is in use (the settings' pages left
+    // behind put away): given back now, in use or not. What the heap freed
+    // stays in the working set, and nothing empties it while the window has
+    // the focus (GitHub #467). What is on show comes back as it is touched.
+    void freed();
     // Whether the memory was given back since last asked.
     bool takeTrimmed() noexcept { return m_trimmed.exchange(false); }
     // The same, without asking (for the diagnostics journal's "trigger").
@@ -78,6 +83,7 @@ public:
 
 private:
     void check();
+    void trim(); // now, unless one is under way or little is above what a trim leaves
     void gaveBack(qint64 megabytes) noexcept; // just now: remembered as the last time
     bool inUse() const; // a window of Win顺's has the focus, or is up and in use (m_up)
     void startAfter(int ms);
