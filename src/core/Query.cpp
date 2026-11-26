@@ -1067,10 +1067,11 @@ std::vector<ParsedQuery> parseConditions(const QStringList& texts)
 }
 
 NameMatcher::NameMatcher(const ParsedQuery& query, bool autoFuzzy)
-    : m_extensions(query.extensions)
+    : m_filesOnly(query.filesOnly)
+    , m_hidden(query.hiddenFolders)
+    , m_extensions(query.extensions)
     , m_excluded(query.excludedExtensions)
     , m_excludedNames(query.excludedFileNames)
-    , m_hidden(query.hiddenFolders)
 {
     m_invalid = !query.error.isEmpty();
     m_filter = query.filter;
@@ -1168,7 +1169,7 @@ template <bool Padded, typename Han, typename AncestorsMatch, typename FolderTer
 NameMatcher::MatchResult NameMatcher::score(std::string_view name, bool isDir, Han&& han, std::size_t extLength,
     AncestorsMatch&& ancestorsMatch, FolderTerms&& folderTerms, bool skipFuzzyScore) const
 {
-    if (m_invalid)
+    if (m_invalid || (m_filesOnly && isDir))
         return {};
     int score = 0;
     bool usedFuzzy = false;

@@ -68,7 +68,7 @@ struct NameHit {
 // to, if any. A file counts for every kind it is of; a folder for none.
 struct TypeTally {
     struct Type {
-        std::vector<std::string> extensions; // folded, without the dot
+        std::vector<std::string> extensions; // folded, without the dot; kEveryFileExtension: every file
         std::vector<EntryId> folders; // sorted; only files under one of them. Empty: anywhere
     };
     std::vector<Type> types;

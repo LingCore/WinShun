@@ -3202,6 +3202,25 @@ int runSettings(const QStringList& args)
                 && editor->setFileTypeFolder(csv, u"H:\\__work__"_s).isEmpty(),
             "putting the range example back failed");
         settle(window, 3);
+        // A kind of every file: "*.*" as a Chinese input method types it, and "jpg *", are "*" alone.
+        check(editor->addFileType(u"所有文件"_s, u"＊。＊"_s).isEmpty(), "a kind of every file was rejected");
+        const int every = static_cast<int>(editor->fileTypes().size()) - 1;
+        const auto everyOf = [&] { return editor->fileTypes().value(every).toMap().value(u"extensions"_s).toStringList(); };
+        check(everyOf() == QStringList {u"*"_s}, "a kind of every file is not \"*\" alone");
+        check(editor->setFileTypeExtensions(every, u"jpg *"_s).isEmpty() && everyOf() == QStringList {u"*"_s},
+            "\"jpg *\" is not every file");
+        settle(window, 3);
+        auto* everyRow = visualNamed(window->contentItem(), u"fileTypeRow_%1"_s.arg(every + 1)); // after 文件夹
+        auto* content = flick->property("contentItem").value<QQuickItem*>();
+        check(everyRow && everyRow->isVisible() && content, "the kind of every file has no row");
+        if (everyRow && content) { // its row in view, the add row and the description under it
+            const qreal most = std::max(0.0, flick->property("contentHeight").toDouble() - flick->property("height").toDouble());
+            flick->setProperty("contentY", std::clamp(everyRow->mapToItem(content, QPointF()).y() - 240, 0.0, most));
+            settle(window, 3);
+        }
+        saved = saveGrab(window, out.filePath(u"file-types-every-file.png"_s)) && saved;
+        editor->removeFileType(every);
+        settle(window, 3);
         // The quick filters, below the types on the same tab.
         check(editor->quickFilters().isEmpty(), "quick filters: some before any was added");
         check(!editor->addQuickFilter(u" "_s, u"ext:pdf"_s).isEmpty(), "quick filters: one with no name was accepted");
@@ -10618,6 +10637,108 @@ bool checkTypeStripCounts(QQmlEngine* qml, const QDir& output)
     return ok;
 }
 
+// --preview-results <dir> --type-strip-every-file: 文件 split as some users
+// want it, 文件夹 and a kind 文件 of every file ("*", kEveryFileExtension),
+// through the production Main.qml, Launcher and a real search. Chosen, the
+// rows are the files 不限 lists, with or without an extension, and no folder;
+// ext: typed still narrows them; chosen with another kind too, it is still
+// every file. Its chip counts the files, shows the files icon and says in its
+// tip what it lists.
+bool checkTypeStripEveryFile(QQmlEngine* qml, const QDir& output)
+{
+    QTemporaryDir temporary;
+    IndexService index(temporary.filePath(u"index"_s), IndexService::Options{});
+    const QString base = QDir::toNativeSeparators(temporary.filePath(u"资料"_s));
+    {
+        const auto files = index.index();
+        const auto lock = files->writeLock();
+        const auto root = files->addRoot(base.toStdString());
+        for (const char* name : {"报告.docx", "报告.pdf", "报告"})
+            files->add(root, name, 0);
+        files->add(files->add(root, "报告 2026", EntryFlag::Directory), "附件.zip", 0);
+        files->add(root, "报告.旧", EntryFlag::Directory);
+    }
+    AppCatalog apps;
+    SystemCatalog places;
+    apps.setApps(std::make_shared<const AppList>());
+    places.setPlaces(std::make_shared<const PlaceList>());
+    History history(temporary.filePath(u"history.tsv"_s));
+    SearchEngine search(&index, &apps, &places);
+    Launcher launcher(&index, &apps, &places, &search, &history);
+    launcher.setFileTypes({FileType {u"文件"_s, {QString::fromLatin1(kEveryFileExtension)}},
+        FileType {u"文档"_s, {u"docx"_s, u"pdf"_s}}});
+    ClipStore store(temporary.filePath(u"clipboard"_s));
+    if (!store.open(QDateTime::currentMSecsSinceEpoch())) return false;
+    ClipboardWatcher watcher({}, {});
+    Clipboard clipboard(&store, &watcher);
+    Placement placement(temporary.filePath(u"state.ini"_s), u"Launcher"_s);
+    WindowFrame frame(false);
+    QQmlComponent component(qml, u"WinShun"_s, u"Main"_s);
+    std::unique_ptr<QObject> object(component.createWithInitialProperties({
+        {u"launcher"_s, QVariant::fromValue(&launcher)}, {u"clipboard"_s, QVariant::fromValue(&clipboard)},
+        {u"frame"_s, QVariant::fromValue(&frame)}, {u"placement"_s, QVariant::fromValue(&placement)}}));
+    auto* window = qobject_cast<QQuickWindow*>(object.get());
+    if (!window) { say(component.errorString()); return false; }
+    window->create();
+    launcher.setWindow(window);
+    frame.setWindow(window);
+    placement.setWindow(window);
+    showOffScreen(window);
+    bool ok = true;
+    const auto check = [&](bool condition, const QString& reason) {
+        ok = condition && ok;
+        if (!condition) qWarning("every file kind regression: %s", qUtf8Printable(reason));
+    };
+    // The rows of `text` (those of the index: the files and folders made above), once searched.
+    const auto rows = [&](const QString& text) {
+        launcher.setQuery(text);
+        QElapsedTimer timeout;
+        timeout.start();
+        do
+            pump(10);
+        while (launcher.searching() && timeout.elapsed() < 5000);
+        settle(window);
+        QStringList names;
+        for (int i = 0; i < launcher.results()->count(); ++i) {
+            const QString path = launcher.results()->pathAt(i);
+            if (path.startsWith(base + u'\\'))
+                names.append(path.mid(base.size() + 1) + (launcher.results()->at(i)->isDir ? u"\\"_s : QString()));
+        }
+        names.sort();
+        return names;
+    };
+    const QStringList files {u"报告"_s, u"报告.docx"_s, u"报告.pdf"_s};
+    launcher.setScope(Launcher::Files);
+    launcher.chooseFileType(-1);
+    QStringList found = rows(u"报告"_s);
+    check(found == QStringList({u"报告"_s, u"报告 2026\\"_s, u"报告.docx"_s, u"报告.pdf"_s, u"报告.旧\\"_s}), u"不限: "_s + found.join(u", "));
+    launcher.toggleFileType(0); // 文件
+    found = rows(u"报告"_s);
+    check(found == files, u"文件: "_s + found.join(u", "));
+    QElapsedTimer counted;
+    counted.start();
+    while (launcher.fileTypeCounts().size() < 4 && counted.elapsed() < 5000)
+        pump(10);
+    settle(window);
+    QList<qint64> counts;
+    for (const QVariant& count : launcher.fileTypeCounts())
+        counts.append(count.toLongLong());
+    check(counts == QList<qint64>({5, 2, 3, 2}), u"the chips' numbers (all, folders, 文件, 文档): "_s
+        + QString::fromUtf8(QJsonDocument(QJsonArray::fromVariantList(launcher.fileTypeCounts())).toJson(QJsonDocument::Compact)));
+    QQuickItem* chip = visualNamed(window->contentItem(), u"searchTypeChip0"_s);
+    QQuickItem* icon = chip ? visualNamed(chip, u"searchTypeChipIcon"_s) : nullptr;
+    check(icon && icon->isVisible() && icon->property("glyph").toString() == u"ph:files", u"文件's chip has no files icon"_s);
+    const QString tip = chip ? chip->property("modelData").toMap().value(u"tip"_s).toString() : QString();
+    check(tip == QCoreApplication::translate("TypeStrip", "所有文件，不含文件夹"), u"文件's tip does not say what it lists: "_s + tip);
+    check(saveGrab(window, output.filePath(u"type-strip-every-file.png"_s)), u"the window did not render"_s);
+    found = rows(u"报告 ext:pdf"_s);
+    check(found == QStringList {u"报告.pdf"_s}, u"文件 with ext:pdf: "_s + found.join(u", "));
+    launcher.toggleFileType(1); // 文档 too
+    found = rows(u"报告"_s);
+    check(launcher.selectedFileTypes() == QList<int>({0, 1}) && found == files, u"文件 and 文档: "_s + found.join(u", "));
+    return ok;
+}
+
 // --preview-results <dir> --type-strip-drag: 文件's chips held and dragged with
 // the mouse, as the user does it. 文件夹 and the kinds go anywhere after 不限
 // (Launcher.moveFileChip, applied as the app applies it: Settings::moveStripChip,
@@ -12849,6 +12970,8 @@ int runResults(const QStringList& args)
         return checkTypeStripDrag(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--type-strip-counts"_s)) // by its own checks: the empty index's first searches may warn of being slow on a busy PC
         return checkTypeStripCounts(&engine, out) ? 0 : 4;
+    if (args.contains(u"--type-strip-every-file"_s)) // by its own checks, as --type-strip-counts
+        return checkTypeStripEveryFile(&engine, out) ? 0 : 4;
     if (args.contains(u"--clipboard-crashed-reading"_s)) // its warning when it gives up is expected
         return checkClipboardCrashedReading() ? 0 : 4;
     if (const qsizetype at = args.indexOf(u"--terminal-launch"_s); at >= 0 && at + 2 < args.size()) {

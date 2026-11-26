@@ -320,22 +320,30 @@ struct Hidden {
     bool empty() const noexcept { return types.empty() && names.empty(); }
 };
 
+// Whether a kind's extensions (folded) take every file (kEveryFileExtension).
+bool everyFile(const std::vector<std::string>& types)
+{
+    return std::ranges::find(types, std::string_view(kEveryFileExtension)) != types.end();
+}
+
 // Whether the file at `path` (or so named) has one of `types` (folded): any
-// file or folder when there are none, never a folder when there are.
-// A file `hidden` names (a skipped type or name) is none.
+// file or folder when there are none, never a folder when there are, any
+// file for every file's. A file `hidden` names (a skipped type or name) is none.
 bool ofType(const QString& path, bool isDir, const std::vector<std::string>& types, const Hidden& hidden = {})
 {
     if (types.empty() && hidden.empty())
         return true;
+    const bool anyFile = everyFile(types);
     const qsizetype slash = std::max(path.lastIndexOf(u'\\'), path.lastIndexOf(u'/'));
     if (!isDir && !hidden.names.empty() && nameMatchesAny(wtf8::fromUtf16(wtf8::view(path.sliced(slash + 1))), hidden.names))
         return false;
     const qsizetype dot = path.lastIndexOf(u'.');
     if (isDir || dot < 0 || dot + 1 >= path.size() || dot < slash)
-        return types.empty();
+        return types.empty() || (anyFile && !isDir);
     const std::string ext = wtf8::fromUtf16(wtf8::view(path.sliced(dot + 1)));
     const auto is = [&](const std::string& t) { return text::equalsFolded(ext, t); };
-    return (types.empty() || std::any_of(types.begin(), types.end(), is)) && std::none_of(hidden.types.begin(), hidden.types.end(), is);
+    return (types.empty() || anyFile || std::any_of(types.begin(), types.end(), is))
+        && std::none_of(hidden.types.begin(), hidden.types.end(), is);
 }
 
 // Request::excludedTypes and excludedFileNames, folded, less those asked
@@ -376,7 +384,8 @@ Hidden hiddenOf(const SearchEngine::Request& request, const ParsedQuery& query, 
 }
 
 // The query with the type chosen: its extensions, or with ext: typed too,
-// those in both (none: an extension no name has, "/"); and the files skipped.
+// those in both (none: an extension no name has, "/"); every file's: files
+// alone, ext: typed as it is; and the files skipped.
 ParsedQuery withTypes(ParsedQuery query, const std::vector<std::string>& types, const Hidden& hidden, bool whole = true)
 {
     for (ParsedQuery& branch : query.alternatives)
@@ -389,6 +398,10 @@ ParsedQuery withTypes(ParsedQuery query, const std::vector<std::string>& types, 
     query.excludedFileNames = hidden.names;
     if (types.empty())
         return query;
+    if (everyFile(types)) {
+        query.filesOnly = true;
+        return query;
+    }
     if (query.extensions.empty()) {
         query.extensions = types;
     } else {
@@ -1581,7 +1594,7 @@ void SearchEngine::runNameSearch(const Job& job)
             .perFolder = kModifiedPerFolder,
             .perTree = kModifiedPerTree,
             .notAfter = trustedUntil(),
-            .extensions = types,
+            .extensions = everyFile(types) ? std::vector<std::string>() : types, // files alone, whichever
             .excludedExtensions = hidden.types,
             .excludedFileNames = hidden.names,
             .hiddenFolders = hidden.folders};

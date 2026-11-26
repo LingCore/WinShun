@@ -41,6 +41,8 @@ Item {
     // reordered or new, so not by name or place.
     readonly property string folderGlyph: "" // Folder
     function typeGlyph(extensions) {
+        if (extensions.includes("*")) // every file (kEveryFileExtension)
+            return "ph:files"
         const tally = {}
         let best = null
         for (const extension of extensions) {
@@ -67,7 +69,7 @@ Item {
         const types = launcher.fileTypes
         for (let i = 0; i < types.length; ++i) {
             const exts = types[i].extensions.split(" ")
-            const listed = exts.slice(0, 10).map(e => "." + e).join(" ")
+            const listed = exts.includes("*") ? qsTr("所有文件，不含文件夹") : exts.slice(0, 10).map(e => "." + e).join(" ")
             list.push({ type: i, name: types[i].name, tip: (exts.length > 10 ? listed + " …" : listed)
                         + (types[i].keyword.length > 0 ? " · :" + types[i].keyword : ""),
                         glyph: typeGlyph(exts), hue: i, keyword: types[i].keyword })

@@ -380,7 +380,7 @@ item 可选提供 `modified`、`created`（带时区的 ISO 8601 字符串或 Un
 
 时间下界包含、上界不包含，大小上下界都包含；`null`、空数组、空文件夹表示没有该项限制。普通搜索也可能附带内容检索及排除条件；忽略不认识的键。插件可按这些条件查询自己的数据源；Win顺 也会按返回的已知日期、大小、扩展名和本地打开路径筛选。Python 的 `item(..., modified=..., created=..., size=...)`、PowerShell 的 `New-WinShunItem -Modified ... -Created ... -Size ...`、C++ 的 `withModified / withCreated / withSize` 均可输出元数据。
 
-`kinds` 可以包含多个类型，例如 `["pictures","videos"]`；对应的 `extensions` 是这些类型扩展名的并集。类型之间是 OR，仍与日期、大小、文件夹等条件同时生效；插件不要只读取数组第一项。
+`kinds` 可以包含多个类型，例如 `["pictures","videos"]`；对应的 `extensions` 是这些类型扩展名的并集。类型之间是 OR，仍与日期、大小、文件夹等条件同时生效；插件不要只读取数组第一项。用户把类型的扩展名填成 `*`（所有文件，不含文件夹）时，选中它 `extensions` 为空数组，不限扩展名。
 
 ### 内容检索提供者
 

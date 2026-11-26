@@ -84,6 +84,10 @@ struct ParsedQuery {
     QString error;
     std::vector<QueryTerm> terms;
     std::vector<std::string> extensions; // folded, without the dot
+    // Set by the search, not typed: a kind of file chosen that is every file
+    // (kEveryFileExtension): files alone, of any extension or none, and as
+    // they would be found without it; never a folder.
+    bool filesOnly = false;
     // Set by the search, not typed: files with these extensions never match
     // (Settings' skipped file types), but in NameMatcher::match(index, ...)
     // only; a favorite or a path asked for by name stays.
@@ -279,6 +283,7 @@ private:
 
     bool m_invalid = false;
     bool m_hasFuzzy = false;
+    bool m_filesOnly = false; // ParsedQuery::filesOnly
     std::shared_ptr<const HiddenFolders> m_hidden;
     EntryFilter m_filter;
     std::vector<NameMatcher> m_alternatives;

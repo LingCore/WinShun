@@ -2987,12 +2987,12 @@
         <translation>File types</translation>
     </message>
     <message>
-        <source>类型;扩展名;后缀;筛选;前缀;快捷键;搜索范围;目录;顺序;排序;拖动;folder;filter;type;extension;order</source>
-        <translation>type;extension;suffix;filter;prefix;shortcut;search scope;directory;order;sort;drag;folder</translation>
+        <source>类型;扩展名;后缀;筛选;前缀;快捷键;搜索范围;目录;顺序;排序;拖动;所有文件;只要文件;folder;filter;type;extension;order;all files</source>
+        <translation>type;extension;suffix;filter;prefix;shortcut;search scope;directory;order;sort;drag;all files;files only;folder</translation>
     </message>
     <message>
-        <source>前缀不区分大小写，留空停用。点文件夹图标可绑定一个文件夹（含子文件夹）；例如 cw + csv，输入“cw:”直接列出该范围的 CSV。拖动左边的把手调整顺序（文件夹也能移动），搜索框下的类型条上按住类型左右拖动也可以。Ctrl+Tab 按这个顺序切换。</source>
-        <translation>Prefixes are case-insensitive; leave blank to disable. Click the folder icon to bind a folder and its subfolders. For example, cw + csv lets “cw:” list CSV files in that scope. Drag a row by its handle on the left to change the order (Folders moves too), or hold a type in the strip under the search box and drag it sideways. Ctrl+Tab follows this order.</translation>
+        <source>扩展名填 * 表示所有文件（不含文件夹），只想分文件和文件夹时用。前缀不区分大小写，留空停用。点文件夹图标可绑定一个文件夹（含子文件夹）；例如 cw + csv，输入“cw:”直接列出该范围的 CSV。拖动左边的把手调整顺序（文件夹也能移动），搜索框下的类型条上按住类型左右拖动也可以。Ctrl+Tab 按这个顺序切换。</source>
+        <translation>An extension of * means every file (not folders), for telling files and folders apart and nothing more. Prefixes are case-insensitive; leave blank to disable. Click the folder icon to bind a folder and its subfolders. For example, cw + csv lets “cw:” list CSV files in that scope. Drag a row by its handle on the left to change the order (Folders moves too), or hold a type in the strip under the search box and drag it sideways. Ctrl+Tab follows this order.</translation>
     </message>
     <message>
         <source>恢复默认</source>
@@ -3059,8 +3059,8 @@
         <translation>New type name</translation>
     </message>
     <message>
-        <source>扩展名，例如 dwg dxf</source>
-        <translation>Extensions, e.g. dwg dxf</translation>
+        <source>扩展名，例如 dwg dxf；* 为所有文件</source>
+        <translation>Extensions, e.g. dwg dxf; * for every file</translation>
     </message>
     <message>
         <source>新类型扩展名</source>
@@ -10871,6 +10871,10 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>所有文件和文件夹</source>
         <translation>All files and folders</translation>
+    </message>
+    <message>
+        <source>所有文件，不含文件夹</source>
+        <translation>Every file, no folders</translation>
     </message>
     <message>
         <source>文件夹</source>

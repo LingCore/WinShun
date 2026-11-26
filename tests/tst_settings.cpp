@@ -1884,6 +1884,38 @@ private slots:
         QVERIFY(!ini.contains(u"FileTypes/1/Folder"_s));
     }
 
+    // A kind of every file, for those who want 文件夹 and 文件 alone: "*" or
+    // "*.*" (as a Chinese input method types them too) is kEveryFileExtension
+    // alone. The other lists of extensions (skipped, preferred) take none.
+    void everyFileKind()
+    {
+        const QStringList every {QString::fromLatin1(ws::kEveryFileExtension)};
+        QCOMPARE(ws::Settings::fileTypeExtensions(u"*"_s), every);
+        QCOMPARE(ws::Settings::fileTypeExtensions(u" *.* "_s), every);
+        QCOMPARE(ws::Settings::fileTypeExtensions(u"＊。＊"_s), every);
+        QCOMPARE(ws::Settings::fileTypeExtensions(u"jpg，* png"_s), every); // every file has those already
+        QCOMPARE(ws::Settings::fileTypeExtensions(u"jpg *.PNG"_s), (QStringList {u"jpg"_s, u"png"_s})); // a pattern of one kind
+        QVERIFY(ws::Settings::fileTypeExtensions(u"..."_s).isEmpty());
+        QVERIFY(ws::Settings::fileExtensions(u"* *.*"_s).isEmpty());
+
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.fileTypes = {{u"文件"_s, every}};
+        settings.save();
+        ws::Settings loaded;
+        loaded.load();
+        QCOMPARE(loaded.fileTypes, settings.fileTypes);
+        {
+            QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+            QCOMPARE(ini.value(u"FileTypes/1/Extensions"_s).toString(), u"*"_s);
+            ini.setValue(u"FileTypes/1/Extensions"_s, u"*.*"_s); // edited by hand
+        }
+        loaded.load();
+        QCOMPARE(loaded.fileTypes.value(0).extensions, every);
+    }
+
     // Limits still at the default of an older version take the new default;
     // ones the user set, and a list of extensions set by hand, stay.
     void contentDefaults_data()
