@@ -9,8 +9,9 @@
 
 namespace ws::captureplugin {
 
-// A pin's key card (GitHub #343) in the colours of the capture's card
-// (CaptureKeyHints.qml): the style's floating panel and its key hints.
+// A pin's key card (GitHub #343) in the colours and type of the capture's
+// card (CaptureKeyHints.qml): the style's floating panel and its key hints,
+// in a menu's type at the 界面大小.
 // `theme`: the Theme singleton (its keyEdge is not in nativeLook);
 // `rounded`: Windows' corners are round (the radii when there is no Theme).
 // CaptureApp's pins and the previews.
@@ -27,6 +28,14 @@ inline capture::PinKeyCard::Look pinKeyCardLook(const QObject* theme, bool dark,
         const QColor keyEdge = theme->property("keyEdge").value<QColor>();
         if (keyEdge.isValid())
             look.keyEdge = keyEdge;
+        // The type at the 界面大小, as the capture's card reads it.
+        const auto size = [theme](const char* name, int fallback) {
+            const int value = theme->property(name).toInt();
+            return value > 0 ? value : fallback;
+        };
+        look.textSize = size("menuTextSize", look.textSize);
+        look.captionSize = size("menuCaptionSize", look.captionSize);
+        look.keyHeight = size("keycapHeight", look.keyHeight);
     }
     // A key hint's words, as the styles' HintCap: fluent's in the words'
     // colour, brand's in the second grey, tactile's in the faint one.

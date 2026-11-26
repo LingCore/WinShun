@@ -43,13 +43,18 @@ Item {
     readonly property int padY: 10
     readonly property int rowGap: 6
     readonly property int columnGap: 12 // keycaps to what they do
-    readonly property int capHeight: 20
     readonly property int capPad: 6 // each side of a keycap's label
     readonly property int capGap: 4 // between the keycaps of a row, round the "/"
-    readonly property int capFont: 12
     readonly property int footerGap: 8 // the rows to the line, the line to the footer
-    readonly property int buttonHeight: 24
     readonly property int buttonPad: 8
+    // The type of a menu at this 界面大小, as every key list and the pin's
+    // card (PinKeyCard): what a row does in the menus' words, the keycaps and
+    // the footer in their captions (14 and 12 px at 紧凑, 16 and 14 at 标准).
+    readonly property int textSize: Theme.menuTextSize
+    readonly property int capFont: Theme.menuCaptionSize
+    readonly property int capHeight: Theme.keycapHeight
+    readonly property int rowHeight: Math.max(capHeight, textSize + 6)
+    readonly property int buttonHeight: capHeight + 4
     readonly property real edge: Theme.edge(dpr)
 
     function snap(v) { return Theme.snap(v, dpr) }
@@ -225,11 +230,12 @@ Item {
                     readonly property bool isKeys: modelData.keys !== undefined
 
                     width: isKeys ? caps.implicitWidth : label.implicitWidth
-                    height: hints.capHeight
+                    height: hints.rowHeight
 
                     Row {
                         id: caps
                         visible: cell.isKeys
+                        y: hints.snap((hints.rowHeight - hints.capHeight) / 2)
                         spacing: hints.capGap
 
                         Repeater {
@@ -257,11 +263,12 @@ Item {
 
                     Text {
                         id: label
+                        objectName: "captureKeyHintsText"
                         visible: !cell.isKeys
-                        y: hints.snap((hints.capHeight - height) / 2)
+                        y: hints.snap((hints.rowHeight - height) / 2)
                         text: cell.isKeys ? "" : cell.modelData.text
                         color: Theme.text
-                        font.pixelSize: Theme.fontCaption
+                        font.pixelSize: hints.textSize
                     }
                 }
             }

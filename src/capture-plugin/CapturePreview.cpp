@@ -1702,6 +1702,23 @@ int runKeyHints(const QStringList& args)
     check(opacity() == 1 && hints->property("corner").toInt() == 0, u"shown in the bottom-left corner"_s);
     const QRectF cardRect = card->mapRectToScene(QRectF(0, 0, card->width(), card->height()));
     say(u"card %1,%2 %3x%4 logical"_s.arg(cardRect.x()).arg(cardRect.y()).arg(cardRect.width()).arg(cardRect.height()));
+    { // the type of a menu at this 界面大小, as the pin's card (PinKeyLook)
+        const QObject* theme = engine.singletonInstance<QObject*>(u"WinShun"_s, u"Theme"_s);
+        const int menuText = theme ? theme->property("menuTextSize").toInt() : 0;
+        QList<QQuickItem*> words; // the Repeater's rows are the grid's items, not its QObject children
+        const std::function<void(QQuickItem*)> collect = [&](QQuickItem* item) {
+            if (item->objectName() == u"captureKeyHintsText")
+                words.append(item);
+            for (QQuickItem* child : item->childItems())
+                collect(child);
+        };
+        collect(card);
+        bool typed = theme && !words.isEmpty() && hints->property("capFont").toInt() == theme->property("menuCaptionSize").toInt()
+            && hints->property("capHeight").toInt() == theme->property("keycapHeight").toInt();
+        for (const QQuickItem* word : words)
+            typed = typed && word->property("font").value<QFont>().pixelSize() == menuText;
+        check(typed, u"the words at the menus' %1 px, the keycaps at their caption's (%2 words)"_s.arg(menuText).arg(words.size()));
+    }
     key(Qt::Key_W);
     check(session.keyHintsShown(), u"a key while choosing (W) leaves them up"_s);
 
@@ -1738,8 +1755,11 @@ int runKeyHints(const QStringList& args)
     settle(window);
 
     // Rule 2: the left button down on the picture takes even a shown-by-hand panel away, quickly.
-    move(QPointF(380, 180));
-    send(QEvent::MouseButtonPress, QPointF(380, 180), Qt::LeftButton, Qt::LeftButton);
+    // The selection it begins ends right of the middle: the toolbar under it (two rows, wider
+    // than the selection) then stays clear of the left corner at every 界面大小.
+    const QPointF selectFrom(560, 180), selectTo(1080, 470);
+    move(selectFrom);
+    send(QEvent::MouseButtonPress, selectFrom, Qt::LeftButton, Qt::LeftButton);
     check(!session.keyHintsShown(), u"a left press hides them at once"_s);
     pump(60);
     const qreal at60 = opacity();
@@ -1747,9 +1767,8 @@ int runKeyHints(const QStringList& args)
     say(u"fade out: %1 after ~60 ms, %2 after ~140 ms"_s.arg(at60).arg(opacity()));
     check(opacity() == 0, u"gone within ~140 ms of the press"_s);
     for (int i = 1; i <= 6; ++i)
-        send(QEvent::MouseMove, QPointF(380, 180) + (QPointF(900, 470) - QPointF(380, 180)) * (i / 6.0), Qt::NoButton,
-             Qt::LeftButton);
-    send(QEvent::MouseButtonRelease, QPointF(900, 470), Qt::LeftButton, Qt::NoButton);
+        send(QEvent::MouseMove, selectFrom + (selectTo - selectFrom) * (i / 6.0), Qt::NoButton, Qt::LeftButton);
+    send(QEvent::MouseButtonRelease, selectTo, Qt::LeftButton, Qt::NoButton);
     move(QPointF(640, 330));
     check(session.hasSelection() && !session.keyHintsShown(), u"a selection made: none come back at once"_s);
 
@@ -2272,9 +2291,15 @@ int runPinKeys(const QStringList& args)
         QPainter painter(&desktop);
         painter.drawImage(margin, desktop.height() - margin - card.height(), card);
     }
-    const QSize size = PinKeyCard::cardSize(rows, dpr);
-    say(u"pin keys: %1 rows, card %2x%3 device px at %4"_s.arg(rows.size()).arg(size.width()).arg(size.height()).arg(dpr));
-    const bool ok = desktop.save(out.filePath(u"pin-keys.png"_s));
+    const QSize size = PinKeyCard::cardSize(rows, dpr, look);
+    say(u"pin keys: %1 rows, card %2x%3 device px at %4, words %5 px, keycaps %6 px in %7 px"_s.arg(rows.size())
+            .arg(size.width()).arg(size.height()).arg(dpr).arg(look.textSize).arg(look.captionSize).arg(look.keyHeight));
+    // The capture's card's type at this 界面大小 (CaptureKeyHints.qml reads the same).
+    const bool typed = look.textSize == theme->property("menuTextSize").toInt()
+        && look.captionSize == theme->property("menuCaptionSize").toInt() && look.keyHeight == theme->property("keycapHeight").toInt();
+    if (!typed)
+        say(u"FAIL: pin keys: the card's type is not the menus' at this 界面大小"_s);
+    const bool ok = desktop.save(out.filePath(u"pin-keys.png"_s)) && typed;
     say(u"pin keys: %1"_s.arg(ok ? u"passed"_s : u"failed"_s));
     return ok ? 0 : 1;
 }
