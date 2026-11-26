@@ -7148,7 +7148,8 @@ void App::routedKey(const KeyRouter::Key& key)
 
 void App::routedForeground(HWND window)
 {
-    if (window == m_keyRouterTarget)
+    // The target's reactivation (paste::reactivate): it has the front back.
+    if (window == m_keyRouterTarget || paste::isStandIn(window))
         return;
     // Activated after all: from now on as any window with the focus, which
     // goes when it loses it. Only if it still is: the event may be old.
@@ -7320,8 +7321,10 @@ void App::launcherRoutedForeground()
 {
     const HWND front = ::GetForegroundWindow();
     const HWND root = front ? ::GetAncestor(front, GA_ROOT) : nullptr;
-    if (!root || root == m_launcherRouting.target)
-        return; // that window still (told again after the refusal), or none for a moment
+    // That window still (told again after the refusal), or none for a moment,
+    // or its reactivation's stand-in (paste::reactivate, a copy made over it).
+    if (!root || root == m_launcherRouting.target || paste::isStandIn(root))
+        return;
     stopLauncherRouting();
     // In front itself after all (a click on it): as any window with the
     // focus from now on. Anything else: as when it loses the focus.

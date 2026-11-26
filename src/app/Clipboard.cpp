@@ -263,6 +263,10 @@ Clipboard::Clipboard(ClipStore* store, ClipboardWatcher* watcher, QObject* paren
             diagnostics::record(u"clipboard-paste"_s,
                 {{u"sent"_s, int(result.sent)}, {u"requested"_s, int(result.requested)},
                  {u"error"_s, qint64(result.error)}, {u"reactivated"_s, m_reactivated},
+                 // Photoshop and the like: whether the keys waited for its read (#432).
+                 {u"route"_s, QString::fromLatin1(m_route)},
+                 {u"reads_on_activation"_s, paste::readsClipboardOnActivation(m_pasteWindow)},
+                 {u"front_ms"_s, m_frontClock.isValid() ? m_frontClock.elapsed() : qint64(-1)},
                  {u"method"_s, result.method == paste::Result::Method::EditMessage ? u"edit-message"_s
                      : result.method == paste::Result::Method::Keys ? u"keys"_s : u"failed"_s}});
             if (!result)
@@ -1183,6 +1187,7 @@ void Clipboard::startPaste(ClipWrite write, Into into, std::vector<qint64> touch
 {
     m_pasting = true;
     m_reactivated = false;
+    m_route = "";
     m_write = std::move(write);
     m_into = into;
     m_pasteGuard = into == Into::Program ? std::move(m_nextGuard) : nullptr;
@@ -1214,6 +1219,15 @@ void Clipboard::onWritten(bool ok)
     }
     if (m_into == Into::Clipboard) {
         m_pasting = false;
+        // Copied only (Ctrl+C on an entry, 复制 in its menu) while Photoshop
+        // is in front, the clipboard over it without the focus: it has not
+        // left the front, its own Ctrl+V would paste what it read as it came
+        // there. It reads the copy now (GitHub #432).
+        if (const HWND front = paste::usableTarget(::GetForegroundWindow());
+            front && paste::readsClipboardOnActivation(front)) {
+            const bool reread = paste::reactivate(front);
+            diagnostics::record(u"clipboard-copy-reactivated"_s, {{u"front_taken"_s, reread}});
+        }
         flash(m_doneMessage);
         return;
     }
@@ -1245,6 +1259,7 @@ void Clipboard::onWritten(bool ok)
         }
         m_pasteClock.restart();
         m_frontClock.start();
+        m_route = "current-program";
         reactivateTarget();
         m_focusTimer.start();
         return;
@@ -1261,6 +1276,7 @@ void Clipboard::onWritten(bool ok)
     if ((m_keysRouted || m_pinned) && paste::isForeground(m_pasteWindow)) {
         emit dismissRequested();
         m_frontClock.start();
+        m_route = m_pinned ? "pinned" : "keys-routed";
         reactivateTarget(); // the keys are its own again (App, as the window went)
         m_focusTimer.start();
         return;
@@ -1271,6 +1287,11 @@ void Clipboard::onWritten(bool ok)
     if (m_targetLeft || ::IsIconic(m_pasteWindow))
         emit dismissRequested();
     paste::activate(m_pasteWindow); // the clipboard window loses the focus and goes (App)
+    // Back in front, it reads the clipboard a moment after (Photoshop): the
+    // keys wait as long as after reactivateTarget (GitHub #432, the clipboard
+    // clicked into first).
+    m_reactivated = paste::readsClipboardOnActivation(m_pasteWindow);
+    m_route = "activated";
     m_frontClock.invalidate();
     m_focusTimer.start();
 }

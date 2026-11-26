@@ -41,6 +41,9 @@ bool readsClipboardOnActivation(HWND target);
 // wait for that before its paste keys. False when the front could not be
 // taken (nothing changed then): `target` not in front, or Windows refused.
 bool reactivate(HWND target);
+// The window `target` loses the front to in reactivate(): no window to keep
+// out of the way of, nor to close a menu over.
+bool isStandIn(HWND window);
 
 // A low-level hook of Win顺's own that the paste keys pass, in order with the
 // user's keys (HoldWatch, the paste a hold ends with): the modifiers stay as

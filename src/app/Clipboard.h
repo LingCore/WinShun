@@ -669,9 +669,11 @@ private:
     std::unique_ptr<paste::Guard> m_pasteGuard; // the hook its keys go past (a hold's paste)
     QElapsedTimer m_pasteClock;
     QElapsedTimer m_frontClock; // since the target came to the front
-    // The target, in front all along, was made to leave it and come back
-    // (paste::reactivate): it reads the clipboard only as it comes (#432).
+    // The target reads the clipboard only as it comes to the front, and came
+    // there for this paste: made to leave it and come back (paste::reactivate),
+    // or back from the clipboard window that had it. Its keys wait longer (#432).
     bool m_reactivated = false;
+    const char* m_route = ""; // which way the paste went, for the journal (onWritten)
     QTimer m_keysTimer; // waits for the modifier keys to be let go
     QTimer m_focusTimer; // waits for the target to be in front
     // Going back to a field: it, and the text that goes in.

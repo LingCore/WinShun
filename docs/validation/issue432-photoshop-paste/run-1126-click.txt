@@ -1,0 +1,7 @@
+﻿17:54:59.779 Win+V history: 25 items; clipboard formats saved: 11
+17:54:59.854 clipboard: GREEN (marked); starting Photoshop
+17:55:21.602 Photoshop window 3873344 in front: True; document centre before: 255,255,255
+17:55:21.606 probe: f:\电脑便捷工具\build\release\WinShun.exe --activation-paste-check 3873344 (red picture 240 wide)
+17:55:30.321 probe exit : { "clipboard_in_front_after_click": true, "clipboard_picture": true, "clipboard_restored": true, "clipboard_saved_formats": 8, "hotkey_registered": true, "passed": true, "target_in_front": true, "target_in_front_after": true, "target_in_front_at_enter": true } 
+17:55:31.189 document centre after: 255,0,0 -> PASS: the RED picture chosen in the clipboard went in
+17:55:31.882 Win+V history after: 25 items (before 25)

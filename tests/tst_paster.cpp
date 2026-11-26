@@ -14,12 +14,16 @@ class PasterTest : public QObject {
     int m_keys = 0;
     int m_deactivated = 0;
     int m_activated = 0;
+    HWND m_frontInstead = nullptr; // what took the front as the root lost it
 
     static LRESULT CALLBACK rootProc(HWND hwnd, UINT message, WPARAM w, LPARAM l, UINT_PTR, DWORD_PTR context)
     {
         auto* self = reinterpret_cast<PasterTest*>(context);
-        if (message == WM_ACTIVATE)
+        if (message == WM_ACTIVATE) {
             ++(LOWORD(w) == WA_INACTIVE ? self->m_deactivated : self->m_activated);
+            if (LOWORD(w) == WA_INACTIVE)
+                self->m_frontInstead = reinterpret_cast<HWND>(l);
+        }
         return ::DefSubclassProc(hwnd, message, w, l);
     }
 
@@ -113,14 +117,20 @@ private slots:
         QVERIFY(!paste::readsClipboardOnActivation(HWND(nullptr)));
     }
     // The window in front loses it and gets it back, once, and keeps its focus.
+    // It loses it to the stand-in, which App knows is no other program in
+    // front (the clipboard stays over it, GitHub #432).
     void reactivateGivesTheFrontBack()
     {
         QVERIFY(::SetWindowSubclass(m_root, rootProc, 2, reinterpret_cast<DWORD_PTR>(this)));
         m_deactivated = m_activated = 0;
+        m_frontInstead = nullptr;
         QVERIFY(paste::reactivate(m_root));
         QTRY_VERIFY_WITH_TIMEOUT(paste::isForeground(m_root), 1000);
         QCOMPARE(m_deactivated, 1);
         QVERIFY(m_activated >= 1);
+        QVERIFY(paste::isStandIn(m_frontInstead));
+        QVERIFY(!paste::isStandIn(m_root));
+        QVERIFY(!paste::isStandIn(nullptr));
         QVERIFY(::RemoveWindowSubclass(m_root, rootProc, 2));
         QVERIFY(!paste::reactivate(nullptr));
         // Its keys still reach it.

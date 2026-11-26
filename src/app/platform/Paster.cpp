@@ -127,6 +127,11 @@ bool readsClipboardOnActivation(HWND target)
     return readsClipboardOnActivation(slash == std::wstring_view::npos ? full : full.substr(slash + 1));
 }
 
+bool isStandIn(HWND window)
+{
+    return window && window == standIn();
+}
+
 bool reactivate(HWND target)
 {
     const HWND window = standIn();

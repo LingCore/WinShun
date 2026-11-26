@@ -2,7 +2,9 @@ param(
     [Parameter(Mandatory)] [string] $WinShun,   # the WinShun.exe to check
     [Parameter(Mandatory)] [string] $OutDir,    # this run's folder (results, the probe's output)
     [string] $Photoshop = 'C:\Program Files\Adobe\Adobe Photoshop 2024\Photoshop.exe',
-    [int] $PictureWidth = 240                   # the RED picture's width in WinShun's history (2/3 as high)
+    [int] $PictureWidth = 240,                  # the RED picture's width in WinShun's history (2/3 as high)
+    [switch] $ClickClipboard,                   # click the clipboard's search field first: it takes the front (--click-first)
+    [switch] $CopyFirst                         # Ctrl+C the picture, Esc, then Photoshop's own Ctrl+V (--copy-first)
 )
 # GitHub #432 end to end: Photoshop in front holds a GREEN picture it read as it
 # came there; WinShun's clipboard is opened over it by its hotkey (keys routed,
@@ -10,7 +12,11 @@ param(
 # (WinShun.exe --probe-runtime ... --activation-paste-check <hwnd>). The colour
 # in the middle of Photoshop's document says what went in. Nothing enters
 # Windows' clipboard history or WinShun's (marked copies, WINSHUN_TEST_NO_CLIP_HISTORY);
-# the clipboard's text is put back after. Windows PowerShell 5.1, -STA.
+# the clipboard as it was is put back after. -ClickClipboard: its search field
+# is clicked first, the clipboard takes the front (the probe's --click-first).
+# -CopyFirst: Ctrl+C copies the picture instead, Esc, and Photoshop's own
+# Ctrl+V pastes (--copy-first).
+# Windows PowerShell 5.1, -STA.
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing, System.Runtime.WindowsRuntime
 Add-Type @"
@@ -46,9 +52,17 @@ function PutPicture([System.Drawing.Color]$c, [int]$w, [int]$h) {
     $d = New-Object System.Windows.Forms.DataObject; $d.SetData([System.Windows.Forms.DataFormats]::Bitmap, $bmp); Marked $d
 }
 
-$savedText = if ([System.Windows.Forms.Clipboard]::ContainsText()) { [System.Windows.Forms.Clipboard]::GetText() } else { $null }
+# The clipboard as it was, each format that can be copied (text, a picture, files): put back after.
+$saved = New-Object System.Windows.Forms.DataObject
+$savedFormats = 0
+$was = [System.Windows.Forms.Clipboard]::GetDataObject()
+if ($was) {
+    foreach ($f in $was.GetFormats($false)) {
+        try { $v = $was.GetData($f, $false); if ($null -ne $v) { $saved.SetData($f, $v); $savedFormats++ } } catch { }
+    }
+}
 $historyBefore = HistoryCount
-Say "Win+V history: $historyBefore items; clipboard text saved: $($null -ne $savedText)"
+Say "Win+V history: $historyBefore items; clipboard formats saved: $savedFormats"
 
 $docPath = Join-Path $OutDir 'canvas.png'
 $bmp = New-Object System.Drawing.Bitmap 600, 600; $g = [System.Drawing.Graphics]::FromImage($bmp); $g.Clear([System.Drawing.Color]::White); $g.Dispose(); $bmp.Save($docPath, [System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose()
@@ -75,8 +89,12 @@ try {
     $probeOut = Join-Path $OutDir 'probe'
     New-Item -ItemType Directory -Force $probeOut | Out-Null
     Say "probe: $WinShun --activation-paste-check $hwnd (red picture $PictureWidth wide)"
-    $probe = Start-Process $WinShun -ArgumentList '--probe-runtime', "`"$probeOut`"", '--activation-paste-check', ([int64]$hwnd), '--picture-width', $PictureWidth, '--settle-ms', '1500' `
+    $probeArgs = @('--probe-runtime', "`"$probeOut`"", '--activation-paste-check', ([int64]$hwnd), '--picture-width', $PictureWidth, '--settle-ms', '1500', '--renderer', 'd3d11')
+    if ($ClickClipboard) { $probeArgs += '--click-first' }
+    if ($CopyFirst) { $probeArgs += '--copy-first' }
+    $probe = Start-Process $WinShun -ArgumentList $probeArgs `
         -PassThru -RedirectStandardError (Join-Path $OutDir 'probe-stderr.txt') -RedirectStandardOutput (Join-Path $OutDir 'probe-stdout.txt')
+    $null = $probe.Handle # else ExitCode stays empty (Windows PowerShell)
     if (-not $probe.WaitForExit(90000)) { $probe.Kill(); throw 'the probe did not finish in 90 s' }
     $probeJson = Get-Content (Join-Path $probeOut 'activation-paste.json') -Raw -ErrorAction SilentlyContinue
     Say "probe exit $($probe.ExitCode): $(($probeJson -replace '\s+', ' '))"
@@ -90,9 +108,7 @@ finally {
     if ($probe -and -not $probe.HasExited) { $probe.Kill() }
     try { if ($doc) { $doc.Close(2) } } catch { Say "close: $($_.Exception.Message)" }
     if ($startedPs -and $app) { try { $app.Quit() } catch { } }
-    if ($null -ne $savedText) {
-        $d = New-Object System.Windows.Forms.DataObject; $d.SetData([System.Windows.Forms.DataFormats]::UnicodeText, $savedText); Marked $d
-    } else { [System.Windows.Forms.Clipboard]::Clear() }
+    if ($savedFormats -gt 0) { Marked $saved } else { [System.Windows.Forms.Clipboard]::Clear() }
     Start-Sleep -Milliseconds 500
     $historyAfter = HistoryCount
     Say "Win+V history after: $historyAfter items (before $historyBefore)$(if ($historyAfter -ne $historyBefore) { ' CHANGED' })"

@@ -237,6 +237,19 @@ void pressChord(UINT key = kKey)
     ::SendInput(8, keys, sizeof(INPUT));
 }
 
+// Ctrl and `key`, as the hand presses them.
+void pressCtrl(WORD key)
+{
+    INPUT keys[4] {};
+    const WORD order[] {VK_CONTROL, key};
+    for (int i = 0; i < 2; ++i) {
+        keys[i].type = keys[3 - i].type = INPUT_KEYBOARD;
+        keys[i].ki.wVk = keys[3 - i].ki.wVk = order[i];
+        keys[3 - i].ki.dwFlags = KEYEVENTF_KEYUP;
+    }
+    ::SendInput(4, keys, sizeof(INPUT));
+}
+
 void pressKey(WORD key)
 {
     INPUT keys[2] {};
@@ -847,13 +860,23 @@ bool seedActivationPastePicture(const QString& clipboardFolder, int width)
     return added;
 }
 
-// --probe-runtime <folder> --activation-paste-check <window> (WINSHUN_TEST_NO_CLIP_HISTORY set)
+namespace {
+bool clickAt(HWND window, POINT at);
+} // namespace
+
+// --probe-runtime <folder> --activation-paste-check <window> [--click-first | --copy-first] (WINSHUN_TEST_NO_CLIP_HISTORY set)
 // The production App beside the Win顺 that runs, its clipboard's hotkey set to
 // Ctrl+Alt+Shift+F21 (free before it started, its own after), one red picture
 // in its history (seedActivationPastePicture). <window> (a number, the HWND)
 // is brought to the front, the chord pressed for real (SendInput, only while
 // <window> is in front): the clipboard opens over it without the focus, its
 // keys routed, the way it opens over any program. Enter pastes the picture.
+// --click-first: its search field is clicked for real before, as a user who
+// clicks in it does: the clipboard takes the front, <window> gets it back
+// with the paste (GitHub #432, again: pasted at once, the stale picture).
+// --copy-first: Ctrl+C copies the picture instead, Esc puts the clipboard
+// away, and the program's own Ctrl+V pastes it (the program never left the
+// front: it pasted what it had read before, GitHub #432 again).
 // Passed here: the keys went while <window> was in front, and it is in front
 // after. Whether the red picture is what went in is the harness's to read off
 // the program (its document's colour), against the picture the program read
@@ -905,8 +928,43 @@ bool checkActivationPaste(App&, const QStringList& args, const QDir& output)
     const bool frontAtEnter = inFront(target);
     report.insert(u"target_in_front_at_enter"_s, frontAtEnter);
     check(frontAtEnter, "the window lost the front as the clipboard opened");
-    if (ok && inFront(target))
+    QQuickWindow* window = nullptr;
+    for (QWindow* candidate : QGuiApplication::topLevelWindows()) {
+        if (candidate->isVisible() && QByteArray(candidate->metaObject()->className()).startsWith("ClipboardWindow_"))
+            window = qobject_cast<QQuickWindow*>(candidate);
+    }
+    auto* field = window ? window->findChild<QQuickItem*>(u"clipboardSearchField"_s) : nullptr;
+    if (ok)
+        check(window && field, "the clipboard's window did not open");
+    if (ok) {
+        const auto hwnd = reinterpret_cast<HWND>(window->winId());
+        if (args.contains(u"--click-first"_s)) {
+            const QPointF middle = field->mapToScene(QPointF(field->width() / 2, field->height() / 2)) * window->devicePixelRatio();
+            POINT point {qRound(middle.x()), qRound(middle.y())};
+            ::ClientToScreen(hwnd, &point);
+            check(clickAt(hwnd, point), "the search field is not under the pointer (no click made)");
+            pump(500);
+            const bool clipboardFront = ::GetForegroundWindow() == hwnd;
+            report.insert(u"clipboard_in_front_after_click"_s, clipboardFront);
+            check(clipboardFront, "the clipboard did not take the front as its field was clicked");
+        }
+    }
+    if (ok && args.contains(u"--copy-first"_s)) {
+        pressCtrl('C'); // the entry copied; the clipboard stays
+        pump(700);
+        const bool stayed = window && window->isVisible();
+        report.insert(u"clipboard_open_after_copy"_s, stayed);
+        check(stayed, "the clipboard went as the entry was copied");
+        pressKey(VK_ESCAPE);
+        pump(600);
+        const bool frontAtPaste = inFront(target);
+        report.insert(u"target_in_front_at_paste"_s, frontAtPaste);
+        check(frontAtPaste, "the window is not in front after the clipboard went (no paste made)");
+        if (ok)
+            pressCtrl('V'); // the program's own paste, as the user's
+    } else if (ok) {
         pressKey(VK_RETURN);
+    }
     pump(2500); // the paste: the window back in front, a moment, the keys
     report.insert(u"target_in_front_after"_s, inFront(target));
     const bool picture = openClipboard() && (::IsClipboardFormatAvailable(CF_DIB) || ::IsClipboardFormatAvailable(CF_DIBV5));

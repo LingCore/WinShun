@@ -31,3 +31,22 @@ WinShun.exe --probe-runtime <dir> --activation-paste-check <Photoshop 窗口句�
 | [run-big.txt](run-big.txt)：修复后，红图 4000×2666 | 中心 `255,0,0` |
 
 三次 Win+V 历史条数前后都是 9 条。另外：`tst_paster` 8/8 通过（新增“按文件名认程序”“reactivate 让窗口失焦一次再拿回前台、按键仍能到达”两项）；`--paste-plain-check`（同文件里的 #408 检查）通过。
+
+## 0.45 之后的反馈（2026-11-26）
+
+报告人说 0.45 里“截了几张图，打开剪贴板依次往 PS 里复制”，贴出的仍是最后一张。用上面的脚本在 Photoshop 2024 上把剪贴板的几种用法都试了一遍：
+
+- 按 `Enter` 直接粘贴：贴对。把回前台后的等待临时改成 0、40、80 ms 也都贴对（本机），150 ms 是给慢机器留的余量。
+- 先点一下搜索框（剪贴板拿到焦点）再按 `Enter`：贴对。这条路原来只等 60 ms，现在同样等 150 ms。
+- **在条目上按 `Ctrl+C`（或右键“复制”），`Esc` 关掉剪贴板，再自己在 Photoshop 里按 `Ctrl+V`：贴出旧图**，复现报告。复制不经过粘贴流程，Photoshop 一直在前台，没有重新读剪贴板。
+
+改法：复制完成时，如果前台是 Photoshop / Illustrator，就照粘贴时一样让它重新激活一次（`Clipboard::onWritten`）。重新激活时前台短暂落到替身窗口，`App::routedForeground` 按 `paste::isStandIn` 忽略它，剪贴板窗口不会因此关掉。诊断包里的 `clipboard-paste` 记录加了走的哪条路（`route`）、目标是否属于这类程序（`reads_on_activation`）和在前台多久后按的键（`front_ms`），复制后的重新激活记为 `clipboard-copy-reactivated`。
+
+| 运行 | 结果 |
+|---|---|
+| [run-1126-copy-control.txt](run-1126-copy-control.txt)：`-CopyFirst`，复制后不重新激活（临时开关，已删） | 中心 `0,255,0`：贴出 Photoshop 先前读到的绿图 |
+| [run-1126-copy-fixed.txt](run-1126-copy-fixed.txt)：`-CopyFirst`，修复后 | 中心 `255,0,0`，复制后剪贴板窗口仍开着 |
+| [run-1126-enter.txt](run-1126-enter.txt)：直接 `Enter` | 中心 `255,0,0` |
+| [run-1126-click.txt](run-1126-click.txt)：`-ClickClipboard`，先点搜索框 | 中心 `255,0,0` |
+
+脚本这次的改动：探针带 `--renderer d3d11`（不带时探针是软件渲染的分层窗口，剪贴板空白处会被点穿，点搜索框会点到 Photoshop 上，和真实程序不同）；剪贴板原有内容按全部格式保存和放回（以前只放回文字）；新增 `-ClickClipboard`、`-CopyFirst`。另外 `tst_paster`（加了“重新激活时前台交给的是替身窗口”）、`tst_clipboard` 通过，`--field-focus-check --renderer d3d11` 通过。
