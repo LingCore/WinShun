@@ -885,6 +885,20 @@ add_test(NAME tst_formula COMMAND tst_formula -o -,txt)
 set_tests_properties(tst_formula PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# 公式识别's reader (FormulaReader): the picture made as Pillow makes it, and
+# read as Python read it with the model in formula-model\ here (or where
+# WINSHUN_FORMULA_MODEL says; not downloaded by the build, ~120 MB).
+qt_add_executable(tst_formulareader tst_formulareader.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/FormulaReader.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/OcrFiles.cpp)
+target_include_directories(tst_formulareader PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_link_libraries(tst_formulareader PRIVATE winshun_options Qt6::Gui Qt6::Test wsonnx)
+target_compile_definitions(tst_formulareader PRIVATE
+    WINSHUN_FORMULA_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data/formula" WINSHUN_FORMULA_MODEL_DIR="${CMAKE_BINARY_DIR}/formula-model")
+set_target_properties(tst_formulareader PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_formulareader COMMAND tst_formulareader -o -,txt)
+set_tests_properties(tst_formulareader PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # Stage 7 (src/capture: PinTools, CaptureTools, QrCode): a pin's turns,
 # collapsed forms, corner drags and picked text, the colour formats, the
 # delayed capture's countdown, Shift+R's monitor, the cursor drawn into a
@@ -1074,7 +1088,7 @@ qt_add_executable(tst_cliplifecycle tst_cliplifecycle.cpp
     ${PROJECT_SOURCE_DIR}/src/app/ClipImage.cpp)
 target_include_directories(tst_cliplifecycle PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_link_libraries(tst_cliplifecycle PRIVATE winshun_options wscore wscapture Qt6::Gui Qt6::Test
-    onnxruntime_headers windowsapp user32 gdi32 shell32 ole32 version)
+    wsonnx windowsapp user32 gdi32 shell32 ole32 version)
 set_target_properties(tst_cliplifecycle PROPERTIES WIN32_EXECUTABLE FALSE)
 add_test(NAME tst_cliplifecycle COMMAND tst_cliplifecycle -o -,txt
     -o "${CMAKE_CURRENT_BINARY_DIR}/cliplifecycle.txt,txt")
@@ -1371,7 +1385,7 @@ qt_add_executable(tst_ocr tst_ocr.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/Pad
     ${PROJECT_SOURCE_DIR}/src/capture/CaptureOcr.cpp)
 target_include_directories(tst_ocr PRIVATE ${PROJECT_SOURCE_DIR}/src/app/platform)
 target_include_directories(tst_ocr PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
-target_link_libraries(tst_ocr PRIVATE winshun_options wscapture Qt6::Qml Qt6::Test onnxruntime_headers)
+target_link_libraries(tst_ocr PRIVATE winshun_options wscapture Qt6::Qml Qt6::Test wsonnx)
 set_target_properties(tst_ocr PROPERTIES QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
 target_compile_definitions(tst_ocr PRIVATE WINSHUN_TABLE_MODEL="${WS_TABLE_MODEL}") # tableReadWithModel
 
@@ -1385,11 +1399,12 @@ endif()
 qt_add_executable(tst_ocrpackage tst_ocrpackage.cpp
     ${PROJECT_SOURCE_DIR}/src/capture/CaptureOcr.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/OcrPackage.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/FormulaModel.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/OcrFiles.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/PaddleOcr.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/OcrTable.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/Http.cpp)
 target_include_directories(tst_ocrpackage PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
-target_link_libraries(tst_ocrpackage PRIVATE winshun_options wscore wscapture miniz Qt6::Gui Qt6::Qml Qt6::Network Qt6::Test onnxruntime_headers winhttp)
+target_link_libraries(tst_ocrpackage PRIVATE winshun_options wscore wscapture miniz Qt6::Gui Qt6::Qml Qt6::Network Qt6::Test wsonnx winhttp)
 set_target_properties(tst_ocrpackage PROPERTIES QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
 set_source_files_properties("${PROJECT_SOURCE_DIR}/resources/ocr/package.json" PROPERTIES QT_RESOURCE_ALIAS ocr.json)
 set_source_files_properties("${PROJECT_SOURCE_DIR}/third_party/ppocr/LICENSE" PROPERTIES QT_RESOURCE_ALIAS paddleocr-license.txt)

@@ -7224,6 +7224,11 @@ Window {
                     ocrModel: window.editor.ocrPackage.preciseModel
                 }
 
+                FormulaModelRow {
+                    shown: window.editor.screenshotInstalled || formulaModel.installed
+                    formulaModel: window.editor.ocrPackage.formulaModel
+                }
+
                 SettingRow {
                     // The screenshots the screenshot plugin (winshun.capture)
                     // put in the history, listed by a word in the search box

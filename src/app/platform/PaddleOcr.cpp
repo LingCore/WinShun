@@ -1,10 +1,7 @@
 #include "PaddleOcr.h"
 #include "OcrFiles.h"
 #include "OcrTable.h"
-
-// The API comes from the DLL loaded here (Ort::InitApi), not from linking it.
-#define ORT_API_MANUAL_INIT
-#include <onnxruntime_cxx_api.h>
+#include "OnnxRuntime.h"
 
 #include <QDebug>
 #include <QDir>
@@ -12,8 +9,6 @@
 #include <QPainter>
 #include <QPointF>
 #include <QTransform>
-
-#include <windows.h>
 
 #include <algorithm>
 #include <array>
@@ -95,7 +90,6 @@ QString filePath(const QString& folder, const wchar_t* name, bool model)
     return QDir::toNativeSeparators(folder + (model ? u"/ocr/"_s : u"/"_s) + QString::fromWCharArray(name));
 }
 
-// ONNX Runtime from the resolved component/legacy folder, once.
 std::atomic<PaddleOcr::Trace> g_trace {nullptr};
 
 // A step for the OCR test (PaddleOcr::setTrace), made only when it listens.
@@ -104,80 +98,6 @@ void trace(Make&& make)
 {
     if (const PaddleOcr::Trace to = g_trace.load(std::memory_order_relaxed))
         to(make());
-}
-
-const OrtApi* loadApi(const QString& folder, QString* error)
-{
-    static std::mutex mutex;
-    static const OrtApi* api = nullptr;
-    static QString failure;
-    const std::lock_guard lock(mutex);
-    if (api)
-        return api;
-    if (failure.isEmpty()) {
-        const QString dll = filePath(folder, L"onnxruntime.dll", false);
-        HMODULE module = ::LoadLibraryExW(reinterpret_cast<const wchar_t*>(dll.utf16()), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
-        using GetApiBase = const OrtApiBase*(ORT_API_CALL*)();
-        const auto getBase = module ? reinterpret_cast<GetApiBase>(::GetProcAddress(module, "OrtGetApiBase")) : nullptr;
-        const OrtApiBase* base = getBase ? getBase() : nullptr;
-        api = base ? base->GetApi(ORT_API_VERSION) : nullptr;
-        if (api)
-            Ort::InitApi(api);
-        else
-            failure = module ? u"onnxruntime.dll is not version %1 or later"_s.arg(ORT_API_VERSION)
-                             : u"onnxruntime.dll did not load (error %1)"_s.arg(::GetLastError());
-    }
-    if (!api && error)
-        *error = failure;
-    return api;
-}
-
-// ONNX Runtime's threads, below normal priority as the recognizer's own.
-struct ThreadStart {
-    OrtThreadWorkerFn work;
-    void* param;
-};
-
-DWORD WINAPI threadMain(void* p)
-{
-    const ThreadStart start = *static_cast<ThreadStart*>(p);
-    delete static_cast<ThreadStart*>(p);
-    start.work(start.param);
-    return 0;
-}
-
-OrtCustomThreadHandle createThread(void*, OrtThreadWorkerFn work, void* param)
-{
-    auto* start = new ThreadStart {work, param};
-    HANDLE thread = ::CreateThread(nullptr, 0, threadMain, start, CREATE_SUSPENDED, nullptr);
-    if (!thread) {
-        delete start;
-        return nullptr;
-    }
-    ::SetThreadPriority(thread, THREAD_PRIORITY_BELOW_NORMAL);
-    ::ResumeThread(thread);
-    return reinterpret_cast<OrtCustomThreadHandle>(thread);
-}
-
-void joinThread(OrtCustomThreadHandle handle)
-{
-    HANDLE thread = const_cast<HANDLE>(reinterpret_cast<const void*>(handle));
-    ::WaitForSingleObject(thread, INFINITE);
-    ::CloseHandle(thread);
-}
-
-// How every model is run: on the readers' shared threads.
-Ort::SessionOptions sessionOptions()
-{
-    Ort::SessionOptions options;
-    options.DisablePerSessionThreads()
-        .SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL)
-        .DisableCpuMemArena() // memory back after each picture
-        // A planned block per input size is ~135 MB more than the
-        // detection's own peak when a tall picture's strips repeat a size
-        // (measured on 2000x4000..3200x12500), and no faster.
-        .DisableMemPattern();
-    return options;
 }
 
 double distance(QPointF a, QPointF b)
@@ -807,32 +727,20 @@ std::unique_ptr<PaddleOcr> PaddleOcr::load(const QString& programFolder, int thr
             *error = u"the text recognition files are missing"_s;
         return nullptr;
     }
-    if (!loadApi(resolvedFolder, error))
+    if (!onnx::load(resolvedFolder, error))
         return nullptr;
     std::unique_ptr<PaddleOcr> ocr(new PaddleOcr);
     try {
         auto impl = std::make_unique<Impl>();
-        // One set of threads for both models, waiting rather than spinning.
-        Ort::ThreadingOptions threading;
-        threading.SetGlobalIntraOpNumThreads(std::max(1, threads))
-            .SetGlobalInterOpNumThreads(1)
-            .SetGlobalSpinControl(0)
-            .SetGlobalCustomCreateThreadFn(createThread)
-            .SetGlobalCustomJoinThreadFn(joinThread);
-        impl->env = Ort::Env(threading, ORT_LOGGING_LEVEL_ERROR, "WinShun");
-        const Ort::SessionOptions options = sessionOptions();
-        const auto open = [&](const wchar_t* name) {
-            const QString file = filePath(resolvedFolder, name, true);
-            return Ort::Session(impl->env, reinterpret_cast<const wchar_t*>(file.utf16()), options);
-        };
-        impl->det = open(kDetModel);
+        impl->env = onnx::environment(threads);
+        const Ort::SessionOptions options = onnx::sessionOptions();
+        impl->det = onnx::session(impl->env, filePath(resolvedFolder, kDetModel, true), options);
         Ort::AllocatorWithDefaultOptions allocator;
         // A reading model and the characters it reads, one per line: in the
         // model, else in the dictionary beside it; around them "none" first
         // and the space last. Throws when either is missing.
         const auto reading = [&](const QString& file, const QString& dictionary) {
-            const QString native = QDir::toNativeSeparators(file);
-            Ort::Session session(impl->env, reinterpret_cast<const wchar_t*>(native.utf16()), options);
+            Ort::Session session = onnx::session(impl->env, file, options);
             QStringList characters;
             if (const Ort::AllocatedStringPtr keys = session.GetModelMetadata().LookupCustomMetadataMapAllocated("character", allocator)) {
                 characters = QString::fromUtf8(keys.get()).split(u'\n');
@@ -908,12 +816,12 @@ bool PaddleOcr::Impl::loadTable()
     QString file;
     {
         const std::lock_guard lock(g_tableModelMutex);
-        file = QDir::toNativeSeparators(g_tableModel);
+        file = g_tableModel;
     }
     if (file.isEmpty() || !QFile::exists(file))
         return false;
     try {
-        Ort::Session session(env, reinterpret_cast<const wchar_t*>(file.utf16()), sessionOptions());
+        Ort::Session session = onnx::session(env, file, onnx::sessionOptions());
         Ort::AllocatorWithDefaultOptions allocator;
         const Ort::AllocatedStringPtr words = session.GetModelMetadata().LookupCustomMetadataMapAllocated("character", allocator);
         if (!words || session.GetInputCount() != 1 || session.GetOutputCount() != 2)

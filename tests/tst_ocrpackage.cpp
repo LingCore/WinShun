@@ -1,3 +1,4 @@
+#include "platform/FormulaModel.h"
 #include "platform/OcrFiles.h"
 #include "platform/OcrPackage.h"
 #include "platform/PaddleOcr.h"
@@ -22,6 +23,8 @@
 #include <QtTest>
 
 #include <miniz.h>
+
+#include "TestJunction.h"
 
 using namespace Qt::StringLiterals;
 
@@ -57,6 +60,43 @@ ws::ocr::Package smallPackage()
     for (const auto& [path, bytes] : smallFiles())
         spec.files.append({path, QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex(), bytes.size()});
     return spec;
+}
+
+// The formula model's three files, small: each its name fifty times.
+QByteArray formulaBytes(const QString& name)
+{
+    return name.toUtf8().repeated(50);
+}
+
+ws::formula::Spec smallFormulaSpec()
+{
+    ws::formula::Spec spec {QString(ws::ocr::kFormulaVersion), {u"https://a.example/m/"_s, u"https://b.example/m/"_s}, {}};
+    for (const char16_t* name : ws::ocr::kFormulaFiles) {
+        const QByteArray bytes = formulaBytes(QString(name));
+        spec.files.append({QString(name), QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex(), bytes.size()});
+    }
+    return spec;
+}
+
+// Serves the files as published, but for what `serve` changes: a status
+// other than 200, or bytes other than the file's.
+ws::formula::Fetcher formulaWeb(QStringList* asked, std::function<void(const QString& url, int* status, QByteArray* body)> serve = {})
+{
+    return [asked, serve](const QString& url, qint64 maxBytes, const ws::http::Sink& sink) {
+        if (asked)
+            asked->append(url);
+        ws::http::Response response {200, {}, 0};
+        QByteArray body = formulaBytes(url.section(u'/', -1));
+        if (serve)
+            serve(url, &response.status, &body);
+        if (response.status != 200)
+            return response;
+        if (body.size() > maxBytes)
+            response.error = ERROR_FILE_TOO_LARGE;
+        else if (!sink(body.constData(), body.size()))
+            response.error = ERROR_CANCELLED;
+        return response;
+    };
 }
 
 int readComponent(const QString& root)
@@ -462,6 +502,140 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(!row.busy(), 15000);
         QVERIFY(!row.installed());
         QVERIFY(row.status().contains(QString(ws::ocr::kPreciseModel)));
+    }
+
+    // 公式识别's model: each file from the first source that has it as
+    // published, the next where one is missing or wrong; found by its
+    // receipt; nothing staged left behind; and from a folder of files
+    // fetched by hand.
+    void formulaModelIsFetchedWholeFromTheFirstGoodSource()
+    {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const QString beforeRoot = ws::ocr::componentsRoot();
+        const auto restore = qScopeGuard([&] { ws::ocr::setComponentsRoot(beforeRoot); });
+        ws::ocr::setComponentsRoot(temporary.filePath(u"用户 组件"_s));
+        const ws::formula::Spec spec = smallFormulaSpec();
+        const QString a = spec.sources[0];
+        const QString b = spec.sources[1];
+        const QString encoder = QString(ws::ocr::kFormulaFiles[0]);
+        const QString decoder = QString(ws::ocr::kFormulaFiles[1]);
+        const QString tokenizer = QString(ws::ocr::kFormulaFiles[2]);
+        std::atomic_bool cancelled {false};
+        QStringList asked;
+        // The first source has no encoder and another decoder.
+        const auto web = formulaWeb(&asked, [&](const QString& url, int* status, QByteArray* body) {
+            if (url == a + encoder)
+                *status = 404;
+            else if (url == a + decoder)
+                (*body)[0] = 'X';
+        });
+        qint64 received = 0;
+        QCOMPARE(ws::formula::install(spec, spec.sources, web, [&](qint64 bytes) { received = bytes; }, cancelled), QString());
+        QCOMPARE(received, spec.size());
+        QCOMPARE(asked, (QStringList {a + encoder, b + encoder, a + decoder, b + decoder, a + tokenizer}));
+        const QString installed = ws::ocr::formulaModel();
+        QCOMPARE(installed, QDir(ws::ocr::formulaFolder()).absolutePath());
+        for (const ws::formula::File& file : spec.files) {
+            QFile in(QDir(installed).filePath(file.name));
+            QVERIFY(in.open(QIODevice::ReadOnly));
+            QCOMPARE(in.readAll(), formulaBytes(file.name));
+        }
+        QCOMPARE(QDir(ws::ocr::componentsRoot()).entryList(QDir::Dirs | QDir::NoDotAndDotDot), QStringList {spec.version});
+        QCOMPARE(ws::formula::install(spec, spec.sources, web, {}, cancelled), QString()); // over itself
+        QCOMPARE(ws::formula::remove(spec), QString());
+        QVERIFY(ws::ocr::formulaModel().isEmpty());
+        QVERIFY(!QFileInfo::exists(ws::ocr::formulaFolder()));
+        QCOMPARE(ws::formula::remove(spec), QString()); // nothing there: nothing to say
+
+        // Not as published anywhere, no network, cancelled: nothing installed, nothing left.
+        const auto wrong = formulaWeb(nullptr, [](const QString&, int*, QByteArray* body) { (*body)[0] = 'X'; });
+        QVERIFY(ws::formula::install(spec, spec.sources, wrong, {}, cancelled).contains(u"校验"));
+        const ws::formula::Fetcher offline = [](const QString&, qint64, const ws::http::Sink&) {
+            return ws::http::Response {0, {}, 12029}; // ERROR_WINHTTP_CANNOT_CONNECT
+        };
+        QVERIFY(ws::formula::install(spec, spec.sources, offline, {}, cancelled).contains(u"网络"));
+        cancelled = true;
+        QVERIFY(ws::formula::install(spec, spec.sources, web, {}, cancelled).contains(u"取消"));
+        cancelled = false;
+        QVERIFY(ws::ocr::formulaModel().isEmpty());
+        QCOMPARE(QDir(ws::ocr::componentsRoot()).entryList(QDir::Dirs | QDir::NoDotAndDotDot), QStringList());
+
+        // A folder with two of the three: which are needed is said.
+        const QString byHand = temporary.filePath(u"下载的 模型"_s);
+        QVERIFY(QDir().mkpath(byHand));
+        const auto save = [&](const QString& name, const QByteArray& bytes) {
+            QFile out(QDir(byHand).filePath(name));
+            return out.open(QIODevice::WriteOnly) && out.write(bytes) == bytes.size();
+        };
+        QVERIFY(save(encoder, formulaBytes(encoder)) && save(decoder, formulaBytes(decoder)));
+        QVERIFY(ws::formula::install(spec, {byHand + u'/'}, {}, {}, cancelled).contains(tokenizer));
+        QVERIFY(save(tokenizer, formulaBytes(tokenizer)));
+        QCOMPARE(ws::formula::install(spec, {byHand + u'/'}, {}, {}, cancelled), QString());
+        QVERIFY(!ws::ocr::formulaModel().isEmpty());
+    }
+
+    // Removing the model takes its own files and nothing a link in its
+    // folder leads to: the folder stays, out of use, and is said to.
+    void formulaModelRemovalLeavesLinksAlone()
+    {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const QString beforeRoot = ws::ocr::componentsRoot();
+        const auto restore = qScopeGuard([&] { ws::ocr::setComponentsRoot(beforeRoot); });
+        ws::ocr::setComponentsRoot(temporary.filePath(u"组件"_s));
+        const ws::formula::Spec spec = smallFormulaSpec();
+        std::atomic_bool cancelled {false};
+        QCOMPARE(ws::formula::install(spec, spec.sources, formulaWeb(nullptr), {}, cancelled), QString());
+        const QString elsewhere = temporary.filePath(u"别处"_s);
+        QVERIFY(QDir().mkpath(elsewhere));
+        QFile kept(elsewhere + u"/留着.txt"_s);
+        QVERIFY(kept.open(QIODevice::WriteOnly) && kept.write("kept") == 4);
+        kept.close();
+        const QString link = QDir(ws::ocr::formulaFolder()).filePath(u"链接"_s);
+        const auto unlink = qScopeGuard([&] { removeLinkOnly(link); }); // before the temporary folder goes
+        QVERIFY(makeJunction(link, elsewhere));
+        QVERIFY(!ws::formula::remove(spec).isEmpty());
+        QVERIFY(ws::ocr::formulaModel().isEmpty()); // its receipt gone: not used
+        QVERIFY(!ws::formula::install(spec, spec.sources, formulaWeb(nullptr), {}, cancelled).isEmpty()); // not over it either
+        QVERIFY(QFileInfo::exists(elsewhere + u"/留着.txt"_s));
+    }
+
+    // The settings' row and the screenshot plugin's download: the OCR package
+    // (ONNX Runtime) fetched first when it is not there, then the model.
+    void formulaModelFetchesTheRuntimeFirst()
+    {
+        const auto files = realFiles();
+        if (files.isEmpty())
+            QSKIP("the OCR package's files are not in the build folder");
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const QString beforeRoot = ws::ocr::componentsRoot();
+        const auto restore = qScopeGuard([&] { ws::ocr::setComponentsRoot(beforeRoot); });
+        ws::ocr::setComponentsRoot(temporary.filePath(u"组件"_s));
+        const QByteArray bytes = archive(files);
+        const ws::download::Fetcher packageWeb = [bytes](const QString&, qint64, const ws::download::Progress& progress) {
+            if (progress)
+                progress(bytes.size());
+            return ws::download::Fetched {200, bytes, 0};
+        };
+        const auto package = std::make_unique<ws::OcrPackage>(nullptr, temporary.filePath(u"no-bundled-copy"_s), packageWeb);
+        QVERIFY(!package->available());
+        auto* row = new ws::FormulaModel(package.get(), formulaWeb(nullptr), smallFormulaSpec()); // the package's child
+        QVERIFY(!row->installed());
+        QCOMPARE(row->state().value(u"installed"_s).toBool(true), false);
+        row->download();
+        QVERIFY(row->busy());
+        QVERIFY(package->busy());
+        QTRY_VERIFY_WITH_TIMEOUT(!row->busy(), 30000);
+        QVERIFY2(row->installed(), qUtf8Printable(row->status()));
+        QVERIFY(package->available());
+        QCOMPARE(row->progress(), 1.0);
+        QVERIFY(row->state().value(u"installed"_s).toBool());
+        QTRY_VERIFY_WITH_TIMEOUT(package->formulaModel()->installed(), 5000); // the program's own row, by the folder's change
+        row->remove();
+        QVERIFY(!row->installed());
+        QVERIFY2(row->status().isEmpty(), qUtf8Printable(row->status()));
     }
 
     // The real one: without it the tiny model reads no kana, with it Japanese

@@ -81,6 +81,25 @@ OwnModel ownModel()
         u"own-%1-%2"_s.arg(name).arg(model.size())};
 }
 
+QString formulaFolder()
+{
+    return QDir(componentsRoot()).filePath(QString(kFormulaVersion));
+}
+
+QString formulaModel()
+{
+    const QString path = formulaFolder();
+    QFile receipt(path + u"/.ready"_s);
+    if (!receipt.open(QIODevice::ReadOnly) || receipt.read(128) != QString(kFormulaVersion).toUtf8())
+        return {};
+    for (const char16_t* name : kFormulaFiles) {
+        const QFileInfo file(QDir(path).filePath(QString(name)));
+        if (!file.isFile() || file.size() == 0)
+            return {};
+    }
+    return QDir(path).absolutePath();
+}
+
 QString folder(const QString& programFolder)
 {
     if (const QString installed = installedFolder(); !installed.isEmpty())

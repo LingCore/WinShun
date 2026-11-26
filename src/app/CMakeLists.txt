@@ -17,6 +17,11 @@ endif()
 add_library(onnxruntime_headers INTERFACE IMPORTED GLOBAL)
 set_target_properties(onnxruntime_headers PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${ORT_DIR}/include")
 file(COPY "${ORT_DIR}/lib/onnxruntime.dll" DESTINATION "${CMAKE_BINARY_DIR}")
+# The DLL's loading, its threads and how a model is run (platform/OnnxRuntime),
+# the same for every reader of a model: the words in pictures, formulas.
+add_library(wsonnx STATIC platform/OnnxRuntime.cpp platform/OnnxRuntime.h)
+target_link_libraries(wsonnx PUBLIC winshun_options Qt6::Core onnxruntime_headers)
+set_target_properties(wsonnx PROPERTIES AUTOMOC OFF AUTOUIC OFF)
 
 set(ocr_models
     "det/PP-OCRv6_det_tiny.onnx|f42c0fbd294d95eac1a550e131b277dac97462c8025fa4b6c3cec1b7894bd3d5"
@@ -293,6 +298,7 @@ set(qml_files
     qml/PluginsSection.qml
     qml/OcrPackageRow.qml
     qml/OcrModelRow.qml
+    qml/FormulaModelRow.qml
     qml/PluginCard.qml
     qml/PluginTile.qml
     qml/PluginReport.qml
@@ -407,6 +413,7 @@ qt_add_qml_module(WinShun
         PluginUpdates.cpp PluginUpdates.h # the installed plugins kept up to date in the background
         MovedPlugins.cpp MovedPlugins.h # the plugins that came with 0.16.0, from the library now (GitHub #138)
         platform/OcrPackage.cpp platform/OcrPackage.h
+        platform/FormulaModel.cpp platform/FormulaModel.h # 公式识别's model
         ResultModel.cpp ResultModel.h
         FolderSizes.cpp FolderSizes.h
         PanelColumns.cpp PanelColumns.h
@@ -497,7 +504,7 @@ target_link_libraries(WinShun PRIVATE
     credui iphlpapi mpr psapi setupapi userenv wevtapi windowscodecs
     mfplat mfreadwrite mfuuid delayimp dbghelp
     windowsapp # TextRecognizer: Windows.Media.Ocr, through C++/WinRT from the Windows SDK
-    onnxruntime_headers) # PaddleOcr
+    wsonnx) # PaddleOcr
 target_link_libraries(WinShun PRIVATE advapi32 userenv miniz zstd_decompress comdlg32 gdi32) # native report printing; delta updates
 target_link_libraries(WinShun PRIVATE powrprof) # platform/Power: SetSuspendState, IsPwrHibernateAllowed
 # The execution level (asInvoker, since 0.8.0) comes from app.manifest alone,
