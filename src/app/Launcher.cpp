@@ -2146,11 +2146,11 @@ void Launcher::setNumberHints(const QString& hints)
     emit resultOptionsChanged();
 }
 
-void Launcher::setRowDeleteButton(bool shown)
+void Launcher::setRowActions(const QStringList& order)
 {
-    if (m_rowDeleteButton == shown)
+    if (m_rowActions == order)
         return;
-    m_rowDeleteButton = shown;
+    m_rowActions = order;
     emit resultOptionsChanged();
 }
 

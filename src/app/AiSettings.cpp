@@ -749,10 +749,13 @@ std::vector<Entry> buildCatalog()
     add(boolean({"Results/Thumbnails", QT_TRANSLATE_NOOP("AiSettings", "显示图片缩略图"), "results", 1,
                     "A picture, video or PDF shows its thumbnail as its icon."},
         &Settings::thumbnails));
-    add(boolean({"Results/DeleteButton", QT_TRANSLATE_NOOP("AiSettings", "显示删除按钮"), "results", 1,
-                    "A file's or folder's row has a delete button (clicked twice, to the Recycle Bin) among its "
-                    "buttons. Off: none; the right-click menu still has Move to Recycle Bin."},
-        &Settings::rowDeleteButton));
+    add(list({"Results/RowActions", QT_TRANSLATE_NOOP("AiSettings", "结果行按钮"), "results", 1,
+                 "The buttons at the right end of a result's row, in the order they show, left to right: admin (run as "
+                 "administrator), reveal (open location), terminal, copy (the file), copyPath, delete (clicked twice, to "
+                 "the Recycle Bin), preview, copyName, favorite (add to or remove from the favorites). The first six "
+                 "are the default. A button shows only on rows it applies to; one left out is still in the right-click "
+                 "menu. An empty list: no buttons."},
+        &Settings::rowActions, ListKind::RowActions));
     add(choice({"Results/PreviewWith", QT_TRANSLATE_NOOP("AiSettings", "预览文件"), "results", 1,
                    "Which viewer the result preview uses."},
         &Settings::previewWith,
@@ -1237,6 +1240,17 @@ QStringList normalizedItems(ListKind kind, const QString& raw, QString& error)
             error = u"'%1' is not a file name; write one like ~$* or Thumbs.db, without a folder."_s.arg(raw);
         return patterns;
     }
+    case ListKind::RowActions: {
+        const QString id = rowactions::known(raw);
+        if (id.isEmpty()) {
+            QStringList all;
+            for (const QStringView known : rowactions::kKnown)
+                all.append(known.toString());
+            error = u"'%1' is not a row button; the buttons are %2."_s.arg(raw, all.join(u", "_s));
+            return {};
+        }
+        return {id};
+    }
     case ListKind::Names: {
         const QString name = Settings::excludedFolderName(raw);
         if (name.isEmpty()) {
@@ -1703,6 +1717,8 @@ QString listItemsName(ListKind k)
         return u"full folder paths such as D:\\Games"_s;
     case ListKind::LocalFolders:
         return u"full paths of folders on this PC's own disks such as D:\\Work (no network paths)"_s;
+    case ListKind::RowActions:
+        return u"row button names (admin, reveal, terminal, copy, copyPath, delete, preview, copyName, favorite), in the order they show"_s;
     }
     return {};
 }

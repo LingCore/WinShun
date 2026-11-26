@@ -1115,8 +1115,8 @@
         <translation>Scope tabs</translation>
     </message>
     <message>
-        <source>显示删除按钮</source>
-        <translation>Show the delete button</translation>
+        <source>结果行按钮</source>
+        <translation>Row buttons</translation>
     </message>
     <message>
         <source>内置预览</source>
@@ -5472,10 +5472,113 @@ Send suggestions and problems on our website</translation>
     </message>
 </context>
 <context>
+    <name>RowActionsEditor</name>
+    <message>
+        <source>管理员运行</source>
+        <translation>Run as admin</translation>
+    </message>
+    <message>
+        <source>以管理员身份运行（只在程序上出现）</source>
+        <translation>Run as administrator (on programs only)</translation>
+    </message>
+    <message>
+        <source>打开位置</source>
+        <translation>Open location</translation>
+    </message>
+    <message>
+        <source>打开所在位置</source>
+        <translation>Open file location</translation>
+    </message>
+    <message>
+        <source>终端</source>
+        <translation>Terminal</translation>
+    </message>
+    <message>
+        <source>在终端中打开，Shift+点击以管理员身份</source>
+        <translation>Open in Terminal; Shift+click as administrator</translation>
+    </message>
+    <message>
+        <source>复制</source>
+        <translation>Copy</translation>
+    </message>
+    <message>
+        <source>复制文件或文件夹，可在资源管理器中粘贴</source>
+        <translation>Copy the file or folder, to paste in File Explorer</translation>
+    </message>
+    <message>
+        <source>复制路径</source>
+        <translation>Copy path</translation>
+    </message>
+    <message>
+        <source>复制完整路径</source>
+        <translation>Copy full path</translation>
+    </message>
+    <message>
+        <source>删除</source>
+        <translation>Delete</translation>
+    </message>
+    <message>
+        <source>删除（点两次，移到回收站）</source>
+        <translation>Delete (click twice; to the Recycle Bin)</translation>
+    </message>
+    <message>
+        <source>预览</source>
+        <translation>Preview</translation>
+    </message>
+    <message>
+        <source>不打开文件，在旁边预览内容</source>
+        <translation>Look at the file beside the box, without opening it</translation>
+    </message>
+    <message>
+        <source>复制名称</source>
+        <translation>Copy name</translation>
+    </message>
+    <message>
+        <source>复制文件名</source>
+        <translation>Copy the file name</translation>
+    </message>
+    <message>
+        <source>收藏</source>
+        <translation>Favorite</translation>
+    </message>
+    <message>
+        <source>加入收藏夹，已收藏的再点一次移除</source>
+        <translation>Add to favorites; click again on a favorite to remove it</translation>
+    </message>
+    <message>
+        <source>显示的按钮，从左到右；拖动调整顺序，点一下取消显示</source>
+        <translation>Buttons shown, left to right: drag to reorder, click to take one off</translation>
+    </message>
+    <message>
+        <source>现在结果行上没有按钮；点下面的按钮把它加上</source>
+        <translation>Rows have no buttons now; click one below to add it</translation>
+    </message>
+    <message>
+        <source>没有显示的，点一下加到最后</source>
+        <translation>Not shown: click to add at the end</translation>
+    </message>
+</context>
+<context>
     <name>ResultRow</name>
     <message>
         <source>打开设置</source>
         <translation>Open settings</translation>
+    </message>
+    <message>
+        <source>预览</source>
+        <translation>Preview</translation>
+    </message>
+    <message>
+        <source>复制名称</source>
+        <translation>Copy name</translation>
+    </message>
+    <message>
+        <source>加入收藏夹</source>
+        <translation>Add to favorites</translation>
+    </message>
+    <message>
+        <source>从收藏夹移除</source>
+        <translation>Remove from favorites</translation>
     </message>
     <message>
         <source>在终端中打开（Shift+点击以管理员身份）</source>
@@ -7219,16 +7322,16 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Show thumbnails</translation>
     </message>
     <message>
-        <source>显示删除按钮</source>
-        <translation>Show the delete button</translation>
+        <source>结果行按钮</source>
+        <translation>Row buttons</translation>
     </message>
     <message>
-        <source>删除;垃圾桶;回收站;误删;按钮;delete;trash;recycle</source>
-        <translation>delete;trash;recycle bin;remove;button;accident</translation>
+        <source>按钮;快捷命令;快捷按钮;自定义;顺序;删除;垃圾桶;回收站;误删;复制;路径;终端;预览;收藏;管理员;delete;trash;copy;terminal;button;action</source>
+        <translation>button;action;quick command;customize;order;delete;trash;recycle bin;accident;copy;path;terminal;preview;favorite;administrator</translation>
     </message>
     <message>
-        <source>文件和文件夹的结果行末尾显示删除按钮（点两次，移到回收站）；关闭后仍可在右键菜单中移到回收站</source>
-        <translation>Rows of files and folders end with a delete button (click twice; to the Recycle Bin). Off: Move to Recycle Bin stays in the right-click menu</translation>
+        <source>鼠标停在结果上或选中它时，行末尾出现的按钮：选要哪些，排成什么顺序。按钮只在用得上的结果上出现；不显示的，右键菜单里都还有</source>
+        <translation>The buttons at the end of a result's row while the mouse is on it or it is selected: which ones, and in which order. A button shows only on results it applies to; one left out stays in the right-click menu</translation>
     </message>
     <message>
         <source>缩略图;预览;图片;照片;视频;PDF;thumbnail;preview</source>

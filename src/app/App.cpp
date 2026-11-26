@@ -2312,7 +2312,7 @@ void App::applySettings(bool initial)
     m_launcher->setNumberHints(m_settings.numberHints);
     m_launcher->setLetterJump(m_settings.letterJump, m_settings.letterJumpKey, m_settings.letterJumpKeys);
     watchCopies();
-    m_launcher->setRowDeleteButton(m_settings.rowDeleteButton);
+    m_launcher->setRowActions(m_settings.rowActions);
     m_launcher->setScopeButton(m_settings.scopeButton);
     if (m_placement)
         m_placement->setAnimated(m_settings.openAnimation);

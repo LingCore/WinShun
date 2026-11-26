@@ -5209,7 +5209,7 @@ bool checkShortcutPanels(QQmlEngine* engine, const QDir& output)
                 return false;
             };
             check(shown(u"deleteAction"_s) && shown(u"copyPathAction"_s), u"launcher: a file's row has its delete button"_s);
-            launcher.setRowDeleteButton(false);
+            launcher.setRowActions({u"admin"_s, u"reveal"_s, u"terminal"_s, u"copy"_s, u"copyPath"_s});
             settle(window);
             check(!shown(u"deleteAction"_s) && shown(u"copyPathAction"_s),
                 u"launcher: the delete button goes with its setting, the other buttons stay"_s);
@@ -5218,9 +5218,45 @@ bool checkShortcutPanels(QQmlEngine* engine, const QDir& output)
                 u"launcher: quick context menu directly offers Move to Recycle Bin with danger styling"_s);
             check(menuHasAction(0, Launcher::SystemMenu), u"launcher: the row's menu still leads to Windows' own"_s);
             saveGrab(window, output.filePath(u"row-without-delete.png"_s));
-            launcher.setRowDeleteButton(true);
+            launcher.setRowActions(rowactions::defaults());
             settle(window);
             check(shown(u"deleteAction"_s), u"launcher: the delete button is back with its setting"_s);
+
+            // The buttons chosen and ordered in the settings (Results/RowActions):
+            // only those named, left to right as named; the ones that are not
+            // there by default too.
+            {
+                const auto lefts = [&](const QStringList& names) {
+                    QList<qreal> xs;
+                    QQuickItem* row = visualNamed(window->contentItem(), u"resultRow-0"_s);
+                    for (const QString& name : names) {
+                        QQuickItem* action = row ? visualNamed(row, name) : nullptr;
+                        xs.append(action && action->isVisible() ? action->mapToScene({0, 0}).x() : -1);
+                    }
+                    return xs;
+                };
+                check(!shown(u"previewAction"_s) && !shown(u"copyNameAction"_s) && !shown(u"favoriteAction"_s),
+                    u"row buttons: the ones to be chosen show without having been"_s);
+                launcher.setRowActions({u"delete"_s, u"preview"_s, u"copyPath"_s, u"favorite"_s, u"copyName"_s});
+                settle(window);
+                const QList<qreal> chosen = lefts({u"deleteAction"_s, u"previewAction"_s, u"copyPathAction"_s, u"favoriteAction"_s,
+                    u"copyNameAction"_s});
+                check(std::ranges::all_of(chosen, [](qreal x) { return x >= 0; }) && std::ranges::is_sorted(chosen)
+                        && std::ranges::adjacent_find(chosen) == chosen.end(),
+                    u"row buttons: the chosen five do not stand in the order chosen"_s);
+                check(!shown(u"terminalAction"_s), u"row buttons: one not chosen still shows"_s);
+                saveGrab(window, output.filePath(u"row-buttons-chosen.png"_s));
+                launcher.setRowActions({});
+                settle(window);
+                check(!shown(u"deleteAction"_s) && !shown(u"copyPathAction"_s) && !shown(u"previewAction"_s),
+                    u"row buttons: none chosen, some still show"_s);
+                launcher.setRowActions(rowactions::defaults());
+                settle(window);
+                const QList<qreal> usual = lefts({u"terminalAction"_s, u"copyPathAction"_s, u"deleteAction"_s});
+                check(std::ranges::all_of(usual, [](qreal x) { return x >= 0; }) && std::ranges::is_sorted(usual)
+                        && !shown(u"previewAction"_s),
+                    u"row buttons: back as they come, not in their usual order"_s);
+            }
 
             // Cross-folder multi-select delete in quick context menu (#434):
             // supports files across distinct folders, prunes nested children, skips apps/drive roots,

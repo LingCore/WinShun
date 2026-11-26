@@ -5328,15 +5328,23 @@ Window {
                 }
 
                 SettingRow {
-                    title: qsTr("显示删除按钮")
-                    keywords: qsTr("删除;垃圾桶;回收站;误删;按钮;delete;trash;recycle").split(";")
-                    description: qsTr("文件和文件夹的结果行末尾显示删除按钮（点两次，移到回收站）；关闭后仍可在右键菜单中移到回收站")
+                    objectName: "rowActionsRow"
+                    title: qsTr("结果行按钮")
+                    keywords: qsTr("按钮;快捷命令;快捷按钮;自定义;顺序;删除;垃圾桶;回收站;误删;复制;路径;终端;预览;收藏;管理员;delete;trash;copy;terminal;button;action").split(";")
+                    description: qsTr("鼠标停在结果上或选中它时，行末尾出现的按钮：选要哪些，排成什么顺序。按钮只在用得上的结果上出现；不显示的，右键菜单里都还有")
 
-                    ToggleSwitch {
-                        objectName: "rowDeleteButtonToggle"
+                    FlatButton {
+                        objectName: "rowActionsReset"
                         dpr: window.dpr
-                        checked: window.editor.rowDeleteButton
-                        onToggled: (on) => window.editor.rowDeleteButton = on
+                        visible: !window.editor.rowActionsDefault
+                        text: qsTr("恢复默认")
+                        onClicked: window.editor.resetRowActions()
+                    }
+
+                    body: RowActionsEditor {
+                        width: parent.width
+                        settings: window.editor
+                        dpr: window.dpr
                     }
                 }
 

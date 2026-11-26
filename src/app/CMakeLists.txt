@@ -250,6 +250,7 @@ set(qml_files
     qml/PageSlot.qml
     qml/FileTypesSection.qml
     qml/QuickFiltersSection.qml
+    qml/RowActionsEditor.qml
     qml/SettingRow.qml
     qml/SettingsLinkRow.qml
     qml/PageTabs.qml

@@ -89,6 +89,8 @@ QJsonValue sampleFor(const aisettings::Entry& e, State& s, int variant)
             return QJsonArray {u"D:\\Sample\\Folder"_s};
         case ListKind::LocalFolders: // on a disk of this PC's whatever the test machine is
             return QJsonArray {u"C:\\Sample\\Folder"_s};
+        case ListKind::RowActions:
+            return QJsonArray {u"preview"_s, u"reveal"_s};
         }
         break;
     }

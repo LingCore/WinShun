@@ -24,6 +24,7 @@
 ### 2.2 钉住（`Ctrl+T`）、长文件名提示与对称调宽
 
 - **钉住**：`Launcher::pinned` 设置顶且失焦/打开结果不收起（`Esc` 仍可收起，不写配置）；失焦时再次触发呼出就地拉回前台不重算位置；从任务栏打开后钉住则把输入区迁回启动器。未钉住时打开文件/文件夹记下时刻与当时的搜索词，60 s 内带同样的词再次呼出即在底栏提示 `Ctrl+T`（`Launcher::tellPinHint`，延迟刷新时等 `finishShownRefresh` 的搜索之后再说，否则被 `search()` 清掉）；`state.ini` 的 `Hints/PinAfterOpen` 计数，最多 2 次，钉住过一次即不再提示。
+- **结果行按钮**：`Results/RowActions`（`RowActions.h` 定义可用名称与默认六个）决定行尾按钮显示哪些、什么顺序，经 `Launcher::rowActions` 到 `ResultActions.qml` 的 `order`；按钮仍由 `RowActionsPool` 借给行，全部预先建好，换顺序只把按钮按序重新挂到 `Row` 下（不新建），各按钮再按行的类型决定出不出现，字母直达按当前子项顺序取。旧的 `Results/DeleteButton=false` 读入时折算成去掉 `delete`，保存后删除旧键；默认值不写入文件。
 - **长文件名提示与调宽**：`Elide.cpp` 保留文件名尾部做中间省略；`NameTip.qml` 为独立无焦点透传置顶窗（防被低窗裁切），`FileFacts` 后台补读创建时间（跳过 UNC）。`WindowFrame::setSideSizing` 在左右 6 逻辑像素返 `HTLEFT`/`HTRIGHT`（不加 `WS_THICKFRAME` 防 Aero Snap），`Placement::beginSizing` 围绕中心对称调宽并存 `state.ini`。
 
 ### 2.3 异步缩略图（`ThumbnailProvider`）

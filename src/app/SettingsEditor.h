@@ -230,7 +230,11 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool regexMode READ regexMode WRITE setRegexMode NOTIFY changed FINAL)
     Q_PROPERTY(QString fuzzyMode READ fuzzyMode WRITE setFuzzyMode NOTIFY changed FINAL) // off | fallback | on
     Q_PROPERTY(bool thumbnails READ thumbnails WRITE setThumbnails NOTIFY changed FINAL)
-    Q_PROPERTY(bool rowDeleteButton READ rowDeleteButton WRITE setRowDeleteButton NOTIFY changed FINAL)
+    // A result row's buttons (Settings::rowActions): those shown, in their
+    // order; all there are, those shown first; and whether it is as it came.
+    Q_PROPERTY(QStringList rowActions READ rowActions WRITE setRowActions NOTIFY changed FINAL)
+    Q_PROPERTY(QStringList rowActionChoices READ rowActionChoices NOTIFY changed FINAL)
+    Q_PROPERTY(bool rowActionsDefault READ rowActionsDefault NOTIFY changed FINAL)
     Q_PROPERTY(bool webSuggestions READ webSuggestions WRITE setWebSuggestions NOTIFY changed FINAL)
     Q_PROPERTY(bool webFallback READ webFallback WRITE setWebFallback NOTIFY changed FINAL)
     Q_PROPERTY(QString webBrowser READ webBrowser WRITE setWebBrowser NOTIFY changed FINAL)
@@ -921,8 +925,13 @@ public:
     void setFuzzyMode(const QString& mode);
     bool thumbnails() const { return m_settings.thumbnails; }
     void setThumbnails(bool on);
-    bool rowDeleteButton() const { return m_settings.rowDeleteButton; }
-    void setRowDeleteButton(bool on);
+    QStringList rowActions() const { return m_settings.rowActions; }
+    void setRowActions(const QStringList& order);
+    QStringList rowActionChoices() const;
+    bool rowActionsDefault() const { return m_settings.rowActions == rowactions::defaults(); }
+    Q_INVOKABLE void toggleRowAction(const QString& id); // shown (at the end) or not
+    Q_INVOKABLE void moveRowAction(const QString& id, int by); // among those shown: -1 left, 1 right
+    Q_INVOKABLE void resetRowActions() { setRowActions(rowactions::defaults()); }
     bool webSuggestions() const { return m_settings.webSuggestions; }
     void setWebSuggestions(bool on);
     bool webFallback() const { return m_settings.webFallback; }
