@@ -202,6 +202,14 @@ winget install LingCore.WinShun
 
 ### 最近更新
 
+**0.50.0**
+
+- 🧮 截图**公式识别**：框住公式按 `Shift+F`，转成 LaTeX，复制成 Word 公式、Markdown 或 Typst，模型在本机运行；⌨️ 鼠标手势可以**按住 Ctrl、Alt、Shift 画**出另外的手势（#472）。
+- 🗂️ 文件类型的扩展名填 `*`，就**只分文件和文件夹**；⏻ 关机、重启这些命令归到“系统开关”插件（#477）；🎨 四种外观里**选中的行更醒目**（#474）。
+- 🛠️ **改进** 内存紧张时呼出搜索框和第一次搜索不再卡几秒（#471）；反作弊保护的游戏里“不响应的程序”照常生效（#121）；Photoshop 里粘贴剪贴板选中的那张图（#432）。
+
+详见 [0.50.0 发布说明](docs/release-notes/v0.50.0.md)。
+
 **0.49.0**
 
 - 🧠 新插件**本地模型**：在自己电脑上跑 AI 模型，翻译和“按意思找”可以完全离线；📊 截图**复制为表格**认得合并单元格，粘进 Excel 就是表格。
@@ -606,6 +614,14 @@ Standard and portable packages install enhanced text recognition on demand. Open
 </details>
 
 ### What's new
+
+**0.50.0**
+
+- 🧮 **Formula recognition** in captures: select a formula, press `Shift+F`, and copy it as LaTeX, a Word equation, Markdown or Typst, with the model running on your PC; ⌨️ mouse gestures **drawn with Ctrl, Alt or Shift held** can do something else (#472).
+- 🗂️ A file kind whose extension is `*` makes the strip **just files and folders**; ⏻ shut down, restart and the like come with the System switches plugin (#477); 🎨 **the chosen row stands out** in all four styles (#474).
+- 🛠️ **Improved** no seconds-long wait at the hotkey and the first search when memory is tight (#471); the programs to leave alone work in games guarded by anti-cheat (#121); Photoshop pastes the picture chosen in the clipboard (#432).
+
+See the [0.50.0 release notes](docs/release-notes/v0.50.0.md).
 
 **0.49.0**
 
