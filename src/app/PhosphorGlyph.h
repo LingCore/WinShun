@@ -36,6 +36,10 @@ class PhosphorGlyph : public QQuickItem {
 public:
     explicit PhosphorGlyph(QQuickItem* parent = nullptr);
 
+    // Not a font: `text` names an icon outlined here on Phosphor's grid
+    // (copyPath), drawn the same way as a font's. Glyph.qml's `drawn`.
+    static constexpr QLatin1StringView kDrawnFamily {"ws-drawn"};
+
     QString text() const { return m_text; }
     void setText(const QString& text);
     QString family() const { return m_family; }

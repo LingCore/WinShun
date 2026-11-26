@@ -77,7 +77,6 @@ Rectangle {
             glyph: button.glyph
             iconName: button.iconName
             overlay: button.glyphOverlay
-            keep: button.shared
             size: button.iconSize
             color: button.foreground
         }

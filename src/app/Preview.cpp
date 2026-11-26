@@ -3833,6 +3833,7 @@ int runSettings(const QStringList& args)
         {QCoreApplication::translate("SettingsWindow", "文件夹的子列也列出文件"), integrationPage, 2}, // GitHub #384
         {QCoreApplication::translate("SettingsWindow", "对话框旁的搜索框"), integrationPage, 3}, // 对话框
         {QCoreApplication::translate("SettingsWindow", "在 Directory Opus 里直接打字搜索"), integrationPage, 1},
+        {QCoreApplication::translate("SettingsWindow", "结果行按钮"), resultsPage, 1}, // its keys, with their icons
         {u"AI"_s, aiPage, 0},
         {u"命令行"_s, aiPage, 0},
         {u"ws"_s, aiPage, 0},

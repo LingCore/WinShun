@@ -28,21 +28,39 @@ Item {
         "copyPath": copyPathAction, "delete": deleteAction, "preview": previewAction, "copyName": copyNameAction,
         "favorite": favoriteAction
     })
-    // The Row lays its children out in their order: taken out and put back,
-    // a button goes to the end, so one after another they stand as `order`
-    // says, after the switch's own. Only when the setting changes; the
-    // letters (letterOf, clickLettered) follow the children as they are.
-    function arrange() {
+    // The buttons as they stand, left to right: the switch's own, then as
+    // `order` says. Each is placed by what shows before it (leftOf); the
+    // letters (letterOf, clickLettered) go by the same. Not by the order of
+    // the children: a button taken out of its parent and put back at the end
+    // was laid out in its new place and no longer drawn there (seen in
+    // --shortcut-panel's row-buttons-chosen.png).
+    readonly property var sequence: {
+        const all = [switchPageAction]
         for (const id of order) {
             const button = buttons[id]
-            if (!button)
-                continue
-            button.parent = null
-            button.parent = actions
+            if (button && all.indexOf(button) < 0)
+                all.push(button)
         }
+        return all
     }
-    onOrderChanged: arrange()
-    Component.onCompleted: arrange()
+    function leftOf(button: RowAction): real {
+        let x = 0
+        for (const other of sequence) {
+            if (other === button)
+                return x
+            if (other.visible)
+                x += other.width + actions.spacing
+        }
+        return 0
+    }
+    readonly property real span: {
+        let x = 0
+        for (const button of sequence) {
+            if (button.visible)
+                x += button.width + actions.spacing
+        }
+        return Math.max(0, x - actions.spacing)
+    }
 
     // For the row: the room the buttons take, how many show, and the one the
     // mouse rests on (the row's HoverTip, one for its buttons and its date).
@@ -67,8 +85,7 @@ Item {
         if (letters.length === 0 || !button.visible)
             return ""
         let n = 0
-        for (let i = 0; i < actions.children.length; ++i) {
-            const child = actions.children[i]
+        for (const child of sequence) {
             if (child === button)
                 return n < letters.length ? letters[n] : ""
             if (child.visible)
@@ -80,8 +97,7 @@ Item {
     function clickLettered(n: int, modifiers): bool {
         const mods = modifiers ?? Qt.NoModifier
         let shown = 0
-        for (let i = 0; i < actions.children.length; ++i) {
-            const child = actions.children[i]
+        for (const child of sequence) {
             if (!child.visible)
                 continue
             if (shown === n) {
@@ -114,15 +130,18 @@ Item {
         }
     }
 
-    Row {
+    Item {
         id: actions
+        readonly property real spacing: 2
         anchors.right: parent.right
         anchors.rightMargin: bar.host ? bar.host.actionsRightMargin : 0
         anchors.verticalCenter: parent.verticalCenter
-        spacing: 2
+        width: bar.span
+        height: bar.count > 0 ? (bar.small ? 24 : 32) : 0
 
         RowAction {
             id: switchPageAction
+            x: bar.leftOf(switchPageAction)
             dpr: bar.dpr
             shared: true
             small: bar.small
@@ -135,6 +154,7 @@ Item {
         }
         RowAction {
             id: adminAction
+            x: bar.leftOf(adminAction)
             objectName: "adminAction"
             dpr: bar.dpr
             shared: true
@@ -148,6 +168,7 @@ Item {
         }
         RowAction {
             id: revealAction
+            x: bar.leftOf(revealAction)
             dpr: bar.dpr
             shared: true
             small: bar.small
@@ -160,6 +181,7 @@ Item {
         }
         RowAction {
             id: terminalAction
+            x: bar.leftOf(terminalAction)
             objectName: "terminalAction"
             dpr: bar.dpr
             shared: true
@@ -173,6 +195,7 @@ Item {
         }
         RowAction {
             id: copyAction
+            x: bar.leftOf(copyAction)
             dpr: bar.dpr
             shared: true
             small: bar.small
@@ -186,6 +209,7 @@ Item {
         }
         RowAction {
             id: copyPathAction
+            x: bar.leftOf(copyPathAction)
             objectName: "copyPathAction"
             readonly property ResultRow host: bar.host
             dpr: bar.dpr
@@ -207,6 +231,7 @@ Item {
         }
         RowAction {
             id: deleteAction
+            x: bar.leftOf(deleteAction)
             objectName: "deleteAction"
             readonly property ResultRow host: bar.host
             readonly property bool armed: host !== null && host.deleteArmed
@@ -226,6 +251,7 @@ Item {
         // Not among the buttons as they come: chosen in the settings.
         RowAction {
             id: previewAction
+            x: bar.leftOf(previewAction)
             objectName: "previewAction"
             readonly property ResultRow host: bar.host
             dpr: bar.dpr
@@ -241,6 +267,7 @@ Item {
         }
         RowAction {
             id: copyNameAction
+            x: bar.leftOf(copyNameAction)
             objectName: "copyNameAction"
             readonly property ResultRow host: bar.host
             dpr: bar.dpr
@@ -254,6 +281,7 @@ Item {
         }
         RowAction {
             id: favoriteAction
+            x: bar.leftOf(favoriteAction)
             objectName: "favoriteAction"
             readonly property ResultRow host: bar.host
             readonly property bool kept: host !== null && host.favorite

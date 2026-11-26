@@ -33,6 +33,32 @@ const QRawFont& outlines(const QString& family)
     return *found;
 }
 
+// An icon of our own (family kDrawnFamily, its name for text), outlined on
+// Phosphor Regular's grid: 256 units, strokes 16 wide with round ends and
+// corners, the top left at 0. Empty: no such icon.
+// "copyPath": a box holding "\\..", resources/icons/copy-path.svg.
+QPainterPath drawnOutline(const QString& name)
+{
+    if (name != u"copyPath")
+        return {};
+    QPainterPath lines;
+    lines.addRoundedRect(QRectF(32, 48, 192, 160), 8, 8);
+    lines.moveTo(72, 96);
+    lines.lineTo(96, 160);
+    lines.moveTo(112, 96);
+    lines.lineTo(136, 160);
+    QPainterPathStroker pen;
+    pen.setWidth(16);
+    pen.setCapStyle(Qt::RoundCap);
+    pen.setJoinStyle(Qt::RoundJoin);
+    QPainterPath outline = pen.createStroke(lines);
+    outline.addEllipse(QPointF(168, 160), 8, 8);
+    outline.addEllipse(QPointF(200, 160), 8, 8);
+    return outline;
+}
+
+constexpr qreal kDrawnGrid = 256;
+
 } // namespace
 
 PhosphorGlyph::PhosphorGlyph(QQuickItem* parent)
@@ -107,8 +133,10 @@ void PhosphorGlyph::layout()
 {
     m_dirty = true;
     update();
-    const QRawFont& font = m_family.isEmpty() ? QRawFont() : outlines(m_family);
-    if (m_text.isEmpty() || m_em <= 0 || !font.isValid() || !window()) {
+    const bool drawn = m_family == kDrawnFamily;
+    const QPainterPath own = drawn ? drawnOutline(m_text) : QPainterPath();
+    const QRawFont& font = m_family.isEmpty() || drawn ? QRawFont() : outlines(m_family);
+    if (m_text.isEmpty() || m_em <= 0 || (drawn ? own.isEmpty() : !font.isValid()) || !window()) {
         m_path = {};
         m_pixels = 0;
         return;
@@ -134,12 +162,14 @@ void PhosphorGlyph::layout()
     setPosition(origin / dpr + QPointF(1.0 / 64, 1.0 / 64));
     setSize(QSizeF(m_pixels, m_pixels) / dpr);
 
-    QPainterPath path;
-    for (const quint32 index : font.glyphIndexesForString(m_text))
-        path.addPath(font.pathForGlyph(index)); // the baseline at 0
-    const qreal scale = em / font.pixelSize();
+    QPainterPath path = own; // the grid's top left at 0
+    if (!drawn) {
+        for (const quint32 index : font.glyphIndexesForString(m_text))
+            path.addPath(font.pathForGlyph(index)); // the baseline at 0
+    }
+    const qreal scale = em / (drawn ? kDrawnGrid : font.pixelSize());
     QTransform place;
-    place.translate(top.x() - origin.x(), top.y() - origin.y() + font.ascent() * scale);
+    place.translate(top.x() - origin.x(), top.y() - origin.y() + (drawn ? 0 : font.ascent() * scale));
     place.scale(scale, scale);
     m_path = place.map(path);
     m_path.setFillRule(Qt::WindingFill);

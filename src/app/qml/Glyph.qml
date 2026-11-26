@@ -1,6 +1,5 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import QtQuick.Shapes
 import WinShun
 
 // An icon by its Phosphor name (iconName), or by its legacy Segoe Fluent /
@@ -32,7 +31,10 @@ Item {
     property bool caption: false
 
     // The custom copy-path icon shares Phosphor Regular's 256-unit grid,
-    // 16-unit stroke and optical scale. SVG source: resources/icons/copy-path.svg.
+    // 16-unit stroke and optical scale, and is outlined and drawn by
+    // PhosphorGlyph as a font's icon is (its kDrawnFamily; a Shape with the
+    // curve renderer drew nothing in the settings window). SVG source:
+    // resources/icons/copy-path.svg.
     readonly property bool drawn: glyph === "copyPath"
 
     // {text, family}, or undefined: the system icon font draws it.
@@ -61,10 +63,10 @@ Item {
     // across, its axis between pixels.
     PhosphorGlyph {
         id: phosphorItem
-        readonly property bool used: !!icon.phosphor
+        readonly property bool used: icon.drawn || !!icon.phosphor
         visible: used
-        text: used ? icon.phosphor.text : ""
-        family: used ? icon.phosphor.family : ""
+        text: icon.drawn ? icon.glyph : used ? icon.phosphor.text : ""
+        family: icon.drawn ? "ws-drawn" : used ? icon.phosphor.family : ""
         color: icon.color
         em: icon.size
         inkScale: icon.inkScale
@@ -90,18 +92,12 @@ Item {
     }
 
     // Made only where wanted (a settings window has over a thousand icons,
-    // nearly all one Phosphor glyph): the overlay, or the drawn icon.
+    // nearly all one Phosphor glyph): the overlay.
     readonly property bool overlaid: !drawn && !phosphor && overlay.length > 0 && SystemTheme.hasGlyph(overlay)
-    // A shared button's (RowAction.shared) drawn icon stays once made, hidden
-    // while it shows another glyph: the next row it is lent to may want it.
-    property bool keep: false
-    property bool drawnKept: false
     Loader {
         anchors.centerIn: parent
-        active: icon.drawn || icon.overlaid || icon.drawnKept
-        visible: icon.drawn || icon.overlaid
-        sourceComponent: icon.drawn || (icon.drawnKept && !icon.overlaid) ? drawnIcon : overlayGlyph
-        onLoaded: if (icon.keep && icon.drawn) icon.drawnKept = true
+        active: icon.overlaid
+        sourceComponent: overlayGlyph
     }
 
     Component {
@@ -113,36 +109,6 @@ Item {
             color: icon.color
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
-        }
-    }
-
-    Component {
-        id: drawnIcon
-        Shape {
-            width: 256
-            height: 256
-            scale: icon.size / 256 * icon.inkScale // Phosphor's 256 grid in the container; a vector shape: crisp at any scale
-            preferredRendererType: Shape.CurveRenderer
-
-            ShapePath {
-                strokeWidth: 16
-                strokeColor: icon.color
-                fillColor: "transparent"
-                capStyle: ShapePath.RoundCap
-                joinStyle: ShapePath.RoundJoin
-                PathSvg {
-                    path: "M40 48H216A8 8 0 0 1 224 56V200A8 8 0 0 1 216 208H40A8 8 0 0 1 32 200V56A8 8 0 0 1 40 48Z"
-                          + "M72 96L96 160M112 96L136 160"
-                }
-            }
-            ShapePath {
-                strokeColor: "transparent"
-                fillColor: icon.color
-                PathSvg {
-                    path: "M176 160A8 8 0 1 1 160 160A8 8 0 1 1 176 160Z"
-                          + "M208 160A8 8 0 1 1 192 160A8 8 0 1 1 208 160Z"
-                }
-            }
         }
     }
 }
