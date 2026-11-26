@@ -8493,28 +8493,43 @@ bool checkClipboardSizing(QQuickWindow* window, Clipboard& clipboard, Placement&
         clear.start();
         while (::GetAncestor(::WindowFromPoint(corner), GA_ROOT) != hwnd && clear.elapsed() < 3000)
             pump(50);
-        check("corner_is_the_windows_own", ::GetAncestor(::WindowFromPoint(corner), GA_ROOT) == hwnd);
-        std::jthread input([rect] {
-            const auto button = [](DWORD flags) {
-                INPUT event {};
-                event.type = INPUT_MOUSE;
-                event.mi.dwFlags = flags;
-                ::SendInput(1, &event, sizeof event);
-            };
-            ::SetCursorPos(rect.right - 2, rect.bottom - 2);
-            ::Sleep(50);
-            button(MOUSEEVENTF_LEFTDOWN);
-            ::Sleep(100);
-            ::SetCursorPos(rect.right + 28, rect.bottom + 28);
-            ::Sleep(100);
-            button(MOUSEEVENTF_LEFTUP);
-        });
-        pump(600);
-        input.join();
-        settle(window);
-        check("real_mouse_corner_drag", window->width() > before.width() && window->height() > before.height()
-            && clipboard.listWidth() == window->width() && clipboard.windowHeight() == window->height() && !placement.windowSizing());
-        check("resize_does_not_activate", ::GetForegroundWindow() == foreground && !window->isActive());
+        const HWND atCorner = ::GetAncestor(::WindowFromPoint(corner), GA_ROOT);
+        check("corner_is_the_windows_own", atCorner == hwnd);
+        if (atCorner != hwnd) {
+            // Another window lies over it (one of the user's, always on top):
+            // no press there, which would land on that window. Said by name.
+            wchar_t className[128] {};
+            wchar_t title[128] {};
+            ::GetClassNameW(atCorner, className, int(std::size(className)));
+            ::GetWindowTextW(atCorner, title, int(std::size(title)));
+            DWORD process = 0;
+            ::GetWindowThreadProcessId(atCorner, &process);
+            results.insert(u"corner_covered_by"_s, u"%1 \"%2\" (process %3)"_s.arg(QString::fromWCharArray(className),
+                                                     QString::fromWCharArray(title)).arg(process));
+            check("real_mouse_corner_drag", false);
+        } else {
+            std::jthread input([rect] {
+                const auto button = [](DWORD flags) {
+                    INPUT event {};
+                    event.type = INPUT_MOUSE;
+                    event.mi.dwFlags = flags;
+                    ::SendInput(1, &event, sizeof event);
+                };
+                ::SetCursorPos(rect.right - 2, rect.bottom - 2);
+                ::Sleep(50);
+                button(MOUSEEVENTF_LEFTDOWN);
+                ::Sleep(100);
+                ::SetCursorPos(rect.right + 28, rect.bottom + 28);
+                ::Sleep(100);
+                button(MOUSEEVENTF_LEFTUP);
+            });
+            pump(600);
+            input.join();
+            settle(window);
+            check("real_mouse_corner_drag", window->width() > before.width() && window->height() > before.height()
+                && clipboard.listWidth() == window->width() && clipboard.windowHeight() == window->height() && !placement.windowSizing());
+            check("resize_does_not_activate", ::GetForegroundWindow() == foreground && !window->isActive());
+        }
     }
     QFile report(output.filePath(u"clipboard-sizing.json"_s));
     if (report.open(QIODevice::WriteOnly)) report.write(QJsonDocument(results).toJson(QJsonDocument::Indented));
