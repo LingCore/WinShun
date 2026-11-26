@@ -2,7 +2,7 @@
   "manifest": 1,
   "id": "winshun.gestures",
   "name": {"zh": "鼠标手势", "en": "Mouse gestures"},
-  "version": "2.1.7",
+  "version": "2.2.0",
   "description": {"zh": "按住右键、中键或侧键画一下，或配合另一个鼠标键做组合手势：后退、关窗口、切标签页；选中文字后画一下或按快捷键：复制、搜索、翻译；画个圈、推到屏幕角落、在屏幕边上来回蹭、按住手势键滚滚轮，都能设成按键、打开程序、输入文字或关机重启。可以只在某个程序里、某个角落里生效。管理员身份运行的窗口里用不了", "en": "Hold the right, middle or side button and draw, or combine with a second mouse button: back, close the window, switch tabs. Select words, then draw or press a shortcut: copy, search, translate. Circles, the screen's corners and edges, and the wheel with a trigger button held can press keys, open programs, type text, shut down or restart. A rule can hold in one program or one corner only. Not in windows run as administrator"},
   "author": "LingCore",
   "homepage": "https://github.com/LingCore/WinShun",

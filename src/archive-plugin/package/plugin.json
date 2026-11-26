@@ -2,7 +2,7 @@
   "manifest": 1,
   "id": "winshun.archive",
   "name": {"zh": "压缩包搜索", "en": "Archive search"},
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": {"zh": "按文件名找压缩包里的文件：zip、7z、rar、tar.gz 等。直接在搜索框里输入名字就能搜到，或输入 zip 加空格只看压缩包里的。后台只读文件列表，不解压", "en": "Finds files by name inside archives: zip, 7z, rar, tar.gz and more. Type the name in the search box, or zip and a space for archives only. Only the lists of files are read, in the background; nothing is unpacked"},
   "author": "LingCore",
   "homepage": "https://github.com/LingCore/WinShun",
