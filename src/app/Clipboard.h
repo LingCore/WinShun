@@ -341,11 +341,15 @@ public:
     // capture took (Clip::screenshot, the screenshot history). The PNG is made
     // off the GUI thread. `project`: the annotated picture's editable form
     // (opaque bytes, empty: none), kept with the history entry.
-    void copyImage(const QImage& image, bool remember, bool screenshot = false, QByteArray project = {}, QString imageOrigin = {});
+    // `words`: the text in the picture, read already by whoever hands it over
+    // (the screenshot's pre-scan), kept as its words instead of reading it
+    // again; none: read here, as any picture.
+    void copyImage(const QImage& image, bool remember, bool screenshot = false, QByteArray project = {}, QString imageOrigin = {},
+        std::optional<QString> words = {});
     // A picture (saved, pinned) as an entry in the history only:
     // the system clipboard is left alone and nothing is announced. Subject to
     // the same recording switch and pause; the same pixels again move that entry to the top.
-    void recordImage(const QImage& image, QByteArray project, bool screenshot = true);
+    void recordImage(const QImage& image, QByteArray project, bool screenshot = true, std::optional<QString> words = {});
     // An entry by its id, from outside the window (the launcher's screenshot
     // history, jt): onto the clipboard and pasted into `target`, the window
     // in front before the launcher, as the window pastes; only copied when
@@ -529,10 +533,12 @@ private:
     ClipWrite writeFor(
         const std::vector<const Clip*>& clips, bool plainText, QString* problem, HWND target = nullptr) const;
     void startPaste(ClipWrite write, Into into, std::vector<qint64> touched, QString done);
-    void encodeImage(const QImage& image, bool remember, bool screenshot, QByteArray project, bool toClipboard, QString imageOrigin = {});
+    void encodeImage(const QImage& image, bool remember, bool screenshot, QByteArray project, bool toClipboard, QString imageOrigin = {},
+        std::optional<QString> words = {});
     // copyImage's (and recordImage's), encoded
-    void storeImage(const QByteArray& png, const QByteArray& hash, QSize size, bool remember, bool screenshot,
-        const QByteArray& project, bool toClipboard, const QString& imageOrigin);
+    // `image`: the pixels `png` was made of, for the clipboard (none for the history alone).
+    void storeImage(const QByteArray& png, const QImage& image, const QByteArray& hash, QSize size, bool remember, bool screenshot,
+        const QByteArray& project, bool toClipboard, const QString& imageOrigin, const std::optional<QString>& words);
     void onWritten(bool ok);
     void reactivateTarget(); // m_pasteWindow, in front all along, if it reads the clipboard only as it comes
     void returnToField(QString text); // `text` typed into it; none: Esc
@@ -575,6 +581,9 @@ private:
     TextRecognizer m_recognizer; // the words in pictures, for the search
     QTimer m_backlogTimer;
     bool m_refreshRecognition = false;
+    // Pictures that came with their words (copyImage's `words`), until their
+    // file is saved: kept then, the picture not read again.
+    QHash<qint64, QString> m_wordsInHand;
     QSet<qint64> m_rereading; // read by another recognizer before: once all are back, it is noted
     qint64 m_crashedReading = 0; // see takeCrashedReading; 0: none
     QPointer<QWindow> m_window;

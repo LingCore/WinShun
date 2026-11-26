@@ -57,6 +57,9 @@ struct OcrOptions {
 // a gap from top to bottom, at least two of them, and two such lines; else
 // none. Screenshots' "复制为表格".
 QList<QStringList> ocrTable(const QList<OcrPiece>& pieces);
+// The pieces as lines of words, top to bottom, those side by side joined:
+// what PaddleOcr::read gives for the picture they were found in.
+QStringList ocrLines(const QList<OcrPiece>& pieces);
 
 class PaddleOcr {
 public:

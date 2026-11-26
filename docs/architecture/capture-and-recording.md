@@ -65,7 +65,7 @@
 
 ### 3.2 智能打码（`SmartRedact`）
 
-- 选区稳定 300 ms 后，`SmartHooks::scan` 将共享冻结图与选区交由 `CaptureOcr` 线程裁剪、灰度化并调 `PaddleOcr::readPieces`，按票号丢弃过期结果。
+- 选区稳定 300 ms 后，`SmartHooks::scan` 将共享冻结图与选区交由 `CaptureOcr` 线程裁剪、灰度化并调 `PaddleOcr::readPieces`，按票号丢弃过期结果。未标注的截图复制、保存或贴图时，这次读到的行经 `Capture::Callbacks::Read` 随图片交出，`CaptureApp::copyImage` 用 `ocrLines` 排成与 `PaddleOcr::read` 相同的文字，作为 `clipboard_add_image` 的 `words` 交给主程序，主程序不再识别同一张图。
 - `findSensitive` 在 GUI 线程规整全角/形近字，匹配手机号、身份证、银行卡（Luhn）、邮箱、常见密钥、`key=value`、本机用户名、可选 IP/MAC 与自定义词，结合灰度图将框边吸附至墨迹边缘；`Shift+B` 作为单步 `AddItems` 批量落框。
 - 马赛克、模糊、纯色、`Smooth` 采样严格限定于**所有打码对象真实形状并集 U 之外**，随机噪声种子随项目保存；`RedactShape::Brush` 无抗锯齿判定、四向最远扫描 64 px。
 

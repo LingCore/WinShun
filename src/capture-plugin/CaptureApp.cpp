@@ -2,6 +2,7 @@
 
 #include "PresenterHost.h"
 #include "platform/OcrFiles.h"
+#include "platform/PaddleOcr.h"
 
 #include "Protocol.h"
 
@@ -538,11 +539,12 @@ void CaptureApp::apply()
     const CaptureOptions& o = m_settings.options();
     if (!m_capture) {
         capture::Capture::Callbacks callbacks;
-        callbacks.copy = [this](const QImage& image, const QByteArray& project, const QString& origin) {
-            copyImage(image, project, true, true, origin);
-        };
+        callbacks.copy = [this](const QImage& image, const QByteArray& project, const QString& origin,
+                             const capture::Capture::Callbacks::Read& read) { copyImage(image, project, true, true, origin, read); };
         // Ctrl+S and F3: in the screenshot history too, the clipboard left alone.
-        callbacks.record = [this](const QImage& image, const QByteArray& project) { copyImage(image, project, false, true); };
+        callbacks.record = [this](const QImage& image, const QByteArray& project, const capture::Capture::Callbacks::Read& read) {
+            copyImage(image, project, false, true, {}, read);
+        };
         callbacks.captured = [this](capture::Capture::CapturedShot shot) {
             m_lastPinnedClipboardSeq = 0; // a new capture supersedes any cached clipboard-unchanged shortcut
             capture::PinHistoryEntry entry;
@@ -2477,13 +2479,24 @@ void CaptureApp::menuChosen(const QString& id)
 
 // ---- Win顺's side ---------------------------------------------------------------
 
-void CaptureApp::copyImage(const QImage& image, const QByteArray& project, bool copy, bool screenshot, const QString& imageOrigin)
+void CaptureApp::copyImage(const QImage& image, const QByteArray& project, bool copy, bool screenshot, const QString& imageOrigin,
+    const std::optional<QList<capture::RedactLine>>& read)
 {
     if (image.isNull())
         return;
+    // Read here already: the words go with the picture, in the lines the
+    // reader itself would give, and Win顺 does not read it again.
+    std::optional<QString> words;
+    if (read) {
+        QList<OcrPiece> pieces;
+        pieces.reserve(read->size());
+        for (const capture::RedactLine& line : *read)
+            pieces.append(OcrPiece {.quad = line.quad, .text = line.text});
+        words = ocrLines(pieces).join(u'\n');
+    }
     const QString base = QDir(m_dataDir).filePath(u"out/%1-%2"_s.arg(::GetCurrentProcessId()).arg(m_nextOut++));
     QPointer<CaptureApp> self(this);
-    std::thread([self, image, project, copy, screenshot, base, imageOrigin] {
+    std::thread([self, image, project, copy, screenshot, base, imageOrigin, words] {
         const QString file = base + u".wimg"_s;
         bool ok = writePicture(file, image);
         QString projectFile;
@@ -2492,7 +2505,7 @@ void CaptureApp::copyImage(const QImage& image, const QByteArray& project, bool 
             QFile out(projectFile);
             ok = out.open(QIODevice::WriteOnly) && out.write(project) == project.size();
         }
-        QMetaObject::invokeMethod(qApp, [self, image, copy, screenshot, file, projectFile, ok, imageOrigin] {
+        QMetaObject::invokeMethod(qApp, [self, image, copy, screenshot, file, projectFile, ok, imageOrigin, words] {
             if (!self)
                 return;
             const auto fallback = [image, copy, file, projectFile, imageOrigin] {
@@ -2517,6 +2530,8 @@ void CaptureApp::copyImage(const QImage& image, const QByteArray& project, bool 
                 arguments.insert(u"origin"_s, imageOrigin);
             if (!projectFile.isEmpty())
                 arguments.insert(u"project"_s, QDir::toNativeSeparators(projectFile));
+            if (words)
+                arguments.insert(u"words"_s, *words);
             self->m_protocol.tool(u"clipboard_add_image"_s, arguments, [fallback](const QJsonValue&, const QString& error) {
                 if (!error.isEmpty())
                     fallback();

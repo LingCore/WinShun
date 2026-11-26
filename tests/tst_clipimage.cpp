@@ -375,6 +375,91 @@ private slots:
         QVERIFY(!decodeClipImage(clipboardBytes(L"image/png")).firstFrame.isNull());
     }
 
+    // CF_DIB's and CF_DIBV5's pixels are written from the picture's own rows
+    // (GitHub #467: no copies of a full screen in between), whichever of the
+    // three 32-bit formats it is in; read back, they are the picture.
+    void dibRowsFromEach32BitFormat_data()
+    {
+        QTest::addColumn<QImage::Format>("format");
+        QTest::newRow("RGB32") << QImage::Format_RGB32;
+        QTest::newRow("ARGB32") << QImage::Format_ARGB32;
+        QTest::newRow("ARGB32_Premultiplied") << QImage::Format_ARGB32_Premultiplied;
+    }
+
+    void dibRowsFromEach32BitFormat()
+    {
+        QFETCH(QImage::Format, format);
+        QImage straight(7, 5, QImage::Format_ARGB32); // each pixel its own colour: a row or a channel out of place shows
+        for (int y = 0; y < straight.height(); ++y) {
+            for (int x = 0; x < straight.width(); ++x)
+                straight.setPixel(x, y, qRgba(30 * x + 5, 40 * y + 9, 200 - 10 * x, format == QImage::Format_RGB32 || (x + y) % 3 ? 255 : 128));
+        }
+        const QImage picture = straight.convertToFormat(format);
+        QVERIFY(dibRowsReady(picture));
+        QVERIFY(!dibRowsReady(picture.convertToFormat(QImage::Format_RGB888)));
+        QCOMPARE(dibRowsSize(picture), std::size_t {7 * 5 * 4});
+        BITMAPV5HEADER header {sizeof(BITMAPV5HEADER)};
+        header.bV5Width = picture.width();
+        header.bV5Height = picture.height();
+        header.bV5Planes = 1;
+        header.bV5BitCount = 32;
+        header.bV5Compression = BI_BITFIELDS;
+        header.bV5RedMask = 0x00FF0000;
+        header.bV5GreenMask = 0x0000FF00;
+        header.bV5BlueMask = 0x000000FF;
+        header.bV5AlphaMask = 0xFF000000;
+        QByteArray dib(reinterpret_cast<const char*>(&header), sizeof header);
+        dib.resize(dib.size() + static_cast<qsizetype>(dibRowsSize(picture)));
+        writeDibRows(picture, reinterpret_cast<uchar*>(dib.data()) + sizeof header);
+        const QImage back = imageFromDib(dib).convertToFormat(QImage::Format_ARGB32);
+        QCOMPARE(back.size(), straight.size());
+        for (int y = 0; y < straight.height(); ++y) {
+            for (int x = 0; x < straight.width(); ++x) {
+                // Premultiplied and back loses a little of a translucent pixel's colour.
+                const QRgb want = straight.pixel(x, y), got = back.pixel(x, y);
+                const int slack = format == QImage::Format_ARGB32_Premultiplied && qAlpha(want) < 255 ? 2 : 0;
+                QCOMPARE(qAlpha(got), qAlpha(want));
+                QVERIFY2(std::abs(qRed(got) - qRed(want)) <= slack && std::abs(qGreen(got) - qGreen(want)) <= slack
+                        && std::abs(qBlue(got) - qBlue(want)) <= slack,
+                    qPrintable(u"%1, %2"_s.arg(x).arg(y)));
+            }
+        }
+    }
+
+    // A screenshot comes with its pixels (ClipWrite::image): the clipboard
+    // gets those, its PNG as it was handed over.
+    void pixelsInHandAreWrittenAsTheyAre()
+    {
+        if (!m_isolated)
+            QSKIP("Private clipboard unavailable; the user's clipboard is never used");
+        QImage picture(12, 9, QImage::Format_ARGB32_Premultiplied);
+        picture.fill(qRgba(35, 120, 210, 255));
+        picture.setPixel(3, 2, qRgba(250, 10, 20, 255));
+        QByteArray png;
+        QBuffer buffer(&png);
+        QVERIFY(buffer.open(QIODevice::WriteOnly) && picture.save(&buffer, "PNG"));
+        ClipboardWatcher watcher({}, {});
+        for (const bool inHand : {true, false}) {
+            std::atomic<int> copied = -1;
+            watcher.write({.imageData = png, .image = inHand ? picture : QImage()}, [&](bool ok) { copied = ok ? 1 : 0; });
+            QTRY_COMPARE_WITH_TIMEOUT(copied.load(), 1, 3000);
+            QCOMPARE(clipboardBytes(L"PNG"), png);
+            for (const UINT format : {UINT {CF_DIB}, UINT {CF_DIBV5}}) {
+                QVERIFY(::OpenClipboard(nullptr));
+                const HANDLE handle = ::GetClipboardData(format);
+                const void* data = handle ? ::GlobalLock(handle) : nullptr;
+                const QByteArray dib = data ? QByteArray(static_cast<const char*>(data), static_cast<qsizetype>(::GlobalSize(handle))) : QByteArray();
+                if (data)
+                    ::GlobalUnlock(handle);
+                ::CloseClipboard();
+                const QImage back = imageFromDib(dib);
+                QCOMPARE(back.size(), picture.size());
+                QCOMPARE(back.pixelColor(3, 2), QColor(250, 10, 20));
+                QCOMPARE(back.pixelColor(11, 8), QColor(35, 120, 210));
+            }
+        }
+    }
+
     // 有道词典's 划词 presses Ctrl+C in the program in front; files copied
     // there (no text) are the clipboard's for about a second, then 有道 puts
     // back what was there before, as its own write. Only that is recorded.
@@ -634,7 +719,7 @@ private slots:
             {u"icon"_s, QUrl::fromLocalFile(path).toString()},
             {u"image"_s, ClipThumbnailProvider::url(path)}, {u"swatch"_s, QString()},
             {u"order"_s, 0}, {u"groupName"_s, QString()}, {u"pinned"_s, false},
-            {u"missing"_s, false}, {u"movable"_s, false}, {u"afterPinned"_s, false}, {u"screenshot"_s, false}, {u"pasted"_s, false}, {u"fileCount"_s, 1},
+            {u"missing"_s, false}, {u"movable"_s, false}, {u"afterPinned"_s, false}, {u"screenshot"_s, false}, {u"pasted"_s, false}, {u"hotkey"_s, QString()}, {u"fileCount"_s, 1},
         }));
         QVERIFY2(object, qPrintable(component.errorString()));
         auto* row = qobject_cast<QQuickItem*>(object.get());
@@ -738,7 +823,7 @@ private slots:
             {u"title"_s, u"E=mc2"_s}, {u"detail"_s, u"WPS Office · 刚刚 · 5 字"_s},
             {u"icon"_s, QString()}, {u"image"_s, ClipThumbnailProvider::url(path, 1)}, {u"swatch"_s, QString()},
             {u"order"_s, 0}, {u"groupName"_s, QString()}, {u"pinned"_s, false},
-            {u"missing"_s, false}, {u"movable"_s, false}, {u"afterPinned"_s, false}, {u"screenshot"_s, false}, {u"pasted"_s, false}, {u"fileCount"_s, 0},
+            {u"missing"_s, false}, {u"movable"_s, false}, {u"afterPinned"_s, false}, {u"screenshot"_s, false}, {u"pasted"_s, false}, {u"hotkey"_s, QString()}, {u"fileCount"_s, 0},
         }));
         QVERIFY2(object, qPrintable(component.errorString()));
         auto* row = qobject_cast<QQuickItem*>(object.get());

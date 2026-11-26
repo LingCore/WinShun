@@ -32,12 +32,20 @@ struct DecodedClipImage {
 
 // Validates dimensions before decoding. Stills deduplicate by pixels;
 // animations by their whole encoded content, never just their first frame.
-DecodedClipImage decodeClipImage(QByteArray data);
+// `hashed` false: for its pixels alone (written to the clipboard), no hash made.
+DecodedClipImage decodeClipImage(QByteArray data, bool hashed = true);
 DecodedClipImage encodeClipImage(const QImage& image); // bitmap fallback as PNG
 
 // A picture's identity in the history (ClipCapture::hash): the same pixels
 // copied again are the same entry, whatever format they came in.
 QByteArray imagePixelHash(const QImage& image);
+
+// A 32-bit DIB's pixels from a picture, for CF_DIB and CF_DIBV5: its rows
+// bottom-up, B, G, R, A in memory, the alpha not premultiplied.
+// Whether writeDibRows takes `image` as it is (RGB32, ARGB32, ARGB32_Premultiplied).
+bool dibRowsReady(const QImage& image);
+std::size_t dibRowsSize(const QImage& image); // the bytes writeDibRows writes
+void writeDibRows(const QImage& image, uchar* target);
 
 // A picture from a clipboard DIB (CF_DIB, CF_DIBV5); null if it is not one.
 QImage imageFromDib(const QByteArray& dib);

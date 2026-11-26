@@ -51,7 +51,7 @@ DecodedClipImage encodeClipImage(const QImage& image)
     return result;
 }
 
-DecodedClipImage decodeClipImage(QByteArray data)
+DecodedClipImage decodeClipImage(QByteArray data, bool hashed)
 {
     DecodedClipImage result;
     if (data.size() > kClipMaxImageBytes) {
@@ -83,7 +83,9 @@ DecodedClipImage decodeClipImage(QByteArray data)
         return {};
     if (format == "bmp")
         return encodeClipImage(result.firstFrame);
-    if (result.animated) {
+    if (!hashed) {
+        // nothing to tell it from the others by
+    } else if (result.animated) {
         QCryptographicHash hash(QCryptographicHash::Sha1);
         hash.addData(QByteArrayView("WinShun.animated-image"));
         hash.addData(data);
@@ -104,6 +106,36 @@ QByteArray imagePixelHash(const QImage& image)
     for (int y = 0; y < argb.height(); ++y)
         hash.addData(QByteArrayView(reinterpret_cast<const char*>(argb.constScanLine(y)), argb.width() * 4));
     return hash.result();
+}
+
+bool dibRowsReady(const QImage& image)
+{
+    const QImage::Format format = image.format();
+    return format == QImage::Format_RGB32 || format == QImage::Format_ARGB32 || format == QImage::Format_ARGB32_Premultiplied;
+}
+
+std::size_t dibRowsSize(const QImage& image)
+{
+    return static_cast<std::size_t>(image.width()) * 4 * static_cast<std::size_t>(image.height());
+}
+
+void writeDibRows(const QImage& image, uchar* target)
+{
+    Q_ASSERT(dibRowsReady(image));
+    const std::size_t row = static_cast<std::size_t>(image.width()) * 4;
+    const bool premultiplied = image.format() == QImage::Format_ARGB32_Premultiplied;
+    for (int y = image.height() - 1; y >= 0; --y, target += row) {
+        if (!premultiplied) {
+            std::memcpy(target, image.constScanLine(y), row);
+            continue;
+        }
+        // Opaque pixels, a screenshot's all, are the same either way.
+        const auto* from = reinterpret_cast<const QRgb*>(image.constScanLine(y));
+        for (int x = 0; x < image.width(); ++x) {
+            const QRgb pixel = qAlpha(from[x]) == 255 ? from[x] : qUnpremultiply(from[x]);
+            std::memcpy(target + static_cast<std::size_t>(x) * 4, &pixel, sizeof pixel);
+        }
+    }
 }
 
 // A DIB (CF_DIB, CF_DIBV5) is a BMP file without its 14-byte file header:

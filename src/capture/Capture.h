@@ -81,10 +81,14 @@ public:
         // Enter, a double click, the toolbar. `project`: the annotated
         // picture's editable form (empty: it has no annotations). `origin`
         // identifies this regular capture; a long picture passes an empty id.
-        std::function<void(const QImage&, const QByteArray& project, const QString& origin)> copy;
+        // `read`: the lines of text in this very picture, when the redaction's
+        // pre-scan has read them (none: not read). Win顺 keeps them as the
+        // picture's words instead of reading it a second time (GitHub #467).
+        using Read = std::optional<QList<RedactLine>>;
+        std::function<void(const QImage&, const QByteArray& project, const QString& origin, const Read& read)> copy;
         // Ctrl+S and F3 also put the picture in the screenshot history,
         // leaving the system clipboard alone.
-        std::function<void(const QImage&, const QByteArray& project)> record;
+        std::function<void(const QImage&, const QByteArray& project, const Read& read)> record;
         // Any completed regular capture or restored draft: fed into PinHistory (#446).
         std::function<void(CapturedShot)> captured;
         // What the annotation tools remember ([Capture] AnnotateStyles, JSON):

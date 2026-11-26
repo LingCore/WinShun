@@ -1029,6 +1029,19 @@ QList<QStringList> ocrTable(const QList<OcrPiece>& found)
     return tableOf(std::move(pieces));
 }
 
+QStringList ocrLines(const QList<OcrPiece>& found)
+{
+    std::vector<Piece> pieces;
+    for (const OcrPiece& p : found) {
+        const QRectF box = p.quad.boundingRect();
+        pieces.push_back({box.left(), box.top(), box.right(), box.bottom(), p.text});
+    }
+    QStringList lines;
+    for (const Line& line : linesOf(pieces))
+        lines.append(joined(line.pieces));
+    return lines;
+}
+
 bool PaddleOcr::read(const QImage& image, QStringList* lines, QString* error, QList<QStringList>* table)
 {
     lines->clear();
@@ -1037,15 +1050,9 @@ bool PaddleOcr::read(const QImage& image, QStringList* lines, QString* error, QL
     QList<OcrPiece> found;
     if (!find(image, &found, false, error, {}))
         return false;
-    std::vector<Piece> pieces;
-    for (const OcrPiece& p : std::as_const(found)) {
-        const QRectF box = p.quad.boundingRect();
-        pieces.push_back({box.left(), box.top(), box.right(), box.bottom(), p.text});
-    }
-    for (const Line& line : linesOf(pieces))
-        lines->append(joined(line.pieces));
+    *lines = ocrLines(found);
     if (table)
-        *table = tableOf(std::move(pieces));
+        *table = ocrTable(found);
     return true;
 }
 

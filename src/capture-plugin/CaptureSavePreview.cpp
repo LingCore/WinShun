@@ -125,8 +125,8 @@ int runCaptureSave(const QStringList& args)
         check(error.isEmpty(), "asynchronous PNG save succeeded");
         savedPaths.append(path);
     };
-    callbacks.record = [&](const QImage&, const QByteArray&) { ++recorded; };
-    callbacks.copy = [&](const QImage&, const QByteArray&, const QString&) { ++copied; };
+    callbacks.record = [&](const QImage&, const QByteArray&, const Capture::Callbacks::Read&) { ++recorded; };
+    callbacks.copy = [&](const QImage&, const QByteArray&, const QString&, const Capture::Callbacks::Read&) { ++copied; };
     Capture capture(&engine, std::move(callbacks));
     CaptureSession* session = nullptr;
     CaptureScreen* screen = nullptr;

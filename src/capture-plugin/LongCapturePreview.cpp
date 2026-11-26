@@ -228,7 +228,7 @@ int runLongCapture(const QStringList& args)
     QString precedingOrigin;
     Capture::Callbacks callbacks;
     callbacks.longCapture = [&](const QImage& picture) { result = picture; ended = true; edited = true; };
-    callbacks.copy = [&](const QImage& picture, const QByteArray&, const QString& origin) {
+    callbacks.copy = [&](const QImage& picture, const QByteArray&, const QString& origin, const Capture::Callbacks::Read&) {
         if (precedingCapture) {
             check(!origin.isEmpty(), "regular capture must supply its own clipboard identity");
             precedingOrigin = origin;
@@ -239,7 +239,7 @@ int runLongCapture(const QStringList& args)
         ended = true;
         copied = true;
     };
-    callbacks.record = [&](const QImage& picture, const QByteArray&) { result = picture; ended = true; };
+    callbacks.record = [&](const QImage& picture, const QByteArray&, const Capture::Callbacks::Read&) { result = picture; ended = true; };
     callbacks.saveFolder = [&] { return out.absolutePath(); };
     bool fileSaved = false;
     callbacks.saved = [&](const QString&, const QString& error) { check(error.isEmpty(), "save exported image"); fileSaved = true; };

@@ -2817,6 +2817,16 @@ void App::setUpAppTools()
                 done(toolError(u"origin must be at most 96 UTF-8 bytes without NUL"_s));
                 return;
             }
+            // `words`: the text in the picture, when the plugin has read it
+            // already (the screenshot's pre-scan); empty: read, none found.
+            std::optional<QString> words;
+            if (const QJsonValue given = arguments.value(u"words"_s); given.isString()) {
+                if (given.toString().size() > 1'000'000) {
+                    done(toolError(u"words must be at most 1,000,000 characters"_s));
+                    return;
+                }
+                words = given.toString();
+            }
             QPointer<App> self(this);
             // Record-only handoff that settings will not keep: remove temp files without decoding pixels.
             if (!copy && !m_settings.shouldRecordClipboardImage(false, screenshot, m_clipboardPaused)) {
@@ -2832,7 +2842,7 @@ void App::setUpAppTools()
                 }).detach();
                 return;
             }
-            std::thread([self, file, project, copy, screenshot, imageOrigin, done = std::move(done)]() mutable {
+            std::thread([self, file, project, copy, screenshot, imageOrigin, words = std::move(words), done = std::move(done)]() mutable {
                 QImage image = readHandedPicture(file);
                 QByteArray bytes;
                 if (!project.isEmpty()) {
@@ -2844,7 +2854,7 @@ void App::setUpAppTools()
                 if (!project.isEmpty())
                     QFile::remove(project);
                 QMetaObject::invokeMethod(qApp, [self, image = std::move(image), bytes = std::move(bytes), copy, screenshot, imageOrigin,
-                                                    done = std::move(done)]() mutable {
+                                                    words = std::move(words), done = std::move(done)]() mutable {
                     if (!self)
                         return;
                     if (image.isNull()) {
@@ -2853,9 +2863,9 @@ void App::setUpAppTools()
                     }
                     const bool remember = self->m_settings.shouldRecordClipboardImage(copy, screenshot, self->m_clipboardPaused);
                     if (copy)
-                        self->m_clipboard->copyImage(image, remember, screenshot, std::move(bytes), imageOrigin);
+                        self->m_clipboard->copyImage(image, remember, screenshot, std::move(bytes), imageOrigin, std::move(words));
                     else if (remember)
-                        self->m_clipboard->recordImage(image, std::move(bytes), screenshot);
+                        self->m_clipboard->recordImage(image, std::move(bytes), screenshot, std::move(words));
                     done({{{u"kept"_s, remember}}});
                 }, Qt::QueuedConnection);
             }).detach();

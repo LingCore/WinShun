@@ -31,6 +31,9 @@ struct ClipWrite {
     // ... or the image itself, for a picture with no file yet (a screen capture:
     // the history writes its file later).
     QByteArray imageData;
+    // imageData's pixels, when whoever asks has them already (a screenshot
+    // just taken): written as they are, not decoded from imageData again.
+    QImage image;
     QString imageOrigin; // opaque identity written with these pixels, even without history
     // An equation's or an embedded object's own formats (packClipFormats()),
     // put first, in the order the program that copied it put them: Word and

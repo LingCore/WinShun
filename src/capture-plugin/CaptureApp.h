@@ -3,6 +3,7 @@
 #include "CaptureSettings.h"
 #include "PinHistory.h"
 #include "PrintScreen.h"
+#include "SmartRedact.h"
 #include "platform/HotPages.h"
 #include "platform/UiStall.h"
 
@@ -150,7 +151,9 @@ private:
     // ---- Win顺's side ----
     // Into the clipboard history (copy: and onto the clipboard), as a
     // screenshot when it is one; with its annotations to edit again.
-    void copyImage(const QImage& image, const QByteArray& project, bool copy, bool screenshot, const QString& imageOrigin = {});
+    // `read`: the picture's lines of text if they have been read already (Capture::Callbacks::Read).
+    void copyImage(const QImage& image, const QByteArray& project, bool copy, bool screenshot, const QString& imageOrigin = {},
+        const std::optional<QList<capture::RedactLine>>& read = {});
     void copyText(const QString& text);
     // A click: `file` selected in its folder (reveal), else `folder` opened;
     // an older host, without reveal, opens `folder` (#194).

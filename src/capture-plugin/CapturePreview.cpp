@@ -1164,7 +1164,7 @@ int runSelectionKeys(const QStringList& args)
     QImage copied;
     int copies = 0;
     Capture::Callbacks callbacks;
-    callbacks.copy = [&](const QImage& image, const QByteArray&, const QString&) { copied = image; ++copies; };
+    callbacks.copy = [&](const QImage& image, const QByteArray&, const QString&, const Capture::Callbacks::Read&) { copied = image; ++copies; };
     Capture capture(&engine, std::move(callbacks));
     QQuickWindow* overlay = nullptr;
     CaptureSession* session = nullptr;
@@ -1338,7 +1338,7 @@ int runSelectionSize(const QStringList& args)
     int copies = 0;
     QStringList kept;
     Capture::Callbacks callbacks;
-    callbacks.copy = [&](const QImage& image, const QByteArray&, const QString&) { copied = image; ++copies; };
+    callbacks.copy = [&](const QImage& image, const QByteArray&, const QString&, const Capture::Callbacks::Read&) { copied = image; ++copies; };
     callbacks.sizePresetsChanged = [&](const QString& text) { kept.append(text); };
     Capture capture(&engine, std::move(callbacks));
     capture.setSizePresets(u"640x480,16:9"_s);
@@ -2272,7 +2272,7 @@ int runSpan(const QStringList& args)
     QImage copied;
     int copies = 0;
     Capture::Callbacks callbacks;
-    callbacks.copy = [&](const QImage& image, const QByteArray&, const QString&) {
+    callbacks.copy = [&](const QImage& image, const QByteArray&, const QString&, const Capture::Callbacks::Read&) {
         copied = image;
         ++copies;
     };

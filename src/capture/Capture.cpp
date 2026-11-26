@@ -1502,6 +1502,7 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
     m_lastClipboardSequence = ::GetClipboardSequenceNumber();
     m_lastClipboardId = QUuid::createUuid().toString(QUuid::WithoutBraces);
     PinWindow* pinned = nullptr;
+    const Callbacks::Read read = prescanned; // the pin takes its own below
     switch (action) {
     case CaptureSession::Action::CopyPin:
         if (PinManager* pins = m_callbacks.pins ? m_callbacks.pins() : nullptr)
@@ -1509,19 +1510,19 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
         [[fallthrough]]; // copying records the picture once, including its editable project
     case CaptureSession::Action::Copy:
         if (m_callbacks.copy)
-            m_callbacks.copy(picture, project, m_lastClipboardId);
+            m_callbacks.copy(picture, project, m_lastClipboardId, read);
         break;
     case CaptureSession::Action::Save:
     case CaptureSession::Action::SavePrevious:
         save(picture, savePath, std::move(hdr));
         if (m_callbacks.record)
-            m_callbacks.record(picture, project);
+            m_callbacks.record(picture, project, read);
         break;
     case CaptureSession::Action::Pin:
         if (PinManager* pins = m_callbacks.pins ? m_callbacks.pins() : nullptr)
             pinned = pins->pin(picture, origin, true, project, std::move(prescanned));
         if (m_callbacks.record)
-            m_callbacks.record(picture, project);
+            m_callbacks.record(picture, project, read);
         break;
     case CaptureSession::Action::Ocr:
         if (m_callbacks.ocr)
@@ -1824,12 +1825,12 @@ LongCapture& Capture::longCapture()
                 break;
             case LongCapture::Output::Copy:
                 if (m_callbacks.copy)
-                    m_callbacks.copy(picture, {}, {}); // a long picture is not the previous regular capture
+                    m_callbacks.copy(picture, {}, {}, {}); // a long picture is not the previous regular capture
                 break;
             case LongCapture::Output::Save:
                 save(picture);
                 if (m_callbacks.record)
-                    m_callbacks.record(picture, {});
+                    m_callbacks.record(picture, {}, {});
                 break;
             case LongCapture::Output::Pin:
                 // Taller than the screen as a rule: shown fitted, its top
@@ -1837,7 +1838,7 @@ LongCapture& Capture::longCapture()
                 if (PinManager* pins = m_callbacks.pins ? m_callbacks.pins() : nullptr)
                     pins->pinFitted(picture, origin, origin, true);
                 if (m_callbacks.record)
-                    m_callbacks.record(picture, {});
+                    m_callbacks.record(picture, {}, {});
                 break;
             }
         };

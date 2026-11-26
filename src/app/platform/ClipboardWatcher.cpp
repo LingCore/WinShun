@@ -387,15 +387,24 @@ HGLOBAL globalCopy(const void* data, std::size_t size)
     return handle;
 }
 
-// Bottom-up 32-bit rows: what a DIB holds, from an ARGB32 image (whose
-// bytes are B, G, R, A in memory).
-QByteArray dibPixels(const QImage& argb)
+// A DIB for the clipboard (CF_DIB behind a BITMAPINFOHEADER, CF_DIBV5 behind
+// a BITMAPV5HEADER): the header, then the picture's rows (writeDibRows),
+// straight into the memory the clipboard takes. Through byte arrays, a full
+// screen was in memory five times over while it was copied (GitHub #467).
+HGLOBAL globalDib(const void* header, std::size_t headerSize, const QImage& image)
 {
-    QByteArray pixels;
-    pixels.reserve(static_cast<qsizetype>(argb.width()) * argb.height() * 4);
-    for (int y = argb.height() - 1; y >= 0; --y)
-        pixels.append(reinterpret_cast<const char*>(argb.constScanLine(y)), argb.width() * 4);
-    return pixels;
+    const HGLOBAL handle = ::GlobalAlloc(GMEM_MOVEABLE, headerSize + dibRowsSize(image));
+    if (!handle)
+        return nullptr;
+    auto* target = static_cast<uchar*>(::GlobalLock(handle));
+    if (!target) {
+        ::GlobalFree(handle);
+        return nullptr;
+    }
+    std::memcpy(target, header, headerSize);
+    writeDibRows(image, target + headerSize);
+    ::GlobalUnlock(handle);
+    return handle;
 }
 
 } // namespace
@@ -1061,14 +1070,20 @@ bool ClipboardWatcher::writeNow(const ClipWrite& data)
         add(f.dropEffect, &effect, sizeof effect);
     }
     if (!data.imagePath.isEmpty() || !data.imageData.isEmpty()) {
-        QByteArray encoded = data.imageData;
-        if (encoded.isEmpty()) {
-            QFile file(data.imagePath);
-            if (!file.open(QIODevice::ReadOnly) || file.size() > kClipMaxImageBytes)
-                return fail();
-            encoded = file.readAll();
+        DecodedClipImage picture;
+        if (!data.image.isNull() && !data.imageData.isEmpty()) { // a PNG and its pixels, both in hand
+            picture.data = data.imageData;
+            picture.firstFrame = data.image;
+        } else {
+            QByteArray encoded = data.imageData;
+            if (encoded.isEmpty()) {
+                QFile file(data.imagePath);
+                if (!file.open(QIODevice::ReadOnly) || file.size() > kClipMaxImageBytes)
+                    return fail();
+                encoded = file.readAll();
+            }
+            picture = decodeClipImage(std::move(encoded), false);
         }
-        const auto picture = decodeClipImage(std::move(encoded));
         if (picture.firstFrame.isNull())
             return fail();
         // Original formats precede the still fallback so capable targets
@@ -1087,8 +1102,13 @@ bool ClipboardWatcher::writeNow(const ClipWrite& data)
             return fail();
         add(f.png, png.constData(), static_cast<std::size_t>(png.size()));
         add(f.pngMime, png.constData(), static_cast<std::size_t>(png.size()));
-        const QImage image = picture.firstFrame.convertToFormat(QImage::Format_ARGB32);
-        const QByteArray pixels = dibPixels(image);
+        // Not copied where its rows can be written as they are.
+        const QImage image = dibRowsReady(picture.firstFrame) ? picture.firstFrame : picture.firstFrame.convertToFormat(QImage::Format_ARGB32);
+        const auto pixelBytes = static_cast<DWORD>(dibRowsSize(image));
+        const auto addDib = [&](UINT format, const void* header, std::size_t headerSize) {
+            if (const HGLOBAL handle = globalDib(header, headerSize, image))
+                items.emplace_back(format, handle);
+        };
         // CF_DIB, 32 bits a pixel (most programs ignore the fourth byte) ...
         BITMAPINFOHEADER info {sizeof(BITMAPINFOHEADER)};
         info.biWidth = image.width();
@@ -1096,10 +1116,8 @@ bool ClipboardWatcher::writeNow(const ClipWrite& data)
         info.biPlanes = 1;
         info.biBitCount = 32;
         info.biCompression = BI_RGB;
-        info.biSizeImage = static_cast<DWORD>(pixels.size());
-        QByteArray dib(reinterpret_cast<const char*>(&info), sizeof info);
-        dib += pixels;
-        add(CF_DIB, dib.constData(), static_cast<std::size_t>(dib.size()));
+        info.biSizeImage = pixelBytes;
+        addDib(CF_DIB, &info, sizeof info);
         // ... and CF_DIBV5 with its alpha, for those that read transparency.
         BITMAPV5HEADER v5 {sizeof(BITMAPV5HEADER)};
         v5.bV5Width = image.width();
@@ -1107,16 +1125,14 @@ bool ClipboardWatcher::writeNow(const ClipWrite& data)
         v5.bV5Planes = 1;
         v5.bV5BitCount = 32;
         v5.bV5Compression = BI_BITFIELDS;
-        v5.bV5SizeImage = static_cast<DWORD>(pixels.size());
+        v5.bV5SizeImage = pixelBytes;
         v5.bV5RedMask = 0x00FF0000;
         v5.bV5GreenMask = 0x0000FF00;
         v5.bV5BlueMask = 0x000000FF;
         v5.bV5AlphaMask = 0xFF000000;
         v5.bV5CSType = LCS_sRGB;
         v5.bV5Intent = LCS_GM_IMAGES;
-        QByteArray dibV5(reinterpret_cast<const char*>(&v5), sizeof v5);
-        dibV5 += pixels;
-        add(CF_DIBV5, dibV5.constData(), static_cast<std::size_t>(dibV5.size()));
+        addDib(CF_DIBV5, &v5, sizeof v5);
     }
     // WINSHUN_TEST_NO_CLIP_HISTORY (live tests): Windows' own history (25 items,
     // the oldest pushed out by every copy) and our watcher leave this copy alone.

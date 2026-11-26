@@ -15477,7 +15477,7 @@ bool probeSettingsReopen(App& app, const QStringList& args, const QDir& out, QJs
         // Left open: the pages left behind go too, all but the one on show
         // (SettingsWindow.putPagesAway, GitHub #467), and one gone back to is
         // made again where it was left. Not while the search has them.
-        const QString made = u"[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].filter(i => pageItem(i) !== null).join(',')"_s;
+        const QString madeNow = u"[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].filter(i => pageItem(i) !== null).join(',')"_s;
         // What Task Manager's 内存 follows: the freed pages' memory is given back
         // at once though the window is in use (App, IdleTrim::freed).
         const auto workingSetMb = [] {
@@ -15491,7 +15491,7 @@ bool probeSettingsReopen(App& app, const QStringList& args, const QDir& out, QJs
         pump(300);
         const int leftAt = js(window, u"flick.contentY = Math.min(120, Math.max(0, flick.contentHeight - flick.height)); flick.contentY"_s).toInt();
         guiThreadIdle(4000); // put away one per turn, then given back a second later, on a thread
-        check(js(window, made).toString() == js(window, u"String(scopePage)"_s).toString()
+        check(js(window, madeNow).toString() == js(window, u"String(scopePage)"_s).toString()
                 && js(window, u"visible && !allPagesLoaded && !searchReady"_s).toBool(),
             u"left_pages_put_away"_s);
         const double openAfter = workingSetMb();
@@ -15500,7 +15500,7 @@ bool probeSettingsReopen(App& app, const QStringList& args, const QDir& out, QJs
         check(openWithPages - openAfter > 50, u"left_pages_give_memory_back"_s);
         js(window, u"showPage(resultsPage)"_s);
         guiThreadIdle(1500);
-        check(js(window, made).toString() == js(window, u"String(resultsPage)"_s).toString(), u"left_pages_follow_the_page_on_show"_s);
+        check(js(window, madeNow).toString() == js(window, u"String(resultsPage)"_s).toString(), u"left_pages_follow_the_page_on_show"_s);
         js(window, u"navigateBack()"_s);
         pump(400);
         check(js(window, u"currentPage === scopePage && pageItem(scopePage) !== null"_s).toBool()
@@ -15515,7 +15515,7 @@ bool probeSettingsReopen(App& app, const QStringList& args, const QDir& out, QJs
         check(js(window, u"searchReady"_s).toBool() && js(window, others).toInt() == 10, u"left_pages_kept_for_the_search"_s);
         js(window, u"searchBox.clear()"_s);
         guiThreadIdle(2500);
-        check(js(window, made).toString() == js(window, u"String(currentPage)"_s).toString(), u"left_pages_put_away_after_the_search"_s);
+        check(js(window, madeNow).toString() == js(window, u"String(currentPage)"_s).toString(), u"left_pages_put_away_after_the_search"_s);
         js(window, u"leftPagesMs = 30000"_s);
 
         app.setSettingsUnloadAfter(60'000); // not during what follows
