@@ -418,21 +418,29 @@ private slots:
         const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
         const auto manifest = Json::parse(text);
         QVERIFY(manifest);
-        std::vector<std::string> choices;
-        std::string fallback;
+        // [0] the chat models ("model"), [1] the embedding models ("embedModel").
+        std::vector<std::string> choices[2];
+        std::string fallback[2];
         for (const Json& s : (*manifest)["settings"].toArray()) {
-            if (s["key"].toString() == "model") {
-                fallback = s["default"].toString();
+            const std::string key = s["key"].toString();
+            if (key == "model" || key == "embedModel") {
+                const int kind = key == "embedModel";
+                fallback[kind] = s["default"].toString();
                 for (const Json& o : s["options"].toArray())
-                    choices.push_back(o["value"].toString());
+                    choices[kind].push_back(o["value"].toString());
             }
-            if (s["key"].toString() == "port")
+            if (key == "port")
                 QCOMPARE(s["default"].toInt(), static_cast<long long>(lm::kDefaultPort));
         }
-        QVERIFY(lm::findRecommended(fallback));
-        std::vector<std::string> expected;
+        for (const int kind : {0, 1}) {
+            const lm::Recommended* r = lm::findRecommended(fallback[kind]);
+            QVERIFY(r);
+            QCOMPARE(r->embedding, kind == 1);
+        }
+        std::vector<std::string> expected[2];
         for (const lm::Recommended& r : lm::recommended()) {
-            expected.emplace_back(r.id);
+            expected[r.embedding].emplace_back(r.id);
+            QVERIFY(!(r.embedding && r.translationOnly));
             QVERIFY(r.url.starts_with("https://www.modelscope.cn/models/"));
             QVERIFY2(r.url.find("/resolve/") != std::string_view::npos && r.url.find("/master/") == std::string_view::npos,
                 "pinned to a revision, not master");
@@ -441,8 +449,10 @@ private slots:
             QCOMPARE(r.sha256.size(), std::size_t(64));
             QVERIFY(r.size > (500ull << 20));
         }
-        expected.emplace_back("file");
-        QCOMPARE(choices, expected);
+        for (const int kind : {0, 1}) {
+            expected[kind].emplace_back("file");
+            QCOMPARE(choices[kind], expected[kind]);
+        }
         QVERIFY(!lm::findRecommended("file"));
     }
 
@@ -464,6 +474,17 @@ private slots:
         QCOMPARE(after(L"--ctx-checkpoints"), std::wstring(L"2"));
         QCOMPARE(after(L"-lv"), std::wstring(L"4")); // the device and offload lines come at 4
         QVERIFY(std::ranges::find(args, std::wstring(L"--device")) == args.end());
+        QVERIFY(std::ranges::find(args, std::wstring(L"--embedding")) == args.end());
+        {
+            // An embedding model: a text goes in one batch, a slot's context long.
+            lm::Launch embedding = launch;
+            embedding.embedding = true;
+            const std::vector<std::wstring> with = lm::arguments(embedding);
+            const auto value = [&](const wchar_t* name) { return *(std::ranges::find(with, std::wstring(name)) + 1); };
+            QVERIFY(std::ranges::find(with, std::wstring(L"--embedding")) != with.end());
+            QCOMPARE(value(L"--batch-size"), std::wstring(L"4096"));
+            QCOMPARE(value(L"--ubatch-size"), std::wstring(L"4096"));
+        }
         launch.gpu = false;
         QCOMPARE(after(L"--device"), std::wstring());
         QCOMPARE(lm::arguments(launch).back(), std::wstring(L"none"));
@@ -536,7 +557,7 @@ private slots:
                 ++acquired;
                 return lm::Target {upstream.port()};
             },
-            [&](int delta) {
+            [&](int delta, const std::string&) {
                 busy += delta;
                 busyMost = std::max(busyMost.load(), busy.load());
             },
@@ -579,7 +600,7 @@ private slots:
     void relaySaysTheServerStopped()
     {
         Server upstream([](SOCKET, const std::string&) {}); // reads the request, closes
-        lm::Relay relay([&](const std::string&, const std::string&) { return lm::Target {upstream.port()}; }, [](int) {},
+        lm::Relay relay([&](const std::string&, const std::string&) { return lm::Target {upstream.port()}; }, [](int, const std::string&) {},
             [](const std::string&, const std::string&) { return std::optional<std::pair<int, std::string>>(); });
         std::string error;
         QVERIFY2(relay.listen(0, error, true), error.c_str());
@@ -598,7 +619,7 @@ private slots:
     void relayRefusesAndExplains()
     {
         lm::Relay relay([](const std::string&, const std::string&) { return lm::Target {0, 503, "no_model", "还没下载模型"}; },
-            [](int) {}, [](const std::string&, const std::string&) { return std::optional<std::pair<int, std::string>>(); });
+            [](int, const std::string&) {}, [](const std::string&, const std::string&) { return std::optional<std::pair<int, std::string>>(); });
         std::string error;
         QVERIFY2(relay.listen(0, error, true), error.c_str());
         const std::string port = std::to_string(relay.port());
@@ -630,7 +651,7 @@ private slots:
         QCOMPARE(::bind(other.s, reinterpret_cast<sockaddr*>(&a), sizeof a), 0);
         QCOMPARE(::listen(other.s, 1), 0);
         const int port = portOf(other.s);
-        lm::Relay relay([](const std::string&, const std::string&) { return lm::Target {}; }, [](int) {},
+        lm::Relay relay([](const std::string&, const std::string&) { return lm::Target {}; }, [](int, const std::string&) {},
             [](const std::string&, const std::string&) { return std::optional<std::pair<int, std::string>>(); });
         std::string error;
         QVERIFY(!relay.listen(port, error, true));

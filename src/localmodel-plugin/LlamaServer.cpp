@@ -98,6 +98,11 @@ std::vector<std::wstring> arguments(const Launch& launch)
         // never the text asked about.
         L"-lv", L"4",
     };
+    if (launch.embedding) {
+        // A text is taken in one batch: as large as a slot's context.
+        const std::wstring slot = std::to_wstring(launch.context / std::max(1, launch.parallel));
+        args.insert(args.end(), {L"--embedding", L"--batch-size", slot, L"--ubatch-size", slot});
+    }
     if (!launch.gpu) {
         args.push_back(L"--device");
         args.push_back(L"none");

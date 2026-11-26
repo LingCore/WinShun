@@ -67,6 +67,7 @@ Target Engine::acquire()
     m_server.stop();
     setPhase(Phase::Loading);
     Launch launch {config.program, config.model, config.alias, config.gpu, config.context, freePort()};
+    launch.embedding = config.embedding;
     std::string error;
     bool ok = m_server.start(launch, config.log, m_canceled, kLoadTimeoutMs, error, chinese);
     if (!ok && !m_canceled && m_server.lostPort()) { // taken between freePort() and its bind

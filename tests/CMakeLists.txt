@@ -1530,7 +1530,7 @@ qt_add_executable(tst_semantic tst_semantic.cpp
     ${PROJECT_SOURCE_DIR}/src/semantic-plugin/Chunker.cpp ${PROJECT_SOURCE_DIR}/src/semantic-plugin/Store.cpp
     ${PROJECT_SOURCE_DIR}/src/semantic-plugin/Embedder.cpp)
 target_include_directories(tst_semantic PRIVATE ${PROJECT_SOURCE_DIR}/src/semantic-plugin ${PROJECT_SOURCE_DIR}/src/plugins-sdk)
-target_link_libraries(tst_semantic PRIVATE winshun_options Qt6::Test winhttp)
+target_link_libraries(tst_semantic PRIVATE winshun_options Qt6::Test Qt6::Network winhttp)
 
 # winshun.localsend's pieces (src/localsend-plugin, the wslocalsend library):
 # names from other devices made safe, files written whole or not at all,

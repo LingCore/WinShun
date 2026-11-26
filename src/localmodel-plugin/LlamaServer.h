@@ -27,6 +27,9 @@ struct Launch {
     int port = 0;
     // Each turn gets this (the slot cache keeps the system prompt warm).
     int parallel = 2;
+    // An embedding model: /v1/embeddings and nothing else. Each slot takes a
+    // whole text at once (context / parallel tokens at most).
+    bool embedding = false;
 
     bool operator==(const Launch&) const = default;
 };

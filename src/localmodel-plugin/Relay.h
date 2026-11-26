@@ -45,7 +45,7 @@ public:
     // Blocks until the server is up (the model loaded) or cannot be.
     using Acquire = std::function<Target(const std::string& method, const std::string& path)>;
     // +1 when a request goes to the server, -1 when its answer is through.
-    using Busy = std::function<void(int delta)>;
+    using Busy = std::function<void(int delta, const std::string& path)>;
     // A request answered without the server ({status, JSON body}): /health, /v1/models.
     using Local = std::function<std::optional<std::pair<int, std::string>>(const std::string& method, const std::string& path)>;
 

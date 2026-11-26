@@ -27,10 +27,11 @@ struct EngineConfig {
     bool gpu = true;
     int idleSeconds = 300;
     int context = 8192;
+    bool embedding = false; // an embedding model (Launch::embedding)
 
     bool sameModel(const EngineConfig& other) const
     {
-        return program == other.program && model == other.model && alias == other.alias && gpu == other.gpu && context == other.context;
+        return program == other.program && model == other.model && alias == other.alias && gpu == other.gpu && context == other.context && embedding == other.embedding;
     }
 };
 

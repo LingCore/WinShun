@@ -31,6 +31,7 @@ struct Recommended {
     std::uint64_t size = 0;
     std::string_view sha256; // lower-case hex
     bool translationOnly = false; // translates, and nothing else (no dictionary)
+    bool embedding = false; // turns text into vectors (search by meaning): no chat
 };
 
 std::span<const Recommended> recommended();

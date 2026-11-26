@@ -237,11 +237,12 @@ void Relay::serve(SOCKET client)
         }
     }
 
-    m_busy(+1);
+    m_busy(+1, head.path);
     struct Done {
         const Busy& busy;
-        ~Done() { busy(-1); }
-    } done {m_busy};
+        const std::string& path;
+        ~Done() { busy(-1, path); }
+    } done {m_busy, head.path};
     const Target target = m_acquire(head.method, head.path);
     if (!target.port) {
         refuse(target.status, target.message, target.code);

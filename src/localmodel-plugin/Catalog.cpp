@@ -38,6 +38,16 @@ constexpr std::array kRecommended {
         "4383ac0c3c8e476de98ff979c2a3f069f8c4fb385e7860cf2d28da896cc477c7",
         true,
     },
+    Recommended {
+        "qwen3-embedding-0.6b",
+        "Qwen3-Embedding 0.6B",
+        "Qwen3-Embedding-0.6B-Q8_0.gguf",
+        "https://www.modelscope.cn/models/Qwen/Qwen3-Embedding-0.6B-GGUF/resolve/a6804f0dece24ece939f52ffa3316fd650ca1839/Qwen3-Embedding-0.6B-Q8_0.gguf",
+        639150592,
+        "06507c7b42688469c4e7298b0a1e16deff06caf291cf0a5b278c308249c3e439",
+        false,
+        true,
+    },
 };
 
 // GGUF (docs/gguf.md in ggml): "GGUF", a version, the tensor and metadata
