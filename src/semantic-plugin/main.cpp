@@ -47,6 +47,8 @@ namespace {
 constexpr int kToolTimeoutMs = 60000;
 constexpr auto kDebounce = 250ms; // a newer query in that time: this one is not asked
 constexpr auto kPassEvery = 10min; // looking for changed files
+constexpr const char* kAgainSoon = "~"; // pass(): Win顺 had not read all its files yet
+constexpr auto kPassWhileSettling = 2min; // … while Win顺 still reads or checks files (more come)
 constexpr std::size_t kFlushEvery = 20; // files
 constexpr auto kFlushAfter = 15s;
 constexpr auto kPublishEvery = 1s; // winshun/status while files go through
@@ -80,6 +82,39 @@ std::string folderOf(const std::string& path)
 {
     const std::size_t slash = path.find_last_of('\\');
     return slash == std::string::npos ? std::string() : path.substr(0, slash);
+}
+
+std::string extensionOf(const std::string& path)
+{
+    const std::string name = fileName(path);
+    const std::size_t dot = name.find_last_of('.');
+    std::string ext = dot == std::string::npos ? std::string() : name.substr(dot + 1);
+    std::ranges::transform(ext, ext.begin(), [](char c) { return static_cast<char>(std::tolower(static_cast<unsigned char>(c))); });
+    return ext;
+}
+
+// Whether `path` is in one of `folders` (none: anywhere), case aside.
+bool inFolders(const std::string& path, const std::vector<std::string>& folders)
+{
+    if (folders.empty())
+        return true;
+    const std::wstring p = winshun::wide(path);
+    return std::ranges::any_of(folders, [&](const std::string& folder) {
+        const std::wstring f = winshun::wide(folder);
+        if (f.empty() || p.size() < f.size()
+            || ::CompareStringOrdinal(p.c_str(), static_cast<int>(f.size()), f.c_str(), static_cast<int>(f.size()), TRUE) != CSTR_EQUAL)
+            return false;
+        return p.size() == f.size() || f.back() == L'\\' || p[f.size()] == L'\\';
+    });
+}
+
+// Deleted, or its folder: not there any more. One that cannot be looked at is not gone.
+bool gone(const std::string& path)
+{
+    if (::GetFileAttributesW(winshun::wide(path).c_str()) != INVALID_FILE_ATTRIBUTES)
+        return false;
+    const DWORD error = ::GetLastError();
+    return error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND;
 }
 
 std::string expand(const std::string& text)
@@ -395,6 +430,13 @@ private:
         return {};
     }
 
+    // Before the files are known: counted, or waited for (Win顺 is still reading them).
+    std::string countingText(const Status& s) const
+    {
+        return s.contentStillReading ? zh("等文件内容搜索读完文件，再接着建立语义索引…", "Waiting for content search to read the files, then the semantic index goes on…")
+                                     : zh("正在清点要建立索引的文件…", "Counting the files to index…");
+    }
+
     // "7 / 926 个文件", and the time left once the pace is known.
     std::string progressText(const Status& s) const
     {
@@ -447,7 +489,7 @@ private:
         switch (s.phase) {
         case Phase::Starting:
         case Phase::Counting:
-            r = {{"text", zh("正在清点要建立索引的文件…", "Counting the files to index…")}, {"tone", "busy"}};
+            r = {{"text", countingText(s)}, {"tone", "busy"}};
             break;
         case Phase::NoService:
             r = {{"text", zh("还没选模型服务：在下面的“模型服务”里选一个，就开始建立语义索引", "No model service yet: pick one under “Model service” below, and the semantic index is built")}, {"tone", "warn"}};
@@ -470,7 +512,8 @@ private:
                 {"actions", s.paused ? button("resume", zh("继续", "Resume")) : button("pause", zh("暂停", "Pause"))}};
             break;
         case Phase::Ready:
-            r = {{"text", zh("语义索引已就绪：" + thousands(m_store ? m_store->files() : 0) + " 个文件", "The semantic index is ready: " + thousands(m_store ? m_store->files() : 0) + " files")},
+            r = {{"text", zh("语义索引已就绪：" + thousands(m_store ? m_store->files() : 0) + " 个文件", "The semantic index is ready: " + thousands(m_store ? m_store->files() : 0) + " files")
+                    + (s.contentStillReading ? zh("；文件内容搜索读完的新文件会接着加进来", "; files content search is still reading join it later") : std::string())},
                 {"tone", "ok"}};
             break;
         case Phase::Failed:
@@ -514,7 +557,7 @@ private:
         switch (s.phase) {
         case Phase::Starting:
         case Phase::Counting:
-            items.push_back(Item("status", zh("正在清点要建立索引的文件…", "Counting the files to index…")).withIcon(icon).invalid());
+            items.push_back(Item("status", countingText(s)).withIcon(icon).invalid());
             break;
         case Phase::NoService:
             items.push_back(Item("status", zh("先选一个模型服务", "Pick a model service first"),
@@ -574,8 +617,10 @@ private:
     {
         const std::string text = winshun::trim(params["text"].toString());
         const Status s = status();
-        if (text.empty() || s.phase == Phase::NoService || s.phase == Phase::NoContentIndex || s.phase == Phase::WaitingForYes
-            || (s.phase != Phase::Ready && (!m_store || m_store->files() == 0)))
+        // What was built is searched whatever the index is doing now (GitHub
+        // #458: a listing with nothing in it hid it behind "没有要建索引的文件");
+        // a row that says what it is doing goes below the results.
+        if (text.empty() || s.phase == Phase::NoService || !m_store || m_store->files() == 0)
             return statusItems(true);
         Provider p;
         {
@@ -824,6 +869,7 @@ private:
                     continue;
                 }
                 openedFor = p.signature();
+                m_absent.clear();
             }
             std::string failed;
             {
@@ -833,6 +879,9 @@ private:
             if (failed.empty()) {
                 failures = 0;
                 rest(kPassEvery);
+            } else if (failed == kAgainSoon) {
+                failures = 0;
+                rest(kPassWhileSettling);
             } else if (failed == "-") {
                 // Waiting for the user's yes, or for a service or the content
                 // index to be set up: until something changes. (A pass the
@@ -860,7 +909,8 @@ private:
     };
 
     // The files to have, from Win顺's content index; nullopt with the phase set when there are none to be had.
-    std::optional<std::vector<Listed>> list(std::uint64_t generation)
+    // `reading`: content search was still reading files, so more may come.
+    std::optional<std::vector<Listed>> list(std::uint64_t generation, bool& reading)
     {
         Json::Array folders;
         Json::Array extensions;
@@ -877,7 +927,7 @@ private:
         }
         std::vector<Listed> out;
         long long cursor = 0;
-        bool reading = false;
+        reading = false;
         while (!changed(generation)) {
             Json args = Json::Object {{"extensions", Json(extensions)}, {"cursor", cursor}, {"limit", 5000}};
             if (!folders.empty())
@@ -895,11 +945,28 @@ private:
                 break;
             cursor = page["next_cursor"].toInt();
         }
-        {
-            const std::lock_guard lock(m_mutex);
-            m_status.contentStillReading = reading;
-        }
         return out;
+    }
+
+    struct IndexState {
+        bool loading = false; // Win顺's file index is not there yet: nothing to list
+        bool settled = true; // and its content index reads and checks nothing: a listing has every file
+    };
+
+    // A listing taken before Win顺 has read and checked its files lacks
+    // those not done yet: after a start (a journal lost, an update), all of
+    // them for a while (GitHub #458). The index keeps such files then.
+    IndexState indexState()
+    {
+        const Json r = m_wire.tool("index_status", Json::Object {});
+        if (r.has("error"))
+            return {};
+        const std::string& state = r["index"]["state"].toString();
+        const Json& content = r["content_index"];
+        IndexState s;
+        s.loading = state == "loading" || state == "building";
+        s.settled = !s.loading && !content["reading"].toBool() && content["pending"].toInt() == 0;
+        return s;
     }
 
     std::optional<std::string> textOf(const std::string& path)
@@ -917,23 +984,52 @@ private:
         return r["user_idle_seconds"].toInt(3600);
     }
 
+    // Win顺 still reading or checking files: what is there stays searchable,
+    // and the files are looked at again soon. The index has files: Ready.
+    std::string waitForContent()
+    {
+        const bool has = m_store->files() > 0;
+        {
+            const std::lock_guard lock(m_mutex);
+            m_status.contentStillReading = true;
+            m_status.phase = has ? Phase::Ready : Phase::Counting;
+        }
+        publish(true);
+        return kAgainSoon;
+    }
+
     // One pass: what changed since the last is read and sent. "" when it
-    // went through, "-" when it stopped for a reason already shown (or
-    // the settings changed), else what went wrong.
+    // went through, kAgainSoon when Win顺 had not read all its files yet,
+    // "-" when it stopped for a reason already shown (or the settings
+    // changed), else what went wrong.
     std::string pass(const Provider& p, std::uint64_t generation)
     {
+        const bool has = m_store->files() > 0;
         {
             const std::lock_guard lock(m_mutex);
             if (m_status.phase == Phase::Starting || m_status.phase == Phase::Failed || m_status.phase == Phase::NoService
                 || m_status.phase == Phase::NoContentIndex)
-                m_status.phase = Phase::Counting;
+                m_status.phase = has ? Phase::Ready : Phase::Counting;
         }
         publish(true);
-        const auto listed = list(generation);
+        const IndexState index = indexState();
+        if (index.loading)
+            return waitForContent();
+        bool reading = false;
+        const auto listed = list(generation, reading);
         if (!listed)
             return "-";
         if (changed(generation))
             return "-";
+        const bool settled = index.settled && !reading;
+        std::vector<std::string> folders;
+        bool notes = false;
+        {
+            const std::lock_guard lock(m_mutex);
+            folders = m_folders;
+            notes = m_notes;
+            m_status.contentStillReading = !settled;
+        }
         const auto have = m_store->stamps();
         std::vector<Listed> todo;
         std::set<std::string> present;
@@ -943,6 +1039,33 @@ private:
             if (it == have.end() || it->second != l.stamp)
                 todo.push_back(l);
         }
+
+        // Not listed: gone, or left out by the settings, leaves at once.
+        // Another is only not done yet, or left out by Win顺 (excluded
+        // there, content search turned off for its type): kept, but left
+        // out of two listings taken at rest in a row, it leaves too.
+        std::set<std::string> absent;
+        bool removed = false;
+        for (const auto& [path, stamp] : have) {
+            if (present.contains(path))
+                continue;
+            const std::string ext = extensionOf(path);
+            const bool wanted = inFolders(path, folders)
+                && (std::ranges::find(kDocumentExtensions, ext) != std::end(kDocumentExtensions)
+                    || (notes && std::ranges::find(kNoteExtensions, ext) != std::end(kNoteExtensions)));
+            if (!wanted || gone(path) || (settled && m_absent.contains(path))) {
+                m_store->remove(path);
+                removed = true;
+            } else {
+                absent.insert(path);
+            }
+        }
+        if (settled)
+            m_absent = std::move(absent);
+        if (removed)
+            m_store->flush();
+        if (listed->empty() && !settled)
+            return waitForContent();
 
         // Nothing new to send (fewer folders than agreed to): no need to ask.
         if (listed->empty() || (!todo.empty() && !consented(p))) {
@@ -968,10 +1091,6 @@ private:
             return "-";
         }
 
-        for (const auto& [path, stamp] : have) {
-            if (!present.contains(path))
-                m_store->remove(path);
-        }
         const std::size_t already = listed->size() - todo.size();
         {
             const std::lock_guard lock(m_mutex);
@@ -1034,7 +1153,7 @@ private:
         m_store->flush();
         m_store->compactIfWorth();
         setPhase(Phase::Ready);
-        return {};
+        return settled ? std::string() : kAgainSoon;
     }
 
     Wire m_wire;
@@ -1043,6 +1162,7 @@ private:
     std::string m_dataDir;
     bool m_settingsLinks = false; // Win顺 opens another plugin's card from a row (0.49.0)
     std::unique_ptr<Store> m_store; // made and opened by the indexer; searched by the main thread once it has files
+    std::set<std::string> m_absent; // the indexer's: files kept though the last listing at rest lacked them (pass)
     std::unordered_map<std::string, std::vector<float>> m_queryCache;
     std::thread m_indexer;
     std::atomic<bool> m_indexerDone {false};
