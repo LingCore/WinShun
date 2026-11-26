@@ -1177,6 +1177,7 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
         const IdleTrim::LastTrim last = m_idleTrim->lastTrim();
         return std::pair<qint64, qint64>(last.atMs, last.megabytes);
     };
+    sources.memoryLoad = &IdleTrim::memoryLoad;
     m_health = std::make_unique<HealthMonitor>(std::move(sources));
     connect(m_index.get(), &IndexService::stateChanged, m_health.get(), &HealthMonitor::poke);
     connect(m_index.get(), &IndexService::activityChanged, m_health.get(), &HealthMonitor::poke);
@@ -6380,23 +6381,32 @@ void App::beginTrigger(TriggerSource source, std::uint64_t pressedAt, std::optio
     const std::uint64_t idleMs = lastActive > 0 && pressedAt >= lastActive ? pressedAt - lastActive : 0;
     context.idleSec = lastActive > 0 ? static_cast<std::int64_t>(idleMs / 1000) : -1;
     const std::shared_ptr<HotPages>& pages = clipboard ? m_clipPages : m_launcherPages;
-    if (pages) {
-        const std::size_t hotBytes = pages->bytes();
+    const std::size_t hotBytes = pages ? pages->bytes() : 0;
+    if (pages)
         context.hotMb = static_cast<int>(hotBytes >> 20);
-        if (hotBytes > 0) {
-            // Skip spawning a prefetch thread on immediate warm reopens unless
-            // IdleTrim ran, the window sat idle >= 15 s, or Windows silently
-            // trimmed the working set below the kept pages.
-            bool shouldPrefetch = context.trimmed || idleMs >= 15'000;
-            if (!shouldPrefetch) {
-                PROCESS_MEMORY_COUNTERS counters {};
-                counters.cb = sizeof counters;
-                shouldPrefetch = !::GetProcessMemoryInfo(::GetCurrentProcess(), &counters, sizeof counters)
-                    || counters.WorkingSetSize < hotBytes;
+    // Not on immediate warm reopens unless IdleTrim ran, the window sat idle
+    // >= 15 s, or Windows silently trimmed the working set below the kept pages.
+    bool shouldPrefetch = context.trimmed || idleMs >= 15'000;
+    if (!shouldPrefetch && hotBytes > 0) {
+        PROCESS_MEMORY_COUNTERS counters {};
+        counters.cb = sizeof counters;
+        shouldPrefetch = !::GetProcessMemoryInfo(::GetCurrentProcess(), &counters, sizeof counters)
+            || counters.WorkingSetSize < hotBytes;
+    }
+    // The launcher: then what its first search reads of the file index too
+    // (FileIndex::prefetchSearch), as the window comes. Given back with the
+    // rest, or taken by Windows while it was short of memory, it came from
+    // the disk a page at a time as the search went through it: 4.4 s on a
+    // busy computer (GitHub #471).
+    const std::shared_ptr<FileIndex> index = !clipboard && shouldPrefetch && m_index ? m_index->index() : nullptr;
+    if (shouldPrefetch && (hotBytes > 0 || index)) {
+        std::thread([kept = hotBytes > 0 ? pages->pages() : PageSet(), index] {
+            kept.prefetch();
+            if (index) {
+                const auto lock = index->longReadLock();
+                index->prefetchSearch();
             }
-            if (shouldPrefetch)
-                std::thread([kept = pages->pages()] { kept.prefetch(); }).detach();
-        }
+        }).detach();
     }
     m_recordPages = trimmedAt > m_openingSeenMs[idx] ? pages : nullptr;
     m_triggers->begin(source, pressedAt, context);

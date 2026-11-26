@@ -27,8 +27,23 @@ namespace ws {
 // shown, see FileIndex::warm; measured 2026-10-12: a first name search ~10 ms
 // instead of ~2.3 ms without that).
 // Nothing is freed or rebuilt, so nothing has to load again.
+//
+// Not while Windows itself is short of memory (kShortOfMemoryLoad): what goes
+// to the standby list then is taken by the other programs within minutes, and
+// the next opening and search read it back from the disk one page at a time,
+// while the disk is busy for the others too: a name search 4.4 s instead of
+// tens of ms (GitHub #471, 86 % in use). Windows trims every program alike by
+// itself when it needs the memory, the pages unused longest first; given back
+// on our own, Win顺's went first. Given back again once there is room.
 class IdleTrim : public QObject {
 public:
+    // Short of memory: this much of it in use (Task Manager's "内存" figure,
+    // MEMORYSTATUSEX::dwMemoryLoad) or more. The C++ plugins' own giving back
+    // holds at the same mark (src/plugins-common/IdleTrim.h).
+    static constexpr int kShortOfMemoryLoad = 80;
+    // Windows' memory in use now, in percent; -1 when it cannot tell.
+    static int memoryLoad() noexcept;
+
     // `busy` names work under way that would touch the pages again at once
     // (the index loading or being built, files being read for content), or
     // returns null. `up`: a window of Win顺's is up and in use without the
@@ -73,13 +88,17 @@ public:
     LastTrim lastTrim() const noexcept { return {m_lastTrimAtMs.load(), m_lastTrimMb.load()}; }
     // Why the memory is, or is not, going back right now, for the diagnostics
     // package: what holds it (held after a resume, work under way, a window
-    // up without the focus), the last time and what stayed then. GUI thread.
+    // up without the focus, Windows short of memory), the last time and what
+    // stayed then. GUI thread.
     QJsonObject status() const;
     // An emptying done by someone else (the settings' button): remembered as the last.
     void noteTrim(qint64 megabytes) noexcept;
     // How long after the last use the memory goes back; 20 s. Shorter for a
     // probe that times many openings (--idle-open-check).
     void setAfterUse(int ms) noexcept { m_afterUseMs = ms; }
+    // Another reading of memoryLoad(), for a test or a probe that times
+    // openings as if Windows were short of memory (--idle-open-memory-load).
+    void setMemoryLoad(std::function<int()> load) { m_memoryLoad = std::move(load); }
 
 private:
     void check();
@@ -97,6 +116,8 @@ private:
     // would take the pages back.
     int m_afterUseMs = 20'000;
     std::function<PageSet()> m_keep;
+    std::function<int()> m_memoryLoad = &IdleTrim::memoryLoad;
+    int m_heldShortAt = -1; // held because Windows was short of memory: the load then; -1: not held
     // What stayed after the last time, private bytes: given back again once
     // kTrimAbove more has come on top (0: all went, or not yet).
     std::atomic<std::size_t> m_floor {0};

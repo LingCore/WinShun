@@ -18,6 +18,11 @@ using namespace Qt::StringLiterals;
 
 namespace {
 
+// Windows' memory as these tests read it: with room to spare, whatever the
+// machine running them has (short of it, nothing is given back).
+constexpr int kRoomToSpare = 50;
+constexpr int kShort = ws::IdleTrim::kShortOfMemoryLoad + 6; // 86 %, GitHub #471's
+
 // Allocate and dirty enough private memory to exceed IdleTrim's 32 MB threshold.
 struct DirtyMemory {
     explicit DirtyMemory(std::size_t megabytes)
@@ -73,6 +78,7 @@ private slots:
         {
             ws::IdleTrim trim([]() -> const char* { return nullptr; }, [&] { return inUse.load(); },
                 [&] { return keepSet; });
+            trim.setMemoryLoad([] { return kRoomToSpare; });
             trim.setAfterUse(30);
             trim.used(); // arm the timer with the shortened 30 ms interval
             QTRY_VERIFY_WITH_TIMEOUT(trim.trimmed(), 2000);
@@ -87,6 +93,7 @@ private slots:
             const DirtyMemory more(40);
             ws::IdleTrim trim([]() -> const char* { return nullptr; }, [] { return false; },
                 [&] { return keepSet; });
+            trim.setMemoryLoad([] { return kRoomToSpare; });
             trim.setAfterUse(10);
             trim.used();
             QTest::qWait(25);
@@ -101,6 +108,7 @@ private slots:
         const DirtyMemory memory(40);
         QVERIFY(memory.data != nullptr);
         ws::IdleTrim trim([]() -> const char* { return nullptr; }, [] { return true; });
+        trim.setMemoryLoad([] { return kRoomToSpare; });
         trim.setAfterUse(20);
         trim.used();
         QTest::qWait(200); // several checks over: in use each time
@@ -119,6 +127,7 @@ private slots:
         const char* busy = "reading content";
         bool up = true;
         ws::IdleTrim trim([&] { return busy; }, [&] { return up; });
+        trim.setMemoryLoad([] { return kRoomToSpare; });
         QJsonObject status = trim.status();
         QCOMPARE(status.value(u"waiting_for").toString(), QStringLiteral("reading content"));
         QCOMPARE(status.value(u"window_up").toBool(), true);
@@ -154,6 +163,7 @@ private slots:
             const DirtyMemory kept(1);
             const ws::PageSet keepSet({{reinterpret_cast<std::uintptr_t>(kept.data), kept.bytes}});
             ws::IdleTrim trim([]() -> const char* { return nullptr; }, [] { return false; }, [&] { return keepSet; });
+            trim.setMemoryLoad([] { return kRoomToSpare; });
             trim.setAfterUse(30);
             trim.used();
             QTRY_VERIFY_WITH_TIMEOUT(lastJournalled(u"idle-trim").contains(u"stayed_mb"_s), 3000);
@@ -163,7 +173,46 @@ private slots:
             QCOMPARE(entry.value(u"keep_mb"_s).toInteger(-1), qint64 {1});
             QVERIFY(entry.value(u"stayed_mb"_s).toInteger(-1) <= before - 39); // all but the megabyte kept went
             QVERIFY(!entry.contains(u"stopped"_s));
+            QCOMPARE(entry.value(u"memory_load"_s).toInteger(-1), qint64 {kRoomToSpare});
             QCOMPARE(trim.status().value(u"kept_after_trim_mb"_s).toInteger(-1), entry.value(u"stayed_mb"_s).toInteger(-2));
+        }
+        ws::diagnostics::initialize({});
+    }
+
+    // Windows short of memory (GitHub #471, 86 % in use): nothing is given
+    // back, idle or freed, and the journal and the diagnostics say why. What
+    // went to the standby list then was taken by the other programs, and the
+    // next search read it back from the disk: 4.4 s. Given back again once
+    // there is room.
+    void heldWhileWindowsIsShortOfMemory()
+    {
+        QTemporaryDir temp;
+        QVERIFY(temp.isValid());
+        ws::diagnostics::initialize(temp.path());
+        {
+            const DirtyMemory memory(40);
+            QVERIFY(memory.data != nullptr);
+            std::atomic<int> load {kShort};
+            ws::IdleTrim trim([]() -> const char* { return nullptr; }, [] { return false; });
+            trim.setMemoryLoad([&] { return load.load(); });
+            trim.setAfterUse(20);
+            trim.used();
+            QTRY_VERIFY_WITH_TIMEOUT(trim.status().value(u"held_short_of_memory"_s).toBool(), 2000);
+            trim.freed(); // the settings' pages put away: held all the same
+            QTest::qWait(150);
+            QVERIFY(!trim.trimmed());
+            QCOMPARE(trim.lastTrim().atMs, qint64 {0});
+            const QJsonObject held = lastJournalled(u"idle-trim");
+            QCOMPARE(held.value(u"held"_s).toString(), u"short of memory"_s);
+            QCOMPARE(held.value(u"memory_load"_s).toInteger(-1), qint64 {kShort});
+            QCOMPARE(trim.status().value(u"memory_load"_s).toInt(-1), kShort);
+
+            load = ws::IdleTrim::kShortOfMemoryLoad - 1; // room again
+            trim.freed();
+            QTRY_VERIFY_WITH_TIMEOUT(trim.lastTrim().atMs > 0, 2000);
+            QVERIFY(trim.trimmed());
+            QVERIFY(trim.lastTrim().megabytes >= 30);
+            QCOMPARE(trim.status().value(u"held_short_of_memory"_s).toBool(), false);
         }
         ws::diagnostics::initialize({});
     }
@@ -211,6 +260,8 @@ private slots:
         QVERIFY2(!found.isEmpty(), "trigger event was not written to diagnostics log");
         QCOMPARE(found.value(u"idle_s"_s).toInteger(-1), qint64 {1800});
         QCOMPARE(found.value(u"hot_mb"_s).toInteger(-1), qint64 {42});
+        const qint64 memoryLoad = found.value(u"memory_load"_s).toInteger(-1); // GitHub #471
+        QVERIFY(memoryLoad > 0 && memoryLoad <= 100);
         QVERIFY(found.contains(u"working_mb"_s));
         QVERIFY(found.value(u"working_mb"_s).toDouble() > 0.0);
         QVERIFY(found.contains(u"ws_delta_mb"_s));

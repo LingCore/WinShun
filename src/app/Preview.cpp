@@ -1908,9 +1908,12 @@ int runSettings(const QStringList& args)
     indexState.size = u"112 MB"_s;
     editor->setIndexFolderState(indexState);
     editor->setContentIndexStatus(u"已收录 337,215 个文件，其中 5,815 个文档"_s);
-    // The 运行状况 page (settings page 10): made-up current readings, indexing content or (--health-idle) at rest.
+    // The 运行状况 page (settings page 10): made-up current readings, indexing content or (--health-idle) at rest;
+    // --health-memory-load <percent>: Windows' memory that much in use (80 and up: idle memory held, GitHub #471).
+    const qsizetype memoryLoadAt = args.indexOf(u"--health-memory-load"_s);
+    const int memoryLoad = memoryLoadAt >= 0 && memoryLoadAt + 1 < args.size() ? std::clamp(args[memoryLoadAt + 1].toInt(), 0, 100) : -1;
     editor->setMonitor(args.contains(u"--health-monitor"_s) ? new HealthMonitor({}, editor)
-        : HealthMonitor::demo(editor, args.contains(u"--health-idle"_s)));
+        : HealthMonitor::demo(editor, args.contains(u"--health-idle"_s), memoryLoad));
     editor->setHistoryCount(128);
     editor->setClipboardCount(args.contains(u"--clipboard-disabled"_s) ? -1 : 57);
     { // 打开时显示's list, as Clipboard::openTabChoices gives it with two groups of the user's

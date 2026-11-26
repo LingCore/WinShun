@@ -14120,6 +14120,10 @@ Content index: %5</translation>
         <translation>Last given back: %1, %2 MB</translation>
     </message>
     <message>
+        <source>系统内存已用 %1%，闲着时先不归还，宽裕了再还</source>
+        <translation>%1% of the PC&apos;s memory is in use: idle memory is kept until there is room</translation>
+    </message>
+    <message>
         <source>正在建立内容索引</source>
         <translation>Building the content index</translation>
     </message>

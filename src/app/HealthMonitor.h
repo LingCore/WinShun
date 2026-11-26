@@ -44,11 +44,15 @@ public:
         std::function<Blocks()> kept;
         std::function<QVariantList()> tasks; // BackgroundStatus::toVariant
         std::function<std::pair<qint64, qint64>()> lastTrim; // ms since 1970 (0: none), MB
+        // Windows' memory in use, in percent (IdleTrim::memoryLoad): short of
+        // it, idle memory is held, and the page says so. Null: not told.
+        std::function<int()> memoryLoad;
     };
 
     explicit HealthMonitor(Sources sources, QObject* parent = nullptr);
-    // A monitor with made-up readings (the previews); never reads.
-    static HealthMonitor* demo(QObject* parent, bool idle);
+    // A monitor with made-up readings (the previews); never reads. With
+    // `memoryLoad` (0 to 100), Windows' memory as that much in use.
+    static HealthMonitor* demo(QObject* parent, bool idle, int memoryLoad = -1);
 
     // The page's breakdown read once, for the diagnostics package (MB, one
     // decimal; program names, nothing else): each process of Win顺's, the

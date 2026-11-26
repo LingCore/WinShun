@@ -213,6 +213,10 @@ void TriggerJournal::write(const Entry& entry)
     }
     if (entry.context.hotMb >= 0)
         details.insert(u"hot_mb"_s, static_cast<qint64>(entry.context.hotMb));
+    // Windows' memory in use, in percent: short of it, what was given back
+    // comes from the disk (GitHub #471).
+    if (MEMORYSTATUSEX memory {sizeof memory}; ::GlobalMemoryStatusEx(&memory))
+        details.insert(u"memory_load"_s, static_cast<qint64>(memory.dwMemoryLoad));
     if (const std::optional<Told>& told = entry.context.told) {
         details.insert(u"tap_from"_s, QString::fromLatin1(told->from));
         details.insert(u"listener_ms"_s, static_cast<qint64>(told->listenerMs));

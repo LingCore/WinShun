@@ -1,6 +1,7 @@
 #include "HealthMonitor.h"
 
 #include "BackgroundStatus.h"
+#include "platform/IdleTrim.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -458,12 +459,16 @@ void HealthMonitor::publish()
     now[u"busy"_s] = !tasks.isEmpty();
     now[u"idleText"_s] = BackgroundStatus::idleText();
     const auto [atMs, freed] = m_sources.lastTrim ? m_sources.lastTrim() : std::pair<qint64, qint64>(0, 0);
-    now[u"lastTrim"_s] = atMs == 0 ? tr("还没有归还过") : tr("上次归还：%1，还了 %2 MB").arg(clock(atMs)).arg(freed);
+    QString lastTrim = atMs == 0 ? tr("还没有归还过") : tr("上次归还：%1，还了 %2 MB").arg(clock(atMs)).arg(freed);
+    // Why nothing goes back now (IdleTrim holds while Windows is short, GitHub #471).
+    if (const int load = m_sources.memoryLoad ? m_sources.memoryLoad() : -1; load >= IdleTrim::kShortOfMemoryLoad)
+        lastTrim += u'\n' + tr("系统内存已用 %1%，闲着时先不归还，宽裕了再还").arg(load);
+    now[u"lastTrim"_s] = lastTrim;
     m_now = now;
     emit updated();
 }
 
-HealthMonitor* HealthMonitor::demo(QObject* parent, bool idle)
+HealthMonitor* HealthMonitor::demo(QObject* parent, bool idle, int memoryLoad)
 {
     auto* m = new HealthMonitor(Sources {}, parent);
     m->m_demo = true;
@@ -518,6 +523,8 @@ HealthMonitor* HealthMonitor::demo(QObject* parent, bool idle)
         return tasks;
     };
     m->m_sources.lastTrim = [end] { return std::pair<qint64, qint64>(end - 2 * 3600 * 1000LL - 60'000, 132); };
+    if (memoryLoad >= 0)
+        m->m_sources.memoryLoad = [memoryLoad] { return memoryLoad; };
     return m;
 }
 

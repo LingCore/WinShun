@@ -17,7 +17,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <vector>
 
 #include <windows.h>
@@ -31,7 +34,7 @@ namespace ws::preview {
 //     [--idle-open-index <folder;folder>] [--idle-open-query <text>]
 //     [--idle-open-start-list opened|modified] [--idle-open-cycles 8]
 //     [--idle-open-after-use 3000] [--idle-open-rest 0] [--idle-open-pressure <folder>]
-//     [--idle-open-kept <MB>]
+//     [--idle-open-kept <MB>] [--idle-open-memory-load <percent>]
 // The production App beside the Win顺 that runs, its windows opened the way a
 // hotkey opens them (beginTrigger, then the toggle), each opening timed from
 // that call until the window is there to be seen (uncloaked after its first
@@ -55,8 +58,15 @@ namespace ws::preview {
 //   windows  after Windows emptied the working set (EmptyWorkingSet, untold)
 // --idle-open-kept: at most so much stays when the memory is given back,
 // instead of HotPages::kKeptBytes: what an opening costs with less kept.
+// --idle-open-memory-load: IdleTrim reads Windows' memory as this much in use
+// (IdleTrim::kShortOfMemoryLoad and up: held, nothing given back).
 // `cpu` is how busy the whole machine was from a second before the opening
 // until it was seen, 0 to 1: other work under way spoils a time.
+// --idle-open-query: typed into the launcher once it is up, at each `use`,
+// `idle` and `warm` opening; `search_ms` from then until its rows are there, of it
+// `search_engine_ms` searching, with the page faults it took (GitHub #471:
+// the first search after the memory went back, while Windows was short).
+// `hard_faults`, `search_hard_faults`: of those, the ones read from the disk.
 // Into idle-open.json. Nothing is typed and no input is sent; each opening
 // waits until the keyboard and mouse were left alone for three seconds, as
 // the launcher takes the keyboard while it is up (about half a second).
@@ -68,6 +78,42 @@ struct IdleOpenProbe {
         do
             QCoreApplication::processEvents(QEventLoop::AllEvents, 5);
         while (timer.elapsed() < ms);
+    }
+
+    // This process's hard page faults so far, those read from the disk
+    // (SYSTEM_PROCESS_INFORMATION::HardFaultCount, inside winternl.h's
+    // Reserved1); PageFaultCount counts the soft ones as well. 0: not told.
+    static ULONG hardFaults()
+    {
+        using Query = LONG(NTAPI*)(ULONG, PVOID, ULONG, PULONG);
+        static const auto query = reinterpret_cast<Query>(
+            reinterpret_cast<void*>(::GetProcAddress(::GetModuleHandleW(L"ntdll.dll"), "NtQuerySystemInformation")));
+        if (!query)
+            return 0;
+        constexpr ULONG kSystemProcessInformation = 5;
+        std::vector<std::byte> buffer(1 << 20);
+        ULONG needed = 0;
+        while (query(kSystemProcessInformation, buffer.data(), static_cast<ULONG>(buffer.size()), &needed) < 0) {
+            if (needed <= buffer.size() || buffer.size() >= (64u << 20))
+                return 0;
+            buffer.resize(needed + (64u << 10));
+        }
+        const auto self = static_cast<std::uintptr_t>(::GetCurrentProcessId());
+        for (std::size_t at = 0;;) {
+            const std::byte* entry = buffer.data() + at;
+            std::uintptr_t id = 0;
+            std::memcpy(&id, entry + 80, sizeof id); // UniqueProcessId
+            if (id == self) {
+                ULONG hard = 0;
+                std::memcpy(&hard, entry + 16, sizeof hard); // HardFaultCount
+                return hard;
+            }
+            ULONG next = 0;
+            std::memcpy(&next, entry, sizeof next); // NextEntryOffset
+            if (next == 0)
+                return 0;
+            at += next;
+        }
     }
 
     static PROCESS_MEMORY_COUNTERS_EX2 counters()
@@ -115,6 +161,7 @@ struct IdleOpenProbe {
         waitForQuietInput();
         const MachineTime machineBefore = machineTime();
         pump(1'000);
+        const ULONG hardBefore = hardFaults();
         const PROCESS_MEMORY_COUNTERS_EX2 before = counters();
         LARGE_INTEGER frequency {}, from {}, to {};
         ::QueryPerformanceFrequency(&frequency);
@@ -138,13 +185,39 @@ struct IdleOpenProbe {
         const double seenMs = since();
         const bool came = seen(app, clipboard);
         const PROCESS_MEMORY_COUNTERS_EX2 after = counters();
+        const ULONG hardSeen = hardFaults();
         const MachineTime machineAfter = machineTime();
+        // The search typed once it is up: from the words set until their rows
+        // are there, and how much of that the engine spent searching. Words
+        // still in the box from before are taken out first (the list of
+        // recent items comes), or no search would run.
+        QJsonObject search;
         if (!clipboard && !setQuery.isEmpty() && app.m_launcher) {
+            const auto namesIn = [&app](int ms) {
+                QElapsedTimer waited;
+                waited.start();
+                while (app.m_launcher->waitingForNames() && waited.elapsed() < ms)
+                    QCoreApplication::processEvents(QEventLoop::AllEvents, 1);
+                return !app.m_launcher->waitingForNames();
+            };
+            if (app.m_launcher->query() == setQuery) {
+                app.m_launcher->setQuery(QString());
+                namesIn(5'000);
+            }
+            const ULONG hardTyped = hardFaults();
+            const PROCESS_MEMORY_COUNTERS_EX2 typed = counters();
+            ::QueryPerformanceCounter(&from);
             app.m_launcher->setQuery(setQuery);
-            QElapsedTimer searchWait;
-            searchWait.start();
-            while (app.m_launcher->waitingForNames() && searchWait.elapsed() < 5'000)
-                QCoreApplication::processEvents(QEventLoop::AllEvents, 5);
+            const bool answered = namesIn(30'000);
+            const double searchMs = since();
+            const PROCESS_MEMORY_COUNTERS_EX2 answeredCounters = counters();
+            search = {
+                {u"search_ms"_s, searchMs},
+                {u"search_answered"_s, answered},
+                {u"search_engine_ms"_s, std::round(static_cast<double>(app.m_launcher->elapsedUs()) / 100.0) / 10},
+                {u"search_faults"_s, static_cast<qint64>(answeredCounters.PageFaultCount - typed.PageFaultCount)},
+                {u"search_hard_faults"_s, static_cast<qint64>(hardFaults() - hardTyped)},
+            };
         }
         pump(400); // up for a moment, as when used
         const PROCESS_MEMORY_COUNTERS_EX2 settled = counters();
@@ -162,6 +235,7 @@ struct IdleOpenProbe {
             {u"begin_ms"_s, beginMs}, // beginTrigger alone: the working set looked at, the read-ahead started
             {u"call_ms"_s, callMs},
             {u"faults"_s, static_cast<qint64>(after.PageFaultCount - before.PageFaultCount)},
+            {u"hard_faults"_s, static_cast<qint64>(hardSeen - hardBefore)}, // from the disk
             {u"private_mb_before"_s, megabytes(before.PrivateWorkingSetSize)},
             {u"working_mb_before"_s, megabytes(before.WorkingSetSize)},
             {u"private_mb_up"_s, megabytes(settled.PrivateWorkingSetSize)},
@@ -170,6 +244,8 @@ struct IdleOpenProbe {
         };
         if (!clipboard && app.m_launcher && !app.m_launcher->query().isEmpty())
             row.insert(u"query"_s, app.m_launcher->query());
+        for (auto it = search.constBegin(); it != search.constEnd(); ++it)
+            row.insert(it.key(), it.value());
         return row;
     }
 
@@ -210,6 +286,9 @@ struct IdleOpenProbe {
         app.m_idleTrim->setAfterUse(afterUse);
         if (const int kept = number(u"--idle-open-kept", -1); kept >= 0)
             app.m_keptMost = static_cast<std::size_t>(std::min(kept, 1024)) << 20;
+        const int memoryLoad = std::clamp(number(u"--idle-open-memory-load", -1), -1, 100);
+        if (memoryLoad >= 0)
+            app.m_idleTrim->setMemoryLoad([memoryLoad] { return memoryLoad; });
         std::vector<bool> windows {false};
         if (app.m_settings.clipboard)
             windows.push_back(true);
@@ -252,11 +331,11 @@ struct IdleOpenProbe {
                 const bool trimmed = waitForIdleTrim(app, app.m_idleTrim->lastTrim().atMs, afterUse + 6'000);
                 pump(rest);
                 const std::optional<bool> pressed = pressureAt >= 0 ? std::optional(press()) : std::nullopt;
-                QJsonObject row = open(app, clipboard, "idle");
+                QJsonObject row = open(app, clipboard, "idle", clipboard ? QString() : query);
                 if (pressed)
                     row.insert(u"pressed"_s, *pressed);
                 add(row, trimmed);
-                add(open(app, clipboard, "warm"));
+                add(open(app, clipboard, "warm", clipboard ? QString() : query));
             }
         }
         for (int i = 0; i < 3; ++i) {
@@ -279,6 +358,7 @@ struct IdleOpenProbe {
             {u"idle_private_mb"_s, megabytes(idle.PrivateWorkingSetSize)},
             {u"idle_working_mb"_s, megabytes(idle.WorkingSetSize)},
             {u"kept_most_mb"_s, megabytes(app.m_keptMost.load())},
+            {u"memory_load"_s, memoryLoad >= 0 ? memoryLoad : IdleTrim::memoryLoad()},
             {u"openings"_s, rows},
         };
         QFile file(output.filePath(u"idle-open.json"_s));

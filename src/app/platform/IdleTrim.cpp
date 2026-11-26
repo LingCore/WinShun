@@ -77,6 +77,12 @@ WorkingSet privateWorkingSet()
 
 } // namespace
 
+int IdleTrim::memoryLoad() noexcept
+{
+    MEMORYSTATUSEX memory {sizeof memory};
+    return ::GlobalMemoryStatusEx(&memory) ? static_cast<int>(memory.dwMemoryLoad) : -1;
+}
+
 IdleTrim::IdleTrim(std::function<const char*()> busy, std::function<bool()> up, std::function<PageSet()> keep, QObject* parent)
     : QObject(parent)
     , m_busy(std::move(busy))
@@ -136,6 +142,8 @@ QJsonObject IdleTrim::status() const
     const LastTrim last = lastTrim();
     return {
         {u"held_after_resume"_s, m_heldAfterResume},
+        {u"held_short_of_memory"_s, m_heldShortAt >= 0},
+        {u"memory_load"_s, m_memoryLoad ? m_memoryLoad() : -1},
         {u"waiting_for"_s, busy ? QString::fromLatin1(busy) : QString()},
         {u"window_up"_s, m_up && m_up()}, // the clipboard, a pinned launcher, a dialog's bar
         {u"after_use_ms"_s, m_afterUseMs},
@@ -252,54 +260,71 @@ void IdleTrim::trim()
 {
     if (m_trimming.load(std::memory_order_acquire))
         return;
-    if (const WorkingSet now = privateWorkingSet(); now.bytes > m_floor.load() + kTrimAbove) {
-        const SIZE_T bytes = now.bytes;
-        PageSet keep = m_keep ? m_keep() : PageSet();
-        const auto megabytes = static_cast<qint64>(bytes / (1024 * 1024));
-        const auto keepMb = static_cast<qint64>(keep.bytes() >> 20);
-        qInfo() << "Idle trim:" << megabytes << "MB, keeping" << keepMb << "MB";
-        QJsonObject details {{now.exact ? u"private_mb"_s : u"working_set_mb"_s, megabytes}};
-        if (!keep.empty())
-            details.insert(u"keep_mb"_s, keepMb);
-        // ~10 ms per 100 MB: not on the GUI thread, so a hotkey pressed
-        // meanwhile is not held up, and stoppable if the user wakes the app
-        // mid-pass.
-        m_trimmed = true;
-        m_trimming.store(true, std::memory_order_release);
-        m_worker = std::jthread([this, bytes, keepMb, keep = std::move(keep), details = std::move(details)](std::stop_token stop) mutable {
-            const auto finished = qScopeGuard([this] { m_trimming.store(false, std::memory_order_release); });
-            // In the journal once it is over, with what stayed: a giving back
-            // that gives little back is what "the memory stays high" looks
-            // like from outside (GitHub #459). Far more than was kept: said
-            // each time, not just every ten minutes.
-            const auto tell = [this, &details](bool notable) {
-                QMetaObject::invokeMethod(this, [this, details = std::move(details), notable] { journal(details, notable); },
-                    Qt::QueuedConnection);
-            };
-            if (!stop.stop_requested()) {
-                if (keep.empty()) { // all of it, in one call
-                    ::SetProcessWorkingSetSizeEx(::GetCurrentProcess(), static_cast<SIZE_T>(-1), static_cast<SIZE_T>(-1), 0);
-                } else if (const PageSet cold = PageSet::resident().without(keep); !stop.stop_requested()) {
-                    cold.release(stop);
-                }
-            }
-            if (stop.stop_requested()) { // woken mid-trim: do not record the active working set as m_floor
-                details.insert(u"stopped"_s, true);
-                tell(false);
-                return;
-            }
-            const SIZE_T after = privateWorkingSet().bytes;
-            m_floor = keep.empty() || after == SIZE_MAX ? 0 : after;
-            gaveBack(static_cast<qint64>((bytes > after ? bytes - after : 0) / (1024 * 1024)));
-            const auto stayedMb = after == SIZE_MAX ? qint64 {-1} : static_cast<qint64>(after >> 20);
-            if (stayedMb >= 0)
-                details.insert(u"stayed_mb"_s, stayedMb);
-            const bool much = stayedMb > keepMb + static_cast<qint64>(kTrimAbove >> 20);
-            if (much)
-                qInfo() << "Idle trim:" << stayedMb << "MB stayed";
-            tell(much);
-        });
+    const WorkingSet now = privateWorkingSet();
+    if (now.bytes <= m_floor.load() + kTrimAbove)
+        return;
+    // Windows short of memory: held, until there is room again (rechecked
+    // as ever). Told once each time it starts holding.
+    const int load = m_memoryLoad ? m_memoryLoad() : -1;
+    if (load >= kShortOfMemoryLoad) {
+        if (m_heldShortAt < 0) {
+            qInfo("Idle trim: held, Windows short of memory (%d%% in use)", load);
+            journal({{u"held"_s, u"short of memory"_s}, {u"memory_load"_s, load},
+                        {now.exact ? u"private_mb"_s : u"working_set_mb"_s, static_cast<qint64>(now.bytes >> 20)}},
+                true);
+        }
+        m_heldShortAt = load;
+        return;
     }
+    m_heldShortAt = -1;
+    const SIZE_T bytes = now.bytes;
+    PageSet keep = m_keep ? m_keep() : PageSet();
+    const auto megabytes = static_cast<qint64>(bytes / (1024 * 1024));
+    const auto keepMb = static_cast<qint64>(keep.bytes() >> 20);
+    qInfo() << "Idle trim:" << megabytes << "MB, keeping" << keepMb << "MB";
+    QJsonObject details {{now.exact ? u"private_mb"_s : u"working_set_mb"_s, megabytes}};
+    if (load >= 0)
+        details.insert(u"memory_load"_s, load);
+    if (!keep.empty())
+        details.insert(u"keep_mb"_s, keepMb);
+    // ~10 ms per 100 MB: not on the GUI thread, so a hotkey pressed
+    // meanwhile is not held up, and stoppable if the user wakes the app
+    // mid-pass.
+    m_trimmed = true;
+    m_trimming.store(true, std::memory_order_release);
+    m_worker = std::jthread([this, bytes, keepMb, keep = std::move(keep), details = std::move(details)](std::stop_token stop) mutable {
+        const auto finished = qScopeGuard([this] { m_trimming.store(false, std::memory_order_release); });
+        // In the journal once it is over, with what stayed: a giving back
+        // that gives little back is what "the memory stays high" looks
+        // like from outside (GitHub #459). Far more than was kept: said
+        // each time, not just every ten minutes.
+        const auto tell = [this, &details](bool notable) {
+            QMetaObject::invokeMethod(this, [this, details = std::move(details), notable] { journal(details, notable); },
+                Qt::QueuedConnection);
+        };
+        if (!stop.stop_requested()) {
+            if (keep.empty()) { // all of it, in one call
+                ::SetProcessWorkingSetSizeEx(::GetCurrentProcess(), static_cast<SIZE_T>(-1), static_cast<SIZE_T>(-1), 0);
+            } else if (const PageSet cold = PageSet::resident().without(keep); !stop.stop_requested()) {
+                cold.release(stop);
+            }
+        }
+        if (stop.stop_requested()) { // woken mid-trim: do not record the active working set as m_floor
+            details.insert(u"stopped"_s, true);
+            tell(false);
+            return;
+        }
+        const SIZE_T after = privateWorkingSet().bytes;
+        m_floor = keep.empty() || after == SIZE_MAX ? 0 : after;
+        gaveBack(static_cast<qint64>((bytes > after ? bytes - after : 0) / (1024 * 1024)));
+        const auto stayedMb = after == SIZE_MAX ? qint64 {-1} : static_cast<qint64>(after >> 20);
+        if (stayedMb >= 0)
+            details.insert(u"stayed_mb"_s, stayedMb);
+        const bool much = stayedMb > keepMb + static_cast<qint64>(kTrimAbove >> 20);
+        if (much)
+            qInfo() << "Idle trim:" << stayedMb << "MB stayed";
+        tell(much);
+    });
 }
 
 } // namespace ws

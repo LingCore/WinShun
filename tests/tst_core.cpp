@@ -5625,6 +5625,25 @@ private slots:
         QCOMPARE(scanBlocks, index.chunkCount());
         QCOMPARE(linkBlocks, index.chunkCount());
         QCOMPARE(sizeof(EntryScan) + sizeof(EntryLinks), std::size_t(17)); // no more than the one record it was
+
+        // What a name search reads from end to end, read back ahead after
+        // the memory went to the disk (GitHub #471): the scan chunks and the
+        // names, none of the other part.
+        std::size_t searchScan = 0, searchNames = 0;
+        const auto searched = index.searchBlocks();
+        const auto blocks = index.memoryBlocks();
+        for (const auto& [address, size] : searched) {
+            searchScan += size == FileIndex::kChunkSize * sizeof(EntryScan);
+            searchNames += size == FileIndex::kNameChunkSize;
+            QVERIFY(std::ranges::any_of(blocks, [&](const auto& b) { return b.first == address && b.second >= size; }));
+        }
+        QCOMPARE(searchScan, index.chunkCount());
+        QVERIFY(searchNames >= 1);
+        QCOMPARE(searched.size(), searchScan + searchNames);
+        std::size_t searchBytes = 0;
+        for (const auto& block : searched)
+            searchBytes += block.second;
+        QCOMPARE(index.prefetchSearch(), searchBytes);
     }
 
     void mappedIndexStorageSurvivesCompactionAndSnapshot()

@@ -346,10 +346,21 @@ public:
     // right now can be asked of Windows (memory::residentBytes). The rest
     // (tables on the general heap) is not in the list. Caller holds a read lock.
     std::vector<std::pair<const void*, std::size_t>> memoryBlocks() const;
+    // Of those, the ones every name search goes through from end to end: the
+    // EntryScan chunks and the names (nine bytes an entry and its name). To
+    // read back ahead in large reads (PrefetchVirtualMemory) when they may
+    // have gone to the disk. Caller holds a read lock.
+    std::vector<std::pair<const void*, std::size_t>> searchBlocks() const;
+    // Has Windows read back from the disk what of searchBlocks() went there,
+    // in large reads side by side, instead of a page fault at a time under a
+    // search's feet (GitHub #471); what is in memory costs next to nothing.
+    // Not more than a quarter of the memory Windows has available. Returns
+    // the bytes asked for (0: none). Caller holds a read lock.
+    std::size_t prefetchSearch() const noexcept;
 
-    // Warms what a search reads (EntryScan, the names) only for small,
-    // privately held indexes after IdleTrim. Large mapped indexes stay
-    // demand-paged. Caller holds a read lock.
+    // Warms what a search reads (searchBlocks) only for small, privately
+    // held indexes after IdleTrim. Large mapped indexes stay demand-paged.
+    // Caller holds a read lock.
     void warm() const noexcept;
 
     // The entries of a chunk, each put together as entry() does: for a pass

@@ -6,6 +6,12 @@
 // is freed, and soft faults bring back what the next query reads (a few ms
 // for tens of MB).
 //
+// Not while Windows itself is short of memory (kShortOfMemoryLoad, the same
+// mark as the app's): given back then, the pages are taken by the other
+// programs within minutes, and the next query reads them back from the disk
+// one at a time (GitHub #471). Windows trims every program by itself when it
+// needs the memory.
+//
 // A plugin starts it once (trimWhenIdle(), from initialized()) and holds a
 // Working on the stack of each query, action and pass.
 #pragma once
@@ -28,6 +34,8 @@ inline constexpr std::chrono::seconds kRecheck {30};
 // smaller than it stay in for good (GitHub #478: the archive plugin's 16 MB,
 // under the 24 MB it waited for).
 inline constexpr SIZE_T kAbove = SIZE_T {4} << 20;
+// Short of memory: this much of it in use, in percent (Task Manager's figure).
+inline constexpr DWORD kShortOfMemoryLoad = 80;
 
 inline std::atomic<int> working {0}; // queries, actions and passes under way
 inline std::atomic<ULONGLONG> lastUse {0}; // GetTickCount64 when one last started or ended
@@ -49,6 +57,12 @@ inline SIZE_T workingSet()
             return SIZE_MAX;
     }
     return counters.PrivateWorkingSetSize != 0 ? counters.PrivateWorkingSetSize : counters.WorkingSetSize;
+}
+
+inline bool shortOfMemory()
+{
+    MEMORYSTATUSEX memory {sizeof memory};
+    return ::GlobalMemoryStatusEx(&memory) && memory.dwMemoryLoad >= kShortOfMemoryLoad;
 }
 
 } // namespace idle
@@ -83,6 +97,8 @@ inline void trimWhenIdle()
                 continue;
             if (const SIZE_T now = idle::workingSet(); now != SIZE_MAX && now <= floor + idle::kAbove)
                 continue;
+            if (idle::shortOfMemory())
+                continue; // until there is room again
             ::SetProcessWorkingSetSizeEx(::GetCurrentProcess(), static_cast<SIZE_T>(-1), static_cast<SIZE_T>(-1), 0);
             const SIZE_T after = idle::workingSet();
             floor = after == SIZE_MAX ? 0 : after;

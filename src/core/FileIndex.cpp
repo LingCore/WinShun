@@ -265,6 +265,37 @@ std::vector<std::pair<const void*, std::size_t>> FileIndex::memoryBlocks() const
     return blocks;
 }
 
+std::vector<std::pair<const void*, std::size_t>> FileIndex::searchBlocks() const
+{
+    std::vector<std::pair<const void*, std::size_t>> blocks;
+    blocks.reserve(m_scan.size() + m_names.size());
+    for (const auto& chunk : m_scan)
+        blocks.emplace_back(chunk.get(), kChunkSize * sizeof(EntryScan));
+    for (const auto& chunk : m_names)
+        blocks.emplace_back(chunk.get(), kNameChunkSize);
+    return blocks;
+}
+
+std::size_t FileIndex::prefetchSearch() const noexcept
+{
+    std::vector<WIN32_MEMORY_RANGE_ENTRY> ranges;
+    std::size_t bytes = 0;
+    try {
+        const auto blocks = searchBlocks();
+        ranges.reserve(blocks.size());
+        for (const auto& [address, size] : blocks) {
+            ranges.push_back({const_cast<void*>(address), size});
+            bytes += size;
+        }
+    } catch (const std::bad_alloc&) {
+        return 0;
+    }
+    MEMORYSTATUSEX memory {sizeof memory};
+    if (ranges.empty() || !::GlobalMemoryStatusEx(&memory) || bytes > memory.ullAvailPhys / 4)
+        return 0;
+    return ::PrefetchVirtualMemory(::GetCurrentProcess(), ranges.size(), ranges.data(), 0) ? bytes : 0;
+}
+
 void FileIndex::warm() const noexcept
 {
     // A large index must not fault several GiB back in just because the
@@ -275,10 +306,8 @@ void FileIndex::warm() const noexcept
         return;
     std::vector<WIN32_MEMORY_RANGE_ENTRY> ranges;
     ranges.reserve(m_scan.size() + m_names.size());
-    for (const auto& chunk : m_scan)
-        ranges.push_back({chunk.get(), kChunkSize * sizeof(EntryScan)});
-    for (const auto& chunk : m_names)
-        ranges.push_back({chunk.get(), kNameChunkSize});
+    for (const auto& [address, bytes] : searchBlocks())
+        ranges.push_back({const_cast<void*>(address), bytes});
     // Pages written out to the pagefile: read in large requests, not one by
     // one. Those on the standby list it leaves alone: the touches below map them.
     ::PrefetchVirtualMemory(::GetCurrentProcess(), ranges.size(), ranges.data(), 0);

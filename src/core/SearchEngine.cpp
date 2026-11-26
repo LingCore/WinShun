@@ -31,6 +31,7 @@
 #include <QTimeZone>
 
 #include <windows.h>
+#include <psapi.h>
 
 #include <algorithm>
 #include <array>
@@ -263,6 +264,22 @@ private:
 };
 
 namespace {
+
+// For the log of a slow search: this process's page faults so far (soft and
+// hard alike), and how much of Windows' memory is in use, in percent (-1:
+// not told).
+DWORD pageFaults() noexcept
+{
+    PROCESS_MEMORY_COUNTERS counters {};
+    counters.cb = sizeof counters;
+    return ::GetProcessMemoryInfo(::GetCurrentProcess(), &counters, sizeof counters) ? counters.PageFaultCount : 0;
+}
+
+int memoryLoad() noexcept
+{
+    MEMORYSTATUSEX memory {sizeof memory};
+    return ::GlobalMemoryStatusEx(&memory) ? static_cast<int>(memory.dwMemoryLoad) : -1;
+}
 
 // ...or, as asked, the files written last: a list to scroll through
 // (Request::limit of them). From one folder and one tree of folders, a few
@@ -1509,6 +1526,7 @@ void SearchEngine::runNameSearch(const Job& job)
     const auto began = Clock::now();
     const auto onDiskBefore = m_onDisk->waited();
     const WorkerPool::Waits poolBefore = WorkerPool::waits();
+    const DWORD faultsBefore = pageFaults();
     Clock::duration lockWait {};
     Clock::duration names {};
     Clock::duration alike {}; // the names that sound the same (homophoneQueries)
@@ -1516,7 +1534,9 @@ void SearchEngine::runNameSearch(const Job& job)
     const char* phase = "starting"; // where it was when it ended (left behind: where it noticed)
     // From its request on, 300 ms or more (the list is dimmed after 250 ms),
     // left behind by a newer request too: said in the log, with what it
-    // waited for and where its time went. No words, no paths.
+    // waited for and where its time went, and how short of memory Windows
+    // was: memory read back from the disk shows as page faults by the
+    // thousand (GitHub #471). No words, no paths.
     const auto slowLog = qScopeGuard([&] {
         const auto end = Clock::now();
         if (end - job.submitted < std::chrono::milliseconds(300))
@@ -1530,11 +1550,13 @@ void SearchEngine::runNameSearch(const Job& job)
         qWarning("WinShun: a name search took %lld ms%s (%lld queued behind the one before, %lld for the index, "
                  "%lld finding names, %lld asking the disk about recent items and favorites, %lld names that sound the "
                  "same, %lld listing the open windows, %lld the rest; its parallel loops waited %lld for their turn and "
-                 "%lld for the pool's threads; ended at: %s; running now in all of WinShun: %d name searches, %d content scans)",
+                 "%lld for the pool's threads; ended at: %s; running now in all of WinShun: %d name searches, %d content scans; "
+                 "Windows' memory %d%% in use, %lu page faults in all of WinShun meanwhile)",
             ms(end - job.submitted), isStale(job.id) ? ", left behind by a newer request" : "", ms(began - job.submitted),
             ms(lockWait), ms(names), ms(onDisk), ms(alike), ms(windowsTime), std::max(0LL, ms(rest)),
             ms(pool.forTurn - poolBefore.forTurn), ms(pool.forThreads - poolBefore.forThreads), phase,
-            s_namesRunning.load(std::memory_order_relaxed), s_scansRunning.load(std::memory_order_relaxed));
+            s_namesRunning.load(std::memory_order_relaxed), s_scansRunning.load(std::memory_order_relaxed), memoryLoad(),
+            static_cast<unsigned long>(pageFaults() - faultsBefore));
     });
 
     const bool foldersOnly = request.scope == Scope::Folders;

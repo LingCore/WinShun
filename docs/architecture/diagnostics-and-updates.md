@@ -89,7 +89,7 @@ Win顺 在读取任何设置之前按以下优先级确定目录：
 | `capture` / `capture-stall` / `capture-cursor-hidden` | `Capture` | 截图耗时、结果、GUI 阻塞 >150 ms（每次 ≤5 条）、`graphics_lost`、脉冲间隔 |
 | `ui-stall` / `ui-stall-end` / `ui-stall-threads` | `UiStallWatch` | 界面无响应调用栈、CPU 耗时、`busy` 及截图时其余线程栈 |
 | `trigger` | `TriggerJournal` | 呼出全链路（`source`/`queue_ms`/`action`/`front`/`seen_ms`/`faults`/`trimmed`/`helper`/`raw_input`/`tap_from`/`queued_ms`）；显示分段 `show_ms`（界面线程同步准备）/`arm_ms`（到 `FrameReveal::arm`）/`frame_ms`（`arm` 到揭开遮罩），200 ms 兜底揭开带 `timeout: true`；`idle_s` 距上次显示或隐藏，`private_mb`/`working_mb`/`ws_delta_mb` 为按下时内存与到显示时的工作集增量；显示后落盘，异常/慢/超时 ≤30/h，正常前 5 条后每 10 分钟 1 条 |
-| `idle-trim` / `key-helper` | `IdleTrim` / `ServiceKeyListener` | 空闲内存交还（归还结束后一条：归还前 `private_mb`、保留热页 `keep_mb`（`HotPages`）、归还后仍驻留 `stayed_mb`，中途被唤醒为 `stopped`）/`held: resumed`；UIAccess 按键助手状态 |
+| `idle-trim` / `key-helper` | `IdleTrim` / `ServiceKeyListener` | 空闲内存交还（归还结束后一条：归还前 `private_mb`、保留热页 `keep_mb`（`HotPages`）、归还后仍驻留 `stayed_mb`、系统内存占用 `memory_load`，中途被唤醒为 `stopped`）/`held: resumed`、`held: short of memory`（系统内存占用 ≥ 80% 暂不归还，带 `memory_load`）；UIAccess 按键助手状态 |
 | `double-tap-near-miss` / `double-tap-dropped` | `KeyListener` / `TapTeller` | 双击未成立原因与干扰类别、延迟/让位丢弃（合计 ≤30/h，不记具体键） |
 | `clipboard-picture-not-read` / `clipboard-key-routing-*` | `Clipboard` / `KeyRouter` | OCR 连崩跳图尺寸；剪贴板按键转发与未接管原因统计 |
 | `clipboard-hidden` | `App::hideClipboard` | 剪贴板面板每次隐藏的原因 `why`（`asked`/`inactive`/`clicked-away`/`routed-front-moved`/`lent-front-moved`/`display-lost-focus`/`front-refused`）、显示了多久 `shown_ms`、是否转发按键、打开时前台是否全屏/独占全屏、是否因此直接拿了焦点 `focus_taken`、目标窗口是否已最小化或消失；不记窗口标题与程序名 |
