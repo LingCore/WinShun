@@ -27,6 +27,8 @@
 #include <QTest>
 
 #include <dwmapi.h>
+#include <algorithm>
+#include <array>
 #include <cmath>
 
 using namespace ws;
@@ -49,6 +51,63 @@ QUrl qmlFolder()
         return url;
     }();
     return folder;
+}
+
+// CIE76 ΔE between two colours (sRGB, D65): ~2 is just seen side by side,
+// ~10 is a step anyone sees across a room on a poor screen.
+double deltaE(const QColor& a, const QColor& b)
+{
+    const auto lab = [](const QColor& c) {
+        const auto lin = [](double v) { return v <= 0.04045 ? v / 12.92 : std::pow((v + 0.055) / 1.055, 2.4); };
+        const double r = lin(c.redF()), g = lin(c.greenF()), bl = lin(c.blueF());
+        const double x = (0.4124 * r + 0.3576 * g + 0.1805 * bl) / 0.95047;
+        const double y = 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+        const double z = (0.0193 * r + 0.1192 * g + 0.9505 * bl) / 1.08883;
+        const auto f = [](double t) { return t > 0.008856 ? std::cbrt(t) : 7.787 * t + 16.0 / 116; };
+        return std::array<double, 3> {116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z))};
+    };
+    const auto p = lab(a), q = lab(b);
+    return std::hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+}
+
+// WCAG 2.1 contrast ratio of two opaque colours.
+double contrast(const QColor& a, const QColor& b)
+{
+    const auto luminance = [](const QColor& c) {
+        const auto lin = [](double v) { return v <= 0.04045 ? v / 12.92 : std::pow((v + 0.055) / 1.055, 2.4); };
+        return 0.2126 * lin(c.redF()) + 0.7152 * lin(c.greenF()) + 0.0722 * lin(c.blueF());
+    };
+    const auto [dark, light] = std::minmax(luminance(a), luminance(b));
+    return (light + 0.05) / (dark + 0.05);
+}
+
+// `top` (maybe see-through) laid on the opaque `bottom`, as the scene graph blends them.
+QColor over(const QColor& top, const QColor& bottom)
+{
+    const double a = top.alphaF();
+    const auto mix = [a](double t, double b) { return a * t + (1 - a) * b; };
+    return QColor::fromRgbF(mix(top.redF(), bottom.redF()), mix(top.greenF(), bottom.greenF()), mix(top.blueF(), bottom.blueF()));
+}
+
+// The keyboard's row or tile reads at a glance (GitHub #474): this far, in
+// ΔE, off the floor it lies on and off the one under the pointer, about
+// Fluent's accent-tinted row. Dark asks more: the same step near black is
+// the first one a dim or poor screen loses.
+struct SelectionContrast {
+    double offFloor;
+    double offHover;
+};
+constexpr SelectionContrast kSelectionLight {6.5, 4.5};
+constexpr SelectionContrast kSelectionDark {9.0, 6.0};
+
+// The words on it stay readable (docs/colors.md): text and subtext as body
+// text, faint as a hint.
+void verifyTextOn(const QObject& look, const QColor& face)
+{
+    for (const auto& [name, least] : {std::pair {"text", 4.5}, {"subtext", 4.5}, {"faint", 3.0}}) {
+        const double ratio = contrast(look.property(name).value<QColor>(), face);
+        QVERIFY2(ratio >= least, qPrintable(u"%1 on %2: %3:1"_s.arg(QLatin1StringView(name), face.name()).arg(ratio, 0, 'f', 2)));
+    }
 }
 
 } // namespace
@@ -393,6 +452,139 @@ private slots:
                     QVERIFY(part->setProperty(state, true));
             checkRadii(checkRadii, part.get());
         }
+    }
+
+    // The row the keyboard is on reads at a glance in every 界面风格, light
+    // and dark, on the list's own colour and on Mica (a plain one and a
+    // wallpaper-tinted one, as GitHub #474's): its face stands off the list
+    // and off the row under the pointer by CIELAB ΔE, measured on the
+    // pixels the style's own part draws. Fluent's accent tint sets the bar.
+    void rowStates_data()
+    {
+        QTest::addColumn<QString>("style");
+        QTest::addColumn<bool>("dark");
+        QTest::addColumn<QColor>("mica"); // invalid: no Mica, the list's own colour
+        for (const QString style : {u"fluent"_s, u"brand"_s, u"tactile"_s, u"liquid"_s}) {
+            for (const bool dark : {false, true}) {
+                const char* name = dark ? "dark" : "light";
+                QTest::addRow("%s-%s-solid", qPrintable(style), name) << style << dark << QColor();
+                if (style == u"tactile")
+                    continue; // never see-through
+                QTest::addRow("%s-%s-mica", qPrintable(style), name) << style << dark << QColor(dark ? "#202020" : "#F3F3F3");
+                QTest::addRow("%s-%s-tinted", qPrintable(style), name) << style << dark << QColor(dark ? "#1D2332" : "#E9EEF6");
+            }
+        }
+    }
+
+    void rowStates()
+    {
+        QFETCH(QString, style);
+        QFETCH(bool, dark);
+        QFETCH(QColor, mica);
+        const auto restore = qScopeGuard([] {
+            QGuiApplication::styleHints()->setColorScheme(Qt::ColorScheme::Light);
+            SystemTheme::setBackdropAvailable(false);
+        });
+        QGuiApplication::styleHints()->setColorScheme(dark ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light);
+        SystemTheme::setBackdropAvailable(mica.isValid());
+        SystemTheme::setBackdropOn(true);
+        if (mica.isValid() && !win::materialsEnabled())
+            QSKIP("no Mica on this Windows");
+        QQmlEngine engine;
+        QQmlComponent source(&engine, qmlFolder().resolved(QUrl(u"themes/%1/Look.qml"_s.arg(style))));
+        std::unique_ptr<QObject> look(source.create());
+        QVERIFY2(look, qPrintable(source.errorString()));
+        auto* component = look->property("rowHighlight").value<QQmlComponent*>();
+        QVERIFY(component);
+
+        // Three result rows as the launcher has them: the keyboard's, the pointer's, one at rest.
+        const QSize rowSize(320, 52);
+        QQuickWindow window;
+        window.setFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowDoesNotAcceptFocus);
+        window.resize(rowSize.width() + 40, 3 * rowSize.height() + 40);
+        const QColor base = mica.isValid() ? mica : look->property("background").value<QColor>();
+        window.setColor(base);
+        std::vector<std::unique_ptr<QObject>> parts;
+        // On the style's tray where it lays one under the rows (tactile's groove).
+        if (auto* tray = look->property("tray").value<QQmlComponent*>()) {
+            std::unique_ptr<QObject> part(tray->create(tray->creationContext()));
+            QVERIFY2(part, qPrintable(tray->errorString()));
+            auto* item = qobject_cast<QQuickItem*>(part.get());
+            QVERIFY(item);
+            item->setParentItem(window.contentItem());
+            item->setSize(QSizeF(window.width(), window.height()));
+            parts.push_back(std::move(part));
+        }
+        for (int i = 0; i < 3; ++i) {
+            std::unique_ptr<QObject> part(component->create(component->creationContext()));
+            QVERIFY2(part, qPrintable(component->errorString()));
+            auto* item = qobject_cast<QQuickItem*>(part.get());
+            QVERIFY(item);
+            item->setParentItem(window.contentItem());
+            item->setPosition(QPointF(20, 20 + i * rowSize.height()));
+            item->setSize(rowSize);
+            item->setProperty("role", u"list"_s);
+            item->setProperty("dpr", window.devicePixelRatio());
+            item->setProperty("current", i == 0); // as the launcher's: current and selected
+            item->setProperty("selected", i == 0);
+            item->setProperty("hovered", i == 1);
+            parts.push_back(std::move(part));
+        }
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        QTest::qWait(400); // past the parts' fades
+        const QImage pixels = window.grabWindow();
+        QVERIFY(!pixels.isNull());
+        const qreal dpr = qreal(pixels.width()) / window.width(); // the software grab's own ratio can say 1
+        // Clear of the bar at the rows' left: a face's middle, and its top
+        // device pixel (the edge, where the style draws one).
+        const int x = qRound((20 + rowSize.width() * 0.7) * dpr);
+        const auto face = [&](int row) { return pixels.pixelColor(x, qRound((20 + (row + 0.5) * rowSize.height()) * dpr)); };
+        const auto edge = [&](int row) { return pixels.pixelColor(x, qRound((20 + row * rowSize.height()) * dpr)); };
+        // Its mark: the face, or a white face's 1 px edge (brand, light: a
+        // raised card on a near-white list, GitHub #267), whichever stands off more.
+        const double offList = std::max(deltaE(face(0), face(2)), deltaE(edge(0), edge(2)));
+        const double offHover = std::max(deltaE(face(0), face(1)), deltaE(edge(0), edge(1)));
+        qInfo("%s: selected %s (edge %s), hovered %s, list %s: dE %.1f off the list, %.1f off the hovered row", QTest::currentDataTag(),
+            qPrintable(face(0).name()), qPrintable(edge(0).name()), qPrintable(face(1).name()), qPrintable(face(2).name()), offList, offHover);
+        const SelectionContrast least = dark ? kSelectionDark : kSelectionLight;
+        QVERIFY2(offList >= least.offFloor, qPrintable(u"the selected row is %1 off the list"_s.arg(offList, 0, 'f', 1)));
+        QVERIFY2(offHover >= least.offHover, qPrintable(u"the selected row is %1 off the hovered row"_s.arg(offHover, 0, 'f', 1)));
+        verifyTextOn(*look, face(0));
+    }
+
+    // The same for what Theme.selection marks against Theme.hover: the
+    // keyboard's tile (results, apps, favourites) and the chosen chips and cards.
+    void selectionTokens_data() { rowStates_data(); }
+
+    void selectionTokens()
+    {
+        QFETCH(QString, style);
+        QFETCH(bool, dark);
+        QFETCH(QColor, mica);
+        const auto restore = qScopeGuard([] {
+            QGuiApplication::styleHints()->setColorScheme(Qt::ColorScheme::Light);
+            SystemTheme::setBackdropAvailable(false);
+        });
+        QGuiApplication::styleHints()->setColorScheme(dark ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light);
+        SystemTheme::setBackdropAvailable(mica.isValid());
+        SystemTheme::setBackdropOn(true);
+        if (mica.isValid() && !win::materialsEnabled())
+            QSKIP("no Mica on this Windows");
+        QQmlEngine engine;
+        QQmlComponent source(&engine, qmlFolder().resolved(QUrl(u"themes/%1/Look.qml"_s.arg(style))));
+        std::unique_ptr<QObject> look(source.create());
+        QVERIFY2(look, qPrintable(source.errorString()));
+        const QColor floor = mica.isValid() ? mica : look->property("background").value<QColor>();
+        const QColor selected = over(look->property("selection").value<QColor>(), floor);
+        const QColor hovered = over(look->property("hover").value<QColor>(), floor);
+        const double offFloor = deltaE(selected, floor), offHover = deltaE(selected, hovered);
+        qInfo("%s: selection %s, hover %s, floor %s: dE %.1f off the floor, %.1f off hover", QTest::currentDataTag(),
+            qPrintable(selected.name()), qPrintable(hovered.name()), qPrintable(floor.name()), offFloor, offHover);
+        const SelectionContrast least = dark ? kSelectionDark : kSelectionLight;
+        QVERIFY2(offFloor >= least.offFloor, qPrintable(u"selection is %1 off the floor"_s.arg(offFloor, 0, 'f', 1)));
+        QVERIFY2(offHover >= least.offHover, qPrintable(u"selection is %1 off hover"_s.arg(offHover, 0, 'f', 1)));
+        verifyTextOn(*look, selected);
     }
 
     void liveComposedOutline_data()

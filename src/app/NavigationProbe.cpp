@@ -40,6 +40,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QKeyEvent>
+#include <QMouseEvent>
 #include <QProcess>
 #include <QThread>
 #include <QInputMethodEvent>
@@ -764,46 +765,65 @@ bool checkNavigationWorkflows(QQmlEngine* engine, const QDir& output, bool flipp
     return check.passed;
 }
 
-// --name-filter-poster: the picture of the panel's 名称 filter (GitHub #457)
-// for the release poster. Not one of the workflow checks above: it lists a
-// believable folder of office files (sizes and dates filled, nothing real)
-// and sets the three boxes as someone looking for this year's reports would.
-bool checkNameFilterPoster(QQmlEngine* engine, const QDir& output)
-{
-    Checks check;
+namespace {
+// A believable folder of office files under D: (sizes and dates filled,
+// nothing real), for the posters below.
+struct DemoReport {
+    QString folder; // under D:, split by /
+    QString name;
+    std::uint64_t kilobytes;
+    int daysAgo;
+    int minute; // of the day, local time
+    bool listed; // what the name filter's boxes let through
+};
+const QList<DemoReport> kDemoReports {
+    {u"工作/2026 年度/总结"_s, u"2026 年度工作报告.docx"_s, 1280, 1, 17 * 60 + 42, true},
+    {u"工作/2026 年度/总结"_s, u"2026 年度工作报告 草稿.docx"_s, 1236, 6, 11 * 60 + 5, false},
+    {u"工作/2026 年度/总结"_s, u"2026 年度工作报告.pdf"_s, 2410, 1, 17 * 60 + 50, false},
+    {u"工作/2026 年度/销售"_s, u"2026 Q1 销售报告.docx"_s, 482, 62, 10 * 60 + 14, true},
+    {u"工作/2026 年度/销售"_s, u"2026 Q1 销售报告 旧.docx"_s, 455, 70, 15 * 60 + 30, false},
+    {u"工作/2026 年度/销售"_s, u"2026 Q2 销售报告.docx"_s, 516, 33, 9 * 60 + 48, true},
+    {u"工作/2026 年度/销售"_s, u"2026 Q3 销售报告.docx"_s, 538, 5, 14 * 60 + 26, true},
+    {u"工作/2026 年度/市场"_s, u"2026 市场调研报告.docx"_s, 2348, 12, 16 * 60 + 8, true},
+    {u"工作/2026 年度/项目"_s, u"2026 项目验收报告.docx"_s, 724, 3, 11 * 60 + 36, true},
+    {u"工作/2026 年度/财务"_s, u"2026 财务分析报告.docx"_s, 356, 8, 13 * 60 + 52, true},
+    {u"工作/2026 年度/财务"_s, u"2026 财务分析报告.xlsx"_s, 218, 8, 13 * 60 + 40, false},
+    {u"工作/2026 年度/人事"_s, u"2026 年中述职报告.docx"_s, 118, 143, 9 * 60 + 20, true},
+    {u"工作/2025 年度/总结"_s, u"2025 年度工作报告.docx"_s, 1192, 330, 16 * 60 + 15, false},
+    {u"工作/模板"_s, u"报告模板.docx"_s, 64, 210, 10 * 60 + 2, false},
+};
+
+// The search window (Main.qml) on those files, in a profile of its own,
+// shown off screen at the posters' size; `panel`: the folder panel's layout.
+struct DemoSearch {
+    DemoSearch(QQmlEngine* engine, bool panel);
+
     QTemporaryDir profile;
-    IndexService index(profile.filePath(u"index"_s), {});
-    struct Demo {
-        QString folder; // under D:, split by /
-        QString name;
-        std::uint64_t kilobytes;
-        int daysAgo;
-        int minute; // of the day, local time
-        bool listed; // what the boxes below let through
-    };
-    const QList<Demo> demo {
-        {u"工作/2026 年度/总结"_s, u"2026 年度工作报告.docx"_s, 1280, 1, 17 * 60 + 42, true},
-        {u"工作/2026 年度/总结"_s, u"2026 年度工作报告 草稿.docx"_s, 1236, 6, 11 * 60 + 5, false},
-        {u"工作/2026 年度/总结"_s, u"2026 年度工作报告.pdf"_s, 2410, 1, 17 * 60 + 50, false},
-        {u"工作/2026 年度/销售"_s, u"2026 Q1 销售报告.docx"_s, 482, 62, 10 * 60 + 14, true},
-        {u"工作/2026 年度/销售"_s, u"2026 Q1 销售报告 旧.docx"_s, 455, 70, 15 * 60 + 30, false},
-        {u"工作/2026 年度/销售"_s, u"2026 Q2 销售报告.docx"_s, 516, 33, 9 * 60 + 48, true},
-        {u"工作/2026 年度/销售"_s, u"2026 Q3 销售报告.docx"_s, 538, 5, 14 * 60 + 26, true},
-        {u"工作/2026 年度/市场"_s, u"2026 市场调研报告.docx"_s, 2348, 12, 16 * 60 + 8, true},
-        {u"工作/2026 年度/项目"_s, u"2026 项目验收报告.docx"_s, 724, 3, 11 * 60 + 36, true},
-        {u"工作/2026 年度/财务"_s, u"2026 财务分析报告.docx"_s, 356, 8, 13 * 60 + 52, true},
-        {u"工作/2026 年度/财务"_s, u"2026 财务分析报告.xlsx"_s, 218, 8, 13 * 60 + 40, false},
-        {u"工作/2026 年度/人事"_s, u"2026 年中述职报告.docx"_s, 118, 143, 9 * 60 + 20, true},
-        {u"工作/2025 年度/总结"_s, u"2025 年度工作报告.docx"_s, 1192, 330, 16 * 60 + 15, false},
-        {u"工作/模板"_s, u"报告模板.docx"_s, 64, 210, 10 * 60 + 2, false},
-    };
+    IndexService index {profile.filePath(u"index"_s), {}};
+    AppCatalog apps;
+    SystemCatalog places;
+    SearchEngine search {&index, &apps, &places};
+    History history {profile.filePath(u"history.txt"_s)};
+    Launcher launcher {&index, &apps, &places, &search, &history};
+    ClipStore store {profile.filePath(u"clipboard"_s)};
+    ClipboardWatcher watcher {{.record = false}, {}};
+    Clipboard clipboard {&store, &watcher};
+    Placement placement {profile.filePath(u"state.ini"_s), u"Launcher"_s};
+    WindowFrame frame {false};
+    QString error; // the window did not load
+    std::unique_ptr<QObject> root; // last: gone first
+    QQuickWindow* window = nullptr;
+};
+
+DemoSearch::DemoSearch(QQmlEngine* engine, bool panel)
+{
     constexpr qint64 today = 1795132800 + 4 * 86400 - 8 * 3600; // 2026-11-24 00:00 in UTC+8
     {
         const auto files = index.index();
         const auto lock = files->writeLock();
         const EntryId drive = files->addRoot("D:");
         QHash<QString, EntryId> folders;
-        for (const Demo& entry : demo) {
+        for (const DemoReport& entry : kDemoReports) {
             EntryId parent = drive;
             QString path;
             for (const QString& part : entry.folder.split(u'/')) {
@@ -817,33 +837,52 @@ bool checkNameFilterPoster(QQmlEngine* engine, const QDir& output)
             files->setSize(id, packSize(entry.kilobytes * 1024));
         }
     }
-    AppCatalog apps;
-    SystemCatalog places;
     apps.setApps(std::make_shared<const AppList>());
     places.setPlaces(std::make_shared<const PlaceList>());
-    SearchEngine search(&index, &apps, &places);
-    History history(profile.filePath(u"history.txt"_s));
-    Launcher launcher(&index, &apps, &places, &search, &history);
-    launcher.setPanel(true);
-    launcher.setPanelSidebarVisible(true);
-    ClipStore store(profile.filePath(u"clipboard"_s));
+    launcher.setPanel(panel);
+    launcher.setPanelSidebarVisible(panel);
     store.open(QDateTime::currentMSecsSinceEpoch());
-    ClipboardWatcher watcher({.record = false}, {});
-    Clipboard clipboard(&store, &watcher);
-    Placement placement(profile.filePath(u"state.ini"_s), u"Launcher"_s);
-    WindowFrame frame(false);
     QQmlComponent component(engine, u"WinShun"_s, u"Main"_s);
-    std::unique_ptr<QObject> root(component.createWithInitialProperties({
+    root.reset(component.createWithInitialProperties({
         {u"launcher"_s, QVariant::fromValue(&launcher)}, {u"clipboard"_s, QVariant::fromValue(&clipboard)},
         {u"placement"_s, QVariant::fromValue(&placement)}, {u"frame"_s, QVariant::fromValue(&frame)}}));
-    auto* window = qobject_cast<QQuickWindow*>(root.get());
-    check(window != nullptr, u"name filter poster: the search window loads: "_s + component.errorString());
-    if (!window) return false;
+    window = qobject_cast<QQuickWindow*>(root.get());
+    if (!window) {
+        error = component.errorString();
+        return;
+    }
     window->create();
     window->resize(1060, 560);
     frame.setWindow(window);
     launcher.setWindow(window);
     showOffscreen(window);
+    launcher.results()->setThumbnails(false); // synthetic paths: no thumbnail handler or real file access
+    launcher.setScope(Launcher::Files); // names only: no hint about files whose content was not searched
+    launcher.setQuery(u"报告"_s);
+    launcher.sortBy(static_cast<int>(SortKey::Modified)); // the newest first, as clicking 修改时间 does
+    settle(window);
+}
+
+bool writeChecks(const Checks& check, const QDir& output, const QString& name)
+{
+    QFile file(output.filePath(name));
+    if (!file.open(QIODevice::WriteOnly)) return false;
+    file.write(QJsonDocument(QJsonObject {{u"passed"_s, check.passed}, {u"checks"_s, check.rows}}).toJson());
+    return check.passed;
+}
+} // namespace
+
+// --name-filter-poster: the picture of the panel's 名称 filter (GitHub #457)
+// for the release poster. Not one of the workflow checks above: it sets the
+// three boxes as someone looking for this year's reports would.
+bool checkNameFilterPoster(QQmlEngine* engine, const QDir& output)
+{
+    Checks check;
+    DemoSearch demo(engine, true);
+    check(demo.window != nullptr, u"name filter poster: the search window loads: "_s + demo.error);
+    if (!demo.window) return false;
+    QQuickWindow* window = demo.window;
+    Launcher& launcher = demo.launcher;
     const auto listed = [&] {
         QStringList names;
         for (int i = 0; i < launcher.results()->count(); ++i) {
@@ -853,16 +892,11 @@ bool checkNameFilterPoster(QQmlEngine* engine, const QDir& output)
         names.sort();
         return names;
     };
-    launcher.results()->setThumbnails(false); // synthetic paths: no thumbnail handler or real file access
-    launcher.setScope(Launcher::Files); // names only: no hint about files whose content was not searched
-    launcher.setQuery(u"报告"_s);
-    launcher.sortBy(static_cast<int>(SortKey::Modified)); // the newest first, as clicking 修改时间 does
-    settle(window);
-    check(listed().size() == demo.size(), u"name filter poster: every report is listed before narrowing: "_s + QString::number(listed().size()));
+    check(listed().size() == kDemoReports.size(), u"name filter poster: every report is listed before narrowing: "_s + QString::number(listed().size()));
     launcher.setNameFilter(u"2026"_s, u".docx"_s, u"草稿 旧"_s);
     settle(window);
     QStringList expected;
-    for (const Demo& entry : demo) {
+    for (const DemoReport& entry : kDemoReports) {
         if (entry.listed)
             expected.append(entry.name);
     }
@@ -875,10 +909,35 @@ bool checkNameFilterPoster(QQmlEngine* engine, const QDir& output)
     launcher.clearFilters();
     settle(window);
     window->hide();
-    QFile file(output.filePath(u"name-filter-poster.json"_s));
-    if (!file.open(QIODevice::WriteOnly)) return false;
-    file.write(QJsonDocument(QJsonObject {{u"passed"_s, check.passed}, {u"checks"_s, check.rows}}).toJson());
-    return check.passed;
+    return writeChecks(check, output, u"name-filter-poster.json"_s);
+}
+
+bool checkRowStatesPoster(QQmlEngine* engine, const QDir& output)
+{
+    Checks check;
+    DemoSearch demo(engine, false);
+    check(demo.window != nullptr, u"row states: the search window loads: "_s + demo.error);
+    if (!demo.window) return false;
+    QQuickWindow* window = demo.window;
+    Launcher& launcher = demo.launcher;
+    check(launcher.results()->count() >= 3, u"row states: the reports are listed: "_s + QString::number(launcher.results()->count()));
+    launcher.setCurrentRow(0);
+    settle(window);
+    // Off screen the window has room for three rows: the keyboard's, one at rest, the pointer's.
+    QQuickItem* pointed = item(window->contentItem(), u"resultRow-2"_s);
+    check(pointed != nullptr, u"row states: the third row is drawn"_s);
+    if (pointed) {
+        const QPointF at = pointed->mapToScene(QPointF(pointed->width() * 0.6, pointed->height() / 2));
+        QMouseEvent move(QEvent::MouseMove, at, window->mapToGlobal(at), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(window, &move);
+    }
+    for (int i = 0; i < 3; ++i) // the hover's fade, the file icons
+        settle(window);
+    check(launcher.currentRow() == 0, u"row states: the pointer leaves the keyboard's row where it was"_s);
+    check(pointed && pointed->mapToScene(QPointF(0, pointed->height())).y() <= window->height(), u"row states: the pointer's row is in the window"_s);
+    check(window->grabWindow().save(output.filePath(u"row-states.png"_s)), u"row states: picture saved"_s);
+    window->hide();
+    return writeChecks(check, output, u"row-states.json"_s);
 }
 
 bool checkClipboardAlignment(QQmlEngine* engine, const QDir& output, bool flipped)

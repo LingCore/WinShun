@@ -72,14 +72,18 @@ QtObject {
     property color divider: backdrop ? (dark ? Qt.rgba(1, 1, 1, 0.084) : Qt.rgba(0, 0, 0, 0.058))
                                      : dark ? "#2E2E2E" : "#EAEAEA"
     property color text: dark ? "#F3F3F3" : "#1B1B1B"
-    property color subtext: dark ? "#B8B8B8" : "#666666"
-    property color faint: "#8A8A8A"
+    // Light: a touch darker than WinUI's secondary text (black 60.6 % on Mica,
+    // #5F5F5F) and a hint a step under it, so both stay readable on a selected
+    // row or tile, a wallpaper-tinted Mica's too (docs/colors.md).
+    property color subtext: dark ? "#B8B8B8" : "#5C5C5C"
+    property color faint: dark ? "#8A8A8A" : "#7A7A7A"
     property color hover: backdrop ? (dark ? Qt.rgba(1, 1, 1, 0.05) : Qt.rgba(0, 0, 0, 0.035))
                                    : dark ? "#292929" : "#F1F1F1"
     property color pressed: backdrop ? (dark ? Qt.rgba(1, 1, 1, 0.09) : Qt.rgba(0, 0, 0, 0.07))
                                      : dark ? "#323232" : "#E8E8E8"
-    property color selection: backdrop ? (dark ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.06))
-                                       : dark ? "#2F2F2F" : "#EAEAEA"
+    // The keyboard's tile, a chosen chip or card: clearly more than hover (GitHub #474).
+    property color selection: backdrop ? (dark ? Qt.rgba(1, 1, 1, 0.11) : Qt.rgba(0, 0, 0, 0.09))
+                                       : dark ? "#383838" : "#E3E3E3"
     property color textSelection: Qt.rgba(accent.r, accent.g, accent.b, 0.35)
     property color badge: Qt.rgba(accent.r, accent.g, accent.b, dark ? 0.16 : 0.10)
     property color tagFill: dark ? Qt.rgba(1, 1, 1, 0.07) : Qt.rgba(0, 0, 0, 0.05)
