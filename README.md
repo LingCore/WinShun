@@ -182,7 +182,7 @@ winget install LingCore.WinShun
 
 装的是**离线安装版**（自带增强文字识别），按“为所有用户安装”装进 `C:\Program Files\WinShun`，带索引服务，Windows 问一次管理员权限。包在 [microsoft/winget-pkgs](https://github.com/microsoft/winget-pkgs/tree/master/manifests/l/LingCore/WinShun)：新版本发布后才有对应的更新提交，审核合并后才上架，所以常常比 Releases 晚一两天，`winget show LingCore.WinShun` 里的版本就是能装到的版本。更新用 `winget upgrade LingCore.WinShun`；托盘里的“下载并安装”照常能用，装完就是最新版，这时 WinGet 记的版本比实际装的旧，`winget upgrade` 要等包追上才有动作（不会把更新的版本装回去）。卸载用 `winget uninstall LingCore.WinShun`，运行的就是“设置 → 应用”里那个卸载程序。
 
-标准安装版和便携版按需安装增强文字识别：到 **设置 › 剪贴板 › 记录 › 增强文字识别** 下载约 12 MB 的组件，也可以选择本地组件包。安装后剪贴板和截图共用，离线识别，不需要重启。旧版已有的识别文件继续使用。无网络的电脑可选 `WinShun-版本号-x64-offline-setup.exe`，自带完整识别组件；或把 Release 中的 `WinShun-ocr-*.zip` 拷过去从本地安装。截图识别尚未安装时会保留原图，安装后继续识别。 程序更新、插件库和增强识别的 GitHub 文件默认优先通过两个加速镜像下载，连接失败或文件校验不符会自动换源，最后尝试官方原站。
+标准安装版和便携版按需安装增强文字识别：到 **设置 › 剪贴板 › 记录 › 增强文字识别** 下载约 12 MB 的组件，也可以选择本地组件包。安装后剪贴板和截图共用，离线识别，不需要重启。旧版已有的识别文件继续使用。无网络的电脑可选 `WinShun-版本号-x64-offline-setup.exe`，自带完整识别组件；或把 Release 中的 `WinShun-ocr-*.zip` 拷过去从本地安装。截图识别尚未安装时会保留原图，安装后继续识别。公式识别的模型（约 115 MB）也按需下载：在 **设置 › 剪贴板 › 记录 › 公式识别模型** 或第一次按 `Shift+F` 打开的窗口里下载，同样离线识别。 程序更新、插件库和增强识别的 GitHub 文件默认优先通过两个加速镜像下载，连接失败或文件校验不符会自动换源，最后尝试官方原站。
 
 </details>
 
@@ -403,6 +403,7 @@ Listary、PowerToys 的“查找鼠标”默认也用双击 Ctrl，关掉其中�
 - **下载更新**：你点“下载并安装”后，经第三方镜像或 GitHub 下载安装包，并用 SHA-256 校验。
 - **网站图标**：第一次显示某个网页搜索或书签时，取一次那个网站的图标。
 - **插件库**：打开设置里的“插件库”页、点“刷新”或安装插件时，取列表和插件；开着“自动更新”时每天检查一次已装插件有没有新版（可以关）。从旧版升级时，以前开着、现在不再随 Win顺 自带的插件（截图与录屏、翻译等）也从插件库取一次。
+- **识别模型**：你选择下载时（图片文字识别的增强模型、公式识别模型），从 GitHub、ModelScope 或 Hugging Face（先走国内镜像）下载，并用 SHA-256 校验；图片只在本机识别，不上传。
 - **搜索建议**：在网站关键词后打字时，把这些字发给那个网站取搜索建议（不打关键词时一个字也不发，可以关）。
 - **你自己选的服务**：“按意思找”插件选了云服务时，把文档的文字发给你选的服务商；用“翻译”插件时，把要翻译的句子发给你填的翻译服务。
 
@@ -586,7 +587,7 @@ winget install LingCore.WinShun
 
 This installs the **offline setup** (enhanced text recognition included) for all users into `C:\Program Files\WinShun`, index service and all, with one administrator prompt. The package is in [microsoft/winget-pkgs](https://github.com/microsoft/winget-pkgs/tree/master/manifests/l/LingCore/WinShun): a release reaches it only through a new submission that is reviewed before it goes live, so it often trails Releases by a day or two, and the version in `winget show LingCore.WinShun` is the one you get. Update with `winget upgrade LingCore.WinShun`; “Download and install” in the tray still works and takes WinShun to the newest release, after which WinGet's version lags the installed one and `winget upgrade` waits until the package catches up (it never moves you back to an older version). Uninstall with `winget uninstall LingCore.WinShun`, which runs the same setup as Settings → Apps.
 
-Standard and portable packages install enhanced text recognition on demand. Open **Settings › Clipboard › Recording › Enhanced text recognition** to download about 12 MB, or install a local component archive. Clipboard and screenshots share it and work offline after installation, with no restart. Existing recognition files remain usable. For a PC without internet, choose `WinShun-<version>-x64-offline-setup.exe`, or copy the Release’s `WinShun-ocr-*.zip` and install it locally. Screenshot recognition keeps the original image and continues once the component is installed. App updates, the plugin library and enhanced recognition prefer two download mirrors for public GitHub files, then the original source; failed connections and rejected files automatically try the next source.
+Standard and portable packages install enhanced text recognition on demand. Open **Settings › Clipboard › Recording › Enhanced text recognition** to download about 12 MB, or install a local component archive. Clipboard and screenshots share it and work offline after installation, with no restart. Existing recognition files remain usable. For a PC without internet, choose `WinShun-<version>-x64-offline-setup.exe`, or copy the Release’s `WinShun-ocr-*.zip` and install it locally. Screenshot recognition keeps the original image and continues once the component is installed. Formula recognition's model (about 115 MB) is downloaded on demand too, in **Settings › Clipboard › Recording › Formula recognition model** or in the window `Shift+F` opens the first time, and reads offline as well. App updates, the plugin library and enhanced recognition prefer two download mirrors for public GitHub files, then the original source; failed connections and rejected files automatically try the next source.
 
 </details>
 
@@ -807,6 +808,7 @@ Free and MIT-licensed. Your files and index are never uploaded; the index and hi
 - **to download an update** when you click “Download and install”, through third-party mirrors or GitHub, checked against its SHA-256;
 - **for site icons**: once, the first time a web search site or bookmark is shown;
 - **for the plugin library**: when you open its page in the settings, press Refresh or install a plugin, and once a day to check installed plugins for updates while Automatic updates is on (you can turn it off). After an upgrade, plugins you had on that no longer come with WinShun (Screenshot and recording, Translate and others) are fetched from it once;
+- **for recognition models**: when you choose to download one (the larger text recognition models, formula recognition), from GitHub, ModelScope or Hugging Face (its mirror in China first), checked against its SHA-256; pictures are read on your PC and never uploaded;
 - **for search suggestions**: what you type after a site keyword goes to that site (nothing is sent without a site keyword; you can turn this off);
 - **for services you choose**: document text to the cloud service picked for Search by meaning, and sentences to the translation service entered in Translate.
 
@@ -867,4 +869,5 @@ WinShun is released under the [MIT License](LICENSE). Copyright © 2026 LingCore
 - `resources/fonts/` 阿里巴巴普惠体 3.0 · Alibaba PuHuiTi 3.0 — © Alibaba Group，按其免费商用授权随程序附带 · redistributed unmodified under its free commercial-use terms; only the full Regular font is shipped, with heavier UI weights synthesized by Qt. See `resources/fonts/LICENSE.txt`.
 - 图片文字识别 · Text recognition — [ONNX Runtime](https://github.com/microsoft/onnxruntime)（MIT）和 · and [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR) 的 PP-OCRv6 模型 · models（Apache-2.0），见 · see `third_party/ppocr/LICENSE`；安装后在 · installed in `licenses\`。
 - 二维码识别 · QR code reading — [zxing-cpp](https://github.com/zxing-cpp/zxing-cpp) 3.1.1（Apache-2.0），见 · see `third_party/zxing-cpp/LICENSE`；安装后在 · installed in `licenses\`。
+- 公式显示 · Formula drawing — [MicroTeX](https://github.com/NanoMichael/MicroTeX)（MIT）和 · and Latin Modern Math 1.959 字体 · font（GUST Font License），见 · see `third_party/microtex/`；安装后在截图插件的 · installed in the screenshot plugin's `licenses\`。公式识别模型 · The formula recognition model — [Pix2Text MFR 1.5](https://huggingface.co/breezedeus/pix2text-mfr-1.5)（MIT）不随程序附带，用户点“下载模型”后才下载 · is not bundled; it is downloaded only when the user clicks Download model。
 - 拼音读音数据 · Pinyin data — [pinyin-data](https://github.com/mozillazg/pinyin-data)，MIT，见 · see `tools/data/pinyin-data-LICENSE.txt`。常用字的读音以其中的《通用规范汉字字典》（2013）数据为准。

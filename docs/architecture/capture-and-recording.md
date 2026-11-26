@@ -86,6 +86,14 @@
 - **二维码（`QrCode`）**：静态链接 `zxing-cpp`（仅 QRCode/MicroQRCode，最多 8 个；未检出时 2×/3× 重试且不超过 1200 万像素）。
 - **原地贴图翻译（`TranslateOverlay`）**：`ocrBlocks` 按行高、对齐与段宽合段（跳过倾角 >3°），经宿主 `translate_text` 调 `winshun.translate`。`translatedPicture` 按底色中位数、最远像素字色、字重门槛（深字 `0.085`、浅字深底 `0.105`）与居中边距覆盖重排，经 `PinWindow::setTranslation` 支持 `Tab` 翻面切换；行数不匹配且 ≤24 块时逐块降级重试，超限或未配置服务时新建翻译贴图回退至 OCR 窗口译文区；`translate_text` 答复 `service` 时带 `message`（服务拒绝密钥的 `setup` 行标题），OCR 窗口把它写在“设置翻译服务…”上方，旧宿主没有 `message` 则退回原来的措辞（#444）。
 
+### 3.6 公式识别（`CaptureFormula` / `FormulaPanel.qml` / `FormulaReader` / `FormulaPicture`）
+
+- **入口**：截图选区 `Shift+F`（`CaptureSession::Action::Formula`，`F` 单按仍是尺寸面板）、工具条与编辑窗口的“公式”（`formula` 按钮 id）、贴图 `Shift+F`（`KeyAction::PinFormula`，可改）与右键“识别公式”。三处都把合成后的图和它在屏幕上的物理矩形交给 `CaptureApp::showFormula`，窗口摆在图旁。截图时 `Shift`+字母不能设为用户键（`CaptureKeys::problem`）。
+- **读（`FormulaReader`，`src/app/platform`）**：Pix2Text MFR 1.5（TrOCR：编码器 384×384，解码器逐 token 贪心），跑在增强 OCR 带来的 ONNX Runtime 上（`wsonnx` / `onnx::load`，和 `PaddleOcr` 共用）。预处理与 Pillow 逐像素一致：深底先反色，裁到内容并四周留出三分之一高度，再按 Pillow 双三次缩放。`score` 是各 token 概率的几何平均，低于 `kSure`（0.9）时窗口提示对照原图。语料 480 张（40 个公式 × 3 种字体 × 2 种字号 × 深浅）读对 405 张。
+- **线程（`CaptureFormula`）**：一个低于正常优先级的线程，读完一分钟不用就卸载模型。新图片在同一把锁里放进 `m_job` 并置 `m_newer`，旧的读一半即停；窗口关闭 `discard()` 丢掉排队的和正在读的。模型不在时图先留着，装好后接着读。
+- **模型（`FormulaModel`，主程序）**：组件目录 `formula-mfr-1.5`，三个文件固定 Hugging Face 提交，先 hf-mirror.com 后 huggingface.co，逐个按大小与 SHA256 校验，暂存目录齐了才改名并写 `.ready`；`QLockFile` 防两个窗口同时装。没有 ONNX Runtime 时先装增强 OCR。插件经宿主工具 `formula_model`（`status`/`install`/`cancel`，仅 `winshun.capture`）问状态和下载，下载中每 400 ms 再问；插件本身不联网。设置 › 剪贴板 › 记录 里的 `FormulaModelRow` 可下载、移除、从本地文件夹安装。
+- **显示与格式（`FormulaPicture` / `FormulaView` / `latex`）**：模型输出先经 `latex::tidyModel` 整理成人写的样子；源码每次改动由 MicroTeX（`third_party/microtex`，Latin Modern Math 的 `.clm2` 轮廓画成路径，不依赖系统字体）重画，画不出（如多出的 `}`）时显示中文提示、禁用导出。复制格式：LaTeX 原样、Markdown 包 `$$`、Typst 与 MathML 由 `latex::toTypst` / `latex::toMathMl` 从解析树转写、Word 为 MathML。Word 公式同时写入文本、`MathML` 与 `MathML Presentation` 三种剪贴板格式（Word 认后两种和文本里的 MathML，只给 `application/mathml+xml` 时拒绝粘贴，见 `docs/validation/formula-ocr`）。选中的格式存 `Formula/Format`。导出：复制为图片或存 PNG（白底黑字，30 px 字号画 3 倍，供文档用），存 SVG（透明底）。
+
 ## 4. 长截图
 
 `LongCapture` 按需创建；进入前交还目标窗口前台并撤除自身悬浮通知。屏幕显示四条点击穿透 `Theme.accent` 边框、不抢焦点控制条 `LongCapturePanel.qml`（含活动状态指示、方向切换与慢速/标准/快速三档自动滚动速度）与可收起竖向/横向自适应预览窗（禁用 DWM 淡出动画），以临时全局 `Enter`/`Esc` 控制完成与取消；工作线程入口包裹异常捕获防止未捕获异常终止进程。
@@ -139,6 +147,6 @@
 | 标注与打码 | `tst_annotate`、`tst_annotmodel`、`tst_smartredact` |
 | 编辑、贴图与 UIA | `tst_editor`、`tst_pinwindow`、`tst_pinclipboard`、`tst_stage7` |
 | 长截图与录屏 | `tst_stitch`、`tst_scrollalignment`、`tst_recording`、`tst_keycaps` |
-| OCR 与演示 | `tst_ocr`、`tst_presenter`、`tst_lasertrail`、`tst_displaypulse`、`tst_graphicsloss` |
-| 独立离屏预览 | `WinShunCapture.exe --app-dir <Win顺目录>` 配 `--preview-capture-tools` / `--preview-capture-settings` / `--preview-recording` / `--preview-long-capture` / `--preview-ocr` / `--preview-presenter`（退出码为 QML 警告数，校验失败返 4） |
+| OCR、公式与演示 | `tst_ocr`、`tst_formula`、`tst_formulareader`、`tst_presenter`、`tst_lasertrail`、`tst_displaypulse`、`tst_graphicsloss` |
+| 独立离屏预览 | `WinShunCapture.exe --app-dir <Win顺目录>` 配 `--preview-capture-tools` / `--preview-capture-settings` / `--preview-recording` / `--preview-long-capture` / `--preview-ocr` / `--preview-formula` / `--preview-presenter`（退出码为 QML 警告数，校验失败返 4） |
 | 专用探针 | `recording-probe`、`wsbench --scroll-replay <目录>` |
