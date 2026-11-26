@@ -1265,6 +1265,10 @@ Window {
             window.selectFirst()
             searchBar.focusAndSelect()
         }
+        function onBroughtForward() { // pinned, back in front: the rows and the row as left
+            nameTip.dismiss()
+            searchBar.focusAndSelect()
+        }
         function onResultsReplaced() {
             window.endRename(false) // another list: the row is not where the box is
             nameTip.dismiss() // another row under the pointer, maybe

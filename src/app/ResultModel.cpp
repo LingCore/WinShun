@@ -594,6 +594,8 @@ QVariant ResultModel::data(const QModelIndex& index, int role) const
         return r->favoriteKeyword;
     case MissingRole:
         return r->missing;
+    case OpenedRole:
+        return !m_opened.isEmpty() && m_opened.contains(r->path.toLower());
     case EmptyRole: // an app's, a place's, a plugin's row has no size: never
         return r->isDir ? r->emptyFolder : r->size == 0 && !r->isApp();
     case FolderMatchesRole: {
@@ -693,6 +695,7 @@ QHash<int, QByteArray> ResultModel::roleNames() const
         {FavoriteKeywordRole, "favoriteKeyword"},
         {MissingRole, "missing"},
         {EmptyRole, "empty"},
+        {OpenedRole, "opened"},
         {FolderMatchesRole, "folderMatches"},
         {NameMatchesRole, "nameMatches"},
         {SwitchIdRole, "switchId"},
@@ -968,6 +971,29 @@ bool ResultModel::isSelected(int row) const
 {
     const SearchResult* r = at(row);
     return r && m_selected.contains(r->path);
+}
+
+void ResultModel::markOpened(const QString& path)
+{
+    const QString key = path.toLower();
+    if (key.isEmpty() || m_opened.contains(key))
+        return;
+    m_opened.insert(key);
+    for (int row = 0; row < count(); ++row) { // a content search lists a file once a line
+        if (m_items[row].path.compare(path, Qt::CaseInsensitive) == 0)
+            emit dataChanged(index(row), index(row), {OpenedRole});
+    }
+}
+
+void ResultModel::clearOpened()
+{
+    if (m_opened.isEmpty())
+        return;
+    const QSet<QString> were = std::exchange(m_opened, {});
+    for (int row = 0; row < count(); ++row) {
+        if (were.contains(m_items[row].path.toLower()))
+            emit dataChanged(index(row), index(row), {OpenedRole});
+    }
 }
 
 void ResultModel::setSelection(QSet<QString> paths)

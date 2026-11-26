@@ -2311,6 +2311,10 @@ void App::applySettings(bool initial)
     m_launcher->setPreviewFollowsPointer(m_settings.previewFollowsPointer);
     m_launcher->setPreviewRestore(m_settings.previewRestore);
     m_launcher->setReopenWhereLeft(m_settings.reopenWhereLeft);
+    // Pinned from the start, if set so; and as the setting is turned on or
+    // off. No other change of the settings: Ctrl+T unpins it for this run.
+    if (std::exchange(m_keptPinned, m_settings.keepPinned) != m_settings.keepPinned)
+        m_launcher->setPinned(m_settings.keepPinned);
     applyLauncherPin();
     m_preview->setTextExtensions(m_settings.contentExtensions);
     m_clipboard->filePreview()->setTextExtensions(m_settings.contentExtensions);
@@ -6743,7 +6747,12 @@ void App::showLauncher(const QString& asked, const std::optional<taskbar::Spot>&
         toFront(m_window);
         if (refuseFrontForTest() == RefuseFront::No)
             m_window->requestActivate();
-        m_launcher->handleShown(); // refreshed (something was opened meanwhile), all typed selected
+        // Asked for with words or as the panel: shown anew. Else only back
+        // in front, its list as it was left (Launcher::handleBroughtForward).
+        if (query.isEmpty() && !asPanel)
+            m_launcher->handleBroughtForward();
+        else
+            m_launcher->handleShown();
         if (!query.isEmpty())
             emit m_launcher->caretRequested(static_cast<int>(query.size()), false);
         if (m_triggers)

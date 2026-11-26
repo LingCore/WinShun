@@ -917,6 +917,7 @@ private:
     // that press closes it (searchBoxPressed). Since when.
     QElapsedTimer m_pinnedLostToBox;
     PinnedStacking m_pinnedStacking; // pinned: standing back for what it just opened, or not
+    bool m_keptPinned = false; // Settings::keepPinned as last applied (applySettings)
     QPointer<QQuickItem> m_searchField; // the launcher's (SearchBar.qml): the input method asks it where the caret is
     taskbar::SearchBox::Text m_fieldShown; // what it last reported (mirrorField), for the box
     bool m_deliverTyping = false; // the launcher was asked for by typing in the Start menu or in Explorer

@@ -2494,6 +2494,16 @@ void Launcher::handleShown(bool deferBackgroundWork)
     emit shown();
 }
 
+void Launcher::handleBroughtForward()
+{
+    if (searchText().isEmpty()) {
+        handleShown();
+        return;
+    }
+    m_queryHistory.resetNavigation();
+    emit broughtForward();
+}
+
 void Launcher::finishShownRefresh()
 {
     if (!m_window || !m_window->isVisible()) {
@@ -2914,6 +2924,10 @@ bool Launcher::matchesShownRows() const
 void Launcher::search(bool more)
 {
     m_deferredSearchRefresh = false;
+    if (!m_openedWords.isEmpty() && searchText() != m_openedWords) { // other words: another search, nothing of it opened yet
+        m_results.clearOpened();
+        m_openedWords.clear();
+    }
     const char* why = std::exchange(m_searchWhy, nullptr);
     const bool wasReplacing = m_replacePending && m_replaceClock.isValid();
     m_flash.clear();
@@ -6334,6 +6348,7 @@ void Launcher::perform(const SearchResult& result, Action action, bool fileCheck
             contentopen::open(r.path, r.line, reportFailure(r.name)); // at the matching line, in an editor that can
         else if (action != Open || !r.isDir || !m_folderOpener || !m_folderOpener(r.path))
             shell::open(r.path, action == RunAsAdmin, reportFailure(r.name));
+        markOpened(r);
         if (action == Open && !m_pinned) { // back soon with the same words: tellPinHint
             m_lookedAt.start();
             m_lookedQuery = m_query;
@@ -6852,6 +6867,7 @@ void Launcher::performMany(const SearchResults& items, Action action, const Serv
                 if (!exists(r.path) || (admin && (r.isDir || !shell::canRunAsAdministrator(r.path))))
                     continue;
                 shell::open(r.path, admin, reportFailure(r.name));
+                markOpened(r);
             }
             remember(r.path, m_shownText);
             ++started;
@@ -7003,6 +7019,18 @@ void Launcher::clearHistory()
     m_results.setSelection({});
     search(); // the list of recent ones empties, "最近" goes from the rest
     flash(tr("已清除搜索和最近使用记录"));
+}
+
+void Launcher::markOpened(const SearchResult& r)
+{
+    const QString words = searchText();
+    if (words.isEmpty() || r.isApp() || r.path.isEmpty())
+        return;
+    if (words != m_openedWords) {
+        m_results.clearOpened();
+        m_openedWords = words;
+    }
+    m_results.markOpened(r.path);
 }
 
 void Launcher::remember(const QString& path, const QString& query)

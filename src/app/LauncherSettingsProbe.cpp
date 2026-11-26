@@ -899,6 +899,32 @@ struct LauncherSettingsProbe {
         app.m_preview->close();
         app.hideLauncher();
         pump(350);
+
+        // 一直钉住搜索框 (Settings::keepPinned): pinned as it is turned on,
+        // the box hidden too; Ctrl+T unpins it for this run, whatever else
+        // is changed in the settings; turned off, unpinned.
+        check("not pinned to begin with", !app.m_launcher->pinned());
+        app.m_settings.keepPinned = true;
+        app.applySettings(false);
+        check("kept pinned: pinned while hidden", app.m_launcher->pinned() && !windowShown(app.m_window));
+        app.showLauncher();
+        pump(600);
+        check("opens pinned, over the other windows",
+            windowShown(app.m_window) && app.m_launcher->pinned() && win::isOnTop(app.m_window));
+        emit app.m_launcher->dismissRequested();
+        pump(50);
+        check("a result opened: it stays up", windowShown(app.m_window));
+        check("and what was opened comes in front", documentToFront() && isAbove(document, launcher));
+        check("back in front for the next", launcherToFront());
+        app.m_launcher->togglePin(); // Ctrl+T
+        app.applySettings(false); // another setting changed meanwhile
+        check("Ctrl+T unpins it for this run", !app.m_launcher->pinned());
+        app.m_launcher->togglePin();
+        app.m_settings.keepPinned = false;
+        app.applySettings(false);
+        check("turned off: unpinned", !app.m_launcher->pinned());
+        app.hideLauncher();
+        pump(350);
         if (document)
             ::DestroyWindow(document);
 
