@@ -22,7 +22,7 @@
 
 改法：`Launcher::keywordAlone()`（`Catalog::loneKeyword`，以及截图历史的关键字）为真时，Shift+Tab 同样给关键字加引号改搜文件名；Tab 没有别的用处时底栏提示“Shift+Tab 改搜文件名”。
 
-- `--preview-results <dir> --file-metadata`：`#479 Shift+Tab on "sum" alone (footer: Tab 补全): the box reads "sum" `、`#479 Shift+Tab on "calc" alone (footer: Shift+Tab 改搜文件名): the box reads "calc" `，引号后没有插件行、范围仍是“全部”；只打 `su`（关键字的开头）时不拦 Shift+Tab。同一探针另有两条 #454 警告（文件夹窗口里 Tab 补全路径），已发布的 0.49.0 上同样出现，与本次无关。
+- `--preview-results <dir> --file-metadata`：`#479 Shift+Tab on "sum" alone (footer: Tab 补全): the box reads "sum" `、`#479 Shift+Tab on "calc" alone (footer: Shift+Tab 改搜文件名): the box reads "calc" `，引号后没有插件行、范围仍是“全部”；只打 `su`（关键字的开头）时不拦 Shift+Tab。同一探针当时另有两条 #454 警告（文件夹窗口里 Tab 补全路径），已发布的 0.49.0 上同样出现，与本次无关，随后补修，见文末。
 - `ctest -R ^tst_plugin$`：通过（含 `loneKeyword` 新用例）。
 - `ctest -R ^tst_searchnavigation$`：功能检查 126 + 54 + 60 项全过；失败来自预览读 `.md` 文件等 5 秒的两条警告，0.49.0 上同样出现。
 
@@ -44,3 +44,14 @@ zip 报价 again after 60 s idle: 12 rows, 11 ms
 ```
 
 本机是 Windows 11，Windows 10 的读数回退未实机运行（与主程序 `IdleTrim` 已在 Win10 22H2 验证过的回退相同）；“按意思找”插件只编译通过，未接模型实跑。`ctest -R ^tst_archive$` 通过。
+
+## 补修：#454 文件夹窗口里打的子路径补全不了
+
+原因：在文件夹窗口里打 `合同\20`，搜索框按“从这个文件夹起的路径”补全（`navigation::typedIn`），搜索引擎却拿整串 `合同\20` 去窗口文件夹里按名字列磁盘，一行都列不出；只有已进索引的文件夹能靠索引结果补上，没进索引或刚建的文件夹 Tab 无行可补。
+
+改法：`SearchEngine::runNameSearch` 的 `listedPath`：词里带 `\` 或 `/`（非正则）时，从磁盘列出它指向的子文件夹；索引结果和“只搜这个文件夹”的范围仍按窗口文件夹，不带路径的词照旧。
+
+- `--preview-results <dir> --file-metadata`：改前两条警告“#454 Tab did not complete a path typed from the window's folder”和“#454 stepOut lost the path typed from the window's folder”（临时打印：输入 `ordinary\内` 后结果 0 行），改后 0 条警告、退出码 0。
+- `tst_core` 新用例 `folderTypedPathFromIt`（真实临时目录，索引里没有它）：`合同\20`、`合同/20`、只搜此文件夹，结果都是 `合同\2024 年`、`合同\2024 说明.txt`；`合同\` 列出整个文件夹（自己排第一）；只打 `合同` 仍是窗口文件夹里的两项；指向不存在的文件夹或正则模式时磁盘不列。`ctest -R ^tst_core$` 通过（305 项）。
+
+同时修了探针的一个隐患：`--clipboard-sizing` 用真实鼠标拖窗口右下角，原先角落被别的置顶窗口挡住时也照样按下拖动（会按在那个窗口上）；现在挡住就不按，并在 `clipboard-sizing.json` 里用 `corner_covered_by` 记下挡住它的窗口。单独跑 `--clipboard-sizing` 一次，角落归属、真实拖动、不抢前台均通过。

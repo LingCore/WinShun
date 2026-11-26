@@ -118,7 +118,7 @@
 
 ### 真实输入界面实测与 PowerShell 陷阱
 
-- **`-WindowStyle Hidden` 会吞掉进程首个窗口显示**：Windows 将隐藏启动参数套用到进程首次 `ShowWindow`（`GetForegroundWindow`/`Visible` 仍为真而 `IsWindowVisible` 为假），致使测试窗点击穿透到 VS Code、服务回 `ERROR_INVALID_WINDOW_HANDLE`，也会让 `--background` 启动的 Win顺 首个设置窗永久隐形 → 启动 Win顺 必用 `-WindowStyle Normal`；隐藏测试脚本首窗须再显示一次并断言 `IsWindowVisible()`；点击/滚轮前先以 `WindowFromPoint` 核验最顶层窗口归属。
+- **`-WindowStyle Hidden` 会吞掉进程首个窗口显示**：Windows 将隐藏启动参数套用到进程首次 `ShowWindow`（`GetForegroundWindow`/`Visible` 仍为真而 `IsWindowVisible` 为假），致使测试窗点击穿透到 VS Code、服务回 `ERROR_INVALID_WINDOW_HANDLE`，也会让 `--background` 启动的 Win顺 首个设置窗永久隐形 → 启动 Win顺 必用 `-WindowStyle Normal`；隐藏测试脚本首窗须再显示一次并断言 `IsWindowVisible()`；点击/滚轮前先以 `WindowFromPoint` 核验最顶层窗口归属，不归自己就不按（否则按在用户置顶的窗口上），并记下挡住的窗口（如 `--clipboard-sizing` 报告里的 `corner_covered_by`）。
 - **权限分工与 DPI 感知**：向提权 Win顺 发输入/热键须提权脚本，而重启资源管理器、开常规文件夹窗及弹 `Win+V` 面板须由普通权限进程执行；Windows PS 5.1 不感知 DPI 致 `GetWindowRect` 与 `CopyFromScreen` 错位 → 拆分为普通权限与提权两段脚本，且开头统一调用 `SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)`（`-4`），坐标全按物理像素。
 - **`SendInput`、输入法与本机热键冲突**：64 位 C# `INPUT` 严格 40 字节；方向键/Home/End/PgUp/PgDn 缺 `KEYEVENTF_EXTENDEDKEY` 在 NumLock 下会被插假 Shift 抬起破坏多选；单次 `SendInput` 打包按下+抬起使 `WM_ACTIVATE` 时 `VK_LBUTTON` 已松开；`SendKeys` 会进中文输入法；`Ctrl+1/2/3` 易与本机 PixPin 冲突 → 绝对坐标带 `MOUSEEVENTF_VIRTUALDESK` 并检查 `SendInput` 返回值；导航键加 `KEYEVENTF_EXTENDEDKEY`；切英文或用剪贴板粘贴输入；查拖动区直接发 `WM_NCHITTEST`。
 - **串行执行、前台守卫、窗口识别与破坏性操作核验**：并行跑前台/输入/截图测试会互相抢焦；窗口可见≠在前台；Qt 标题自动拼 ` - Win顺`；`GHOST_WindowClass` 是 Blender 而非卡死幽灵窗 `Ghost`；`Win+V` 不抢前台也不增 `EnumWindows` 项 → 前台测试一律串行，发键前必查 `GetForegroundWindow()` 属 Win顺；启动器认 `Qt6120QWindowToolSaveBits` + `--dump` 几何，设置窗匹配 `"设置 - Win顺"`，`Win+V` 用截图差分判定；删改测试放专用索引目录（非 `%TEMP%`），每步前 `Ctrl+Shift+C` 核对路径；测完还原设置/日志且勿重拉 `Program Files` 旧版。
