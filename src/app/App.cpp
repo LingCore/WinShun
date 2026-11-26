@@ -10037,6 +10037,8 @@ void App::applySwitches()
 {
     if (!m_pluginHost || !m_launcher)
         return;
+    if (m_places) // 关机 and the like come with the plugin (GitHub #477)
+        m_places->setPowerCommands(SwitchPlugin::powerCommands(*m_pluginHost));
     const QString provider = SwitchPlugin::provider(m_pluginHost->catalog());
     if ((m_switchPlugin && m_switchPlugin->id() == provider) || (!m_switchPlugin && provider.isEmpty()))
         return;

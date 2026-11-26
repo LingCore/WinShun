@@ -483,6 +483,22 @@ SearchResult fromWeb(const WebShortcut& web, const QString& words)
     return r;
 }
 
+// `typed` as it was typed, at the start of a word of `name`: "gj" in "GJ",
+// "GJ Notes" and "ly" in "ly-notes", not in 效率工具 (its pinyin) nor in
+// "family". What a switch or power command found by pinyin or a guess gives
+// way to (GitHub #477).
+bool spelledIn(QStringView name, QStringView typed)
+{
+    if (typed.isEmpty())
+        return false;
+    for (qsizetype at = name.indexOf(typed, 0, Qt::CaseInsensitive); at >= 0;
+         at = name.indexOf(typed, at + 1, Qt::CaseInsensitive)) {
+        if (at == 0 || !name[at - 1].isLetterOrNumber())
+            return true;
+    }
+    return false;
+}
+
 // A file row that only repeats an app row: the app's program, or its
 // shortcut in the Start menu.
 bool duplicatesApp(const SearchResult& file, const SearchResult& app)
@@ -1969,11 +1985,12 @@ void SearchEngine::runNameSearch(const Job& job)
                     behind = std::min(behind, r.score);
             }
             // Asked for in pinyin ("gj": 关机), it still gives way to what has
-            // those letters in its name as typed ("GJ Notes").
+            // those letters in its name as typed ("GJ Notes"); the files so
+            // named are below (yielding).
             const QString typedText = request.text.trimmed();
             int behindSpelled = std::numeric_limits<int>::max();
             for (const Ranked& r : ranked) {
-                if (!r.askedInPinyin && !r.guessedAction && r.result.name.contains(typedText, Qt::CaseInsensitive))
+                if (!r.askedInPinyin && !r.guessedAction && spelledIn(r.result.name, typedText))
                     behindSpelled = std::min(behindSpelled, r.score);
             }
             for (Ranked& r : ranked) {
@@ -2023,10 +2040,13 @@ void SearchEngine::runNameSearch(const Job& job)
                 top.push_back(std::move(*commandRow));
             const qsizetype explicitRows = top.size();
             QSet<QString> guessedActions;
+            QSet<QString> yielding; // a switch or power command not asked for as spelled
             total += static_cast<qint64>(ranked.size()) + top.size();
             for (Ranked& r : ranked) {
                 if (r.guessedAction)
                     guessedActions.insert(r.result.path);
+                if (r.guessedAction || r.askedInPinyin)
+                    yielding.insert(r.result.path);
                 r.result.score = r.score;
                 top.push_back(std::move(r.result));
             }
@@ -2061,6 +2081,22 @@ void SearchEngine::runNameSearch(const Job& job)
                     for (auto it = top.begin() + explicitRows; it != top.end() && learned(*it); ++it) {
                         it->recent = true;
                         it->score = std::max(it->score, 300 + History::affinity(request.historyAffinity, it->path).bonus());
+                    }
+                }
+                // Files come after the apps and places, so a switch or power
+                // command found by pinyin or a guess ("gj": 关机) would still
+                // stand above a folder named so (GJ, GitHub #477): it moves
+                // behind the last row whose name has the text as typed.
+                if (rankBy == RankBy::Match && request.order.key == SortKey::Rank && !yielding.isEmpty()
+                    && !typedText.isEmpty()) {
+                    const auto spelled = [&](const SearchResult& r) {
+                        return !yielding.contains(r.path) && spelledIn(r.name, typedText);
+                    };
+                    const auto last = std::find_if(top.rbegin(), top.rend() - explicitRows, spelled);
+                    if (last != top.rend() - explicitRows) {
+                        // Before it, in their order; after it, as they were.
+                        std::stable_partition(top.begin() + explicitRows, last.base(),
+                            [&](const SearchResult& r) { return !yielding.contains(r.path); });
                     }
                 }
                 if (top.size() > request.limit)

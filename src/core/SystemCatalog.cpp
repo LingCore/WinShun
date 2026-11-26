@@ -848,14 +848,30 @@ void SystemCatalog::setOwnPlaces(PlaceList own)
     emit changed();
 }
 
+void SystemCatalog::setPowerCommands(bool on)
+{
+    {
+        std::lock_guard lock(m_mutex);
+        if (m_powerCommands == on)
+            return;
+        m_powerCommands = on;
+        merge();
+    }
+    emit changed();
+}
+
 void SystemCatalog::merge()
 {
-    if (m_own.empty()) {
+    const bool withoutPower = !m_powerCommands && m_read
+        && std::ranges::any_of(*m_read, [](const PlaceInfo& place) { return isPowerCommand(place.command); });
+    if (m_own.empty() && !withoutPower) {
         m_places = m_read;
         return;
     }
     // Win顺's own also while Windows' are still being read (just started).
     auto both = m_read ? std::make_shared<PlaceList>(*m_read) : std::make_shared<PlaceList>();
+    if (withoutPower)
+        std::erase_if(*both, [](const PlaceInfo& place) { return isPowerCommand(place.command); });
     both->insert(both->end(), m_own.begin(), m_own.end());
     m_places = std::move(both);
 }

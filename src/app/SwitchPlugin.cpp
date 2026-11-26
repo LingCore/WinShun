@@ -39,6 +39,13 @@ QString SwitchPlugin::provider(const plugin::Catalog& catalog)
     return first;
 }
 
+bool SwitchPlugin::powerCommands(plugin::Host& host)
+{
+    const plugin::Entry* e = host.catalog().find(switchwire::kPlugin);
+    return e && e->usable() && host.catalog().enabled(switchwire::kPlugin)
+        && host.pluginSettings(e->id).value(u"powerCommands"_s).toBool(true);
+}
+
 SwitchState SwitchPlugin::unavailable() const
 {
     SwitchState state;

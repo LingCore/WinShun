@@ -69,12 +69,16 @@ bool userIsAdministrator();
 // something: an administrator's account, Win顺 running with normal rights.
 inline constexpr QStringView kRestartElevatedCommand = u"winshun:restart-as-administrator";
 
-// Built-in Windows power and session actions in places.txt (GitHub #428):
+// Windows power and session actions in places.txt (GitHub #428):
 // "winshun:power/shutdown", "restart", "sleep", "hibernate", "lock", "signout".
-// Carried out directly by Win顺 (platform/Power) rather than the shell;
-// disruptive actions require a second press to confirm. A weak guess ranks
-// behind apps and ordinary pages; one that asks first is no guess when its
-// whole name was typed, initials included ("gj", "cq": PlaceHit::entire).
+// They come with the 系统开关 plugin (GitHub #477): listed only while it is
+// on and its 电源命令 setting is (SystemCatalog::setPowerCommands). Carried
+// out by Win顺 (platform/Power), which has the shutdown privilege a plugin
+// lacks; disruptive actions require a second press to confirm. A weak guess
+// ranks behind apps and ordinary pages; one that asks first is no guess when
+// its whole name was typed, initials included ("gj", "cq": PlaceHit::entire).
+// Found by pinyin or a guess, either gives way to every row spelled as typed,
+// files and folders too ("gj": a folder GJ).
 inline constexpr QStringView kPowerCommandPrefix = u"winshun:power/";
 bool isPowerCommand(QStringView command) noexcept;
 QStringView powerCommandAction(QStringView command) noexcept;
@@ -193,6 +197,10 @@ public:
     // Win顺's own places (isOwnPlace), in places() along with what is read;
     // each prepared here. changed() follows. Call from the owner thread.
     void setOwnPlaces(PlaceList own);
+    // The power commands (isPowerCommand) in places(), or left out: the
+    // 系统开关 plugin's (GitHub #477). Off until told. changed() follows a
+    // change. Call from the owner thread.
+    void setPowerCommands(bool on);
 
     // Reads the list again in the background if the index files or the
     // display language changed since the last read (a check of well under a
@@ -214,6 +222,7 @@ private:
     mutable std::mutex m_mutex;
     std::shared_ptr<const PlaceList> m_read; // guarded by m_mutex; null: not read
     PlaceList m_own; // guarded by m_mutex
+    bool m_powerCommands = false; // guarded by m_mutex
     std::shared_ptr<const PlaceList> m_places; // guarded by m_mutex: both, null while there are neither
 
     // Owner thread only.

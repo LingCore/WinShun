@@ -12333,6 +12333,19 @@ private slots:
         apps.setApps(programs);
         SystemCatalog catalog;
         catalog.setPlaces(std::make_shared<PlaceList>(zh));
+        // They come with the 系统开关 plugin (GitHub #477): left out of the
+        // places until it says so, and back out when it no longer does.
+        const auto hasPower = [&] {
+            return std::ranges::any_of(*catalog.places(), [](const PlaceInfo& p) { return isPowerCommand(p.command); });
+        };
+        QVERIFY(!hasPower());
+        QVERIFY(std::ranges::any_of(*catalog.places(), [](const PlaceInfo& p) { return p.switchId == u"bluetooth"; }));
+        QSignalSpy catalogChanged(&catalog, &SystemCatalog::changed);
+        catalog.setPowerCommands(true);
+        QCOMPARE(catalogChanged.size(), 1);
+        QVERIFY(hasPower());
+        catalog.setPowerCommands(true);
+        QCOMPARE(catalogChanged.size(), 1); // nothing new, no new search
         SearchEngine engine(&service, &apps, &catalog);
         QSignalSpy spy(&engine, &SearchEngine::resultsReady);
         SearchEngine::Request req;
@@ -12429,6 +12442,45 @@ private slots:
         QVERIFY2(listed.indexOf(u"电影"_s) >= 0 && listed.indexOf(u"电影"_s) < listed.indexOf(u"关机"_s), qPrintable(listed.join(u", ")));
         listed = order(u"sp"_s);
         QVERIFY2(listed.indexOf(u"视频"_s) >= 0 && listed.indexOf(u"视频"_s) < listed.indexOf(u"锁定屏幕"_s), qPrintable(listed.join(u", ")));
+
+        // Files come after apps and places, yet one named as typed is no
+        // less asked for (GitHub #477: "gj" listed 关机 above a folder GJ).
+        // A switch or power command found by pinyin or a guess goes behind
+        // it; a name that only has the letters inside a word ("styled" for
+        // 音量's "yl") is not so named. Asked for by name, it still leads.
+        {
+            const auto index = service.index();
+            const auto lock = index->writeLock();
+            const EntryId f = index->addRoot("F:");
+            index->add(f, "GJ", EntryFlag::Directory);
+            index->add(f, "ly-notes.txt", 0);
+            index->add(f, "styled.txt", 0);
+        }
+        listed = order(u"gj"_s);
+        QVERIFY2(listed.indexOf(u"GJ"_s) >= 0 && listed.indexOf(u"关机"_s) > listed.indexOf(u"GJ"_s), qPrintable(listed.join(u", ")));
+        listed = order(u"ly"_s);
+        QVERIFY2(listed.indexOf(u"ly-notes.txt"_s) >= 0 && listed.indexOf(u"蓝牙"_s) > listed.indexOf(u"ly-notes.txt"_s),
+            qPrintable(listed.join(u", ")));
+        listed = order(u"yl"_s);
+        QVERIFY2(listed.indexOf(u"音量"_s) >= 0 && listed.indexOf(u"styled.txt"_s) >= 0
+                && listed.indexOf(u"音量"_s) < listed.indexOf(u"styled.txt"_s),
+            qPrintable(listed.join(u", ")));
+        listed = order(u"关机"_s);
+        QVERIFY2(listed.indexOf(u"关机"_s) == 0, qPrintable(listed.join(u", ")));
+        listed = order(u"guanji"_s);
+        QVERIFY2(listed.indexOf(u"关机"_s) == 0, qPrintable(listed.join(u", ")));
+
+        // The plugin off: none of them, however asked for; the switches stay.
+        catalog.setPowerCommands(false);
+        QCOMPARE(catalogChanged.size(), 2);
+        QVERIFY(!hasPower());
+        for (const QString& text : {u"关机"_s, u"shutdown"_s, u"gj"_s, u"重启"_s, u"锁屏"_s, u"注销"_s}) {
+            listed = order(text);
+            for (const QStringView power : {u"关机", u"重启电脑", u"睡眠", u"休眠", u"锁定屏幕", u"注销"})
+                QVERIFY2(!listed.contains(power), qPrintable(text + u": "_s + listed.join(u", ")));
+        }
+        listed = order(u"蓝牙"_s);
+        QVERIFY2(listed.indexOf(u"蓝牙"_s) == 0, qPrintable(listed.join(u", ")));
     }
 
     void switchPlaceSearch()

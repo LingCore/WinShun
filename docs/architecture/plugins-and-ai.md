@@ -68,7 +68,7 @@
 | `winshun.go` | `plugins/winshun.go` | 无（零代码） | 随包 · 宿主内 | 快捷跳转示例，支持 `%VAR%` 展开 |
 | `winshun.kill` | `plugins/winshun.kill` | `powershell` + `main.ps1` | 随包 · `resident` | 进程列表与终止（`kill`/`jc`）；支持 `ai.expose` |
 | `winshun.tools` | `src/tools-plugin` | `WinShunTools.exe` / runner 进程内 | 随包 · `resident`（`eager`/`strict`） | 算式、单位、颜色、Base64/哈希/UUID/时间戳；默认随 runner 线程运行 |
-| `winshun.switches` | `src/switches-plugin` | `WinShunSwitches.exe` + `*App.dll` | 随包 · `resident`（`eager`/进程内） | 7 项原生系统开关，共享宿主 Qt（详下） |
+| `winshun.switches` | `src/switches-plugin` | `WinShunSwitches.exe` + `*App.dll` | 随包 · `resident`（`eager`/进程内） | 7 项原生系统开关，共享宿主 Qt（详下）；`places.txt` 的电源命令随它启停（设置项 `powerCommands`） |
 | `winshun.web` | `src/web-plugin` | 无（`webSearch: true`） | 插件库 · 宿主内零代码 | 网页搜索、自定义站点与图标、搜索建议（存 `[Plugin.winshun.web]`） |
 | `winshun.capture` | `src/capture-plugin` + `src/capture` | `WinShunCapture.exe` + `*App.dll` | 插件库（安装包附带副本）· `resident`（`eager`/`normal`） | 截图、标注、贴图、长截图、录屏、演示白板与 OCR；详见 [capture-and-recording.md](capture-and-recording.md) |
 | `winshun.ocr-search` | `src/ocr-search-plugin` | `WinShunOcrSearch.exe` + `*App.dll` | 插件库 · `resident`（`eager`/`strict`/`contentSearch`） | 图片/扫描 PDF/文档内嵌图本地 OCR 倒排索引（SQLite 默认 ≤512 MiB），隔离后台工作进程（单文件 60 s 无进展跳过） |
@@ -87,6 +87,7 @@
 | `winshun.archive` | `src/archive-plugin` | `WinShunArchive.exe`（无 Qt） | 插件库 · `resident`（`eager`/`strict`/`contentSearch`） | 压缩包内文件名搜索：经 `list_files` 向宿主分页取压缩包清单（不自己扫盘），后台线程（`THREAD_MODE_BACKGROUND_BEGIN`）用静态链接的 libarchive（`cmake/Libarchive.cmake`：libarchive + zlib + liblzma 按固定 SHA256 从源码包以 ExternalProject 构建）只读每个包的文件列表，按宿主给的大小+修改时间作戳增量重读；清单相同的包共享一份 `Contents`（同名同大小同时间的拷贝直接沿用、不再打开，搜索时同一份清单只扫一次、拷贝排在后面），名字常驻内存（去重后 ≤128 MiB，空闲时让出工作集）并原子落盘 `archives.bin`；正在读的包记在 `reading.txt`，进程死在某个包上时下次启动把它记为打不开、不再重读，直到它变了；行为 `details` 行，预览/解压时才把单个成员取到 `<id>.data`（预览 ≤32 MiB、4 s；打开 ≤1 GiB、8 s）；文件名加密、网盘占位、损坏与截断分别计数并显示在卡片状态上 |
 | `winshun.explorer-tabs` | `src/explorer-tabs-plugin` | `WinShunExplorerTabs.exe`（无 Qt） | 插件库 · `resident`（`eager`/`elevated`） | Win11 22H2+ 资源管理器合并标签页与会话恢复；提权宿主经确认可合并管理员窗口 |
 
+- **电源命令归属（#477）**：关机、重启、睡眠、休眠、锁屏、注销（`winshun:power/*`）的行只在 `winshun.switches` 已安装、已启用且其设置 `powerCommands`（默认开）为真时出现：`App::applySwitches` 经 `SwitchPlugin::powerCommands` 调 `SystemCatalog::setPowerCommands`，在合并地点列表时整体滤掉，搜索、收藏、文件夹菜单与历史列表一致。执行仍在宿主 `platform/Power`（插件令牌无关机特权，手势插件的 `power` 工具共用同一实现），插件进程不必运行。按拼音或猜测命中的电源命令与开关行，排在名字里以所打字母开头某个词的应用、文件和文件夹之后（`spelledIn`）。
 - **系统开关线程模型（`winshun.switches`）**：宿主仅留 `SwitchCommand` 语法解析、`places.txt` 与 GUI 异步缓存（`Switches`/`SwitchPlugin`）。插件内部三线程分离：① 插件事件线程（`RegistryWatch`、`PowerCreateRequest` 与保持唤醒定时器，严禁调 WinRT `.get()` 或全局广播）；② MTA `ComWorker` 开关线程（串行硬件读写，回调经 `SwitchRelay` 转回）；③ 独立 `detach` 广播线程（深色模式先同步刷本进程窗再 `HWND_BROADCAST` `ImmersiveColorSet` 配 `SMTO_ABORTIFHUNG`，退出不 `join` 防主消息循环死锁）。因全属当前用户会话与 HKCU，不经 LocalSystem 服务；崩溃或停用立即撤销电源请求，重启仅重读不重放写入。
 
 ## 4. AI 助手（MCP）与 `AiBridge`

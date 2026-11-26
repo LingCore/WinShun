@@ -65,7 +65,7 @@
 | 📄 | [搜文件里的字](docs/使用说明.md#搜文件里的文字) | Word、Excel、PPT、PDF、WPS 和文本、代码，结果显示命中的那一行；可以用正则表达式，也能直接写 `*.docx`、`ext:py` 指定只读哪类文件 |
 | 🗂️ | [搜索面板](docs/使用说明.md#搜索面板筛选和排序) | `Ctrl+E` 展开：按类型、时间、大小、位置、名称筛选，常用条件可存成一点就用的快捷筛选，按列排序，大图浏览 |
 | 👀 | [预览](docs/使用说明.md#预览文件) | `Alt+P` 看一眼图片、文档、PDF，不用打开 |
-| 🚀 | [应用和系统设置](docs/使用说明.md#打开应用和系统设置) | 开始菜单里的应用和约 1200 个设置页，`vsc`、`网卡` 都能找到；可以加一个把应用排成图标网格的“应用”标签，还能切换已打开的窗口；`关机`、`重启`、`锁屏` 也直接打得出（关机、重启要先确认） |
+| 🚀 | [应用和系统设置](docs/使用说明.md#打开应用和系统设置) | 开始菜单里的应用和约 1200 个设置页，`vsc`、`网卡` 都能找到；可以加一个把应用排成图标网格的“应用”标签，还能切换已打开的窗口 |
 | 📋 | [剪贴板历史](docs/使用说明.md#剪贴板历史) ¹ | 代替 `Win+V`，保存文字、图片和文件，支持分组查找、悬停预览和单条快捷键 |
 | 📂 | [“打开”“另存为”对话框](docs/使用说明.md#打开另存为对话框) ² | 对话框旁多一个搜索框；`Ctrl+G` 转到文件管理器正开着的文件夹 |
 | 🖱️ | [在资源管理器里](docs/使用说明.md#在资源管理器里) ² | 双击空白处弹出常用文件夹，可一层层走进子文件夹；在文件列表里直接打字就搜 |
@@ -86,7 +86,7 @@
 |---|---|---|
 | 小工具 | `= 1+2*3` 计算（只打 `=` 列出算过的账），`12 inch to cm` 换算，`#ff8800` 颜色，还有时间戳、UUID、Base64、哈希 | 随包 |
 | 结束进程 | `kill 进程名` | 随包 |
-| [系统开关](docs/使用说明.md#系统开关) | 深色模式、蓝牙、WLAN、音量等一键切换：`关蓝牙`、`静音`、`音量 30`、`保持唤醒 1小时` | 随包，默认关 |
+| [系统开关](docs/使用说明.md#系统开关) | 深色模式、蓝牙、WLAN、音量等一键切换：`关蓝牙`、`静音`、`音量 30`、`保持唤醒 1小时`；还有 `关机`、`重启`、`锁屏`（关机、重启要先确认，可单独关掉） | 随包，默认关 |
 | [截图与录屏](docs/使用说明.md#截图) | 截图、标注、打码、聚光灯、长截图、贴图（可分组）、截图翻译、录屏和 GIF、演示白板 | 随安装包附带，插件库更新 |
 | [图片文字搜索](docs/使用说明.md#图片文字搜索) | 搜图片和扫描件里的字，或 `ocr 关键词` | 插件库 |
 | 按意思找 | `? 去年报销的规定` | 插件库 |
@@ -469,7 +469,7 @@ No installer, or Scoop and WinGet? See [Download and install](#download-and-inst
 | 📄 | [Text inside files](docs/features.en.md#full-text-search) | Word, Excel, PowerPoint, PDF, WPS, text and code, showing the matching line; regular expressions too, and `*.docx` or `ext:py` typed among the words picks which files to read |
 | 🗂️ | [Search panel](docs/features.en.md#file-search) | `Ctrl+E` expands it: filter by kind, date, size, folder and name, save your own quick filters, sort by column, large icons |
 | 👀 | [Preview](docs/features.en.md#file-search) | `Alt+P` shows a picture, document or PDF without opening it |
-| 🚀 | [Apps and settings](docs/features.en.md#apps-and-settings) | Start menu apps and about 1,200 Windows settings pages; an optional Apps tab shows the apps as a grid of icons and switches to open windows; shut down, restart and lock are one typed word away (shut down and restart ask first) |
+| 🚀 | [Apps and settings](docs/features.en.md#apps-and-settings) | Start menu apps and about 1,200 Windows settings pages; an optional Apps tab shows the apps as a grid of icons and switches to open windows |
 | 📋 | [Clipboard history](docs/features.en.md#clipboard-history) ¹ | Replaces `Win+V` with text, pictures and files, group search, hover previews and per-entry shortcuts |
 | 📂 | [Open / Save dialogs](docs/features.en.md#open-and-save-dialogs) ² | A search bar beside the dialog; `Ctrl+G` jumps to the folder open in your file manager |
 | 🖱️ | [In File Explorer](docs/features.en.md#in-file-explorer) ² | Double-click empty space for your folders and the folders inside them; type in a file list to search |
@@ -490,7 +490,7 @@ Some plugins come with WinShun; the rest are installed when you want them from *
 |---|---|---|
 | Tools | `= 1+2*3` calculator (`=` alone lists past sums), `12 inch to cm`, `#ff8800` colors, timestamps, UUID, Base64, hashes | Bundled |
 | Kill | `kill process` | Bundled |
-| System switches | Dark mode, Bluetooth, WLAN, volume and more in one step: `bluetooth off`, `mute`, `volume 30`, `awake 1h` | Bundled, off by default |
+| System switches | Dark mode, Bluetooth, WLAN, volume and more in one step: `bluetooth off`, `mute`, `volume 30`, `awake 1h`; also `shutdown`, `restart` and `lock` (shut down and restart ask first; can be turned off alone) | Bundled, off by default |
 | [Screenshot and recording](docs/features.en.md#screenshots-and-recording) | Capture, mark up, redact, spotlight, scrolling screenshots, pins (in groups), translating a capture in place, MP4 and GIF recording, presenter and whiteboard | Comes with the setup; updated from the plugin library |
 | Image text search | Search the words in pictures and scans, or `ocr words` | Plugin library |
 | Search by meaning | `? last year's expense rules` | Plugin library |

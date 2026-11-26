@@ -2,13 +2,18 @@
   "manifest": 1,
   "id": "winshun.switches",
   "name": {"zh": "系统开关", "en": "System switches"},
-  "version": "1.0.1",
-  "description": {"zh": "在搜索结果里调整主题、音量、蓝牙和 WLAN、资源管理器选项，或保持电脑唤醒", "en": "Change theme, volume, Bluetooth/WLAN, Explorer options and keep-awake from search results"},
+  "version": "1.1.0",
+  "description": {"zh": "在搜索结果里调整主题、音量、蓝牙和 WLAN、资源管理器选项，保持电脑唤醒，或关机、重启、睡眠", "en": "Change theme, volume, Bluetooth/WLAN, Explorer options and keep-awake from search results, or shut down, restart and sleep"},
   "author": "LingCore",
   "license": "MIT",
   "homepage": "https://github.com/LingCore/WinShun",
   "runtime": {"mode": "resident", "program": "WinShunSwitches.exe", "start": "eager", "idleExitSec": 0, "timeoutMs": 15000, "memoryMB": 128},
   "permissions": ["ui", "system:settings"],
   "systemSwitches": true,
-  "commands": [{"id": "provider", "title": {"zh": "搜索中的系统开关", "en": "System switches in search"}}]
+  "commands": [{"id": "provider", "title": {"zh": "搜索中的系统开关", "en": "System switches in search"}}],
+  "settings": [
+    {"key": "powerCommands", "type": "bool", "default": true,
+     "title": {"zh": "搜索结果里的电源命令", "en": "Power commands in search"},
+     "hint": {"zh": "关机、重启电脑、睡眠、休眠、锁定屏幕、注销；除锁屏外都要再按一次 Enter 确认", "en": "Shut down, restart, sleep, hibernate, lock screen and sign out; all but lock ask for a second Enter"}}
+  ]
 }

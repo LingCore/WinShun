@@ -19,6 +19,11 @@ public:
     QString id() const { return m_id; }
     Switches::Remote remote();
     static QString provider(const plugin::Catalog& catalog);
+    // Shut down, restart and the other power commands in the search
+    // (SystemCatalog::setPowerCommands, GitHub #477): they come with the
+    // 系统开关 plugin, while it is on and its 电源命令 setting is. Win顺
+    // carries them out; the plugin need not be running.
+    static bool powerCommands(plugin::Host& host);
 
 signals:
     void changed(const QString& id); // empty: provider connection/state changed

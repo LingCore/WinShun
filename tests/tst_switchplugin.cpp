@@ -369,6 +369,28 @@ private slots:
         QTRY_VERIFY(f.host->state(u"test.switches"_s).pid == 0);
     }
 
+    // 关机 and the other power commands come with this plugin (GitHub #477):
+    // installed and on, with its 电源命令 setting on, which it is unless the
+    // user turned it off. Another provider of switches brings none.
+    void powerCommandsFollowThePlugin()
+    {
+        Fixture f;
+        QVERIFY(!SwitchPlugin::powerCommands(*f.host));
+        QVERIFY(f.install(false, u"test.switches"_s));
+        QVERIFY(!SwitchPlugin::powerCommands(*f.host));
+        QVERIFY(f.install());
+        QCOMPARE(f.host->pluginSettings(kId).value(u"powerCommands"_s), QJsonValue(true)); // the manifest's default
+        QVERIFY(SwitchPlugin::powerCommands(*f.host));
+        f.host->setPluginSettings(kId, {{u"powerCommands"_s, false}});
+        QVERIFY(!SwitchPlugin::powerCommands(*f.host));
+        f.host->setPluginSettings(kId, {{u"powerCommands"_s, true}});
+        QVERIFY(SwitchPlugin::powerCommands(*f.host));
+        f.host->setEnabled(kId, false);
+        QVERIFY(!SwitchPlugin::powerCommands(*f.host));
+        f.host->setEnabled(kId, true);
+        QVERIFY(SwitchPlugin::powerCommands(*f.host));
+    }
+
     void lateReplyAfterCacheDestroyed()
     {
         std::function<void(SwitchState)> reply;

@@ -372,6 +372,8 @@ icon = %SystemRoot%\System32\imageres.dll,-78
 # ---------------------------------------------------------------- 电源与会话
 # Win顺 直接执行（GitHub #428）：关机、重启、睡眠、休眠、注销均需二次确认，
 # 锁屏不丢失未保存内容可直接锁定；休眠与睡眠按本机电源能力自动过滤。
+# 随“系统开关”插件提供（GitHub #477）：插件没启用、或关了它的“搜索结果里的
+# 电源命令”，这几条都不列出（SystemCatalog::setPowerCommands）。
 
 [power-shutdown]
 name = 关机 | Shut down
