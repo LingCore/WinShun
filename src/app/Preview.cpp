@@ -7075,6 +7075,52 @@ bool checkPinHint(QQuickWindow* window, const QDir& output)
         launcher.setPinned(false);
         check(!isHint(openAndReturn(launcher)) && told() == 2, u"said to someone who has pinned before"_s);
     });
+    // Pinned, a result opened and the box back in front: the list as it was
+    // left (the row, the order, no search), for the next result. With nothing
+    // typed, the start list shown anew.
+    start([&](Launcher& launcher) {
+        type(launcher, u"zqpinhint"_s, 2);
+        launcher.setPinned(true);
+        launcher.setCurrentRow(1);
+        const QString second = launcher.results()->at(1)->path;
+        int opened = 0, replaced = 0, forward = 0, shown = 0;
+        launcher.setFolderOpener([&](const QString&) { ++opened; return true; });
+        launcher.trigger(1, Launcher::Open);
+        launcher.setFolderOpener({});
+        const auto c1 = QObject::connect(&launcher, &Launcher::resultsReplaced, &launcher, [&] { ++replaced; });
+        const auto c2 = QObject::connect(&launcher, &Launcher::broughtForward, &launcher, [&] { ++forward; });
+        const auto c3 = QObject::connect(&launcher, &Launcher::shown, &launcher, [&] { ++shown; });
+        launcher.handleBroughtForward();
+        pump(300);
+        check(opened == 1 && forward == 1 && shown == 0, u"pinned and back in front: not told as such (%1 %2 %3)"_s.arg(opened).arg(forward).arg(shown));
+        check(!launcher.searching() && replaced == 0, u"pinned and back in front: searched again"_s);
+        check(launcher.currentRow() == 1 && launcher.results()->count() == 2 && launcher.results()->at(1)->path == second,
+            u"pinned and back in front: the row or the order changed"_s);
+        // 已打开: the row opened, not the other; kept as the same words are
+        // searched again, forgotten with other words.
+        const QString first = launcher.results()->at(0)->path;
+        const auto tagged = [&](int row) { return launcher.results()->data(launcher.results()->index(row), ResultModel::OpenedRole).toBool(); };
+        check(tagged(1) && !tagged(0), u"opened: the row opened is not the one tagged"_s);
+        launcher.handleShown();
+        pump(300);
+        check(launcher.results()->opened(second) && !launcher.results()->opened(first), u"opened: lost as the same words were searched again"_s);
+        launcher.setQuery({});
+        pump(300);
+        check(!launcher.results()->opened(second), u"opened: kept with other words"_s);
+        launcher.setQuery(u"zqpinhint"_s);
+        pump(300);
+        check(!launcher.results()->opened(second), u"opened: back with the words typed again"_s);
+        launcher.setQuery({});
+        pump(300);
+        forward = shown = 0;
+        launcher.handleBroughtForward();
+        pump(100);
+        check(shown == 1 && forward == 0, u"nothing typed: the start list was not shown anew"_s);
+        QObject::disconnect(c1);
+        QObject::disconnect(c2);
+        QObject::disconnect(c3);
+        launcher.setPinned(false);
+    });
 
     QFile report(output.filePath(u"pin-hint.json"_s));
     if (report.open(QIODevice::WriteOnly))
@@ -16271,7 +16317,8 @@ int runRuntime(const QStringList& args)
                     || args.contains(u"--command-hotkey-check"_s)
                     || args.contains(u"--duplicates-check"_s) || args.contains(u"--field-focus-check"_s)
                     || args.contains(u"--full-screen-game-check"_s)
-                    || args.contains(u"--launcher-settings-check"_s) || args.contains(u"--launcher-open-check"_s))
+                    || args.contains(u"--launcher-settings-check"_s) || args.contains(u"--launcher-open-check"_s)
+                    || args.contains(u"--pinned-stacking-check"_s))
                 && profile.fileName().startsWith(u"WinShun-preview-")
                 && QDir::cleanPath(profile.absolutePath()).compare(QDir::cleanPath(QDir::tempPath()), Qt::CaseInsensitive) == 0)
                 QDir(profile.absoluteFilePath()).removeRecursively();
@@ -16337,6 +16384,8 @@ int runRuntime(const QStringList& args)
             return checkLauncherToSettings(app, args, out) ? 0 : 4; // its profile likewise
         if (args.contains(u"--launcher-open-check"_s))
             return checkLauncherOpen(app, args, out) ? 0 : 4; // its profile likewise
+        if (args.contains(u"--pinned-stacking-check"_s))
+            return checkPinnedStacking(app, args, out) ? 0 : 4; // its profile likewise
         if (args.contains(u"--search-shadow-check"_s))
             return checkSearchShadow(app, args, out) ? 0 : 4; // its profile likewise
         if (args.contains(u"--paste-plain-check"_s))

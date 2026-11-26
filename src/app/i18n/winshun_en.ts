@@ -1199,6 +1199,10 @@
         <translation>Stay on top when pinned</translation>
     </message>
     <message>
+        <source>一直钉住搜索框</source>
+        <translation>Keep the search box pinned</translation>
+    </message>
+    <message>
         <source>一直显示</source>
         <translation>Always show</translation>
     </message>
@@ -5506,6 +5510,14 @@ Send suggestions and problems on our website</translation>
         <translation>Favorite</translation>
     </message>
     <message>
+        <source>已打开</source>
+        <translation>Opened</translation>
+    </message>
+    <message>
+        <source>已打开 · %1</source>
+        <translation>Opened · %1</translation>
+    </message>
+    <message>
         <source>空文件夹</source>
         <translation>Empty folder</translation>
     </message>
@@ -9179,6 +9191,18 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>When it opens again it stops on the row you last selected and the list scrolls there; off: it starts at the first row. Has no effect while “Clear the search each time it opens” is on</translation>
     </message>
     <message>
+        <source>一直钉住搜索框</source>
+        <translation>Keep the search box pinned</translation>
+    </message>
+    <message>
+        <source>钉住;一直;保持;不消失;不收起;不关闭;连续打开;Ctrl+T;pin;keep open;stay open</source>
+        <translation>pin;always;keep;stay;does not close;keep open;stay open;one after another;Ctrl+T</translation>
+    </message>
+    <message>
+        <source>不用每次按 Ctrl+T：打开结果、点别的窗口，搜索框都不收起，按 Esc 才关。适合连着查看好几个结果；Ctrl+T 可以临时取消，Win顺 重新启动后又是钉住的</source>
+        <translation>No Ctrl+T each time: the search box stays up when you open a result or click another window, and closes on Esc. Good for going through several results in a row; Ctrl+T unpins it for now, and it is pinned again after WinShun restarts</translation>
+    </message>
+    <message>
         <source>钉住时在最前</source>
         <translation>Stay on top when pinned</translation>
     </message>
@@ -9187,8 +9211,8 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>pin;stay on top;front;cover;obscure;Ctrl+T;topmost;always on top</translation>
     </message>
     <message>
-        <source>按 Ctrl+T 钉住后，搜索框一直盖在别的窗口上面；关掉时点别的窗口会把它盖住，按打开 Win顺 的快捷键再回到前面</source>
-        <translation>After you pin the search box with Ctrl+T, it stays over other windows; off: clicking another window covers it, and the shortcut that opens WinShun brings it back to the front</translation>
+        <source>按 Ctrl+T 钉住后，搜索框盖在别的窗口上面，从它打开的文件和程序除外；关掉时点别的窗口会把它盖住，按打开 Win顺 的快捷键再回到前面</source>
+        <translation>After you pin the search box with Ctrl+T, it stays over other windows, except the files and programs opened from it; off: clicking another window covers it, and the shortcut that opens WinShun brings it back to the front</translation>
     </message>
     <message>
         <source>字母直达用的键</source>

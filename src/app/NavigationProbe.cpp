@@ -1483,6 +1483,32 @@ bool checkResultRowSpacing(QQmlEngine* engine, const QDir& output)
     }
     report.insert(u"empty_tags"_s, tags);
     check(window->grabWindow().save(output.filePath(u"rows-empty-tag.png"_s)), u"empty tag: saved"_s);
+
+    // 已打开, in the same place: a row opened from this list says so (with
+    // what it said before, if anything), the others do not; still clear of
+    // the right side.
+    if (launcher.results()->count() == 2) {
+        launcher.results()->markOpened(launcher.results()->at(1)->path);
+        settle(window);
+        for (int i = 0; i < 2; ++i) {
+            auto* row = item(window->contentItem(), u"resultRow-%1"_s.arg(i));
+            auto* tag = row ? item(row, u"emptyTag"_s) : nullptr;
+            if (!row || !tag) continue;
+            const QString said = row->property("nameTag").toString();
+            const QString before = row->property("emptyTag").toString();
+            check(i == 1 ? said.startsWith(u"已打开") && said.endsWith(before) && said != before : said == before,
+                u"opened tag: row %1 says “%2”"_s.arg(i).arg(said));
+            const QRectF at = tag->mapRectToItem(row, QRectF(0, 0, tag->width(), tag->height()));
+            const qreal room = row->width() - row->property("trailingSpace").toReal();
+            check(tag->isVisible() && at.left() > 0 && at.right() <= room,
+                u"opened tag: row %1 at %2–%3, clear of the right side from %4"_s.arg(i).arg(at.left()).arg(at.right()).arg(room));
+        }
+        check(window->grabWindow().save(output.filePath(u"rows-opened-tag.png"_s)), u"opened tag: saved"_s);
+        launcher.results()->clearOpened();
+        settle(window);
+        auto* row = item(window->contentItem(), u"resultRow-1"_s);
+        check(row && row->property("nameTag").toString() == row->property("emptyTag").toString(), u"opened tag: gone once forgotten"_s);
+    }
     QFile file(output.filePath(u"result-row-spacing.json"_s));
     if (!file.open(QIODevice::WriteOnly)) return false;
     report.insert(u"font"_s, QGuiApplication::font().family());

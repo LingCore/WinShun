@@ -81,6 +81,9 @@ Item {
     required property bool missing // a favorite no longer there: dimmed, tagged
     required property bool empty // a folder with nothing in it, a file of 0 bytes: tagged, not to be gone into for nothing (GitHub #391)
     readonly property string emptyTag: !empty ? "" : isDir ? qsTr("空文件夹") : qsTr("空文件")
+    required property bool opened // opened from this list already, the same words searched for: tagged
+    // What is said right after the name: both, if both are so.
+    readonly property string nameTag: !opened ? emptyTag : emptyTag.length > 0 ? qsTr("已打开 · %1").arg(emptyTag) : qsTr("已打开")
     required property string switchId // a system switch's row (SearchResult::switchId)
     required property int switchOn // -1 not known, 0 off, 1 on, 2 mixed
     required property int switchLevel // the volume, 0–100; -1 not known, or another switch
@@ -408,10 +411,11 @@ Item {
 
             // 空文件夹 / 空文件 right after the name, where the eye reads, and
             // on the selected row too, whose buttons take the right (GitHub #391).
+            // 已打开 likewise (nameTag).
             Rectangle {
                 id: emptyChip
                 objectName: "emptyTag"
-                visible: row.emptyTag.length > 0
+                visible: row.nameTag.length > 0
                 anchors.left: title.right
                 anchors.leftMargin: 8
                 y: row.onPixel((nameLine.height - height) / 2)
@@ -424,7 +428,7 @@ Item {
                     id: emptyText
                     x: 6
                     y: row.onPixel((emptyChip.height - height) / 2)
-                    text: row.emptyTag
+                    text: row.nameTag
                     textFormat: Text.PlainText
                     color: Theme.subtext
                     font.pixelSize: row.compact ? 12 : Theme.uiCaption

@@ -512,6 +512,14 @@ void SettingsEditor::setPinnedOnTop(bool on)
     commit();
 }
 
+void SettingsEditor::setKeepPinned(bool on)
+{
+    if (m_settings.keepPinned == on)
+        return;
+    m_settings.keepPinned = on;
+    commit();
+}
+
 void SettingsEditor::setReopenWhereLeft(bool on)
 {
     if (m_settings.reopenWhereLeft == on)

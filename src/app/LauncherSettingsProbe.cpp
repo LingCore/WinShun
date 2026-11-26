@@ -1,10 +1,13 @@
 #include "LauncherSettingsProbe.h"
 
 #include "App.h"
+#include "FilePreview.h"
 #include "Launcher.h"
+#include "PinnedStacking.h"
 #include "Placement.h"
 #include "TriggerJournal.h"
 #include "WindowFrame.h"
+#include "platform/WindowEffects.h"
 
 #include <QColor>
 #include <QCoreApplication>
@@ -22,8 +25,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <chrono>
 #include <cstdio>
 #include <functional>
+#include <memory>
 #include <vector>
 
 #include <dwmapi.h>
@@ -758,7 +763,183 @@ struct LauncherSettingsProbe {
         std::fprintf(stderr, "launcher-open: %s\n", ok ? "passed" : "FAILED");
         return ok && saved;
     }
+
+    // `upper` over `lower` among the windows of the desktop.
+    static bool isAbove(HWND upper, HWND lower)
+    {
+        for (HWND next = ::GetWindow(upper, GW_HWNDNEXT); next; next = ::GetWindow(next, GW_HWNDNEXT)) {
+            if (next == lower)
+                return true;
+        }
+        return false;
+    }
+
+    // Pinned and kept over the other windows, the launcher lets what was
+    // opened from it in front (PinnedStacking), its preview with it; over
+    // them again once it is in front itself. The "document" is a window of
+    // this probe's, laid over the launcher: nothing of the user's is opened.
+    static bool runPinned(App& app, const QDir& output)
+    {
+        pump(1500); // let prewarm finish
+        QElapsedTimer wait;
+        wait.start();
+        while (app.m_launcher && app.m_launcher->busy() && wait.elapsed() < 10000)
+            pump(50);
+
+        bool ok = true;
+        QJsonArray steps;
+        const auto check = [&](const char* what, bool condition) {
+            steps.append(QJsonObject {{u"what"_s, QString::fromUtf8(what)}, {u"ok"_s, condition}});
+            if (!condition) {
+                ok = false;
+                std::fprintf(stderr, "pinned-stacking: FAILED: %s\n", what);
+            }
+        };
+
+        app.m_settings.pinnedOnTop = true;
+        app.showLauncher();
+        pump(600);
+        app.m_launcher->setPinned(true);
+        pump(100);
+        const HWND launcher = reinterpret_cast<HWND>(app.m_window->winId());
+        check("pinned: shown, in front and over the other windows",
+            windowShown(app.m_window) && ::GetForegroundWindow() == launcher && win::isOnTop(app.m_window));
+
+        // Its preview, with a text of its own (no file read, no other program).
+        FilePreview::Item item;
+        item.path = u"winshun-plugin:pinned-stacking-probe"_s;
+        item.name = u"pinned stacking"_s;
+        item.text = std::make_shared<const QString>(u"What is opened from a pinned box is let in front.\n"_s.repeated(12));
+        app.m_preview->show(item);
+        pump(500);
+        QWindow* preview = nullptr;
+        for (QWindow* window : QGuiApplication::topLevelWindows()) {
+            if (window != app.m_window && window->isVisible()
+                && window->property("preview").value<FilePreview*>() == app.m_preview.get())
+                preview = window;
+        }
+        check("the preview is up", preview != nullptr);
+        const HWND previewHwnd = preview ? reinterpret_cast<HWND>(preview->winId()) : nullptr;
+        check("the preview is over the other windows with it", preview && win::isOnTop(preview));
+
+        // The "document": over the launcher and the preview, where one opened would be.
+        const HWND document = makeForegroundBacking();
+        RECT over {};
+        ::GetWindowRect(launcher, &over);
+        if (previewHwnd) {
+            RECT beside {};
+            ::GetWindowRect(previewHwnd, &beside);
+            ::UnionRect(&over, &over, &beside);
+        }
+        ::SetWindowPos(document, nullptr, over.left - 40, over.top - 40, over.right - over.left + 80, over.bottom - over.top + 80,
+            SWP_NOZORDER | SWP_NOACTIVATE);
+        const auto documentToFront = [&] {
+            ::SetForegroundWindow(document);
+            pump(300);
+            return ::GetForegroundWindow() == document;
+        };
+        const auto launcherToFront = [&] {
+            app.showLauncher(); // its shortcut: pinned and up, to the front where it stands
+            pump(400);
+            return ::GetForegroundWindow() == launcher;
+        };
+
+        // A click elsewhere, nothing opened: it stays over that window, as set.
+        check("a window clicked took the front", documentToFront());
+        check("kept on top: over the window clicked",
+            windowShown(app.m_window) && win::isOnTop(app.m_window) && isAbove(launcher, document));
+        check("its preview too", previewHwnd && isAbove(previewHwnd, document));
+
+        // Something opened from it (Launcher::dismissRequested is all the App hears of that).
+        check("back in front by its shortcut", launcherToFront());
+        emit app.m_launcher->dismissRequested();
+        pump(50);
+        check("something opened: it stays, no longer over the other windows",
+            windowShown(app.m_window) && app.m_launcher->pinned() && !win::isOnTop(app.m_window));
+        check("in front still, until what it opened comes", ::GetForegroundWindow() == launcher);
+        check("the preview stands back with it", previewHwnd && windowShown(preview) && !win::isOnTop(preview));
+        check("what was opened took the front", documentToFront());
+        check("what was opened is over the launcher", isAbove(document, launcher));
+        check("and over its preview", previewHwnd && isAbove(document, previewHwnd));
+        check("still up behind it, for the next result",
+            windowShown(app.m_window) && ::IsWindowVisible(launcher) && !::IsIconic(launcher));
+
+        // Back to it (its shortcut, as a click on it or its taskbar button): over the others again.
+        check("back in front again", launcherToFront());
+        check("in front: over the other windows again", win::isOnTop(app.m_window) && isAbove(launcher, document));
+        check("its preview beside it again", previewHwnd && win::isOnTop(preview) && isAbove(previewHwnd, document));
+        check("a click elsewhere then leaves it over that window", documentToFront() && isAbove(launcher, document));
+
+        // Opened, and nothing came to the front for it: long after, a click
+        // elsewhere is only that.
+        check("in front once more", launcherToFront());
+        emit app.m_launcher->dismissRequested();
+        pump(50);
+        app.m_pinnedStacking.opened(PinnedStacking::Clock::now() - PinnedStacking::kStandsBackFor - std::chrono::seconds(1));
+        check("a click elsewhere long after", documentToFront());
+        check("long after what it opened: over the window clicked", win::isOnTop(app.m_window) && isAbove(launcher, document));
+
+        // Not kept on top (the setting off): among the other windows throughout.
+        app.m_settings.pinnedOnTop = false;
+        check("in front, the setting off", launcherToFront());
+        check("not kept on top: not over the other windows", !win::isOnTop(app.m_window) && (!preview || !win::isOnTop(preview)));
+        emit app.m_launcher->dismissRequested();
+        pump(50);
+        check("opened: covered by it",
+            documentToFront() && isAbove(document, launcher) && (!previewHwnd || isAbove(document, previewHwnd)));
+        check("in front again: still among the others", launcherToFront() && !win::isOnTop(app.m_window));
+
+        // Unpinned: a menu again, over every window.
+        app.m_settings.pinnedOnTop = true;
+        emit app.m_launcher->dismissRequested();
+        pump(50);
+        app.m_launcher->setPinned(false);
+        pump(100);
+        check("unpinned while standing back: over every window", win::isOnTop(app.m_window));
+        app.m_preview->close();
+        app.hideLauncher();
+        pump(350);
+
+        // 一直钉住搜索框 (Settings::keepPinned): pinned as it is turned on,
+        // the box hidden too; Ctrl+T unpins it for this run, whatever else
+        // is changed in the settings; turned off, unpinned.
+        check("not pinned to begin with", !app.m_launcher->pinned());
+        app.m_settings.keepPinned = true;
+        app.applySettings(false);
+        check("kept pinned: pinned while hidden", app.m_launcher->pinned() && !windowShown(app.m_window));
+        app.showLauncher();
+        pump(600);
+        check("opens pinned, over the other windows",
+            windowShown(app.m_window) && app.m_launcher->pinned() && win::isOnTop(app.m_window));
+        emit app.m_launcher->dismissRequested();
+        pump(50);
+        check("a result opened: it stays up", windowShown(app.m_window));
+        check("and what was opened comes in front", documentToFront() && isAbove(document, launcher));
+        check("back in front for the next", launcherToFront());
+        app.m_launcher->togglePin(); // Ctrl+T
+        app.applySettings(false); // another setting changed meanwhile
+        check("Ctrl+T unpins it for this run", !app.m_launcher->pinned());
+        app.m_launcher->togglePin();
+        app.m_settings.keepPinned = false;
+        app.applySettings(false);
+        check("turned off: unpinned", !app.m_launcher->pinned());
+        app.hideLauncher();
+        pump(350);
+        if (document)
+            ::DestroyWindow(document);
+
+        QFile file(output.filePath(u"pinned-stacking.json"_s));
+        const bool saved = file.open(QIODevice::WriteOnly)
+            && file.write(QJsonDocument(QJsonObject {{u"passed"_s, ok}, {u"steps"_s, steps}}).toJson()) > 0;
+        std::fprintf(stderr, "pinned-stacking: %s (%d checks)\n", ok ? "passed" : "FAILED", int(steps.size()));
+        return ok && saved;
+    }
 };
+
+bool checkPinnedStacking(App& app, const QStringList&, const QDir& output)
+{
+    return LauncherSettingsProbe::runPinned(app, output);
+}
 
 bool checkLauncherToSettings(App& app, const QStringList&, const QDir& output)
 {

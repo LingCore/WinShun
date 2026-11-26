@@ -703,6 +703,14 @@ public:
     // frame, keep catalog/registry refreshes and same-query re-searches off
     // the critical reveal path until finishShownRefresh() runs after reveal.
     void handleShown(bool deferBackgroundWork = false);
+    // Pinned and up all the while, back in front (its shortcut, from behind
+    // what was opened from it): the list as it was left, its rows, their
+    // order, the row and how far down. Searching again put the file just
+    // opened first and the selection on the first row: the place in a list
+    // gone through one result after another was lost each time (feedback
+    // 2026-11-26). With nothing typed it is the start list, shown anew
+    // (handleShown): what was opened meanwhile belongs in it.
+    void handleBroughtForward();
     void finishShownRefresh();
     void handleHidden();
     void retranslate(); // the language changed: status, placeholder, rows
@@ -976,6 +984,7 @@ signals:
     void scopeChanged();
     void statusChanged();
     void shown();
+    void broughtForward(); // handleBroughtForward: the keyboard in the field, nothing else touched
     void resultsReplaced(); // results for a new query: select the first row
     void namesShown(); // a name search finished and its rows are in the model
     void typingAwaitedChanged();
@@ -1232,6 +1241,10 @@ private:
     // Opened: into the history, if it is kept. `query`: the text the list it
     // was opened from is for (m_shownText); none when it was not found by typing.
     void remember(const QString& path, const QString& query = {});
+    // A file or folder of the list opened: tagged 已打开 there while the same
+    // words are searched for (ResultModel::markOpened). Not from the start
+    // list (nothing typed: what it lists was all opened before).
+    void markOpened(const SearchResult& r);
     bool canRememberAdmin(const SearchResult& r) const; // the setting on, and a row that can run as administrator
     bool adminRemembered(const SearchResult& r) const; // its Enter runs as administrator
     void rememberWindow(const SearchResult& window); // switched to: the folder it shows, if it is a file manager's (GitHub #231)
@@ -1698,6 +1711,7 @@ private:
     static constexpr int kPinHints = 2;
     QElapsedTimer m_lookedAt;
     QString m_lookedQuery;
+    QString m_openedWords; // the words searched for as the rows tagged 已打开 were opened (markOpened)
     int m_pinHintsTold = kPinHints;
     void setPinHintsTold(int told);
     void tellPinHint();

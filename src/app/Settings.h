@@ -318,10 +318,14 @@ struct Settings {
     // Opened again on the same words, on the row it was left on and as far
     // down the list (feedback 2026-11-17); off: the first row, as ever (#361).
     bool reopenWhereLeft = false;
-    // Pinned (Ctrl+T), the search box stays over every other window; off: a
-    // window clicked covers it, as any other (feedback 2026-11-16), and the
-    // shortcut brings it back to the front.
+    // Pinned (Ctrl+T), the search box stays over every other window but what
+    // is opened from it (PinnedStacking); off: a window clicked covers it, as
+    // any other (feedback 2026-11-16), and the shortcut brings it back to the front.
     bool pinnedOnTop = true;
+    // The search box is pinned from the start, without Ctrl+T each time
+    // Win顺 starts: it stays as results are opened one after another, and goes
+    // on Esc (feedback 2026-11-26). Ctrl+T still unpins it until the next start.
+    bool keepPinned = false;
     // Each time the launcher opens, its input method goes into English mode:
     // letters and pinyin initials find most names (GitHub #201). Switched
     // back in the box, it stays so for that opening; put back on closing.

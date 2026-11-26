@@ -721,6 +721,48 @@ void setTaskbarWindow(QWindow* window, bool on)
     applyKeeping(window, keeper, [window, on](HWND hwnd) { applyTaskbarWindowToHwnd(window, hwnd, on); });
 }
 
+namespace {
+constexpr UINT kStackOnly = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER;
+}
+
+bool isOnTop(QWindow* window)
+{
+    const HWND hwnd = handleOf(window);
+    return hwnd && (::GetWindowLongPtrW(hwnd, GWL_EXSTYLE) & WS_EX_TOPMOST);
+}
+
+void setOnTop(QWindow* window, bool on)
+{
+    if (const HWND hwnd = handleOf(window))
+        ::SetWindowPos(hwnd, on ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0, kStackOnly);
+}
+
+void stackBy(QWindow* window, QWindow* by, bool over)
+{
+    const HWND hwnd = handleOf(window);
+    if (!hwnd)
+        return;
+    const HWND anchor = by && by->isVisible() ? handleOf(by) : nullptr;
+    const bool onTop = !anchor || isOnTop(by);
+    // Its band first: a window placed after one of the other band may or may
+    // not change band with it, by where that one stands in its own.
+    if (onTop != isOnTop(window))
+        ::SetWindowPos(hwnd, onTop ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0, kStackOnly);
+    if (!anchor)
+        return;
+    if (!over) {
+        ::SetWindowPos(hwnd, anchor, 0, 0, 0, 0, kStackOnly);
+        return;
+    }
+    // Just over it: after the window above it. None there, or one of the
+    // band over this one (`by` is the first of its own): the first of the band.
+    const HWND above = ::GetWindow(anchor, GW_HWNDPREV);
+    if (above == hwnd)
+        return;
+    const bool aboveOnTop = above && (::GetWindowLongPtrW(above, GWL_EXSTYLE) & WS_EX_TOPMOST);
+    ::SetWindowPos(hwnd, above && aboveOnTop == onTop ? above : onTop ? HWND_TOPMOST : HWND_TOP, 0, 0, 0, 0, kStackOnly);
+}
+
 void setAppIcon(QWindow* window)
 {
     if (!window)

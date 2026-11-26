@@ -81,6 +81,7 @@ public:
         FavoriteKeywordRole, // ... its keyword; empty: none
         MissingRole, // a favorite no longer there
         EmptyRole, // a folder with nothing in it, or a file of 0 bytes (GitHub #391)
+        OpenedRole, // opened from this list already (markOpened): tagged 已打开
         // Where the terms the name lacks are in its folder (found there, "弯管机" in
         // F:\模型\3轴弯管机模型): start, length, start, length...; none for a content match.
         FolderMatchesRole,
@@ -177,6 +178,15 @@ public:
     const QSet<QString>& selectedPaths() const { return m_selected; }
     Q_INVOKABLE bool isSelected(int row) const;
     void setSelection(QSet<QString> paths); // of rows in the list; others are left out
+    // The files and folders opened from the list while the same words were
+    // searched for: tagged 已打开 in it, and in the lists the same words find
+    // after (another scope, a filter, the box up again). Going through dozens
+    // of results with the same name, the ones looked at already are told
+    // from the rest (feedback 2026-11-26). The Launcher forgets them as the
+    // words change.
+    void markOpened(const QString& path);
+    void clearOpened();
+    bool opened(const QString& path) const { return m_opened.contains(path.toLower()); }
     SearchResults selection() const; // in list order, each file once
 
 signals:
@@ -200,6 +210,7 @@ private:
     bool m_thumbnails = true;
     bool m_showModifiedTime = false;
     QSet<QString> m_selected; // paths
+    QSet<QString> m_opened; // paths in lower case (markOpened)
     QPointer<Switches> m_switches;
     bool m_folderSizesEnabled = false;
     std::unique_ptr<FolderSizes> m_folderSizes;

@@ -363,6 +363,14 @@ add_test(NAME tst_previewplacement COMMAND tst_previewplacement -o -,txt)
 set_tests_properties(tst_previewplacement PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+qt_add_executable(tst_pinnedstacking tst_pinnedstacking.cpp)
+target_include_directories(tst_pinnedstacking PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_link_libraries(tst_pinnedstacking PRIVATE Qt6::Core Qt6::Test)
+set_target_properties(tst_pinnedstacking PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_pinnedstacking COMMAND tst_pinnedstacking -o -,txt)
+set_tests_properties(tst_pinnedstacking PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 qt_add_executable(tst_launchernavigation tst_launchernavigation.cpp)
 target_include_directories(tst_launchernavigation PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_link_libraries(tst_launchernavigation PRIVATE wscore Qt6::Test)

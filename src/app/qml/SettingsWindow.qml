@@ -5540,10 +5540,23 @@ Window {
                     }
                 }
 
+                SettingRow { // feedback 2026-11-26: results gone through one after another
+                    title: qsTr("一直钉住搜索框")
+                    keywords: qsTr("钉住;一直;保持;不消失;不收起;不关闭;连续打开;Ctrl+T;pin;keep open;stay open").split(";")
+                    description: qsTr("不用每次按 Ctrl+T：打开结果、点别的窗口，搜索框都不收起，按 Esc 才关。适合连着查看好几个结果；Ctrl+T 可以临时取消，Win顺 重新启动后又是钉住的")
+
+                    ToggleSwitch {
+                        objectName: "keepPinnedSwitch"
+                        dpr: window.dpr
+                        checked: window.editor.keepPinned
+                        onToggled: (on) => window.editor.keepPinned = on
+                    }
+                }
+
                 SettingRow { // feedback 2026-11-16
                     title: qsTr("钉住时在最前")
                     keywords: qsTr("钉住;置顶;最前;盖住;遮挡;Ctrl+T;pin;topmost;always on top").split(";")
-                    description: qsTr("按 Ctrl+T 钉住后，搜索框一直盖在别的窗口上面；关掉时点别的窗口会把它盖住，按打开 Win顺 的快捷键再回到前面")
+                    description: qsTr("按 Ctrl+T 钉住后，搜索框盖在别的窗口上面，从它打开的文件和程序除外；关掉时点别的窗口会把它盖住，按打开 Win顺 的快捷键再回到前面")
 
                     ToggleSwitch {
                         objectName: "pinnedOnTopSwitch"
