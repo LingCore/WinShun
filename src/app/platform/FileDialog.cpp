@@ -327,11 +327,17 @@ bool goByAddress(HWND dialog, const std::wstring& folder)
     // Gone there (or it was there already): the crumbs show it, and the text
     // box has closed, which leaves the keyboard focus on the crumbs. Back to
     // where it was (usually the file name); not if the user has gone on
-    // meanwhile (to the bar): the dialog would take the front back.
+    // meanwhile. To the bar: the dialog would take the front back. Into the
+    // dialog itself (a click on a file while a slow folder was still being
+    // listed: the wait above runs its full 1.5 s then): the focus is where
+    // the click put it, and taking it away under the pointer costs the click
+    // that was to open the file. Only a focus left in the address bar, or
+    // nowhere, is ours to give back.
     if (!waitFor([&] { return !::IsWindowVisible(box) && caption(crumbs) != shown; }, 1500ms))
         qWarning() << "The file dialog had not shown the folder typed into its address bar after 1.5 s";
-    if (focus && ::GetForegroundWindow() == dialog && focusedControl(dialog) != focus && !::IsChild(bar, focus)
-        && ::IsChild(dialog, focus) && ::IsWindowVisible(focus))
+    const HWND now = focusedControl(dialog);
+    if (focus && ::GetForegroundWindow() == dialog && now != focus && (!now || now == bar || ::IsChild(bar, now))
+        && !::IsChild(bar, focus) && ::IsChild(dialog, focus) && ::IsWindowVisible(focus))
         send(dialog, WM_NEXTDLGCTL, reinterpret_cast<WPARAM>(focus), TRUE);
     return true;
 }

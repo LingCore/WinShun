@@ -338,8 +338,11 @@ bool goByAddress(HWND dialog, const std::wstring& folder)
         || !send(box, WM_KEYDOWN, VK_RETURN, 0x001C0001) || !send(box, WM_KEYUP, VK_RETURN, 0xC01C0001))
         return false;
     waitFor([&] { return !::IsWindowVisible(box) && caption(crumbs) != shown; }, 1500ms);
-    if (focus && ::GetForegroundWindow() == dialog && focusedControl(dialog) != focus && !::IsChild(bar, focus)
-        && ::IsChild(dialog, focus) && ::IsWindowVisible(focus))
+    // Only a focus left in the address bar (or nowhere) is given back: one the
+    // user has put into the dialog meanwhile is theirs (FileDialog.cpp).
+    const HWND now = focusedControl(dialog);
+    if (focus && ::GetForegroundWindow() == dialog && now != focus && (!now || now == bar || ::IsChild(bar, now))
+        && !::IsChild(bar, focus) && ::IsChild(dialog, focus) && ::IsWindowVisible(focus))
         send(dialog, WM_NEXTDLGCTL, reinterpret_cast<WPARAM>(focus), TRUE);
     return true;
 }

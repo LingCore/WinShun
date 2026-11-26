@@ -285,6 +285,146 @@ class TestShellLaunch : public QObject {
     }
 
 private slots:
+    // Windows' own Open dialog, in another process, taken to a folder through
+    // its address bar. After it the keyboard focus is back in the file name
+    // box it was in (the address bar's is given back) ...
+    // ... and a focus the user has put into the dialog meanwhile is theirs:
+    // a click on a file while a slow folder was being listed lost the focus
+    // to the file name box again, under the pointer ("after Ctrl+G a file
+    // needs several clicks", a report from the feedback page).
+    void realDialogFocusAfterGoingToAFolder_data()
+    {
+        QTest::addColumn<bool>("userMoves");
+        QTest::newRow("left alone") << false;
+        QTest::newRow("the user goes into the list meanwhile") << true;
+    }
+
+    void realDialogFocusAfterGoingToAFolder()
+    {
+        QFETCH(bool, userMoves);
+        QTemporaryDir fixture;
+        QVERIFY(fixture.isValid());
+        const QString start = QDir::toNativeSeparators(fixture.filePath(u"起点"_s));
+        const QString target = QDir::toNativeSeparators(fixture.filePath(u"目标 文件夹"_s));
+        QVERIFY(QDir().mkpath(start) && QDir().mkpath(target));
+        QFile script(fixture.filePath(u"dialog.ps1"_s));
+        QVERIFY(script.open(QIODevice::WriteOnly));
+        script.write("param([string]$start)\n"
+                     "Add-Type -AssemblyName System.Windows.Forms\n"
+                     "$d = New-Object System.Windows.Forms.OpenFileDialog\n"
+                     "$d.Title = 'WinShun focus probe dialog'\n"
+                     "$d.InitialDirectory = $start\n"
+                     "[void]$d.ShowDialog()\n");
+        script.close();
+        QProcess program;
+        program.start(u"powershell.exe"_s, {u"-NoProfile"_s, u"-STA"_s, u"-ExecutionPolicy"_s, u"Bypass"_s, u"-File"_s,
+            QDir::toNativeSeparators(script.fileName()), start});
+        const auto stop = qScopeGuard([&] {
+            program.kill(); // this test's own dialog only
+            program.waitForFinished(3000);
+        });
+        QVERIFY(program.waitForStarted(10'000));
+        HWND dialog = nullptr;
+        QElapsedTimer waited;
+        waited.start();
+        while (waited.elapsed() < 30'000) {
+            dialog = ::FindWindowW(L"#32770", L"WinShun focus probe dialog");
+            DWORD pid = 0;
+            if (dialog && ::GetWindowThreadProcessId(dialog, &pid) && pid == static_cast<DWORD>(program.processId())
+                && ws::filedialog::kind(dialog) == ws::filedialog::Kind::Open)
+                break;
+            dialog = nullptr;
+            QTest::qWait(100);
+        }
+        QVERIFY2(dialog, "the Open dialog never came");
+        const auto focused = [dialog] {
+            GUITHREADINFO info {sizeof(GUITHREADINFO)};
+            return ::GetGUIThreadInfo(::GetWindowThreadProcessId(dialog, nullptr), &info) ? info.hwndFocus : nullptr;
+        };
+        const auto front = [dialog] {
+            if (::GetForegroundWindow() == dialog)
+                return true;
+            INPUT nothing {};
+            nothing.type = INPUT_MOUSE; // no move, no button: the last input is this process's, which may then hand the front on
+            ::SendInput(1, &nothing, sizeof nothing);
+            const DWORD theirs = ::GetWindowThreadProcessId(::GetForegroundWindow(), nullptr);
+            const bool attached = theirs && ::AttachThreadInput(::GetCurrentThreadId(), theirs, TRUE);
+            ::SetForegroundWindow(dialog);
+            if (attached)
+                ::AttachThreadInput(::GetCurrentThreadId(), theirs, FALSE);
+            return ws::filedialog::waitForFront(dialog);
+        };
+        bool inFront = false; // Windows may refuse for a moment (another window just closed, a key held)
+        for (int attempt = 0; attempt < 5 && !inFront; ++attempt)
+            inFront = front() && ws::filedialog::waitForFront(dialog);
+        if (!inFront)
+            QSKIP("the dialog could not be brought to the front here");
+        QVERIFY(ws::filedialog::waitForLocation(dialog));
+        const HWND nameBox = focused();
+        wchar_t name[32] {};
+        ::GetClassNameW(nameBox, name, 32);
+        QCOMPARE(QString::fromWCharArray(name), u"Edit"_s); // the file name box, where an Open dialog starts
+
+        if (!userMoves) {
+            QVERIFY(ws::filedialog::goTo(dialog, target.toStdWString()));
+            QCOMPARE(QString::fromStdWString(ws::filedialog::currentFolder(dialog)), target);
+            if (::GetForegroundWindow() != dialog)
+                QSKIP("another window came to the front meanwhile");
+            QCOMPARE(focused(), nameBox);
+            return;
+        }
+
+        // The user in the list of files while the dialog is still waited for:
+        // as a click there does. Taken to the folder it is in under another
+        // spelling, the dialog shows nothing new and the wait for its address
+        // to change runs its full second and a half, as with a folder slow
+        // to list. The focus stays where it was put meanwhile.
+        const HWND view = [dialog] {
+            HWND found = nullptr;
+            ::EnumChildWindows(dialog, [](HWND child, LPARAM data) -> BOOL {
+                wchar_t name[32] {};
+                ::GetClassNameW(child, name, 32);
+                if (::wcscmp(name, L"DirectUIHWND") != 0 || !::IsWindowVisible(child) || !::FindWindowExW(child, nullptr, L"CtrlNotifySink", nullptr))
+                    return TRUE;
+                *reinterpret_cast<HWND*>(data) = child;
+                return FALSE;
+            }, reinterpret_cast<LPARAM>(&found));
+            return found;
+        }();
+        QVERIFY2(view, "the dialog's list of files was not found");
+        const QString again = target + u"\\..\\"_s + QFileInfo(start).fileName();
+        std::atomic<bool> going {true};
+        auto moved = std::async(std::launch::async, [&] {
+            const auto addressBoxHasFocus = [&] {
+                const HWND at = focused();
+                wchar_t name[32] {};
+                ::GetClassNameW(at, name, 32);
+                return at != nameBox && ::wcscmp(name, L"Edit") == 0;
+            };
+            while (going.load() && !addressBoxHasFocus()) // made by the click: the move is under way
+                ::Sleep(1);
+            QElapsedTimer typed;
+            typed.start();
+            while (going.load() && addressBoxHasFocus() && typed.elapsed() < 400) // Enter taken, the box closed
+                ::Sleep(1);
+            ::Sleep(150);
+            if (!going.load())
+                return false;
+            ::SendMessageTimeoutW(dialog, WM_NEXTDLGCTL, reinterpret_cast<WPARAM>(view), TRUE, SMTO_ABORTIFHUNG, 1000, nullptr);
+            return true;
+        });
+        QElapsedTimer took;
+        took.start();
+        const bool went = ws::filedialog::goTo(dialog, again.toStdWString());
+        const qint64 tookMs = took.elapsed();
+        going = false;
+        const bool userMoved = moved.get();
+        QVERIFY(went);
+        if (!userMoved || tookMs < 1000 || ::GetForegroundWindow() != dialog)
+            QSKIP("the focus could not be moved into the list while the dialog was waited for here");
+        QVERIFY2(focused() != nameBox, "the focus was taken back from where the user had put it");
+    }
+
     void xyplorerDiscoveryAndFallbacks()
     {
         QTemporaryDir fixture;

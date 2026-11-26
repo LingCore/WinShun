@@ -2,17 +2,22 @@
 
 #include "FileDialog.h"
 #include "BlenderFileDialog.h"
+#include "DiagnosticLog.h"
 #include "FileManagers.h"
+#include "Foreground.h"
 #include "Integrity.h"
 #include "PathText.h"
 
 #include <QDebug>
+#include <QJsonObject>
 #include <QString>
 
 #include <algorithm>
+#include <chrono>
 #include <utility>
 
 using namespace std::chrono_literals;
+using namespace Qt::StringLiterals;
 
 namespace ws {
 
@@ -54,6 +59,37 @@ bool fileWindow(HWND hwnd)
 bool sameFolder(const std::wstring& a, const std::wstring& b)
 {
     return pathtext::sameFolder(QString::fromStdWString(a), QString::fromStdWString(b));
+}
+
+QString className(HWND hwnd)
+{
+    wchar_t buffer[64] {};
+    return hwnd && ::GetClassNameW(hwnd, buffer, static_cast<int>(std::size(buffer))) > 0 ? QString::fromWCharArray(buffer) : QString();
+}
+
+// A move of a dialog, in the diagnostics: whose dialog and of which kind, how
+// it was asked for, how long it took, and how the dialog was left (in front?
+// the keyboard focus where? the mouse held by something?). No folder, no
+// name. A report that a file needs several clicks after Ctrl+G could not be
+// repeated here and told none of this; the next one's package does.
+void recordMove(QLatin1StringView how, HWND dialog, bool went, std::chrono::steady_clock::time_point began)
+{
+    if (!diagnostics::enabled())
+        return;
+    using Kind = filedialog::Kind;
+    const Kind kind = filedialog::kind(dialog);
+    const QLatin1StringView kindName = kind == Kind::Open ? "open"_L1 : kind == Kind::Save ? "save"_L1
+        : kind == Kind::Folder ? "folder"_L1 : kind == Kind::Legacy ? "legacy"_L1 : kind == Kind::Browse ? "browse"_L1 : "none"_L1;
+    GUITHREADINFO info {sizeof(GUITHREADINFO)};
+    const DWORD thread = ::GetWindowThreadProcessId(dialog, nullptr);
+    const bool known = thread && ::GetGUIThreadInfo(thread, &info);
+    const auto took = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - began).count();
+    diagnostics::record(u"dialog-move"_s,
+        {{u"how"_s, how}, {u"program"_s, foreground::programOf(dialog)}, {u"kind"_s, kindName},
+            {u"by_rule"_s, filedialog::byRule(dialog)}, {u"went"_s, went}, {u"ms"_s, static_cast<qint64>(took)},
+            {u"in_front"_s, ::GetForegroundWindow() == dialog},
+            {u"focus"_s, known ? className(info.hwndFocus) : u"?"_s},
+            {u"capture"_s, known ? className(info.hwndCapture) : u"?"_s}});
 }
 
 } // namespace
@@ -465,7 +501,10 @@ void DialogJump::autoJump(HWND dialog, bool first)
         noteSent(); // there already: as good as sent
         return;
     }
-    if (!filedialog::goTo(dialog, folder)) {
+    const auto began = std::chrono::steady_clock::now();
+    const bool went = filedialog::goTo(dialog, folder);
+    recordMove("auto"_L1, dialog, went, began);
+    if (!went) {
         qWarning() << "The file dialog did not go to the file manager's folder by itself";
         return;
     }
@@ -493,7 +532,10 @@ void DialogJump::jump()
             return;
         }
         filedialog::waitForFront(dialog);
-        if (!filedialog::goTo(dialog, folders.front().path))
+        const auto began = std::chrono::steady_clock::now();
+        const bool went = filedialog::goTo(dialog, folders.front().path);
+        recordMove("ctrl+g"_L1, dialog, went, began);
+        if (!went)
             qWarning() << "Ctrl+G: the file dialog did not go to the folder";
     });
 }
@@ -504,12 +546,18 @@ void DialogJump::go(HWND dialog, std::wstring path, bool isFile, bool open)
         return;
     m_worker.post([dialog, path = std::move(path), isFile, open] {
         filedialog::waitForFront(dialog); // from the bar, it was just handed the front
+        const auto began = std::chrono::steady_clock::now();
         if (!isFile) {
-            if (!filedialog::goTo(dialog, path))
+            const bool went = filedialog::goTo(dialog, path);
+            recordMove("bar-folder"_L1, dialog, went, began);
+            if (!went)
                 qWarning() << "The file dialog did not go to a folder found in it";
             return;
         }
-        if (!filedialog::goToFile(dialog, path, open))
+        const bool went = filedialog::goToFile(dialog, path, open);
+        if (!open) // opened, the dialog is gone: nothing of it to tell
+            recordMove("bar-file"_L1, dialog, went, began);
+        if (!went)
             qWarning() << "The file dialog did not take a file found in it";
     });
 }
