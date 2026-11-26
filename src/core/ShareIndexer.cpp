@@ -205,6 +205,7 @@ struct ShareIndexer::Share {
     Clock::time_point probedAt {}; // its server last asked (run), or about to be (lookedAt)
     bool acceptMissing = false;
     bool passRunning = false;
+    int passThreads = 0; // folders read at a time by the pass running, or the last one
     std::stop_source passStop; // settings changes cancel an obsolete pass
     bool removed = false;
     std::vector<FsChange> pending; // live changes, applied between passes
@@ -990,25 +991,39 @@ void ShareIndexer::run(std::stop_token stop, Share& share)
         }
         if (due) {
             const auto passStart = Clock::now();
+            const bool wasBuilding = building;
             const bool read = pass(stop, share, building, asked);
             const auto passTime = Clock::now() - passStart;
             if (stop.stop_requested())
                 break;
-            if (std::exchange(asked, false))
+            const bool manual = std::exchange(asked, false);
+            if (manual)
                 checked({}); // the answer: read, or why not
             const Options o = options();
             Status st;
+            int threads = 0;
             {
                 std::lock_guard lock(m_mutex);
                 st = share.status;
+                threads = share.passThreads;
             }
+            // In the diagnostics: when the share was read, how hard and how
+            // long. A file manager slow on the server at those times is this.
+            journal(u"share-pass"_s,
+                {{u"building"_s, wasBuilding}, {u"asked"_s, manual}, {u"read"_s, read}, {u"threads"_s, threads},
+                    {u"ms"_s, static_cast<qint64>(std::chrono::duration_cast<std::chrono::milliseconds>(passTime).count())},
+                    {u"items"_s, static_cast<qint64>(st.items)}});
             if (read) {
                 retry.read();
                 const Clock::duration every = isWsl ? Clock::duration(kWslVerify)
                     : st.watching ? o.verifyEvery : o.verifyEveryUnwatched;
-                // A share that takes long to read is not read most of the time.
+                // A share that takes long to read is not read most of the
+                // time. By what the pass would take at its usual width: one
+                // read slowly for the user's sake comes round no later for it.
+                const int usual = passThreads(o.threads, false, true, true);
+                const Clock::duration cost = threads > 0 && threads < usual ? passTime * threads / usual : passTime;
                 nextPass = Clock::now()
-                    + (every.count() > 0 ? std::max<Clock::duration>(every, passTime * kPassShare) : kForever);
+                    + (every.count() > 0 ? std::max<Clock::duration>(every, cost * kPassShare) : kForever);
             } else if (st.state == State::Suspect) {
                 nextPass = Clock::now() + kSuspectRetry;
             } else if (st.state == State::Problem) {
@@ -1057,6 +1072,19 @@ bool ShareIndexer::believesGone(std::size_t missing, std::size_t live, Read read
     return read == Read::Failed ? missing * 10 <= live : missing <= std::max(kSuspectMin, live / 2);
 }
 
+int ShareIndexer::passThreads(int threads, bool building, bool manual, bool userAway) noexcept
+{
+    if (building)
+        return std::max(1, threads); // waited for: nothing of the share is found until it is read
+    const int verifying = std::max(2, threads / 2);
+    // Read again by itself with someone at the computer: two folders at a
+    // time. A NAS (a small processor, disks that seek) reading eight folders
+    // at once for Win顺 answers the same person's file manager late, or not
+    // for seconds ("the file manager hangs opening a shared folder"), and
+    // nobody waits for this pass. Asked for (立即核对), or nobody there: as fast as before.
+    return manual || userAway ? verifying : std::min(2, verifying);
+}
+
 bool ShareIndexer::pass(std::stop_token stop, Share& share, bool building, bool manual)
 {
     const Options o = options();
@@ -1096,7 +1124,11 @@ bool ShareIndexer::pass(std::stop_token stop, Share& share, bool building, bool 
     share::Lister lister(crawler, path, {o.excludedFiles, false, 64 * 1024, &share.progress}, passStop);
     std::vector<EntryId> gone;
     Crawler::SyncStats stats;
-    const int threads = building ? o.threads : std::max(2, o.threads / 2);
+    const int threads = passThreads(o.threads, building, manual, win32::userAway());
+    {
+        std::lock_guard lock(m_mutex);
+        share.passThreads = threads;
+    }
     crawler.sync(*index, {{root, path, EntryFlag::Remote}}, threads, false, passStop.get_token(),
         [&](const Crawler::Root& dir, DirListing& out) {
             if (!manual && !scan.allows(minuteOfDay()))

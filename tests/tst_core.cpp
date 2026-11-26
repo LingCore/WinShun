@@ -7652,6 +7652,23 @@ private slots:
         QVERIFY(index.findPath(L"C:\\a") != kNoEntry);
     }
 
+    // A share read again by itself while someone is at the computer is read
+    // two folders at a time: eight at once kept a NAS from answering that
+    // person's file manager. The first read, one asked for and one with
+    // nobody there go as fast as they did.
+    void sharePassThreads()
+    {
+        QCOMPARE(ShareIndexer::passThreads(16, true, false, false), 16); // building
+        QCOMPARE(ShareIndexer::passThreads(16, true, false, true), 16);
+        QCOMPARE(ShareIndexer::passThreads(16, false, false, false), 2); // by itself, the user there
+        QCOMPARE(ShareIndexer::passThreads(16, false, false, true), 8); // nobody there
+        QCOMPARE(ShareIndexer::passThreads(16, false, true, false), 8); // 立即核对
+        QCOMPARE(ShareIndexer::passThreads(64, false, false, false), 2);
+        QCOMPARE(ShareIndexer::passThreads(1, false, false, false), 2); // never fewer than a verification had
+        QCOMPARE(ShareIndexer::passThreads(1, false, true, true), 2);
+        QCOMPARE(ShareIndexer::passThreads(1, true, false, false), 1);
+    }
+
     // Excluded names count from the share on: a server called like an
     // excluded folder is no reason to leave its shares out.
     void uncExcludedPath()
