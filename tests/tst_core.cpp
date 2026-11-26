@@ -10679,6 +10679,55 @@ private slots:
         QCOMPARE(search(u"report"_s, u"F:\\ws182\\gone"_s, true).names, L {});
     }
 
+    // GitHub #454: typed in a folder's window, words that are a path from it
+    // ("合同\20") list, from the disk, the folder they lead to, as a path
+    // typed in full does (the box's Tab completes them there); not yet in
+    // the index, or never (a folder not indexed), it is all the same.
+    void folderTypedPathFromIt()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QDir disk(dir.path());
+        QVERIFY(disk.mkpath(u"work/合同/2024 年"_s) && disk.mkpath(u"work/合同/归档"_s) && disk.mkpath(u"work/合同 旧"_s));
+        QFile file(disk.filePath(u"work/合同/2024 说明.txt"_s));
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.close();
+        IndexService::Options options;
+        options.content.enabled = false;
+        IndexService service(dir.path() + u"/index"_s, options); // an index without the folder
+        SearchEngine engine(&service);
+        QSignalSpy spy(&engine, &SearchEngine::resultsReady);
+        const QString work = QDir::toNativeSeparators(disk.filePath(u"work"_s));
+        const auto search = [&](const QString& text, bool only = false, bool regex = false) {
+            spy.clear();
+            SearchEngine::Request request;
+            request.text = text;
+            request.currentFolder = work;
+            request.currentFolderOnly = only;
+            request.regex = regex;
+            request.limit = 100;
+            engine.submit(std::move(request));
+            QStringList paths;
+            if (!spy.wait(5000))
+                return QStringList {u"(no results)"_s};
+            for (const SearchResult& r : spy.at(0).at(1).value<SearchResults>())
+                paths.append(QString(r.path).remove(0, work.size() + 1));
+            return paths;
+        };
+        using L = QStringList;
+        // The words a path from the folder: what the folder they lead to holds, folders first.
+        QCOMPARE(search(u"合同\\20"_s), (L {u"合同\\2024 年"_s, u"合同\\2024 说明.txt"_s}));
+        QCOMPARE(search(u"合同/20"_s), search(u"合同\\20"_s));
+        QCOMPARE(search(u"合同\\20"_s, true), search(u"合同\\20"_s));
+        // Nothing typed after it: all that folder holds, the folder first, as for "D:\Work\合同\".
+        QCOMPARE(search(u"合同\\"_s), (L {u"合同"_s, u"合同\\2024 年"_s, u"合同\\归档"_s, u"合同\\2024 说明.txt"_s}));
+        // Words alone: still the window folder's names.
+        QCOMPARE(search(u"合同"_s), (L {u"合同"_s, u"合同 旧"_s}));
+        // Leading nowhere, or no path at all: nothing from the disk, as before.
+        QCOMPARE(search(u"没有\\20"_s), L {});
+        QCOMPARE(search(u"合同\\20"_s, false, true), L {});
+    }
+
     // GitHub #351: with the Everything compatibility on, the folders excluded
     // stay in the index and Win顺's own searches leave them out, with all
     // that is in them; what asks the index directly (the Everything

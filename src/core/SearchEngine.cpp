@@ -1791,16 +1791,27 @@ void SearchEngine::runNameSearch(const Job& job)
         }
         phase = "apps, places, typed paths, favorites";
 
+        // Typed in a folder's window, words that are a path from it ("合同\20"
+        // in D:\Work, GitHub #454): the disk lists the folder they lead to, as
+        // the box completes them (navigation::typedIn), the index's rows still
+        // the window folder's. Other words ("报告", "*.pdf"): that folder's.
+        const pathtext::TypedPath listedPath = [&] {
+            if (!typedIn || request.regex || !(request.text.contains(u'\\') || request.text.contains(u'/')))
+                return typedPath;
+            const QString& folder = typedPath.folder;
+            pathtext::TypedPath from = pathtext::splitTyped((folder.endsWith(u'\\') ? folder : folder + u'\\') + request.text);
+            return from.folder.isEmpty() ? typedPath : from;
+        }();
         // A network folder is listed only when its server answers: one that
         // is not there would hold the search up for the half minute Windows
         // waits. Known to be away (a share searched), or not answering now
         // (Windows asked, on a server it got to where the probe did not:
         // GitHub #116).
         const auto listable = [&] {
-            const std::wstring folder = typedPath.folder.toStdWString();
+            const std::wstring folder = listedPath.folder.toStdWString();
             return !unc::isUnc(folder) || (!m_index->shares().offline(folder) && share::answersNow(folder, false));
         };
-        if (!typedPath.folder.isEmpty() && !filtered && listable()) {
+        if (!listedPath.folder.isEmpty() && !filtered && listable()) {
             // Typed in a folder's window: with the rows in the folder, before
             // the others (arrange), which wait meanwhile.
             SearchResults outside;
@@ -1816,7 +1827,7 @@ void SearchEngine::runNameSearch(const Job& job)
             // is listed, not the first `limit` of listTyped's own order.
             const bool byChoice = sortedByChoice(request);
             SearchResults rows
-                = pathtext::listTyped(typedPath, foldersOnly, byChoice ? std::numeric_limits<int>::max() : static_cast<int>(request.limit));
+                = pathtext::listTyped(listedPath, foldersOnly, byChoice ? std::numeric_limits<int>::max() : static_cast<int>(request.limit));
             rows.removeIf([&](const SearchResult& r) { return !ofType(r.path, r.isDir, types, hidden); });
             if (!byChoice)
                 exactFirst(rows.begin(), rows.end(), matcher, PreferredTypes(foldedExtensions(request.preferredTypes)));
@@ -1846,8 +1857,8 @@ void SearchEngine::runNameSearch(const Job& job)
             if (byChoice) {
                 // The folder itself (nothing typed after it) stays on top as
                 // the current place; the rest, rows and matches, in the order.
-                const bool self = typedPath.name.trimmed().isEmpty() && !rows.isEmpty()
-                    && rows.front().path.compare(typedPath.folder, Qt::CaseInsensitive) == 0;
+                const bool self = listedPath.name.trimmed().isEmpty() && !rows.isEmpty()
+                    && rows.front().path.compare(listedPath.folder, Qt::CaseInsensitive) == 0;
                 SearchResults merged = std::move(results); // the index's first: a tie keeps them ahead
                 for (auto it = rows.begin() + (self ? 1 : 0); it != rows.end(); ++it)
                     merged.push_back(std::move(*it));
