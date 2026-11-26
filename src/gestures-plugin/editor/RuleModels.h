@@ -90,6 +90,9 @@ signals:
 
 private:
     void changed(int row);
+    // A chord for any trigger button, with one enabled: said as drawn, with
+    // that one ("侧1+右", "按住侧键（后退），再点右键"; GitHub #436).
+    std::string shownOn(const std::string& on) const;
 
     std::vector<gestures::Rule> m_rules;
     std::vector<gestures::MouseButton> m_buttons = gestures::defaultTriggerButtons();

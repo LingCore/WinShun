@@ -6,7 +6,7 @@
 //
 // For checking without a desktop or a plugin:
 //   WinShunGestures.exe --editor --preview <png> [--page 0-4] [--scale 1.5] [--dark] [--locale en] [--style fluent]
-//       [--width W --height H] [--picker menu|keys|open|url|type] [--program photoshop.exe]
+//       [--width W --height H] [--picker menu|keys|open|url|type] [--program photoshop.exe] [--buttons x1]
 //       --app-dir <a Win顺's folder, or one with Qt> [--font <ttf>]
 // renders the window offscreen with sample rules and writes the PNG.
 //   --selftest: the window is made without activating it, and the settings it is sent and what it
@@ -297,6 +297,9 @@ extern "C" __declspec(dllexport) int winshunGesturesEditorMain(const wchar_t* ho
         editor.applyState(*first, true);
     } else {
         editor.useSample();
+        // --buttons x1 (or right,middle): other trigger buttons enabled than the sample's.
+        if (const QString buttons = option(u"--buttons"_s); !buttons.isEmpty())
+            editor.applyState({{u"buttons"_s, buttons}}, false);
     }
 
     ws::WindowFrame frame(!preview);

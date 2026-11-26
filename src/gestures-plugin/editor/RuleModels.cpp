@@ -176,7 +176,7 @@ QVariant RulesModel::data(const QModelIndex& index, int role) const
         if (key)
             return qstr(gestures::triggerTitle(rule.on, m_chinese));
         // The keys held go above it in the tile (KeysRole): long combinations stay legible.
-        const auto g = gestures::parseGestureTrigger(rule.on);
+        const auto g = gestures::parseGestureTrigger(shownOn(rule.on));
         return qstr(gestures::gestureBadge(g ? gestures::formatGestureTrigger(g->trigger, g->stroke, g->chord) : rule.on, m_chinese));
     }
     case KeysRole: return qstr(gestures::modifiersTitle(rule.modifiers()));
@@ -184,7 +184,7 @@ QVariant RulesModel::data(const QModelIndex& index, int role) const
         // A shortcut's section says it is for selected text: only one that is not says so.
         if (key)
             return rule.selection || takesWords ? QString() : Text::tr("不用选中文字");
-        return gestureWords(rule.on, m_chinese);
+        return gestureWords(shownOn(rule.on), m_chinese);
     case WhereRole: return static_cast<int>(rule.where);
     case WhereTitleRole:
         return rule.where == gestures::Zone::Anywhere ? Text::tr("任何位置")
@@ -244,6 +244,15 @@ void RulesModel::setChinese(bool chinese)
     m_chinese = chinese;
     if (!m_rules.empty())
         emit dataChanged(index(0), index(static_cast<int>(m_rules.size()) - 1));
+}
+
+std::string RulesModel::shownOn(const std::string& on) const
+{
+    const auto g = gestures::parseGestureTrigger(on);
+    if (!g || g->trigger != gestures::MouseButton::Any || g->chord == gestures::MouseButton::Any || m_buttons.size() != 1
+        || m_buttons.front() == g->chord)
+        return on;
+    return gestures::formatGestureTrigger(m_buttons.front(), g->stroke, g->chord, g->modifiers);
 }
 
 void RulesModel::setButtons(const std::vector<gestures::MouseButton>& buttons)

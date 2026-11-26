@@ -880,17 +880,67 @@ private slots:
             QCOMPARE(s.state(), GestureSession::State::Idle);
         }
 
-        // 2. Hold-still pass-through (350ms) for Middle & X1 (preserves autoscroll & push-to-talk).
+        // 2. Hold-still pass-through (350ms) for a button with no chord set (Middle: autoscroll, push-to-talk).
+        {
+            GestureSession s;
+            QVERIFY(s.onButtonDown(MouseButton::Middle, 100, 100, 6, 24, true, settings, ctx).swallow);
+            auto hold = s.onHoldTimer();
+            QCOMPARE(hold.event, SessionResult::Event::PressThrough);
+            QCOMPARE(hold.button, MouseButton::Middle);
+            QCOMPARE(s.state(), GestureSession::State::Through);
+            auto up = s.onButtonUp(MouseButton::Middle, 100, 100);
+            QVERIFY(!up.swallow); // let the app receive the matching UP
+            QCOMPARE(s.state(), GestureSession::State::Idle);
+        }
+
+        // 2b. A chord set for the button (x1:+r): held still past the hold time it waits (GitHub #436:
+        //     X1 went through and the browser went back) - the second button still makes the chord,
+        //     a move then goes through as a drag (that move held back), a plain release is the click.
         {
             GestureSession s;
             QVERIFY(s.onButtonDown(MouseButton::X1, 100, 100, 6, 24, true, settings, ctx).swallow);
             auto hold = s.onHoldTimer();
-            QCOMPARE(hold.event, SessionResult::Event::PressThrough);
-            QCOMPARE(hold.button, MouseButton::X1);
-            QCOMPARE(s.state(), GestureSession::State::Through);
-            auto up = s.onButtonUp(MouseButton::X1, 100, 100);
-            QVERIFY(!up.swallow); // let the app receive the matching UP
+            QCOMPARE(hold.event, SessionResult::Event::None);
+            QCOMPARE(s.state(), GestureSession::State::Held);
+            auto rDown = s.onButtonDown(MouseButton::Right, 100, 100, 6, 24, false, settings, ctx);
+            QVERIFY(rDown.swallow && rDown.startBeforeMove);
+            QCOMPARE(rDown.gesture, std::string("+r"));
+            auto rUp = s.onButtonUp(MouseButton::Right, 100, 100);
+            QCOMPARE(rUp.event, SessionResult::Event::End);
+            QCOMPARE(rUp.gesture, std::string("+r"));
+            QVERIFY(s.onButtonUp(MouseButton::X1, 100, 100).swallow);
             QCOMPARE(s.state(), GestureSession::State::Idle);
+
+            QVERIFY(s.onButtonDown(MouseButton::X1, 100, 100, 6, 24, true, settings, ctx).swallow);
+            s.onHoldTimer();
+            QVERIFY(!s.onMove(103, 102).swallow); // jitter: still waiting
+            QCOMPARE(s.state(), GestureSession::State::Held);
+            auto drag = s.onMove(110, 100);
+            QVERIFY(drag.swallow);
+            QCOMPARE(drag.event, SessionResult::Event::PressThrough);
+            QCOMPARE(drag.button, MouseButton::X1);
+            QCOMPARE(s.state(), GestureSession::State::Through);
+            QVERIFY(!s.onMove(120, 100).swallow);
+            QVERIFY(!s.onButtonUp(MouseButton::X1, 120, 100).swallow);
+
+            QVERIFY(s.onButtonDown(MouseButton::X1, 100, 100, 6, 24, true, settings, ctx).swallow);
+            s.onHoldTimer();
+            auto click = s.onButtonUp(MouseButton::X1, 100, 100);
+            QVERIFY(click.swallow);
+            QCOMPARE(click.event, SessionResult::Event::Click);
+            QCOMPARE(click.button, MouseButton::X1);
+
+            // Not in a program where that chord does nothing: X1 goes through as before.
+            Settings quiet = settings;
+            Rule none;
+            none.on = "x1:+r";
+            none.apps = {L"game.exe"};
+            quiet.rules.push_back(none);
+            Context game;
+            game.program = L"game.exe";
+            QVERIFY(s.onButtonDown(MouseButton::X1, 100, 100, 6, 24, true, quiet, game).swallow);
+            QCOMPARE(s.onHoldTimer().event, SessionResult::Event::PressThrough);
+            QVERIFY(!s.onButtonUp(MouseButton::X1, 100, 100).swallow);
         }
 
         // 3. Example 1 (Hold Right -> drag Down -> press Left -> release Left then Right),

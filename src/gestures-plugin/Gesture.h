@@ -348,7 +348,9 @@ struct SessionResult {
 // release and repeat rockers), wheel gestures, and Esc / unmatched-left cancel.
 class GestureSession {
 public:
-    enum class State { Idle, Pressed, Gesturing, Wheeling, Rocked, Through, Canceled };
+    // Held: still past the hold time with a chord set for the button: it
+    // waits for the second button, and goes through once the pointer moves.
+    enum class State { Idle, Pressed, Held, Gesturing, Wheeling, Rocked, Through, Canceled };
 
     State state() const { return m_state; }
     MouseButton activeButton() const { return m_activeButton; }
@@ -377,6 +379,7 @@ private:
     int m_downY = 0;
     int m_startDistance = 6;
     int m_wheelDelta = 0;
+    bool m_chordsSet = false; // a chord is set for the button pressed, there: held still, it waits (State::Held)
     Recognizer m_recognizer;
 };
 

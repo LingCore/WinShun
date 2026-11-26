@@ -1521,6 +1521,18 @@ void RubWatch::reset()
 
 // ---- mouse button & chord state machine ----
 
+namespace {
+
+// Whether another button pressed while `held` is held (nothing drawn) would make a chord there.
+bool chordSet(const std::vector<Rule>& rules, MouseButton held, Context context)
+{
+    context.button = held;
+    return std::ranges::any_of(std::initializer_list<MouseButton> {MouseButton::Left, MouseButton::Right, MouseButton::Middle, MouseButton::X1, MouseButton::X2},
+        [&](MouseButton second) { return second != held && chordMatches(rules, "", second, context); });
+}
+
+} // namespace
+
 bool GestureSession::wantsTriggerCheck(MouseButton btn, const std::vector<MouseButton>& enabledButtons, bool activeStillDown) const
 {
     if (!hasTriggerButton(enabledButtons, btn))
@@ -1552,13 +1564,14 @@ SessionResult GestureSession::onButtonDown(MouseButton btn, int x, int y, int st
         m_downY = y;
         m_startDistance = std::max(startDistance, 1);
         m_wheelDelta = 0;
+        m_chordsSet = chordSet(settings.rules, btn, context);
         m_recognizer.reset(x, y, stroke);
         res.startHoldTimer = true;
         res.swallow = true;
         return res;
     }
 
-    if ((m_state == State::Pressed || m_state == State::Gesturing || m_state == State::Rocked)
+    if ((m_state == State::Pressed || m_state == State::Held || m_state == State::Gesturing || m_state == State::Rocked)
         && btn != MouseButton::Any && btn != m_activeButton && m_chordButton == MouseButton::Any) {
         const bool tooLong = m_state == State::Gesturing && m_recognizer.tooLong();
         const std::string strokeStr = (m_state == State::Gesturing && !tooLong) ? m_recognizer.gesture() : std::string();
@@ -1578,7 +1591,7 @@ SessionResult GestureSession::onButtonDown(MouseButton btn, int x, int y, int st
             return res;
         }
         // Unmatched left click while drawing: keep the existing cancel-on-left-click behavior.
-        if (btn == MouseButton::Left && (m_state == State::Pressed || m_state == State::Gesturing)) {
+        if (btn == MouseButton::Left && (m_state == State::Pressed || m_state == State::Held || m_state == State::Gesturing)) {
             res.stopHoldTimer = true;
             m_state = State::Canceled;
             res.event = SessionResult::Event::Cancel;
@@ -1612,6 +1625,7 @@ SessionResult GestureSession::onButtonUp(MouseButton btn, int x, int y)
         const std::string chordStroke = std::exchange(m_chordStroke, {});
         switch (std::exchange(m_state, State::Idle)) {
         case State::Pressed:
+        case State::Held:
             res.event = SessionResult::Event::Click;
             res.button = released;
             res.swallow = true;
@@ -1647,11 +1661,20 @@ SessionResult GestureSession::onMove(int x, int y)
         res.watchScreen = true;
         return res;
     }
-    if (m_state == State::Pressed) {
+    if (m_state == State::Pressed || m_state == State::Held) {
         const int dx = x - m_downX;
         const int dy = y - m_downY;
         if (dx * dx + dy * dy < m_startDistance * m_startDistance)
             return res;
+        if (m_state == State::Held) {
+            // Held still, then moved: an ordinary drag. This move is held
+            // back, so the press goes through where it was.
+            m_state = State::Through;
+            res.event = SessionResult::Event::PressThrough;
+            res.button = m_activeButton;
+            res.swallow = true;
+            return res;
+        }
         res.stopHoldTimer = true;
         m_state = State::Gesturing;
         res.startBeforeMove = true;
@@ -1670,7 +1693,8 @@ SessionResult GestureSession::onMove(int x, int y)
 SessionResult GestureSession::onWheel(int delta, bool hasWheelRules, const Settings& settings, const Context& context)
 {
     SessionResult res;
-    if (m_state != State::Pressed && m_state != State::Gesturing && m_state != State::Wheeling && m_state != State::Rocked)
+    if (m_state != State::Pressed && m_state != State::Held && m_state != State::Gesturing && m_state != State::Wheeling
+        && m_state != State::Rocked)
         return res;
     if (!hasWheelRules || delta == 0 || m_chordButton != MouseButton::Any)
         return res;
@@ -1711,6 +1735,13 @@ SessionResult GestureSession::onHoldTimer()
     res.stopHoldTimer = true;
     if (m_state != State::Pressed)
         return res;
+    // A chord set for this button: holding still is how one waits to press
+    // the second (GitHub #436: past the hold time a side button went
+    // through, and the browser went back).
+    if (m_chordsSet) {
+        m_state = State::Held;
+        return res;
+    }
     m_state = State::Through;
     res.event = SessionResult::Event::PressThrough;
     res.button = m_activeButton;
@@ -1720,7 +1751,7 @@ SessionResult GestureSession::onHoldTimer()
 SessionResult GestureSession::onAbort()
 {
     SessionResult res;
-    if (m_state == State::Pressed || m_state == State::Gesturing) {
+    if (m_state == State::Pressed || m_state == State::Held || m_state == State::Gesturing) {
         res.stopHoldTimer = true;
         m_chordButton = MouseButton::Any;
         m_chordStroke.clear();
@@ -1738,6 +1769,7 @@ void GestureSession::reset()
     m_chordStroke.clear();
     m_swallowedButtons = 0;
     m_wheelDelta = 0;
+    m_chordsSet = false;
 }
 
 } // namespace gestures

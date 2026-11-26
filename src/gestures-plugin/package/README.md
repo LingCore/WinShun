@@ -18,7 +18,7 @@
 
 ## 用起来
 
-- **按键照常用**：只是点一下手势键，菜单或它原来的功能照常（先接住这一下，松开后原样补上）。要用这个键拖动（比如右键拖文件），按住先停一下再拖。
+- **按键照常用**：只是点一下手势键，菜单或它原来的功能照常（先接住这一下，松开后原样补上）。要用这个键拖动（比如右键拖文件），按住先停一下再拖。给这个键设了组合手势时，按住不动会一直等你点第二个键（多久都行），动起来才是平常的拖动（#436）。
 - **反悔**：画到一半按 Esc 或点一下左键，松开就什么都不做（左键已设成组合手势时，点它就是那个组合）。
 - 按着 Win 时不画手势；按着 Ctrl、Alt、Shift 时，只有设了带这几个键的手势才画，别的照常。
 - **不用手势的地方**：设置里列的程序；全屏的游戏、幻灯片、视频（设置里可以打开）；触摸和笔。
@@ -58,7 +58,7 @@ A resident C++ plugin from the plugin library (Settings → Plugins → Plugin l
 - **Actions**: page, tab, window, text, WinShun, media and system actions (lock, screen off, sleep, shut down, restart, sign out), any keys, open a program, file, folder or address, or type some text.
 - **Shut down, restart, sign out and sleep count down first**: a card counts down 5 seconds; Esc or Cancel stops it. Programs with unsaved work can still hold Windows up.
 
-A plain click of a gesture button still does what it did (the menu for the right button); to drag with it, hold still a moment first. Esc or a left click while drawing cancels (unless the left button completes a chord there). Not with Win held, nor with Ctrl, Alt or Shift unless a gesture is set for those keys; not in the programs listed in the settings, full-screen games and video (unless turned on), touch and pen, or windows run as administrator. `gestures` lists them; Enter on the first row pauses or resumes. Gestures changed in 1.0 are carried over.
+A plain click of a gesture button still does what it did (the menu for the right button); to drag with it, hold still a moment first. A button with a chord set waits as long as it is held still for the second button, and drags once it moves (#436). Esc or a left click while drawing cancels (unless the left button completes a chord there). Not with Win held, nor with Ctrl, Alt or Shift unless a gesture is set for those keys; not in the programs listed in the settings, full-screen games and video (unless turned on), touch and pen, or windows run as administrator. `gestures` lists them; Enter on the first row pauses or resumes. Gestures changed in 1.0 are carried over.
 
 Recent versions: **2.1.3** middle and side buttons, several at once, and chords (#436); a refused translation key is named (#444); rebuilt with WinShun 0.45.0's shared code. **2.1.2** a 1 px edge on the cards and bubbles on Windows 10; rebuilt with WinShun 0.44.0. **2.1.1** shortcuts with `Alt`, `Win` or `Shift` no longer leave the browser's “…” button, a menu bar, Start or an input-method switch behind; the settings window has its border, shadow and corners back on Windows 11 (#419). **2.1.0** shortcuts for selected text; right button + wheel keeps switching tabs in browsers. **2.0.0** selected-text gestures, circles, screen corners, hot corners, rubbed edges, per-program rules, more actions and the new settings window.
 
