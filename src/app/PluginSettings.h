@@ -68,7 +68,7 @@ public:
         double progress = -1; // 0…1; below 0: no bar
         QVariantList reportActions;
         bool resident = false;
-        QVariantList keywords; // [{command, title, keyword, defaults, conflict, user}]
+        QVariantList keywords; // [{command, title, keyword, defaults, conflict, user, hotkey, hotkeyError}]
         QVariantList permissions; // [{name, text, enforced, note}]
         QVariantList settings; // [{key, type, title, hint, value, options, optionIndex; a number's unit, slider, min, max, step, decimals}]
         bool hasReadme = false;
@@ -288,6 +288,14 @@ public:
     // it is not taken, for the card to show under the box; empty: taken.
     Q_INVOKABLE QString setKeyword(const QString& id, const QString& command, const QString& keyword);
     Q_INVOKABLE void resetKeyword(const QString& id, const QString& command); // back to the manifest's
+    // A command's own shortcut (PluginConfig::hotkeys, GitHub #466): pressed
+    // anywhere, the launcher opens with the command's keyword typed. None:
+    // the command has no shortcut. Whether the keys work is App's to find
+    // (applyCommandHotkeys), which says why not through
+    // setCommandHotkeyErrors ("plugin/command" -> the reason), shown under
+    // the row.
+    Q_INVOKABLE void setCommandHotkey(const QString& id, const QString& command, const QString& hotkey);
+    void setCommandHotkeyErrors(QHash<QString, QString> errors);
     Q_INVOKABLE void setSettingValue(const QString& id, const QString& key, const QVariant& value);
     Q_INVOKABLE void pickFolderSetting(const QString& id, const QString& key);
     Q_INVOKABLE void pickFileSetting(const QString& id, const QString& key);
@@ -400,6 +408,7 @@ private:
     QTimer m_memoryTimer;
     bool m_active = false;
     bool m_recordingHotkey = false;
+    QHash<QString, QString> m_commandHotkeyErrors; // "plugin/command" -> why its keys do not work
     std::optional<plugin::install::Candidate> m_pendingInstall; // waiting for the user's answer
     bool m_pendingEnable = false;
     bool m_pendingAllow = false; // ... and the question is 更新并允许 (a yes also confirms the new permissions)

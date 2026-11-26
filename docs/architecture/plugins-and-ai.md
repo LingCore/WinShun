@@ -56,6 +56,7 @@
 | `Tools` | `Tools.{h,cpp}` | 插件反向 `winshun/tool` 主机：独立 `SearchEngine` + `mcp::ToolHost`，不看 `[Mcp] Enabled` 与 AI 排除目录，严格按清单权限放行；只给插件的分页全量工具 `list_documents`（`winshun:content`）与 `list_files`（`winshun:search`：按扩展名列名称索引里的本机文件，`longReadLock` 下按条目号游标翻页，远程根与低优先目录默认不列）不对 AI 客户端提供 |
 
 - **统一停止与限额**：停用、移除、权限未确认与 runner 断开共用同一停止入口，释放排队查询、`once` 进程、热键、托盘与在途工具调用。`once` 默认防抖 120 ms、stdout 上限 **16 MiB**，通过 `lastQuery` 防同步取消后误建 rerun；查询超时默认 `resident` 1500 ms / `once` 3000 ms，连超 3 次重启；崩溃退避 `1 → 5 → 30` 秒，5 分钟内崩 3 次自动停用；常驻上限 8（`eager` 不计入淘汰）。
+- **命令快捷键（#466）**：`[Plugin.<id>] Hotkey.<command>=`（`PluginConfig::hotkeys`，只存设了的）。`App::applyCommandHotkeys` 在 `applyPlugins`、目录变化与录制快捷键开始/结束时，把启用插件里有可用关键字的命令经 `PluginHotkeys`（属主 `:commands`，与插件 `register_hotkeys` 同一注册器，最多 32 个，只增删有变化的键）注册；与 Win顺 自己的键、剪贴板条目键、其他命令或他程冲突的原因经 `PluginSettings::setCommandHotkeyErrors` 写在卡片该行下。按下走 `App::commandHotkey`：`showLauncher("<第一个可用关键字> ")`，关键字仍在且启动器在前台时再按则关闭。
 - **查询缓存**：`QCache` LRU，序列化数据预算 **2 MiB**，键含插件/命令/输入/筛选上下文，单调时钟过期，动态 rerun 不入缓存；设置、清单、权限、语言、动作与 refresh 触发失效。
 
 ## 3. 官方插件一览

@@ -4,6 +4,8 @@
 #include "ClipImage.h"
 #include "ClipStore.h"
 #include "Clipboard.h"
+#include "Launcher.h"
+#include "Settings.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -11,9 +13,11 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QImage>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
+#include <QQuickWindow>
 #include <QScopeGuard>
 
 #include <algorithm>
@@ -694,6 +698,116 @@ bool checkDuplicates(App& app, const QStringList& args, const QDir& output)
     restored = putOnClipboard(before) || putOnClipboard(before);
     report.insert(u"clipboard_restored"_s, restored);
     check(restored, "the clipboard as it was could not be put back");
+    return finish();
+}
+
+namespace {
+constexpr UINT kCommandKey = VK_F19;
+constexpr UINT kCommandSpareKey = VK_F18; // of the command with no keyword: never registered
+const QString kCommandPlugin = u"test.keys"_s;
+} // namespace
+
+struct CommandHotkeyProbe {
+    static QQuickWindow* window(App& app) { return app.m_window.data(); }
+    static QString typed(App& app) { return app.m_launcher->query(); }
+    static qsizetype registered(App& app) { return app.m_commandHotkeys.size(); }
+    static QString error(App& app, const QString& command) { return app.m_commandHotkeyErrors.value(kCommandPlugin + u'/' + command); }
+};
+
+bool commandHotkeyChordFree()
+{
+    return chordFree(kCommandKey) && chordFree(kCommandSpareKey);
+}
+
+bool seedCommandHotkey(Settings& settings)
+{
+    const QString folder = Settings::profile() + u"/plugins/"_s + kCommandPlugin;
+    const auto command = [](const QString& id, const QString& keyword) {
+        return QJsonObject {{u"id"_s, id}, {u"title"_s, QString(u"按键 "_s + id)}, {u"keyword"_s, keyword},
+            {u"run"_s, QJsonObject {{u"url"_s, u"https://example.invalid/?q=%s"_s}}}};
+    };
+    const QJsonObject plugin {{u"manifest"_s, 1}, {u"id"_s, kCommandPlugin}, {u"version"_s, u"1.0.0"_s},
+        {u"name"_s, QJsonObject {{u"zh"_s, u"按键测试"_s}, {u"en"_s, u"Key test"_s}}},
+        {u"commands"_s, QJsonArray {command(u"main"_s, u"wsk"_s), command(u"same"_s, u"wso"_s), command(u"bare"_s, u"wst"_s)}}};
+    QFile manifest(folder + u"/plugin.json"_s);
+    if (!QDir().mkpath(folder) || !manifest.open(QIODevice::WriteOnly) || manifest.write(QJsonDocument(plugin).toJson()) < 0)
+        return false;
+    PluginConfig& config = settings.pluginConfig(kCommandPlugin);
+    config.enabled = true;
+    config.keywords = {{u"bare"_s, QString()}}; // the user took its keyword away
+    config.hotkeys = {{u"main"_s, QString(kCommandHotkeyProbeChord)}, {u"same"_s, u"ctrl+alt+shift+f19"_s},
+        {u"bare"_s, u"Ctrl+Alt+Shift+F18"_s}};
+    return true;
+}
+
+// --probe-runtime <folder> --command-hotkey-check
+// The production App beside the Win顺 that runs, with a plugin of three
+// commands that start nothing (seedCommandHotkey): `main` has the shortcut
+// Ctrl+Alt+Shift+F19 (free before the App started), `same` the same keys
+// spelled otherwise, `bare` keys of its own but no keyword. Passed: only
+// main's keys are registered and the other two say why on their rows; the
+// chord pressed for real (SendInput, once the keyboard has been quiet)
+// brings the launcher up, in front, "wsk " typed; pressed again, it goes.
+// Into command-hotkey.json.
+bool checkCommandHotkey(App& app, const QStringList&, const QDir& output)
+{
+    QJsonObject report;
+    bool ok = true;
+    const auto check = [&](bool condition, const char* what) {
+        if (!condition) {
+            ok = false;
+            std::fprintf(stderr, "command hotkey: FAILED: %s\n", what);
+        }
+    };
+    const auto finish = [&] {
+        report.insert(u"passed"_s, ok);
+        QFile file(output.filePath(u"command-hotkey.json"_s));
+        const bool saved = file.open(QIODevice::WriteOnly) && file.write(QJsonDocument(report).toJson()) > 0;
+        std::fprintf(stderr, "command hotkey: %s\n", ok ? "passed" : "FAILED");
+        return ok && saved;
+    };
+    const auto waitFor = [](const auto& done, int ms) {
+        QElapsedTimer limit;
+        limit.start();
+        while (!done() && limit.elapsed() < ms)
+            pump(50);
+        return done();
+    };
+    QQuickWindow* window = CommandHotkeyProbe::window(app);
+    waitFor([&] { return chordOurs(kCommandKey); }, 15'000); // the plugins scanned, their shortcuts registered
+    report.insert(u"hotkey_registered"_s, chordOurs(kCommandKey));
+    report.insert(u"registered_count"_s, CommandHotkeyProbe::registered(app));
+    report.insert(u"same_keys_note"_s, CommandHotkeyProbe::error(app, u"same"_s));
+    report.insert(u"no_keyword_note"_s, CommandHotkeyProbe::error(app, u"bare"_s));
+    check(chordOurs(kCommandKey), "the command's hotkey is not registered");
+    check(CommandHotkeyProbe::registered(app) == 1, "not exactly one command's keys are registered");
+    check(CommandHotkeyProbe::error(app, u"main"_s).isEmpty(), "the command whose keys work has a note");
+    check(CommandHotkeyProbe::error(app, u"same"_s).contains(u"按键 main"_s), "the command with the same keys does not name who has them");
+    check(!CommandHotkeyProbe::error(app, u"bare"_s).isEmpty() && chordFree(kCommandSpareKey),
+        "the command with no keyword has its keys registered, or no note");
+    check(window && !window->isVisible(), "the launcher is up before any key");
+    if (!ok)
+        return finish();
+
+    waitForQuietInput();
+    pressChord(kCommandKey);
+    const bool shown = waitFor([&] { return window->isVisible() && window->isActive(); }, 5000);
+    pump(600); // revealed, the caret after the keyword
+    report.insert(u"launcher_shown"_s, window->isVisible());
+    report.insert(u"launcher_active"_s, window->isActive());
+    report.insert(u"typed"_s, CommandHotkeyProbe::typed(app));
+    check(shown, "the launcher did not come to the front on the chord");
+    check(CommandHotkeyProbe::typed(app) == u"wsk ", "the command's keyword is not what is typed");
+    std::fprintf(stderr, "command hotkey: launcher shown %d active %d, typed \"%s\"\n", window->isVisible(), window->isActive(),
+        qPrintable(CommandHotkeyProbe::typed(app)));
+    if (ok && window->isActive()) { // only into our own window
+        pressChord(kCommandKey);
+        const bool gone = waitFor([&] { return !window->isVisible(); }, 5000);
+        report.insert(u"closed_by_second_press"_s, gone);
+        check(gone, "pressed again with its keyword typed, the launcher stayed");
+    }
+    if (window->isVisible())
+        app.hideLauncher();
     return finish();
 }
 

@@ -64,6 +64,10 @@ struct PluginConfig {
     QString id;
     bool enabled = false; // Enabled=; plugins start out off
     QList<std::pair<QString, QString>> keywords; // Keyword.<command>=: the user's keyword for a command (empty: none)
+    // Hotkey.<command>=: the user's shortcut for a command, anywhere: the
+    // launcher opens with the command's keyword typed (GitHub #466). Only
+    // those set are kept.
+    QList<std::pair<QString, QString>> hotkeys;
     QList<std::pair<QString, QString>> settings; // Setting.<key>=: a declared setting's value, as text (never a password: the Credential Manager keeps those)
     // Confirmed=: the permissions the user said yes to when turning it on;
     // a version asking for more is asked about again.
@@ -451,6 +455,16 @@ struct Settings {
     static QString normalizedHotkey(const QString& shortcut);
     // Win顺's own shortcuts that work anywhere (registered with Windows), set or not.
     QStringList globalHotkeys() const { return {hotkey, panelHotkey, settingsHotkey, clipboardHotkey, folderMenuHotkey, pastePlainHotkey}; }
+    // The shortcuts of plugins' commands (PluginConfig::hotkeys), of the
+    // plugins that are on: (plugin, command, keys), in the order kept.
+    struct CommandHotkey {
+        QString plugin;
+        QString command;
+        QString keys;
+
+        bool operator==(const CommandHotkey&) const = default;
+    };
+    QList<CommandHotkey> commandHotkeys() const;
     // The rule for a shortcut a person (settings window) or AI sets: Ctrl, Alt
     // or Win held with its key, or a function key (F1 to F24) alone or with
     // Shift. A bare letter, Enter, Space, PrintScreen or Shift+letter would

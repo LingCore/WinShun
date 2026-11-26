@@ -3,7 +3,10 @@
 #include <QStringList>
 
 class QDir;
-namespace ws { class App; }
+namespace ws {
+class App;
+struct Settings;
+}
 
 namespace ws::preview {
 // --probe-runtime <folder> --paste-plain-check: 粘贴为纯文本's global hotkey
@@ -35,6 +38,16 @@ bool entryHotkeyChordFree();
 // (what Ctrl+V or the first quick paste key would paste instead).
 bool seedEntryHotkey(const QString& clipboardFolder);
 bool checkEntryHotkey(App& app, const QStringList& args, const QDir& output);
+
+// --probe-runtime <folder> --command-hotkey-check: a plugin command's own
+// shortcut (PluginConfig::hotkeys, GitHub #466) pressed for real: the
+// launcher with the command's keyword typed, and away again. See the .cpp.
+inline constexpr auto kCommandHotkeyProbeChord = u"Ctrl+Alt+Shift+F19";
+bool commandHotkeyChordFree();
+// Before the App starts: a plugin that starts nothing in the probe's
+// profile, its commands' shortcuts in `settings`.
+bool seedCommandHotkey(Settings& settings);
+bool checkCommandHotkey(App& app, const QStringList& args, const QDir& output);
 
 // --probe-runtime <folder> --duplicates-check [--keep-place]: 保留重复项 on
 // the real clipboard: copies as a program makes them, one after another,

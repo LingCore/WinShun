@@ -573,7 +573,7 @@ SettingsSection {
                             readonly property bool filterHit: pluginsSection.filterFits(index)
                             // The search found something inside it, not only its name: unfolded while it searches.
                             readonly property bool foundInside: listRow.searching
-                                && (keywords.some(k => listRow.valueFound(k.title) || listRow.valueFound(k.keyword))
+                                && (keywords.some(k => listRow.valueFound(k.title) || listRow.valueFound(k.keyword) || listRow.valueFound(k.hotkey))
                                     || settings.some(s => listRow.valueFound(s.title))
                                     || (webSearch && pluginsSection.editor && pluginsSection.editor.webShortcuts.some(
                                         site => listRow.valueFound(site.name) || listRow.valueFound(site.keyword) || listRow.valueFound(site.shownUrl)))

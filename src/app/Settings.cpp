@@ -468,6 +468,8 @@ QList<PluginConfig> readPlugins(QSettings& s)
                 config.ai = s.value(key).toBool();
             else if (key.startsWith(u"Keyword."))
                 config.keywords.append({key.mid(8), value.trimmed()});
+            else if (key.startsWith(u"Hotkey.") && !value.trimmed().isEmpty())
+                config.hotkeys.append({key.mid(7), value.trimmed()});
             else if (key.startsWith(u"Setting."))
                 config.settings.append({key.mid(8), value});
         }
@@ -492,6 +494,8 @@ void writePlugins(QSettings& s, const QList<PluginConfig>& plugins)
             s.setValue(u"Ai"_s, false);
         for (const auto& [command, keyword] : config.keywords)
             s.setValue(u"Keyword."_s + command, keyword);
+        for (const auto& [command, keys] : config.hotkeys)
+            s.setValue(u"Hotkey."_s + command, keys);
         for (const auto& [key, value] : config.settings)
             s.setValue(u"Setting."_s + key, value);
         s.endGroup();
@@ -504,6 +508,18 @@ const PluginConfig* Settings::plugin(QStringView id) const
 {
     const auto it = std::find_if(plugins.cbegin(), plugins.cend(), [&](const PluginConfig& p) { return p.id == id; });
     return it == plugins.cend() ? nullptr : &*it;
+}
+
+QList<Settings::CommandHotkey> Settings::commandHotkeys() const
+{
+    QList<CommandHotkey> all;
+    for (const PluginConfig& config : plugins) {
+        if (!config.enabled)
+            continue;
+        for (const auto& [command, keys] : config.hotkeys)
+            all.append({config.id, command, keys});
+    }
+    return all;
 }
 
 const WebShortcuts& Settings::webShortcutsInUse() const

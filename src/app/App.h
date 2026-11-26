@@ -50,7 +50,7 @@ class QWinEventNotifier;
 
 namespace ws {
 
-namespace preview { struct DoubleTapActionsProbe; struct IdleOpenProbe; struct ForegroundUseProbe; struct ClipboardAnimationProbe; struct SearchShadowProbe; struct LauncherSettingsProbe; struct EntryHotkeyProbe; }
+namespace preview { struct DoubleTapActionsProbe; struct IdleOpenProbe; struct ForegroundUseProbe; struct ClipboardAnimationProbe; struct SearchShadowProbe; struct LauncherSettingsProbe; struct EntryHotkeyProbe; struct CommandHotkeyProbe; }
 
 namespace piedrop {
 class FileOperations;
@@ -148,6 +148,7 @@ class App : public QObject {
     friend struct preview::SearchShadowProbe;
     friend struct preview::LauncherSettingsProbe;
     friend struct preview::EntryHotkeyProbe;
+    friend struct preview::CommandHotkeyProbe;
 
 public:
     struct StartOptions {
@@ -446,6 +447,15 @@ private:
     // does not work goes beside it in the settings, and to a notification
     // when that is new and the settings are not up.
     void applyEntryHotkeys();
+    // The shortcuts of plugins' commands (Settings::commandHotkeys, GitHub
+    // #466): registered through m_pluginKeyRelay, those that can be (the
+    // plugin on, its command with a keyword in use, the keys nobody
+    // else's); why the others do not work goes to the plugin's card
+    // (PluginSettings::setCommandHotkeyErrors). commandHotkey: one was
+    // pressed: the launcher with the command's keyword typed, the words to
+    // go after it; pressed again with that still there, it closes.
+    void applyCommandHotkeys();
+    void commandHotkey(const QString& keys);
     // The settings' list of them (SettingsEditor::clipboardEntryHotkeys):
     // [{id, title, detail, hotkey, error}], the one 设置快捷键 is for first
     // listed too while it has no keys yet.
@@ -1091,6 +1101,8 @@ private:
         QString keys;
     };
     std::vector<EntryHotkey> m_entryHotkeys; // registered (applyEntryHotkeys)
+    QList<Settings::CommandHotkey> m_commandHotkeys; // registered (applyCommandHotkeys)
+    QHash<QString, QString> m_commandHotkeyErrors; // "plugin/command" -> why its keys do not work
     QHash<qint64, QString> m_entryHotkeyErrors; // an entry -> why its keys do not work
     // Keys refused as they were recorded (another entry's, Win顺's own): the
     // entry and why, shown beside it until the next keys.

@@ -190,6 +190,10 @@ constexpr int kQuickPasteHotkeyId = 20; // + 1…9: paste without opening the cl
 // + 0…kEntryHotkeys - 1: entries' own shortcuts (Clip::hotkey), pasting each anywhere.
 constexpr int kEntryHotkeyId = 100;
 constexpr int kEntryHotkeys = 200;
+// PluginHotkeys' owner of the commands' shortcuts (applyCommandHotkeys): no
+// plugin's id, which has no colon. As many as one owner may register.
+constexpr QLatin1StringView kCommandKeysOwner(":commands");
+constexpr int kCommandHotkeys = 32;
 // For another program to tell where its text caret is: longer, and the
 // clipboard would open late; it opens by the mouse pointer then.
 constexpr auto kCaretWait = 100ms;
@@ -3342,8 +3346,10 @@ void App::applyEntryHotkeys()
     });
     if (recording) // the keys being pressed must reach the settings window; told again once done
         return;
-    // Win顺's own shortcuts: an entry's keys are never one of them.
+    // Win顺's own shortcuts, a plugin command's among them: an entry's keys are never one of them.
     QStringList own = m_settings.globalHotkeys();
+    for (const Settings::CommandHotkey& h : std::as_const(m_commandHotkeys))
+        own.append(h.keys);
     if (m_settings.clipboardQuickPaste == u"ctrl" || m_settings.clipboardQuickPaste == u"alt") {
         const QString modifier = m_settings.clipboardQuickPaste == u"ctrl" ? u"Ctrl"_s : u"Alt"_s;
         for (int n = 1; n <= 9; ++n)
@@ -3390,6 +3396,120 @@ void App::applyEntryHotkeys()
         m_settingsEditor->setClipboardEntryHotkeys(entryHotkeyRows());
     if (!settingsShown() && !fresh.isEmpty() && !m_aiApplying)
         m_messages->showNotification(tr("剪贴板条目的快捷键不可用"), fresh.join(u'\n'));
+}
+
+void App::applyCommandHotkeys()
+{
+    if (!m_pluginHost || !m_pluginKeyRelay)
+        return;
+    const plugin::Catalog& catalog = m_pluginHost->catalog();
+    const bool recording = m_settingsEditor && m_settingsEditor->recordingHotkey();
+    const auto normalizedKeys = [](const Settings::CommandHotkey& h) { return hotkeys::normalized(h.keys); };
+    QHash<QString, QString> errors;
+    QList<Settings::CommandHotkey> wanted;
+    QStringList titles; // of `wanted`: what each is called on its card
+    // None while a shortcut is recorded: the keys being pressed must reach the settings window.
+    if (!recording) {
+        // Win顺's own shortcuts: a command's keys are never one of them.
+        QStringList own;
+        for (const QString& keys : m_settings.globalHotkeys())
+            own.append(hotkeys::normalized(keys));
+        if (m_settings.clipboard && (m_settings.clipboardQuickPaste == u"ctrl" || m_settings.clipboardQuickPaste == u"alt")) {
+            for (int n = 1; n <= 9; ++n)
+                own.append(hotkeys::normalized(m_settings.clipboardQuickPaste + u'+' + QString::number(n)));
+        }
+        for (const Settings::CommandHotkey& h : m_settings.commandHotkeys()) {
+            // Of a plugin not installed (yet) or not running, or a command a
+            // newer version dropped: kept in the settings, nothing to
+            // register and nothing to say.
+            const plugin::Entry* entry = catalog.find(h.plugin);
+            if (!entry || !entry->manifest || !catalog.enabled(h.plugin))
+                continue;
+            const auto command = std::ranges::find(entry->manifest->commands, h.command, &plugin::Command::id);
+            if (command == entry->manifest->commands.end())
+                continue;
+            const QString row = h.plugin + u'/' + h.command;
+            const QString keys = normalizedKeys(h);
+            const qsizetype holder = std::ranges::find(wanted, keys, normalizedKeys) - wanted.begin();
+            if (catalog.keywordsOf(h.plugin, h.command).isEmpty())
+                errors.insert(row, tr("这个命令现在没有可用的关键字，快捷键打不开它，请先设好关键字。"));
+            else if (own.contains(keys))
+                errors.insert(row, tr("%1 已是 Win顺 自己的快捷键，请换一个。").arg(h.keys));
+            else if (m_clipStore && m_clipStore->isOpen() && m_clipStore->hotkeyEntry(h.keys) != 0)
+                errors.insert(row, tr("%1 已用于剪贴板里的一条内容，请换一个。").arg(h.keys));
+            else if (holder < wanted.size())
+                errors.insert(row, tr("%1 已用于“%2”，请换一个。").arg(h.keys, titles.at(holder)));
+            else if (wanted.size() == kCommandHotkeys)
+                errors.insert(row, tr("最多 %1 个命令可以设快捷键，这一个没有生效。").arg(kCommandHotkeys));
+            else {
+                const QString title = command->title.pick(m_language);
+                titles.append(title.isEmpty() ? entry->manifest->name.pick(m_language) : title);
+                wanted.append(h);
+            }
+        }
+    }
+    QStringList keys;
+    for (const Settings::CommandHotkey& h : std::as_const(wanted))
+        keys.append(h.keys);
+    // Only what changed is let go of or registered (PluginHotkeys::replace).
+    const QJsonObject failed = m_pluginKeyRelay->replace(kCommandKeysOwner, keys);
+    wanted.removeIf([&](const Settings::CommandHotkey& h) {
+        const auto code = failed.constFind(h.keys);
+        if (code == failed.constEnd())
+            return false;
+        errors.insert(h.plugin + u'/' + h.command, code->toInt() == int(ERROR_INVALID_PARAMETER)
+                ? tr("无法识别“%1”，请重新设置。").arg(h.keys)
+                : tr("“%1” 已被其他程序或系统占用，请换一个。").arg(h.keys));
+        return true;
+    });
+    m_commandHotkeys = std::move(wanted);
+    if (recording)
+        return; // let go of for the recording: what was said of them stands
+    // Told once: what did not work before is not news.
+    QStringList fresh;
+    QStringList all;
+    for (auto it = errors.cbegin(); it != errors.cend(); ++it) {
+        if (m_commandHotkeyErrors.value(it.key()) != it.value())
+            fresh.append(it.value());
+        all.append(it.value());
+    }
+    all.sort();
+    m_commandHotkeyErrors = std::move(errors);
+    noteApplyProblem(u"Plugins/CommandHotkeys"_s, all.join(u' '));
+    if (m_settingsEditor)
+        m_settingsEditor->plugins()->setCommandHotkeyErrors(m_commandHotkeyErrors);
+    if (!settingsShown() && !fresh.isEmpty() && !m_aiApplying)
+        m_messages->showNotification(tr("插件命令的快捷键不可用"), fresh.join(u'\n'));
+}
+
+void App::commandHotkey(const QString& keys)
+{
+    const auto pressed = std::ranges::find(m_commandHotkeys, keys, &Settings::CommandHotkey::keys);
+    if (pressed == m_commandHotkeys.end() || !m_pluginHost || !m_window)
+        return;
+    const QString keyword = m_pluginHost->catalog().keywordsOf(pressed->plugin, pressed->command).value(0);
+    if (keyword.isEmpty())
+        return; // gone since it was registered: the next apply says so
+    const QString typed = keyword + u' ';
+    const std::uint64_t at = ::GetTickCount64();
+    beginTrigger(TriggerSource::Hotkey, at);
+    // Pressed again with its keyword still typed: it closes what it opened,
+    // as the launcher's own shortcut does. Not a press made before the
+    // window was there to be seen (seenBy, GitHub #111).
+    if (launcherShown() && !clipboardInCharge() && m_window->isActive()
+        && m_launcher->query().startsWith(typed, Qt::CaseInsensitive) && seenBy(m_launcherRevealedAt, at)) {
+        hideLauncher();
+        if (m_triggers)
+            m_triggers->decided("hide");
+        return;
+    }
+    if (clipboardInCharge())
+        hideClipboard();
+    if (m_triggers)
+        m_triggers->decided("command", TriggerWindow::Launcher);
+    showLauncher(typed);
+    if (!m_launcherReveal.pending())
+        openingSeen(TriggerWindow::Launcher);
 }
 
 QVariantList App::entryHotkeyRows() const
@@ -3439,7 +3559,11 @@ void App::setEntryHotkey(qint64 id, const QString& hotkey)
     if (const qint64 other = m_clipStore->hotkeyEntry(keys); other != 0 && other != id) {
         m_entryHotkeyRefused = {id, tr("%1 已用于“%2”，请换一个，或先去掉那一条的快捷键。")
                                         .arg(keys, entryLabel(*m_clipStore->clip(other)).first)};
-    } else if (!keys.isEmpty() && m_settings.globalHotkeys().contains(keys, Qt::CaseInsensitive)) {
+    } else if (!keys.isEmpty()
+        && (m_settings.globalHotkeys().contains(keys, Qt::CaseInsensitive)
+            || std::ranges::any_of(m_commandHotkeys, [&](const Settings::CommandHotkey& h) {
+                   return hotkeys::normalized(h.keys) == hotkeys::normalized(keys);
+               }))) {
         m_entryHotkeyRefused = {id, tr("%1 已是 Win顺 自己的快捷键，请换一个。").arg(keys)};
     } else {
         if (keys.isEmpty() && m_entryHotkeyPending == id)
@@ -4549,6 +4673,8 @@ void App::showSettingsNow(const std::function<void(QQuickWindow*)>& at)
         connect(editor, &SettingsEditor::recordingHotkeyChanged, this, &App::applyTaskbarHotkeys);
         connect(editor, &SettingsEditor::recordingHotkeyChanged, this, &App::applyFolderMenuHotkey);
         connect(editor, &SettingsEditor::recordingHotkeyChanged, this, &App::applyPastePlainHotkey);
+        connect(editor, &SettingsEditor::recordingHotkeyChanged, this, &App::applyCommandHotkeys);
+        editor->plugins()->setCommandHotkeyErrors(m_commandHotkeyErrors);
         // Queued: the recorder that sent the keys stops first, then its list is made again.
         connect(editor, &SettingsEditor::clipboardEntryHotkeyRequested, this, &App::setEntryHotkey, Qt::QueuedConnection);
         editor->setClipboardEntryHotkeys(entryHotkeyRows());
@@ -9560,7 +9686,10 @@ void App::createPluginHost()
     });
     m_pluginHost = std::make_unique<plugin::Host>(options);
     m_pluginKeyRelay = std::make_unique<PluginHotkeys>([this](const QString& owner, const QString& key) {
-        m_pluginHost->notify(owner, u"hotkey"_s, {{u"key"_s, key}}, true);
+        if (owner == kCommandKeysOwner)
+            commandHotkey(key);
+        else
+            m_pluginHost->notify(owner, u"hotkey"_s, {{u"key"_s, key}}, true);
     });
     {
         PluginUpdates::Options updateOptions;
@@ -9902,6 +10031,7 @@ void App::pluginsChanged()
         folders.insert(e.id, e.dir);
     FileIconProvider::setPluginFolders(std::move(folders));
     pluginPicturesChanged(); // one installed or taken away
+    applyCommandHotkeys(); // its commands' shortcuts with it
     const bool update = localSendNeedsUpdate(m_pluginHost->catalog());
     if (m_clipboard)
         m_clipboard->setLanSendAvailable(m_pluginHost->catalog().enabled(u"winshun.localsend"_s) && !update, update);
@@ -9985,6 +10115,7 @@ void App::applyPlugins()
     shellmenu::applyLanSend(catalog.enabled(u"winshun.localsend"_s) && !update);
     applyScreenshots(); // and 截图历史
     restorePrintScreen();
+    applyCommandHotkeys(); // the keywords in place: what the shortcuts type
 }
 
 void App::refreshMcpStatus()

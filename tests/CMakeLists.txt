@@ -182,6 +182,8 @@ set_tests_properties(tst_pluginhomepage PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
 # A command's keywords typed in its card (GitHub #282): several words, a
 # quote refused with the reason under the box, the plugin's own typed again,
 # none, and 默认, each followed to the INI and to the catalog's index.
+# Then the command's own shortcut (GitHub #466): recorded, refused with the
+# reason under the row, cleared; the INI and where the recorder stands.
 add_test(NAME tst_pluginkeywords COMMAND $<TARGET_FILE:WinShun>
     --preview-plugins "${CMAKE_CURRENT_BINARY_DIR}/plugin-keywords.png" --keyword-check --scale 1.5)
 set_tests_properties(tst_pluginkeywords PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
@@ -1485,6 +1487,18 @@ set_target_properties(tst_shellmenu PROPERTIES WIN32_EXECUTABLE FALSE)
 add_dependencies(tst_shellmenu WinShunSearch)
 add_test(NAME tst_shellmenu COMMAND tst_shellmenu)
 set_tests_properties(tst_shellmenu PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
+# The shell's own context menu on results (platform/ShellContextMenu): the
+# menu for files of one folder and of several, and a command of it run on
+# scratch files (deleted for good, nothing of the user's touched). It loads
+# the shell extensions installed on this PC, as the launcher does.
+qt_add_executable(tst_shellcontext tst_shellcontext.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/ShellContextMenu.cpp)
+target_include_directories(tst_shellcontext PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_link_libraries(tst_shellcontext PRIVATE winshun_options Qt6::Gui Qt6::Test comctl32 imm32 ole32 shell32 shlwapi user32)
+set_target_properties(tst_shellcontext PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
+add_test(NAME tst_shellcontext COMMAND tst_shellcontext)
+set_tests_properties(tst_shellcontext PROPERTIES RUN_SERIAL TRUE
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
 # The MCP server (src/mcp): the protocol, the tools on a hand-made index, the

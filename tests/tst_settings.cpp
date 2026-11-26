@@ -315,6 +315,51 @@ private slots:
         QCOMPARE(settings.hotkey, u"Alt+Space"_s);
     }
 
+    // A plugin command's own shortcut (GitHub #466): kept with the plugin's
+    // section as Hotkey.<command>, only while set; those of the plugins
+    // that are on are the ones to register.
+    void commandHotkeyPreference()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.load();
+        QVERIFY(settings.commandHotkeys().isEmpty());
+        ws::PluginConfig& on = settings.pluginConfig(u"winshun.bookmarks"_s);
+        on.enabled = true;
+        on.hotkeys = {{u"bookmarks"_s, u"Ctrl+Alt+B"_s}, {u"history"_s, u"Alt+H"_s}};
+        ws::PluginConfig& off = settings.pluginConfig(u"winshun.translate"_s);
+        off.hotkeys = {{u"tr"_s, u"Ctrl+Alt+T"_s}};
+        QVERIFY(settings.saveChecked());
+        {
+            QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+            QCOMPARE(ini.value(u"Plugin.winshun.bookmarks/Hotkey.bookmarks"_s).toString(), u"Ctrl+Alt+B"_s);
+        }
+
+        ws::Settings restored;
+        restored.load();
+        QCOMPARE(restored.plugin(u"winshun.bookmarks")->hotkeys, on.hotkeys);
+        QCOMPARE(restored.plugin(u"winshun.translate")->hotkeys, off.hotkeys); // kept while the plugin is off
+        const QList<ws::Settings::CommandHotkey> wanted {
+            {u"winshun.bookmarks"_s, u"bookmarks"_s, u"Ctrl+Alt+B"_s}, {u"winshun.bookmarks"_s, u"history"_s, u"Alt+H"_s}};
+        QCOMPARE(restored.commandHotkeys(), wanted);
+
+        // Cleared: gone from the file, not kept as an empty value; one typed
+        // into the file with spaces around it is read without them.
+        restored.pluginConfig(u"winshun.bookmarks"_s).hotkeys.removeFirst();
+        QVERIFY(restored.saveChecked());
+        {
+            QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+            QVERIFY(!ini.contains(u"Plugin.winshun.bookmarks/Hotkey.bookmarks"_s));
+            ini.setValue(u"Plugin.winshun.bookmarks/Hotkey.history"_s, u" Alt+J "_s);
+            ini.setValue(u"Plugin.winshun.bookmarks/Hotkey.bookmarks"_s, QString());
+        }
+        settings.load();
+        const QList<std::pair<QString, QString>> kept {{u"history"_s, u"Alt+J"_s}};
+        QCOMPARE(settings.plugin(u"winshun.bookmarks")->hotkeys, kept);
+    }
+
     void trayClickActionPreferences()
     {
         QTemporaryDir profile;

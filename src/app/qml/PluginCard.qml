@@ -545,25 +545,26 @@ Rectangle {
                 }
             }
 
-            Column { // the keywords: two to a line where they fit
+            Column { // the commands: each one's keywords, and its own shortcut (GitHub #466)
                 width: parent.width
                 spacing: 6
                 visible: card.keywords.length > 0
 
                 Text {
-                    text: qsTr("关键字（多个用空格分开）")
+                    width: parent.width
+                    text: qsTr("关键字（多个用空格分开）；快捷键在任何地方按下，直接打开搜索框并填好关键字（录制时按 Backspace 清除）")
                     color: Theme.subtext
                     font.pixelSize: Theme.fontCaption
+                    wrapMode: Text.Wrap
                 }
-                Grid {
+                Column {
                     id: keywordGrid
 
-                    readonly property int cellWidth: columns > 1 ? Math.floor((width - columnSpacing) / 2) : width
+                    // The shortcut beside the keyword where both fit, under it otherwise.
+                    readonly property bool wide: width >= 560
 
                     width: parent.width
-                    columns: width >= 540 ? 2 : 1
-                    columnSpacing: 24
-                    rowSpacing: 6
+                    spacing: 6
 
                     Repeater {
                         model: card.keywords
@@ -581,7 +582,7 @@ Rectangle {
                                 }
                             }
 
-                            width: keywordGrid.cellWidth
+                            width: keywordGrid.width
                             spacing: 4
                             Component.onCompleted: takeFocus()
 
@@ -591,12 +592,17 @@ Rectangle {
                             }
 
                             Item {
+                                id: keywordLine
+
+                                // Where the keyword's box ends: at the shortcut beside it, or the line's end.
+                                readonly property real boxRight: keywordGrid.wide ? hotkeyRecorder.x - 12 : width
+
                                 width: parent.width
-                                height: 32
+                                height: keywordGrid.wide ? 32 : 32 + 6 + 32
 
                                 Text {
                                     id: keywordLabel
-                                    anchors.verticalCenter: parent.verticalCenter
+                                    y: Theme.snap((32 - height) / 2, card.dpr)
                                     width: 84
                                     text: keywordCell.modelData.title
                                     textFormat: Text.PlainText
@@ -608,11 +614,8 @@ Rectangle {
                                     dpr: card.dpr
                                     id: keywordBox
                                     objectName: "pluginKeyword-" + card.pluginId + "/" + keywordCell.modelData.command
-                                    anchors.left: keywordLabel.right
-                                    anchors.leftMargin: 8
-                                    anchors.right: resetButton.visible ? resetButton.left : parent.right
-                                    anchors.rightMargin: resetButton.visible ? 4 : 0
-                                    anchors.verticalCenter: parent.verticalCenter
+                                    x: keywordLabel.width + 8
+                                    width: (resetButton.visible ? resetButton.x - 4 : keywordLine.boxRight) - x
                                     implicitHeight: 32
                                     text: keywordCell.modelData.keyword
                                     placeholder: qsTr("无")
@@ -628,13 +631,33 @@ Rectangle {
                                     id: resetButton
                                     objectName: "pluginKeywordReset-" + card.pluginId + "/" + keywordCell.modelData.command
                                     visible: keywordCell.modelData.user
-                                    anchors.right: parent.right
-                                    anchors.verticalCenter: parent.verticalCenter
+                                    x: keywordLine.boxRight - width
                                     implicitHeight: 32
                                     flat: true
                                     text: qsTr("默认")
                                     onClicked: card.plugins.resetKeyword(card.pluginId, keywordCell.modelData.command)
                                 }
+                                HotkeyRecorder { // the command's own shortcut: the launcher, its keyword typed
+                                    id: hotkeyRecorder
+                                    objectName: "pluginCommandHotkey-" + card.pluginId + "/" + keywordCell.modelData.command
+                                    x: keywordGrid.wide ? Theme.snap(parent.width - width, card.dpr) : keywordBox.x
+                                    y: keywordGrid.wide ? 0 : 32 + 6
+                                    width: Math.min(Theme.snapUp(implicitWidth, card.dpr), parent.width - keywordBox.x) // whole pixels: its edges stay sharp
+                                    implicitHeight: 32
+                                    hotkey: keywordCell.modelData.hotkey
+                                    onRecordingChanged: card.plugins.recordingHotkey = recording
+                                    onRecorded: (hotkey) => card.plugins.setCommandHotkey(card.pluginId, keywordCell.modelData.command, hotkey)
+                                }
+                            }
+                            Text { // the shortcut does not work: why
+                                objectName: "pluginCommandHotkeyError-" + card.pluginId + "/" + keywordCell.modelData.command
+                                visible: keywordCell.modelData.hotkeyError.length > 0
+                                width: parent.width
+                                text: keywordCell.modelData.hotkeyError
+                                textFormat: Text.PlainText
+                                color: Theme.danger
+                                font.pixelSize: Theme.fontCaption
+                                wrapMode: Text.Wrap
                             }
                             Text { // not taken as typed
                                 objectName: "pluginKeywordRejected-" + card.pluginId + "/" + keywordCell.modelData.command

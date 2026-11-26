@@ -4316,8 +4316,8 @@
         <translation>Not set</translation>
     </message>
     <message>
-        <source>关键字（多个用空格分开）</source>
-        <translation>Keywords (several: put spaces between)</translation>
+        <source>关键字（多个用空格分开）；快捷键在任何地方按下，直接打开搜索框并填好关键字（录制时按 Backspace 清除）</source>
+        <translation>Keywords (several: put spaces between). A shortcut, pressed anywhere, opens the search box with the keyword typed (Backspace while recording clears it)</translation>
     </message>
     <message>
         <source>再试一次</source>
@@ -11411,6 +11411,26 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>A clipboard entry's shortcut is unavailable</translation>
     </message>
     <message>
+        <source>插件命令的快捷键不可用</source>
+        <translation>A plugin command's shortcut is unavailable</translation>
+    </message>
+    <message>
+        <source>这个命令现在没有可用的关键字，快捷键打不开它，请先设好关键字。</source>
+        <translation>This command has no keyword in use, so the shortcut cannot open it. Give it a keyword first.</translation>
+    </message>
+    <message>
+        <source>%1 已用于剪贴板里的一条内容，请换一个。</source>
+        <translation>%1 is already a clipboard entry's shortcut. Please choose another.</translation>
+    </message>
+    <message>
+        <source>%1 已用于“%2”，请换一个。</source>
+        <translation>%1 is already the shortcut of “%2”. Please choose another.</translation>
+    </message>
+    <message>
+        <source>最多 %1 个命令可以设快捷键，这一个没有生效。</source>
+        <translation>Up to %1 commands can have a shortcut; this one is not in effect.</translation>
+    </message>
+    <message>
         <source>%1 已用于“%2”，请换一个，或先去掉那一条的快捷键。</source>
         <translation>%1 is already used for “%2”. Choose another, or remove that entry's shortcut first.</translation>
     </message>
@@ -14730,20 +14750,8 @@ Content index: %5</translation>
         <translation>Move to Recycle Bin</translation>
     </message>
     <message>
-        <source>系统菜单仅支持同目录多选，已复制当前项；跨目录批量操作请用 Win顺 右键菜单</source>
-        <translation>The system menu only supports multi-select within one folder, so only the current item was copied; use WinShun&apos;s right-click menu across folders</translation>
-    </message>
-    <message>
-        <source>系统菜单仅支持同目录多选，已剪切当前项</source>
-        <translation>The system menu only supports multi-select within one folder, so only the current item was cut</translation>
-    </message>
-    <message>
-        <source>系统菜单仅支持同目录多选，已复制当前项路径；跨目录请用 Win顺 右键菜单</source>
-        <translation>The system menu only supports multi-select within one folder, so only the current item&apos;s path was copied; use WinShun&apos;s right-click menu across folders</translation>
-    </message>
-    <message>
-        <source>系统菜单仅支持同目录多选，已仅操作当前项；跨目录批量删除请用 Win顺 右键菜单</source>
-        <translation>The system menu only supports multi-select within one folder, so only the current item was affected; use WinShun&apos;s right-click menu to delete across folders</translation>
+        <source>Windows 没能给出选中这几项共用的菜单，这次只处理了当前这一项</source>
+        <translation>Windows gave no menu for these items together; only the current one was handled this time</translation>
     </message>
     <message numerus="yes">
         <source>加入收藏夹（%Ln 项）</source>

@@ -804,9 +804,17 @@ PluginListModel::Card PluginSettings::cardFor(const QString& id) const
             break;
         }
         const QString title = command.title.pick(m_locale).isEmpty() ? c.name : command.title.pick(m_locale);
+        QString hotkey;
+        if (config) {
+            const auto kept = std::ranges::find(config->hotkeys, command.id, &std::pair<QString, QString>::first);
+            if (kept != config->hotkeys.cend())
+                hotkey = kept->second;
+        }
         c.keywords.push_back(QVariantMap {{u"command"_s, command.id}, {u"title"_s, title},
             {u"keyword"_s, overridden ? user : command.keywords.join(u' ')}, {u"defaults"_s, command.keywords.join(u' ')},
-            {u"inUse"_s, catalog.keywordsOf(id, command.id).join(u' ')}, {u"conflict"_s, conflict}, {u"user"_s, overridden}});
+            {u"inUse"_s, catalog.keywordsOf(id, command.id).join(u' ')}, {u"conflict"_s, conflict}, {u"user"_s, overridden},
+            {u"hotkey"_s, hotkey},
+            {u"hotkeyError"_s, hotkey.isEmpty() ? QString() : m_commandHotkeyErrors.value(id + u'/' + command.id)}});
     }
     c.permissions = permissionRows(id);
 
@@ -1183,6 +1191,34 @@ void PluginSettings::resetKeyword(const QString& id, const QString& command)
     config.keywords.removeIf([&](const std::pair<QString, QString>& k) { return k.first == command; });
     if (config.keywords.size() != had)
         m_editor->commit();
+}
+
+void PluginSettings::setCommandHotkey(const QString& id, const QString& command, const QString& hotkey)
+{
+    const QString keys = hotkey.trimmed();
+    PluginConfig& config = m_editor->m_settings.pluginConfig(id);
+    const auto kept = std::ranges::find(config.hotkeys, command, &std::pair<QString, QString>::first);
+    if (kept == config.hotkeys.end()) {
+        if (keys.isEmpty())
+            return;
+        config.hotkeys.append({command, keys});
+    } else if (keys.isEmpty()) {
+        config.hotkeys.erase(kept);
+    } else if (kept->second != keys) {
+        kept->second = keys;
+    } else {
+        return;
+    }
+    m_editor->commit(); // App::applyCommandHotkeys registers it, and says why when it cannot
+    rebuild();
+}
+
+void PluginSettings::setCommandHotkeyErrors(QHash<QString, QString> errors)
+{
+    if (m_commandHotkeyErrors == errors)
+        return;
+    m_commandHotkeyErrors = std::move(errors);
+    rebuild();
 }
 
 void PluginSettings::applyPluginSettings(const QString& id)
@@ -1842,7 +1878,7 @@ void PluginSettings::loadPreview(bool elevated, int logPlugins, bool hostNormal)
     const QVariantMap strict = permission({}, tr("在严格沙箱里运行：低完整性，不是管理员，写不了你的文件（只能写它自己的数据文件夹）；内存上限 %1 MB").arg(64), true);
     const auto keyword = [](const QString& command, const QString& title, const QString& kw, const QString& defaults, const QString& conflict, bool user) {
         return QVariantMap {{u"command"_s, command}, {u"title"_s, title}, {u"keyword"_s, kw}, {u"defaults"_s, defaults}, {u"inUse"_s, conflict.isEmpty() ? kw : QString()},
-            {u"conflict"_s, conflict}, {u"user"_s, user}};
+            {u"conflict"_s, conflict}, {u"user"_s, user}, {u"hotkey"_s, QString()}, {u"hotkeyError"_s, QString()}};
     };
     std::vector<PluginListModel::Card> cards;
     {

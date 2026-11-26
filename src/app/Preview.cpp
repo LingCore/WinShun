@@ -739,6 +739,53 @@ int runPlugins(const QStringList& args)
             QMetaObject::invokeMethod(reset, "clicked");
         pump(200);
         expect("reset", look(), u"tr fy"_s, false, false, false, {}, own);
+        // The command's own shortcut (GitHub #466), recorded on the card:
+        // the INI's Hotkey.main, the recorder (made again with the rows),
+        // where it stands by the keyword's box, and why it does not work
+        // (App's to say: setCommandHotkeyErrors) under the row.
+        {
+            const auto recorder = [&] { return visualNamed(window->contentItem(), u"pluginCommandHotkey-"_s + key); };
+            const auto kept = [&] {
+                const QSettings ini(QSettings::IniFormat, QSettings::UserScope, u"WinShun"_s, u"WinShun"_s);
+                return ini.value(u"Plugin."_s + wordsPlugin + u"/Hotkey.main"_s);
+            };
+            const auto record = [&](const QString& keys) {
+                if (QQuickItem* r = recorder())
+                    QMetaObject::invokeMethod(r, "recorded", Q_ARG(QString, keys));
+                pump(200);
+            };
+            const auto check = [&](const char* what, const QString& keys, const QString& why) {
+                QQuickItem* r = recorder();
+                QQuickItem* box = visualNamed(window->contentItem(), u"pluginKeyword-"_s + key);
+                QQuickItem* note = visualNamed(window->contentItem(), u"pluginCommandHotkeyError-"_s + key);
+                const QRectF at = r ? r->mapRectToScene(QRectF(0, 0, r->width(), r->height())) : QRectF();
+                const QRectF by = box ? box->mapRectToScene(QRectF(0, 0, box->width(), box->height())) : QRectF();
+                // Beside the box on its line, clear of it, or under it from the box's left edge.
+                const bool beside = at.top() == by.top() && at.height() == by.height() && at.left() >= by.right() + 12;
+                const bool under = at.top() >= by.bottom() + 6 && at.left() == by.left();
+                const QVariant ini = kept();
+                const QString said = note && note->isVisible() ? note->property("text").toString() : QString();
+                const bool ok = r && box && note && r->property("hotkey").toString() == keys && ini.isValid() != keys.isEmpty()
+                    && ini.toString() == keys && (beside || under) && by.width() >= 120 && said == why;
+                say(u"#466 command shortcut, %1: recorder [%2] %3 (%4x%5 at %6,%7; box to %8), INI %9, note [%10]: %11"_s
+                        .arg(QString::fromUtf8(what), r ? r->property("hotkey").toString() : u"?"_s, beside ? u"beside"_s : under ? u"under"_s : u"astray"_s)
+                        .arg(at.width()).arg(at.height()).arg(at.left()).arg(at.top()).arg(by.right())
+                        .arg(ini.isValid() ? u'[' + ini.toString() + u']' : u"none"_s, said, ok ? u"passed"_s : u"FAILED"_s));
+                keywords = keywords && ok;
+            };
+            const QString taken = u"“Ctrl+Alt+B” 已被其他程序或系统占用，请换一个。"_s;
+            check("as installed", QString(), QString());
+            record(u"Ctrl+Alt+B"_s);
+            check("recorded", u"Ctrl+Alt+B"_s, QString());
+            editor->plugins()->setCommandHotkeyErrors({{key, taken}});
+            pump(200);
+            check("refused by Windows", u"Ctrl+Alt+B"_s, taken);
+            record(QString()); // Backspace while recording
+            check("cleared", QString(), QString());
+            editor->plugins()->setCommandHotkeyErrors({});
+            record(u"Ctrl+Alt+Shift+F12"_s); // the longest a chord gets, for the picture
+            check("the longest chord", u"Ctrl+Alt+Shift+F12"_s, QString());
+        }
         expect("for the picture", type(quoted), quoted, true, false, true, {}, own);
         if (!keywords)
             qWarning("plugin keyword check failed");
@@ -15856,6 +15903,14 @@ int runRuntime(const QStringList& args)
         settings.clipboard = true;
         settings.clipboardDuplicates = true;
     }
+    if (args.contains(u"--command-hotkey-check"_s)) { // GitHub #466: a plugin command's own shortcut, a chord nobody else has
+        if (!commandHotkeyChordFree()) {
+            qWarning("command hotkey: %s is someone else's already", qPrintable(QString(kCommandHotkeyProbeChord)));
+            return 4;
+        }
+        if (!seedCommandHotkey(settings))
+            return 4;
+    }
     const bool activationPaste = args.contains(u"--activation-paste-check"_s);
     if (activationPaste) { // GitHub #432: the clipboard's own chord, nobody else's
         if (!activationPasteChordFree()) {
@@ -15972,6 +16027,7 @@ int runRuntime(const QStringList& args)
                     || args.contains(u"--clipboard-animation-check"_s) || args.contains(u"--settings-motion-check"_s)
                     || args.contains(u"--search-shadow-check"_s) || args.contains(u"--paste-plain-check"_s)
                     || args.contains(u"--activation-paste-check"_s) || args.contains(u"--entry-hotkey-check"_s)
+                    || args.contains(u"--command-hotkey-check"_s)
                     || args.contains(u"--duplicates-check"_s)
                     || args.contains(u"--launcher-settings-check"_s) || args.contains(u"--launcher-open-check"_s))
                 && profile.fileName().startsWith(u"WinShun-preview-")
@@ -16047,6 +16103,8 @@ int runRuntime(const QStringList& args)
             return checkActivationPaste(app, args, out) ? 0 : 4; // its profile likewise
         if (args.contains(u"--entry-hotkey-check"_s))
             return checkEntryHotkey(app, args, out) ? 0 : 4; // its profile likewise
+        if (args.contains(u"--command-hotkey-check"_s))
+            return checkCommandHotkey(app, args, out) ? 0 : 4; // its profile likewise
         if (args.contains(u"--duplicates-check"_s))
             return checkDuplicates(app, args, out) ? 0 : 4; // its profile likewise
         if (args.contains(u"--settings-reopen-check"_s))
