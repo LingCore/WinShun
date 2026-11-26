@@ -9,7 +9,10 @@ body:
         感谢建议！请先搜索 [已有 Issues](https://github.com/LingCore/WinShun/issues)，避免同一个需求分散在多个条目中。
         明确的功能需求可以直接在这里提交；使用问答、经验和插件分享请到 [Discussions](https://github.com/LingCore/WinShun/discussions)。
 
+        Win顺 本体只做找文件、打开应用和设置、剪贴板历史和“打开/另存为”对话框；其他功能优先做成可选插件，不适合的就不做。请写清楚你遇到的具体麻烦，“某软件有这个功能”本身不是理由。
+
         Please search existing issues first. Concrete feature requests belong here; usage questions, tips and plugin sharing belong in Discussions.
+        WinShun's core is finding files, opening apps and settings, clipboard history and the Open/Save dialogs; anything else goes into an optional plugin, or is left out. Please describe the problem you run into; another program having a feature is not reason enough on its own.
   - type: textarea
     id: problem
     attributes:
