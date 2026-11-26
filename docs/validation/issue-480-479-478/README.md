@@ -24,7 +24,7 @@
 
 - `--preview-results <dir> --file-metadata`：`#479 Shift+Tab on "sum" alone (footer: Tab 补全): the box reads "sum" `、`#479 Shift+Tab on "calc" alone (footer: Shift+Tab 改搜文件名): the box reads "calc" `，引号后没有插件行、范围仍是“全部”；只打 `su`（关键字的开头）时不拦 Shift+Tab。同一探针当时另有两条 #454 警告（文件夹窗口里 Tab 补全路径），已发布的 0.49.0 上同样出现，与本次无关，随后补修，见文末。
 - `ctest -R ^tst_plugin$`：通过（含 `loneKeyword` 新用例）。
-- `ctest -R ^tst_searchnavigation$`：功能检查 126 + 54 + 60 项全过；失败来自预览读 `.md` 文件等 5 秒的两条警告，0.49.0 上同样出现。
+- `ctest -R ^tst_searchnavigation$`：功能检查 126 + 54 + 60 项全过，但探针以 2 条警告失败，0.49.0 上同样出现；当时误记为预览读 `.md` 的两条，实际是另外两条，随后补修，见文末。
 
 ## #478 压缩包插件一直占 16–17 MB
 
@@ -55,3 +55,13 @@ zip 报价 again after 60 s idle: 12 rows, 11 ms
 - `tst_core` 新用例 `folderTypedPathFromIt`（真实临时目录，索引里没有它）：`合同\20`、`合同/20`、只搜此文件夹，结果都是 `合同\2024 年`、`合同\2024 说明.txt`；`合同\` 列出整个文件夹（自己排第一）；只打 `合同` 仍是窗口文件夹里的两项；指向不存在的文件夹或正则模式时磁盘不列。`ctest -R ^tst_core$` 通过（305 项）。
 
 同时修了探针的一个隐患：`--clipboard-sizing` 用真实鼠标拖窗口右下角，原先角落被别的置顶窗口挡住时也照样按下拖动（会按在那个窗口上）；现在挡住就不按，并在 `clipboard-sizing.json` 里用 `corner_covered_by` 记下挡住它的窗口。单独跑 `--clipboard-sizing` 一次，角落归属、真实拖动、不抢前台均通过。
+
+## 补修：tst_searchnavigation 的两条警告
+
+探针打印的 WARNING 里，读 `.md` 卡住的两条是它故意制造、检查完就从计数里扣掉的；算进 `2 warning(s)` 的是另外两条：
+
+1. `Window frame: the window has a new native handle (预览), hooked again`：`WindowFrame::setWindow` 先装事件过滤器、再第一次取 `winId()` 建原生窗口，建窗本身被当成“换了句柄”，误报并重复挂钩。预览窗口由工厂现建、交出时还没有句柄，就会触发；正式程序的窗口大多先 `create()` 再交出，所以少见。改为先挂钩再装过滤器；`SavedWindowSize::setWindow` 同样的顺序一并改（它不报警告，但会重复挂钩），`Placement::setWindow` 原本就对。
+   - 复现测试 `tst_appearance` 的 `windowFrameTakesAWindowNotYetMade`：改前“first handle”失败（收到警告），改后两种情况都过，真正销毁重建时仍报并重新挂钩。
+2. `WinShun: new rows 812 ms after the list asked for them`：搜索 2 ms 就答了，迟的是测试自己。临时计时显示进入 `checkFileGallery` 时启动器已在搜索（搭启动器时发起），接着在界面线程上生成 18 张图片、建 Main.qml、首帧渲染，结果排不上；时长随机器忙闲在 365–812 ms 之间，过 300 ms 才报。改为先等在途搜索落地、图片和索引备好、窗口画完首帧，再进入面板发起要测的搜索。产品里这条日志是对的，不改。
+
+改后：`--preview-results <dir> --search-navigation`：126 + 54 + 60 项全过，`0 warning(s)`，退出码 0；`ctest -R '^(tst_appearance_.*|tst_displaygeometry|tst_foldermenu|tst_settingsnav|tst_searchnavigation)$'` 8 项全过。

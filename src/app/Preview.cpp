@@ -5891,41 +5891,20 @@ void checkFileGallery(Launcher& launcher, IndexService& index, SystemCatalog& pl
     const auto check = [](bool okay, const char* reason) {
         if (!okay) qWarning("file gallery regression: %s", reason);
     };
-    launcher.setPanel(true);
-    ClipStore store(temporary.filePath(u"clipboard"_s));
-    check(store.open(QDateTime::currentMSecsSinceEpoch()), "could not open isolated clipboard");
-    ClipboardWatcher watcher({}, {});
-    Clipboard clipboard(&store, &watcher);
-    Placement placement(temporary.filePath(u"state.ini"_s), u"Launcher"_s);
-    WindowFrame frame(false);
-    QQmlComponent component(engine, u"WinShun"_s, u"Main"_s);
-    std::unique_ptr<QObject> object(component.createWithInitialProperties({
-        {u"launcher"_s, QVariant::fromValue(&launcher)}, {u"clipboard"_s, QVariant::fromValue(&clipboard)},
-        {u"frame"_s, QVariant::fromValue(&frame)}, {u"placement"_s, QVariant::fromValue(&placement)}}));
-    auto* window = qobject_cast<QQuickWindow*>(object.get());
-    if (!window) { qWarning().noquote() << "gallery main:" << component.errorString(); return; }
-    window->create();
-    window->resize(1200, 680);
-    launcher.setWindow(window);
-    frame.setWindow(window);
-    placement.setWindow(window);
-    showOffScreen(window);
-    FilePreview filePreview;
-    WindowFrame previewFrame(false);
-    std::unique_ptr<QObject> previewObject;
-    engine->addImageProvider(u"preview"_s, filePreview.imageProvider());
-    filePreview.setBuiltInOnly(true);
-    filePreview.setLauncherWindow(window);
-    filePreview.setWindowFactory([&]() -> QQuickWindow* {
-        QQmlComponent previewComponent(engine, u"WinShun"_s, u"PreviewWindow"_s);
-        previewObject.reset(previewComponent.createWithInitialProperties({
-            {u"preview"_s, QVariant::fromValue(&filePreview)}, {u"frame"_s, QVariant::fromValue(&previewFrame)}}));
-        auto* previewWindow = qobject_cast<QQuickWindow*>(previewObject.get());
-        if (previewWindow)
-            previewFrame.setWindow(previewWindow);
-        return previewWindow;
-    });
-    launcher.setPreview(&filePreview);
+    // Nothing of the setup is under way while the next is made: the search
+    // the launcher was asked for as it was set up (its window, its options)
+    // answered, then the files, the window drawn once, the preview; only
+    // then is the list asked for the rows looked at here. Made while a
+    // search is under way, they would keep its rows from the screen (the
+    // GUI thread busy), and the launcher would rightly log them late
+    // (Launcher::showRows).
+    const auto answered = [&] {
+        QElapsedTimer waited;
+        waited.start();
+        while (launcher.searching() && waited.elapsed() < 2000)
+            pump(10);
+    };
+    answered();
     SearchResults pictures;
     for (int i = 0; i < 18; ++i) {
         const bool portrait = i % 3 == 0;
@@ -5954,6 +5933,43 @@ void checkFileGallery(Launcher& launcher, IndexService& index, SystemCatalog& pl
             files->setSize(id, packSize(QFileInfo(picture.path).size()));
         }
     }
+    ClipStore store(temporary.filePath(u"clipboard"_s));
+    check(store.open(QDateTime::currentMSecsSinceEpoch()), "could not open isolated clipboard");
+    ClipboardWatcher watcher({}, {});
+    Clipboard clipboard(&store, &watcher);
+    Placement placement(temporary.filePath(u"state.ini"_s), u"Launcher"_s);
+    WindowFrame frame(false);
+    QQmlComponent component(engine, u"WinShun"_s, u"Main"_s);
+    std::unique_ptr<QObject> object(component.createWithInitialProperties({
+        {u"launcher"_s, QVariant::fromValue(&launcher)}, {u"clipboard"_s, QVariant::fromValue(&clipboard)},
+        {u"frame"_s, QVariant::fromValue(&frame)}, {u"placement"_s, QVariant::fromValue(&placement)}}));
+    auto* window = qobject_cast<QQuickWindow*>(object.get());
+    if (!window) { qWarning().noquote() << "gallery main:" << component.errorString(); return; }
+    window->create();
+    window->resize(1200, 680);
+    launcher.setWindow(window);
+    frame.setWindow(window);
+    placement.setWindow(window);
+    showOffScreen(window);
+    settle(window); // drawn once, and what showing it asked for answered
+    answered();
+    FilePreview filePreview;
+    WindowFrame previewFrame(false);
+    std::unique_ptr<QObject> previewObject;
+    engine->addImageProvider(u"preview"_s, filePreview.imageProvider());
+    filePreview.setBuiltInOnly(true);
+    filePreview.setLauncherWindow(window);
+    filePreview.setWindowFactory([&]() -> QQuickWindow* {
+        QQmlComponent previewComponent(engine, u"WinShun"_s, u"PreviewWindow"_s);
+        previewObject.reset(previewComponent.createWithInitialProperties({
+            {u"preview"_s, QVariant::fromValue(&filePreview)}, {u"frame"_s, QVariant::fromValue(&previewFrame)}}));
+        auto* previewWindow = qobject_cast<QQuickWindow*>(previewObject.get());
+        if (previewWindow)
+            previewFrame.setWindow(previewWindow);
+        return previewWindow;
+    });
+    launcher.setPreview(&filePreview);
+    launcher.setPanel(true);
     launcher.chooseFileType(1);
     launcher.setQuery(u"测试照片"_s);
     QElapsedTimer timeout;
