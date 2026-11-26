@@ -7638,17 +7638,13 @@ void Launcher::runSystemMenu(const QStringList& paths, std::optional<QPointF> gl
             }
         });
     }
-    // What Win顺's own menu says for the like of it; when the shell fell back to
-    // the clicked item alone (multi-select across folders), tell the user honestly.
+    // What Win顺's own menu says for the like of it. Should the shell have
+    // given no menu for the selection together (items of several folders
+    // have one too, GitHub #464: this is its failing), the menu was the
+    // clicked item's alone, and a command that stays here says so.
     if (choice.singleFallback && paths.size() > 1) {
-        if (choice.verb == L"copy")
-            flash(tr("系统菜单仅支持同目录多选，已复制当前项；跨目录批量操作请用 Win顺 右键菜单"), std::chrono::seconds(4));
-        else if (choice.verb == L"cut")
-            flash(tr("系统菜单仅支持同目录多选，已剪切当前项"), std::chrono::seconds(4));
-        else if (choice.verb == L"copyaspath")
-            flash(tr("系统菜单仅支持同目录多选，已复制当前项路径；跨目录请用 Win顺 右键菜单"), std::chrono::seconds(4));
-        else if (choice.verb == L"delete")
-            flash(tr("系统菜单仅支持同目录多选，已仅操作当前项；跨目录批量删除请用 Win顺 右键菜单"), std::chrono::seconds(4));
+        if (shellcontext::keepsLauncher(choice.verb))
+            flash(tr("Windows 没能给出选中这几项共用的菜单，这次只处理了当前这一项"), std::chrono::seconds(4));
     } else if (choice.verb == L"copy") {
         flash(paths.size() == 1 ? tr("已复制，可在资源管理器中粘贴")
                                 : tr("已复制 %Ln 项，可在资源管理器中粘贴", nullptr, static_cast<int>(paths.size())));

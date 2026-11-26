@@ -8,6 +8,7 @@
 #include <shellapi.h> // before shobjidl: CMIC_MASK_UNICODE is SEE_MASK_UNICODE
 #include <shlobj.h>
 #include <shobjidl.h>
+#include <shlwapi.h> // IQueryAssociations
 #include <wrl/client.h>
 
 #include <algorithm>
@@ -79,17 +80,46 @@ ComPtr<IContextMenu> handlerFor(const std::vector<PIDLIST_ABSOLUTE>& items, UINT
     return menu;
 }
 
+// The handler for items of several folders, which no one folder has a menu
+// for: the shell's default menu (what a folder builds its own from) over
+// the desktop folder, each item by its whole ID list, as Explorer's search
+// results have theirs. It reads the first item's associations for the
+// verbs and the extensions, and hands every item to them: 比较 of a diff
+// tool, 压缩, 复制, 剪切, 删除 and 属性 are for all of them; 创建快捷方式
+// puts them on the desktop. (Not the item array, which binds a menu for its
+// first item alone when their folders differ; nor the desktop folder's own
+// GetUIObjectOf, whose short menu's 删除 does nothing to the files.)
+ComPtr<IContextMenu> handlerAcrossFolders(const std::vector<PIDLIST_ABSOLUTE>& items)
+{
+    ComPtr<IShellFolder> desktop;
+    ComPtr<IShellFolder> folder;
+    PCUITEMID_CHILD first = nullptr;
+    ComPtr<IQueryAssociations> associations;
+    if (FAILED(::SHGetDesktopFolder(&desktop)) || FAILED(::SHBindToParent(items.front(), IID_PPV_ARGS(&folder), &first))
+        || FAILED(folder->GetUIObjectOf(nullptr, 1, &first, IID_IQueryAssociations, nullptr, &associations)))
+        return nullptr;
+    DEFCONTEXTMENU definition {};
+    definition.psf = desktop.Get();
+    definition.cidl = static_cast<UINT>(items.size());
+    // Whole ID lists where a folder's children are asked for: the desktop
+    // folder, the root of them all, takes them as its own.
+    definition.apidl = reinterpret_cast<PCUITEMID_CHILD_ARRAY>(const_cast<PCIDLIST_ABSOLUTE*>(items.data()));
+    definition.punkAssociationInfo = associations.Get();
+    ComPtr<IContextMenu> menu;
+    if (FAILED(::SHCreateDefaultContextMenu(&definition, IID_PPV_ARGS(&menu))))
+        return nullptr;
+    return menu;
+}
+
 struct MenuHandler {
     ComPtr<IContextMenu> menu;
     bool singleFallback = false;
 };
 
 // The handler for the menu of `paths`, the first of them the one the menu
-// was asked on: all of them when they are one folder's; items of several
-// folders get the menu of that first one alone. (The item array binds a
-// menu for its first item when their folders differ; the desktop folder's
-// GetUIObjectOf with whole ID lists, as for the drag-out data object, gives
-// the desktop's own short menu, whose 删除 does nothing to the files.)
+// was asked on: their folder's when they are one folder's, the shell's
+// default menu for items of several. Only when the shell gives none for
+// them together do they get the menu of that first one alone.
 MenuHandler handlerFor(const QStringList& paths)
 {
     IdLists lists;
@@ -106,8 +136,8 @@ MenuHandler handlerFor(const QStringList& paths)
     if (lists.items.empty())
         return {};
     const auto count = static_cast<UINT>(lists.items.size());
-    if (oneFolder && count > 1) {
-        if (ComPtr<IContextMenu> menu = handlerFor(lists.items, count))
+    if (count > 1) {
+        if (ComPtr<IContextMenu> menu = oneFolder ? handlerFor(lists.items, count) : handlerAcrossFolders(lists.items))
             return {std::move(menu), false};
     }
     return {handlerFor(lists.items, 1), paths.size() > 1};
@@ -175,7 +205,70 @@ std::wstring verbOf(IContextMenu* menu, UINT_PTR command)
     return text;
 }
 
+// The handler's items in a menu of ours; null when it gives none.
+HMENU filled(IContextMenu* menu, bool extended)
+{
+    const HMENU popup = ::CreatePopupMenu();
+    if (!popup)
+        return nullptr;
+    // CMF_ITEMMENU: a menu on items, as Explorer asks for one. Not
+    // CMF_CANRENAME: 重命名 renames in the view that asked, and there is
+    // none here; left out, the item stays off the menu.
+    UINT flags = CMF_NORMAL | CMF_ITEMMENU;
+    if (extended)
+        flags |= CMF_EXTENDEDVERBS;
+    if (FAILED(menu->QueryContextMenu(popup, 0, kFirstId, kLastId, flags))) {
+        ::DestroyMenu(popup);
+        return nullptr;
+    }
+    return popup;
+}
+
 } // namespace
+
+Offer offered(const QStringList& paths)
+{
+    Offer offer;
+    const MenuHandler resolved = handlerFor(paths);
+    const HMENU popup = resolved.menu ? filled(resolved.menu.Get(), false) : nullptr;
+    if (!popup)
+        return offer;
+    offer.singleFallback = resolved.singleFallback;
+    for (int i = 0, count = ::GetMenuItemCount(popup); i < count; ++i) {
+        const UINT id = ::GetMenuItemID(popup, i); // -1: a submenu's; 0: a separator's
+        if (id < kFirstId || id > kLastId)
+            continue;
+        if (const std::wstring verb = verbOf(resolved.menu.Get(), id - kFirstId); !verb.empty())
+            offer.verbs.append(QString::fromStdWString(verb));
+    }
+    ::DestroyMenu(popup);
+    return offer;
+}
+
+bool invokeQuietly(const QStringList& paths, std::wstring_view verb, bool shift)
+{
+    const MenuHandler resolved = handlerFor(paths);
+    const HMENU popup = resolved.menu ? filled(resolved.menu.Get(), false) : nullptr;
+    if (!popup)
+        return false;
+    bool invoked = false;
+    for (int i = 0, count = ::GetMenuItemCount(popup); i < count && !invoked; ++i) {
+        const UINT id = ::GetMenuItemID(popup, i);
+        if (id < kFirstId || id > kLastId || verbOf(resolved.menu.Get(), id - kFirstId) != verb)
+            continue;
+        CMINVOKECOMMANDINFOEX info {};
+        info.cbSize = sizeof info;
+        info.fMask = CMIC_MASK_UNICODE | CMIC_MASK_FLAG_NO_UI | (shift ? CMIC_MASK_SHIFT_DOWN : 0);
+        info.hwnd = dialogOwner();
+        info.lpVerb = MAKEINTRESOURCEA(id - kFirstId);
+        info.lpVerbW = MAKEINTRESOURCEW(id - kFirstId);
+        info.nShow = SW_SHOWNORMAL;
+        invoked = SUCCEEDED(resolved.menu->InvokeCommand(reinterpret_cast<CMINVOKECOMMANDINFO*>(&info)));
+        break;
+    }
+    ::DestroyMenu(popup);
+    return invoked;
+}
 
 Choice showMenu(const QStringList& paths, HWND owner, POINT pos, bool extended,
     const std::function<void(const Choice&)>& picked)
@@ -186,19 +279,9 @@ Choice showMenu(const QStringList& paths, HWND owner, POINT pos, bool extended,
     if (!menu)
         return choice;
     choice.singleFallback = resolved.singleFallback;
-    const HMENU popup = ::CreatePopupMenu();
+    const HMENU popup = filled(menu.Get(), extended);
     if (!popup)
         return choice;
-    // CMF_ITEMMENU: a menu on items, as Explorer asks for one. Not
-    // CMF_CANRENAME: 重命名 renames in the view that asked, and there is
-    // none here; left out, the item stays off the menu.
-    UINT flags = CMF_NORMAL | CMF_ITEMMENU;
-    if (extended)
-        flags |= CMF_EXTENDEDVERBS;
-    if (FAILED(menu->QueryContextMenu(popup, 0, kFirstId, kLastId, flags))) {
-        ::DestroyMenu(popup);
-        return choice;
-    }
     Forwarder forwarder;
     ComPtr<IContextMenu2> menu2;
     ComPtr<IContextMenu3> menu3;

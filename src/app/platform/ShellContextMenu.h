@@ -22,13 +22,15 @@ struct Choice {
     std::wstring verb;
     bool shift = false; // held as it was picked (Shift+删除 deletes for good)
     bool ctrl = false;
-    // True when `paths` had several items (typically across folders) and the
-    // shell only built a menu for the first item alone.
+    // True when `paths` had several items and the shell gave no menu for
+    // them together: the menu was the first item's alone.
     bool singleFallback = false;
 };
 
-// Shows the menu for `paths` (in one folder or several; the first the one
-// asked on, which alone gets a menu when the shell will not put them on one
+// Shows the menu for `paths` (in one folder or several, as Explorer's
+// search results have one for items of several folders: 比较 of a diff
+// tool, 复制, 删除, 属性 are for all of them, GitHub #464; the first the one
+// asked on, which alone gets a menu should the shell give none for them
 // together) at `pos` (on the screen, physical pixels) and runs its loop
 // here, on the GUI thread (the
 // handlers want the apartment the shell gave this thread, and the owner
@@ -41,6 +43,17 @@ struct Choice {
 // dialogs). Returns once the command, if any, was run.
 Choice showMenu(const QStringList& paths, HWND owner, POINT pos, bool extended,
     const std::function<void(const Choice&)>& picked = {});
+
+// Without the menu on screen (the tests): the verbs the items of the menu
+// for `paths` name, lower case, in its order (most extensions' items name
+// none), and whether it is the first item's alone; and one of them run
+// with no questions asked, `shift` held (删除 then deletes for good).
+struct Offer {
+    QStringList verbs;
+    bool singleFallback = false;
+};
+Offer offered(const QStringList& paths);
+bool invokeQuietly(const QStringList& paths, std::wstring_view verb, bool shift = false);
 
 // From the keyboard, the shell's menu is Shift+Menu or Ctrl+Shift+F10, and
 // Win顺's own menu the Menu key or Shift+F10. Qt tells the launcher of the
