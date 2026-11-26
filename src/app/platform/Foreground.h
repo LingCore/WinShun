@@ -11,6 +11,8 @@ namespace ws::foreground {
 
 // The program file of the window, "notepad.exe"; empty when it cannot be told.
 QString programOf(HWND hwnd);
+// ... of the process, also of one that cannot be opened (GitHub #121).
+QString programOfProcess(DWORD pid);
 
 // Windows search and Start hosts across Windows 10 and 11. Both typing
 // interception and foreground activation must recognize the same hosts.

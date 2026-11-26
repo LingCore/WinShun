@@ -540,6 +540,40 @@ private slots:
         }
     }
 
+    // GitHub #121: a game its anti-cheat guards cannot be opened, even for
+    // its name; the lists and the full-screen checks still know it. Here a
+    // process made with no one let in (an empty DACL).
+    void programOfGuardedProcess()
+    {
+        ACL acl {};
+        QVERIFY(::InitializeAcl(&acl, sizeof acl, ACL_REVISION));
+        SECURITY_DESCRIPTOR descriptor {};
+        QVERIFY(::InitializeSecurityDescriptor(&descriptor, SECURITY_DESCRIPTOR_REVISION));
+        QVERIFY(::SetSecurityDescriptorDacl(&descriptor, TRUE, &acl, FALSE));
+        SECURITY_ATTRIBUTES guarded {sizeof guarded, &descriptor, FALSE};
+        wchar_t system[MAX_PATH] {};
+        QVERIFY(::GetSystemDirectoryW(system, MAX_PATH) > 0);
+        const std::wstring ping = std::wstring(system) + L"\\PING.EXE";
+        std::wstring command = L"\"" + ping + L"\" -n 30 127.0.0.1";
+        STARTUPINFOW startup {sizeof startup};
+        PROCESS_INFORMATION info {};
+        QVERIFY(::CreateProcessW(ping.c_str(), command.data(), &guarded, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr,
+            &startup, &info));
+        const auto end = qScopeGuard([&] {
+            ::TerminateProcess(info.hProcess, 0);
+            ::WaitForSingleObject(info.hProcess, 5000);
+            ::CloseHandle(info.hThread);
+            ::CloseHandle(info.hProcess);
+        });
+        if (const HANDLE opened = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, info.dwProcessId)) {
+            ::CloseHandle(opened);
+            QSKIP("This account opens any process (the debug privilege on)");
+        }
+        QCOMPARE(foreground::programOfProcess(info.dwProcessId).toLower(), u"ping.exe"_s);
+        QCOMPARE(foreground::programOfProcess(::GetCurrentProcessId()).toLower(), u"tst_appearance.exe"_s);
+        QVERIFY(foreground::programOfProcess(0).isEmpty());
+    }
+
     void settingsRoundTrip()
     {
         QTemporaryDir profile;

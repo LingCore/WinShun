@@ -1,8 +1,11 @@
 #include "Foreground.h"
 
-#include <QFileInfo>
+#include "Win32Util.h"
 
 #include <shellapi.h>
+#include <tlhelp32.h>
+
+#include <string>
 
 namespace ws::foreground {
 
@@ -48,20 +51,37 @@ bool coversMonitor(HWND hwnd)
 
 } // namespace
 
+QString programOfProcess(DWORD pid)
+{
+    if (pid == 0)
+        return {};
+    if (const win32::UniqueHandle process(::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid)); process.valid()) {
+        std::wstring path(32768, L'\0'); // a long path too
+        DWORD size = static_cast<DWORD>(path.size());
+        if (::QueryFullProcessImageNameW(process.get(), 0, path.data(), &size)) {
+            path.resize(size);
+            return QString::fromStdWString(path.substr(path.find_last_of(L'\\') + 1));
+        }
+    }
+    // Not to be opened, not even for its name: a game an anti-cheat guards
+    // (War3.exe from a battle platform, GitHub #121). The list of processes
+    // names it all the same.
+    const win32::UniqueHandle snapshot(::CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0));
+    if (!snapshot.valid())
+        return {};
+    PROCESSENTRY32W entry {sizeof entry};
+    for (BOOL more = ::Process32FirstW(snapshot.get(), &entry); more; more = ::Process32NextW(snapshot.get(), &entry)) {
+        if (entry.th32ProcessID == pid)
+            return QString::fromWCharArray(entry.szExeFile);
+    }
+    return {};
+}
+
 QString programOf(HWND hwnd)
 {
     DWORD pid = 0;
     ::GetWindowThreadProcessId(hwnd, &pid);
-    const HANDLE process = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-    if (!process)
-        return {};
-    QString program;
-    wchar_t path[MAX_PATH] {};
-    DWORD size = MAX_PATH;
-    if (::QueryFullProcessImageNameW(process, 0, path, &size))
-        program = QFileInfo(QString::fromWCharArray(path, static_cast<int>(size))).fileName();
-    ::CloseHandle(process);
-    return program;
+    return programOfProcess(pid);
 }
 
 ForegroundFacts facts()
