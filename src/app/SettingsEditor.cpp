@@ -389,12 +389,45 @@ void SettingsEditor::setThumbnails(bool on)
     commit();
 }
 
-void SettingsEditor::setRowDeleteButton(bool on)
+void SettingsEditor::setRowActions(const QStringList& order)
 {
-    if (m_settings.rowDeleteButton == on)
+    const QStringList normal = rowactions::normalized(order);
+    if (m_settings.rowActions == normal)
         return;
-    m_settings.rowDeleteButton = on;
+    m_settings.rowActions = normal;
     commit();
+}
+
+void SettingsEditor::toggleRowAction(const QString& id)
+{
+    const QString known = rowactions::known(id);
+    if (known.isEmpty())
+        return;
+    QStringList order = m_settings.rowActions;
+    if (!order.removeOne(known))
+        order.append(known); // shown again: at the end, where there is room for it
+    setRowActions(order);
+}
+
+void SettingsEditor::moveRowAction(const QString& id, int by)
+{
+    QStringList order = m_settings.rowActions;
+    const qsizetype from = order.indexOf(rowactions::known(id));
+    const qsizetype to = from + by;
+    if (from < 0 || to < 0 || to >= order.size())
+        return;
+    order.move(from, to);
+    setRowActions(order);
+}
+
+QStringList SettingsEditor::rowActionChoices() const
+{
+    QStringList all = m_settings.rowActions; // those shown, in their order; then the rest
+    for (const QStringView id : rowactions::kKnown) {
+        if (!all.contains(id))
+            all.append(id.toString());
+    }
+    return all;
 }
 
 void SettingsEditor::setWebSuggestions(bool on)

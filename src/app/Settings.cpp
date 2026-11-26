@@ -118,6 +118,7 @@ const QStringList kDefaultPreferredTypes {u"exe"_s, u"bat"_s, u"cmd"_s, u"ps1"_s
 // some defaults are the machine's at the first start (clipboard history,
 // renderer, low memory), which must stay as they were.
 const QString kPreferredTypesKey = u"Results/PreferredTypes"_s;
+const QString kRowActionsKey = u"Results/RowActions"_s;
 const QStringList kTerminals {u"cmd"_s, u"powershell"_s, u"pwsh"_s, u"wt"_s, u"gitbash"_s, u"wsl"_s, u"custom"_s}; // Settings::terminal
 
 // Plain-text formats: the scanner reads their raw bytes. Documents (docx,
@@ -1088,7 +1089,15 @@ void Settings::load()
     defaultSystemMenu = readOrDefault(s, u"Results/DefaultSystemMenu"_s, d.defaultSystemMenu);
     tabEntersFavoriteFolder = readOrDefault(s, u"Results/TabEntersFavoriteFolder"_s, d.tabEntersFavoriteFolder);
     thumbnails = readOrDefault(s, u"Results/Thumbnails"_s, d.thumbnails);
-    rowDeleteButton = readOrDefault(s, u"Results/DeleteButton"_s, d.rowDeleteButton);
+    // Before there was a choice of buttons there was one switch, for the
+    // delete button (GitHub #316): off, the buttons as they were without it.
+    if (s.contains(kRowActionsKey)) {
+        rowActions = rowactions::normalized(s.value(kRowActionsKey).toStringList());
+    } else {
+        rowActions = d.rowActions;
+        if (!readOrDefault(s, u"Results/DeleteButton"_s, true))
+            rowActions.removeAll(u"delete"_s);
+    }
     searchApps = readOrDefault(s, u"Results/SearchApps"_s, d.searchApps);
     searchSystem = readOrDefault(s, u"Results/SearchSystem"_s, d.searchSystem);
     regexMode = readOrDefault(s, u"Results/RegexMode"_s, d.regexMode);
@@ -1574,7 +1583,11 @@ bool Settings::saveChecked() const
     s.setValue(u"Results/DefaultSystemMenu"_s, defaultSystemMenu);
     s.setValue(u"Results/TabEntersFavoriteFolder"_s, tabEntersFavoriteFolder);
     s.setValue(u"Results/Thumbnails"_s, thumbnails);
-    s.setValue(u"Results/DeleteButton"_s, rowDeleteButton);
+    s.remove(u"Results/DeleteButton"_s); // Results/RowActions says it since
+    if (rowActions == rowactions::defaults())
+        s.remove(kRowActionsKey);
+    else // none at all is a choice too, and an empty list is not kept as one
+        s.setValue(kRowActionsKey, rowActions.isEmpty() ? QVariant(u"none"_s) : QVariant(rowActions));
     s.setValue(u"Results/SearchApps"_s, searchApps);
     s.setValue(u"Results/SearchSystem"_s, searchSystem);
     s.setValue(u"Results/RegexMode"_s, regexMode);

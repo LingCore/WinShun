@@ -1733,7 +1733,8 @@ Window {
                 bar: Component {
                     ResultActions {
                         dpr: window.dpr
-                        deleteButton: window.launcher.rowDeleteButton
+                        order: window.launcher.rowActions
+                        previewKey: window.launcher.previewHotkey
                     }
                 }
             }

@@ -2,6 +2,7 @@
 
 #include "ContentIndex.h"
 #include "Crawler.h"
+#include "RowActions.h"
 #include "SearchTypes.h"
 #include "ShareIndexer.h"
 #include "WebShortcut.h"
@@ -280,7 +281,10 @@ struct Settings {
     // Opt in to the former behavior: in 全部, Tab browses a favorite folder.
     bool tabEntersFavoriteFolder = false;
     bool thumbnails = true; // a picture, video, PDF found shows its thumbnail for an icon
-    bool rowDeleteButton = true; // a file's row has a delete button among its buttons (GitHub #316)
+    // The buttons at the right end of a result's row: which, and in which
+    // order (rowactions::kKnown). Without "delete", none has a delete button
+    // (GitHub #316); the right-click menu keeps every one of them.
+    QStringList rowActions = rowactions::defaults();
     // 全部 also finds apps, and Windows' settings pages, Control Panel items
     // and switches; off, it finds names and content only (SearchEngine::Request).
     bool searchApps = true;

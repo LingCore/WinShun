@@ -114,10 +114,10 @@ private slots:
         QVERIFY(!settings.mergeFileScope);
         QVERIFY(!settings.appsTab);
         settings.appsTab = true;
-        QVERIFY(settings.rowDeleteButton); // GitHub #316: there unless turned off
+        QCOMPARE(settings.rowActions, ws::rowactions::defaults()); // GitHub #316: delete among them unless taken out
         QVERIFY(!settings.scopeButton); // GitHub #185: the tabs side by side unless chosen
         settings.scopeButton = true;
-        settings.rowDeleteButton = false;
+        settings.rowActions = {u"preview"_s, u"reveal"_s, u"copyName"_s};
         QCOMPARE(settings.queryHistoryKeys, u"ctrl"_s);
         settings.mergeFileScope = true;
         settings.queryHistoryKeys = u"alt"_s;
@@ -126,7 +126,7 @@ private slots:
         restored.load();
         QVERIFY(restored.mergeFileScope);
         QVERIFY(restored.appsTab);
-        QVERIFY(!restored.rowDeleteButton);
+        QCOMPARE(restored.rowActions, (QStringList {u"preview"_s, u"reveal"_s, u"copyName"_s}));
         QVERIFY(restored.scopeButton);
         QCOMPARE(restored.queryHistoryKeys, u"alt"_s);
         restored.queryHistoryKeys = u"off"_s;
@@ -137,6 +137,41 @@ private slots:
         QVERIFY(restored.saveChecked());
         settings.load();
         QCOMPARE(settings.queryHistoryKeys, u"ctrl"_s);
+    }
+
+    // The row's buttons (Results/RowActions): the old delete switch read once,
+    // names written by hand put right, none at all kept as a choice.
+    void rowActionsPreference()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        const auto put = [](const QString& key, const QVariant& value) {
+            QSettings(ws::Settings::filePath(), QSettings::IniFormat).setValue(key, value);
+        };
+        const auto has = [](const QString& key) { return QSettings(ws::Settings::filePath(), QSettings::IniFormat).contains(key); };
+        put(u"Results/DeleteButton"_s, false); // as a build before the choice left it
+        ws::Settings settings;
+        settings.load();
+        QCOMPARE(settings.rowActions, (QStringList {u"admin"_s, u"reveal"_s, u"terminal"_s, u"copy"_s, u"copyPath"_s}));
+        QVERIFY(settings.saveChecked());
+        QVERIFY(!has(u"Results/DeleteButton"_s));
+        settings.load();
+        QCOMPARE(settings.rowActions, (QStringList {u"admin"_s, u"reveal"_s, u"terminal"_s, u"copy"_s, u"copyPath"_s}));
+
+        settings.rowActions = ws::rowactions::defaults();
+        QVERIFY(settings.saveChecked());
+        QVERIFY(!has(u"Results/RowActions"_s)); // as it comes: not written, so it follows a later default
+
+        settings.rowActions.clear();
+        QVERIFY(settings.saveChecked());
+        settings.rowActions = ws::rowactions::defaults();
+        settings.load();
+        QVERIFY(settings.rowActions.isEmpty());
+
+        put(u"Results/RowActions"_s, QStringList {u"Delete"_s, u"nonsense"_s, u" preview "_s, u"delete"_s});
+        settings.load();
+        QCOMPARE(settings.rowActions, (QStringList {u"delete"_s, u"preview"_s}));
     }
 
     void logoRightClickPreference()
