@@ -301,7 +301,8 @@ public:
     // number. True as well on any other object and whenever a tool is on
     // (3.6: those never copy); false only on the bare picture without a
     // tool, where the session copies.
-    bool doubleClick(QPoint p);
+    // finishes: the caller's double click on the bare picture ends the capture, with a tool on too
+    bool doubleClick(QPoint p, bool finishes = false);
     // Wheel with a tool or a selected object: size steps; `angleDelta` is
     // the wheel's, summed until 120 makes a notch: a mouse's notches step at
     // once, a touchpad's pieces one step per 60 ms at most. True when the wheel is the model's (tool or selection).

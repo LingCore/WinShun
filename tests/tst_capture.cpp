@@ -1619,6 +1619,60 @@ private slots:
         QCOMPARE(finished.count(), 1);
     }
 
+    // With a tool on, a double click on the bare picture still copies, and
+    // what its first click put down (the pen's dot) is not in the picture.
+    // The text and number tools need fonts: tst_annotmodel, doubleClickThatFinishes.
+    void doubleClickCopiesWithAToolOn()
+    {
+        using annot::Kind;
+        for (Kind kind : {Kind::Rect, Kind::Arrow, Kind::Pen}) {
+            Rig rig;
+            rig.begin();
+            rig.drag({100, 100}, {499, 399});
+            drawRect(rig, {150, 150}, {250, 220}); // an annotation there already
+            int tool = -1;
+            for (qsizetype i = 0; i < annot::tools().size(); ++i) {
+                if (annot::tools()[i].kind == kind)
+                    tool = int(i);
+            }
+            rig.session.annotation()->setTool(tool);
+            QCOMPARE(rig.session.annotation()->tool(), tool);
+            QSignalSpy finished(&rig.session, &CaptureSession::finished);
+            rig.session.pointerMove(0, {400, 350});
+            rig.session.pointerPress(0, {400, 350}, Qt::LeftButton);
+            rig.session.pointerRelease(0, {400, 350}, Qt::LeftButton);
+            rig.session.pointerPress(0, {400, 350}, Qt::LeftButton);
+            rig.session.doubleClick(0, {400, 350});
+            rig.session.pointerRelease(0, {400, 350}, Qt::LeftButton);
+            QVERIFY2(finished.count() == 1, qPrintable(u"tool kind %1"_s.arg(int(kind))));
+            QCOMPARE(finished[0][0].value<CaptureSession::Action>(), CaptureSession::Action::Copy);
+            QVERIFY2(rig.session.annotation()->itemCount() == 1, qPrintable(u"tool kind %1"_s.arg(int(kind))));
+            QVERIFY(!rig.session.annotation()->editingText());
+        }
+        // Set to do nothing: the tool's click stays what it was (a dot of the pen).
+        Rig rig;
+        rig.begin();
+        CaptureSession::MouseActions actions;
+        actions.doubleLeft = u"none"_s;
+        rig.session.setMouseActions(actions);
+        rig.drag({100, 100}, {499, 399});
+        int pen = -1;
+        for (qsizetype i = 0; i < annot::tools().size(); ++i) {
+            if (annot::tools()[i].kind == Kind::Pen)
+                pen = int(i);
+        }
+        rig.session.annotation()->setTool(pen);
+        QSignalSpy finished(&rig.session, &CaptureSession::finished);
+        rig.session.pointerMove(0, {400, 350});
+        rig.session.pointerPress(0, {400, 350}, Qt::LeftButton);
+        rig.session.pointerRelease(0, {400, 350}, Qt::LeftButton);
+        rig.session.pointerPress(0, {400, 350}, Qt::LeftButton);
+        rig.session.doubleClick(0, {400, 350});
+        rig.session.pointerRelease(0, {400, 350}, Qt::LeftButton);
+        QCOMPARE(finished.count(), 0);
+        QCOMPARE(rig.session.annotation()->itemCount(), 1);
+    }
+
     void aPressOutsideTheSelectionKeepsItWhileAnnotated()
     {
         Rig rig;
@@ -2432,7 +2486,31 @@ private slots:
         QVERIFY(!rig.session.hasSelection());
     }
 
-    void whileAnnotatingTheRightButtonStepsBackAndTheRestSleep()
+    // A tool that is merely on does not hold up the middle and side buttons:
+    // no stepping out of the tool first.
+    void withAToolOnTheMiddleAndSideButtonsStillAct()
+    {
+        for (Qt::MouseButton b : {Qt::MiddleButton, Qt::BackButton, Qt::RightButton}) {
+            Rig rig;
+            rig.begin();
+            CaptureSession::MouseActions actions;
+            actions.middle = u"pin"_s;
+            actions.back = u"pin"_s;
+            actions.right = u"pin"_s; // set to an action, it is no longer the step back
+            rig.session.setMouseActions(actions);
+            QSignalSpy finished(&rig.session, &CaptureSession::finished);
+            rig.drag({100, 100}, {499, 399});
+            rig.session.key(Qt::Key_1, Qt::NoModifier); // a tool is on
+            QVERIFY(rig.session.annotation()->tool() >= 0);
+            rig.session.pointerPress(0, {150, 150}, b);
+            QCOMPARE(finished.count(), 0); // on the release
+            rig.session.pointerRelease(0, {150, 150}, b);
+            QCOMPARE(finished.count(), 1);
+            QCOMPARE(finished[0][0].value<CaptureSession::Action>(), CaptureSession::Action::Pin);
+        }
+    }
+
+    void whileDrawingTheRightButtonStepsBackAndTheRestSleep()
     {
         Rig rig;
         rig.begin();
@@ -2444,9 +2522,6 @@ private slots:
         QSignalSpy finished(&rig.session, &CaptureSession::finished);
         rig.drag({100, 100}, {499, 399});
         rig.session.key(Qt::Key_1, Qt::NoModifier); // a tool is on
-        for (Qt::MouseButton b : {Qt::MiddleButton, Qt::BackButton, Qt::ForwardButton})
-            rig.session.pointerPress(0, {150, 150}, b);
-        QCOMPARE(finished.count(), 0);
         rig.session.pointerPress(0, {150, 150}, Qt::LeftButton); // a stroke under way
         QVERIFY(rig.session.annotation()->gestureActive());
         rig.session.pointerPress(0, {200, 200}, Qt::MiddleButton);
@@ -2467,12 +2542,6 @@ private slots:
         rig.session.setMouseActions(actions);
         QSignalSpy finished(&rig.session, &CaptureSession::finished);
         rig.drag({100, 100}, {299, 299});
-        // the phase changed between press and release (a tool turned on): void
-        rig.session.pointerPress(0, {150, 150}, Qt::MiddleButton);
-        rig.session.key(Qt::Key_1, Qt::NoModifier);
-        rig.session.pointerRelease(0, {150, 150}, Qt::MiddleButton);
-        QCOMPARE(finished.count(), 0);
-        rig.session.key(Qt::Key_1, Qt::NoModifier); // tool off
         // moved before the release: void
         rig.session.pointerPress(0, {150, 150}, Qt::MiddleButton);
         rig.session.pointerMove(0, {190, 190});

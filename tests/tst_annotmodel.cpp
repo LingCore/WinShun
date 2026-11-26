@@ -2066,6 +2066,49 @@ private slots:
         QVERIFY(!m.key(Qt::Key_Tab, {}));
     }
 
+    // The capture's double click with a tool on: the bare picture is the
+    // session's (it copies), and what the first click put down is taken back.
+    // The presses come as the session sends them: press, release, press,
+    // the gesture of the second press dropped, then the double click.
+    void doubleClickThatFinishes()
+    {
+        const QPoint at(200, 200);
+        const auto twice = [&](AnnotationModel& m) {
+            if (!m.pressFirst(at, {}))
+                m.pressSecond(at, {});
+            m.release(at);
+            if (!m.pressFirst(at, {}))
+                m.pressSecond(at, {});
+            if (m.gestureActive())
+                m.cancelGesture();
+            return m.doubleClick(at, true);
+        };
+        for (Kind kind : {Kind::Rect, Kind::Pen, Kind::Text, Kind::Number}) {
+            Rig rig;
+            AnnotationModel& m = rig.model;
+            m.setTool(toolIndex(kind));
+            QVERIFY2(!twice(m), qPrintable(u"tool kind %1"_s.arg(int(kind))));
+            QVERIFY2(m.itemCount() == 0, qPrintable(u"tool kind %1"_s.arg(int(kind))));
+            QVERIFY(!m.editingText());
+            QVERIFY(!m.editingNumber());
+            QCOMPARE(m.tool(), toolIndex(kind));
+        }
+        // On an object it stays the model's: nothing is copied.
+        Rig rig;
+        AnnotationModel& m = rig.model;
+        m.setTool(toolIndex(Kind::Rect));
+        drag(m, QPoint(150, 150), QPoint(250, 250));
+        QVERIFY(m.doubleClick(QPoint(150, 200), true));
+        QCOMPARE(m.itemCount(), 1);
+        // Words typed into the text box: the double click is the box's.
+        m.setTool(toolIndex(Kind::Text));
+        m.pressSecond(QPoint(300, 250), {});
+        QVERIFY(m.editingText());
+        m.setEditingText(u"abc"_s);
+        QVERIFY(m.doubleClick(QPoint(300, 250), true));
+        QVERIFY(m.editingText());
+    }
+
     void pointerRules()
     {
         Rig rig;

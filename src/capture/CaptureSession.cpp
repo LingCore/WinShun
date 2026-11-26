@@ -1072,7 +1072,7 @@ void CaptureSession::pointerRelease(int screen, QPoint p, Qt::MouseButton button
         // the capture: now it acts (the release must not reach the window
         // below, which a closed capture would let it).
         m_pendingButton = Qt::NoButton;
-        if (m_phase == Phase::Selected && m_selection.screen >= 0 && !annotationBusy())
+        if (buttonMayAct())
             perform(m_pendingAct);
         return;
     }
@@ -1146,8 +1146,9 @@ void CaptureSession::doubleClick(int screen, QPoint p)
         publish();
         return;
     }
-    // A text or a number under it opens for editing; with a tool on, and on
-    // any annotation, it never copies (3.6).
+    // A text or a number under it opens for editing; on any annotation it
+    // never copies (3.6). On the bare picture it does, with a tool on too:
+    // nobody has to put the tool down first.
     // Qt sends the second press of a double click as a press and then this,
     // so a gesture the press began (a move, a stroke) is still open: it was
     // only a click, drop it.
@@ -1158,7 +1159,9 @@ void CaptureSession::doubleClick(int screen, QPoint p)
     }
     if (m_annot.active() && inSpace(screen, m_annotScreen) && m_annotScreen == m_selection.screen
         && (m_phase == Phase::Selected || m_phase == Phase::Adjusting)
-        && m_annot.doubleClick(toSpace(screen, clampTo(screen, p), m_annotScreen))) {
+        && m_annot.doubleClick(toSpace(screen, clampTo(screen, p), m_annotScreen),
+            m_actDoubleLeft != MouseAct::None
+                && m_selection.rect.contains(toSpace(screen, clampTo(screen, p), m_selection.screen)))) {
         if (m_phase == Phase::Adjusting) {
             m_selection = {m_startScreen, m_startRect}; // the press began a move that did not happen
             m_phase = Phase::Selected;
@@ -1205,18 +1208,24 @@ CaptureSession::MouseAct CaptureSession::parseMouseAct(const QString& name, Mous
     return fallback;
 }
 
-bool CaptureSession::annotationBusy() const
+// Whether a button's action from the settings may run now. None of these
+// buttons draws, so a tool that is merely on does not hold them up: what the
+// user set a button to is what it does, with no stepping out of the tool
+// first (finish() keeps the words typed so far). Only drawing does: a stroke
+// under way (Phase::Annotating) and a line of several points still open.
+bool CaptureSession::buttonMayAct() const
 {
-    return m_annot.active()
-        && (m_annot.tool() >= 0 || m_annot.gestureActive() || m_annot.editingText() || m_annot.editingNumber());
+    return m_phase == Phase::Selected && m_selection.screen >= 0
+        && !(m_annot.active() && (m_annot.gestureActive() || m_annot.pathActive()));
 }
 
-// Right, middle and the side buttons. The right button always has a say
-// (without the settings' action it is Esc's step back); the others act only
-// on a selection at rest, and never in the middle of drawing.
+// Right, middle and the side buttons. The right button always has a say:
+// left as it comes, or in the middle of drawing, it is Esc's step back. An
+// action from the settings runs on a selection, with a tool on too, and never
+// in the middle of drawing.
 void CaptureSession::mouseButton(Qt::MouseButton button, int screen, QPoint p)
 {
-    const bool atRest = m_phase == Phase::Selected && m_selection.screen >= 0 && !annotationBusy();
+    const bool atRest = buttonMayAct();
     if (button == Qt::RightButton && (!atRest || m_actRight == MouseAct::Back)) {
         back();
         return;

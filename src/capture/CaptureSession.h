@@ -399,8 +399,9 @@ public:
 
     // What the mouse buttons do once a selection is there (issue #46), as
     // Settings keeps them: none | copy | save | pin | ocr | ocrcopy | ocrsearch |
-    // ocrweb | cancel, the right button also back. Only with no annotation tool on and no stroke or text
-    // under way; then the right button steps back like Esc, the rest do nothing.
+    // ocrweb | cancel, the right button also back. With an annotation tool on too (no stepping out of
+    // it first); only in the middle of drawing (a stroke, an open line of several points) the right
+    // button steps back like Esc and the rest do nothing.
     struct MouseActions {
         QString doubleLeft = QStringLiteral("copy");
         QString right = QStringLiteral("back");
@@ -544,7 +545,7 @@ private:
     void back(); // Esc, right click
     enum class MouseAct { None, Copy, Save, Pin, Ocr, Cancel, Back, OcrCopy, OcrSearch, OcrWeb, CopyPin, OcrTranslate };
     static MouseAct parseMouseAct(const QString& name, MouseAct fallback);
-    bool annotationBusy() const; // a tool on, a gesture or a text under way
+    bool buttonMayAct() const; // a mouse button's action from the settings may run now
     void mouseButton(Qt::MouseButton button, int screen, QPoint p); // right, middle, X1, X2
     void perform(MouseAct act);
     void syncAnnotation(); // the model follows the selection

@@ -386,6 +386,7 @@ struct AnnotationModel::Private {
     // are one undo step (commitWords()).
     std::unique_ptr<annot::AddItems> placing;
     bool reopenWords = false; // Move: the number pressed was the only one selected already
+    quint32 clickMade = 0; // what the last click with a tool put down (a dot, a number); a double click takes it back
     QList<quint32> moveIds; // Move: what moves together
     int editToken = 0; // monotonic per live text edit session
     QPoint editOrigin; // MoveEditing: editing.at as the press found it
@@ -1937,6 +1938,8 @@ void AnnotationModel::finishGesture()
     // selection: a drag along its edge, out of it, made nothing wider.
     const QPoint end = gesture == Gesture::Draw ? clampToSelection(d->last) : d->last;
     const bool shortDrag = (end - d->pressAt).manhattanLength() < dragStart();
+    if (gesture == Gesture::Draw)
+        d->clickMade = 0;
     // A click with the pen or the freehand marker, never dragged: a dot of
     // its width where it was pressed (GitHub #461). Not the few points a
     // shaking hand left under the drag start.
@@ -1988,6 +1991,8 @@ void AnnotationModel::finishGesture()
             }
         }
         const quint32 id = item.id;
+        if (shortDrag && (item.kind == Kind::Number || item.points.size() == 1))
+            d->clickMade = id;
         if (annot::isBrush(item)) {
             // Drawn as a mosaic meanwhile (draft()): the real kind is made once now.
             annot::Change redraw;
@@ -2147,14 +2152,26 @@ AnnotationModel::BrushTip AnnotationModel::brushTipAt(QPoint p) const
     return {};
 }
 
-bool AnnotationModel::doubleClick(QPoint p)
+bool AnnotationModel::doubleClick(QPoint p, bool finishes)
 {
     if (finishPath())
         return true;
     if (!active())
         return false;
-    if (m_editing)
-        return true; // the text box's own (a word selected)
+    // The capture's double click finishes it with a tool on too (no stepping
+    // out of the tool first). Its first click was only a click: what that put
+    // down is taken back, an empty text box, a dot of the pen, a number.
+    const bool through = finishes && m_tool >= 0;
+    if (m_editing) {
+        if (!through || m_editing->words || m_editing->id != 0 || !m_editing->text.isEmpty())
+            return true; // the text box's own (a word selected)
+        commitPending(); // nothing typed: nothing is left
+    }
+    if (through && d->clickMade != 0 && itemAt(p) == d->clickMade) {
+        m_numberEdit.reset();
+        undo();
+    }
+    d->clickMade = 0;
     const annot::Item* item = find(itemAt(p));
     if (item && (item->kind == Kind::Text || item->kind == Kind::Number)) {
         // The second press began a gesture that the double click replaces.
@@ -2174,9 +2191,10 @@ bool AnnotationModel::doubleClick(QPoint p)
         sync();
         return true;
     }
-    // A double click copies only on the bare picture without a tool (3.6):
-    // on an object, or with a tool on, it is the model's and does nothing.
-    return item != nullptr || m_tool >= 0;
+    // A double click copies only on the bare picture (3.6): on an object it
+    // is the model's and does nothing, and so it is with a tool on where the
+    // caller's double click finishes nothing (the editor, the presenter).
+    return item != nullptr || (m_tool >= 0 && !finishes);
 }
 
 bool AnnotationModel::wheel(int angleDelta, qint64 nowMs)
