@@ -207,6 +207,9 @@ add_custom_target(library_plugins ALL
     # What is compiled into WinShunCaptureApp.dll; Qt, ONNX Runtime and the OCR models are Win顺's.
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/third_party/zxing-cpp/LICENSE" "${library_plugins_dir}/winshun.capture/licenses/zxing-cpp.txt"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/third_party/miniz/LICENSE" "${library_plugins_dir}/winshun.capture/licenses/miniz.txt"
+    # The table model of 复制为表格 (src/capture-plugin/CMakeLists.txt), PaddleOCR's.
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${WS_TABLE_MODEL}" "${library_plugins_dir}/winshun.capture/table/slanet-plus.onnx"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/third_party/ppocr/LICENSE" "${library_plugins_dir}/winshun.capture/licenses/paddleocr.txt"
     DEPENDS WinShunSemantic WinShunLocalSend WinShunSync WinShunBreak WinShunExplorerTabs WinShunGestures WinShunGesturesEditor WinShunExpander WinShunTopmost WinShunArchive WinShunBookmarks WinShunTranslate WinShunCloudBackup WinShunCapture WinShunCaptureApp WinShunOcrSearch WinShunOcrSearchApp
         WinShunDevTools WinShunDevToolsApp
     COMMENT "Staging the library plugins into ${library_plugins_dir}"
@@ -219,7 +222,7 @@ qt_add_executable(wsbench tools/wsbench.cpp src/app/Settings.cpp
     src/app/platform/RegistryWatch.cpp src/app/platform/SettingBroadcast.cpp src/switches-plugin/platform/SwitchAudio.cpp
     src/switches-plugin/platform/SwitchExplorer.cpp src/switches-plugin/platform/SwitchKeepAwake.cpp src/switches-plugin/platform/SwitchRadios.cpp
     src/switches-plugin/platform/SwitchTheme.cpp src/switches-plugin/platform/SystemSwitches.cpp # --switches
-    src/app/platform/PaddleOcr.cpp src/app/platform/OcrFiles.cpp) # --ocr
+    src/app/platform/PaddleOcr.cpp src/app/platform/OcrTable.cpp src/app/platform/OcrFiles.cpp) # --ocr
 target_include_directories(wsbench PRIVATE src/app src/app/platform ${PROJECT_SOURCE_DIR}/src/switches-plugin) # Settings: the user's crawl rules for --sync
 target_link_libraries(wsbench PRIVATE wscore wsextract wsmcp wsplugin wscapture Qt6::Gui Qt6::Svg psapi winhttp advapi32 onnxruntime_headers
     windowsapp iphlpapi) # wsmcp: --mcp-host; wsplugin: --plugin; wscapture: --scroll-replay; advapi32: --open-probe; windowsapp, iphlpapi: --switches (the radios)
@@ -261,7 +264,7 @@ set_target_properties(WinShunMemReport PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORC
 # watched from outside. Qt beside it, deployed by scripts/ocrtest.ps1; its
 # own symbols kept, for the dumps it brings back.
 qt_add_executable(WinShunOcrTest tools/ocrtest/ocrtest.cpp
-    src/app/platform/PaddleOcr.cpp src/app/platform/OcrFiles.cpp
+    src/app/platform/PaddleOcr.cpp src/app/platform/OcrTable.cpp src/app/platform/OcrFiles.cpp
     src/app/platform/CrashRecord.cpp src/app/platform/CodeAddress.cpp)
 target_include_directories(WinShunOcrTest PRIVATE ${PROJECT_SOURCE_DIR}/src/app ${PROJECT_SOURCE_DIR}/src/app/platform)
 # kernel32 and user32 ahead of wscapture's windowsapp umbrella: the console

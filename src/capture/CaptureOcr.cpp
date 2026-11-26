@@ -64,6 +64,7 @@ void CaptureOcr::read(const QImage& image, double dpr, bool thenTranslate)
     m_title.clear();
     m_link.clear();
     m_table.clear();
+    m_tableHtml.clear();
     if (image.isNull()) {
         m_busy = false;
         m_message = tr("没有图片可以识别。");
@@ -103,6 +104,7 @@ void CaptureOcr::showTexts(const QStringList& texts, const QString& title, const
     m_title = title;
     m_text = texts.join(u'\n');
     m_table.clear();
+    m_tableHtml.clear();
     m_message = texts.isEmpty() ? none : QString();
     m_link = texts.size() == 1 ? qrLink(texts.first()) : QString();
     emit changed();
@@ -118,6 +120,7 @@ void CaptureOcr::showText(const QString& text)
     m_title.clear();
     m_link.clear();
     m_table.clear();
+    m_tableHtml.clear();
     m_text = text;
     m_message.clear();
     emit changed();
@@ -302,28 +305,14 @@ void CaptureOcr::webSearch(const QString& text)
         emit webSearchRequested(query);
 }
 
-QString CaptureOcr::tabbed(const QList<QStringList>& table)
-{
-    QStringList rows;
-    for (const QStringList& cells : table) {
-        QStringList row;
-        for (QString cell : cells) {
-            cell.replace(u'\t', u' ');
-            cell.replace(u'\n', u' ');
-            row.append(cell);
-        }
-        rows.append(row.join(u'\t'));
-    }
-    return rows.join(u'\n');
-}
-
-void CaptureOcr::done(int round, const QString& text, const QString& table, const QString& error)
+void CaptureOcr::done(int round, const QString& text, const OcrTable& table, const QString& error)
 {
     if (round != m_round)
         return; // a newer picture is being read
     m_busy = false;
     m_text = text;
-    m_table = error.isEmpty() ? table : QString();
+    m_table = error.isEmpty() ? table.tabbed() : QString();
+    m_tableHtml = m_table.isEmpty() ? QString() : table.html();
     if (!error.isEmpty())
         m_message = tr("识别失败：%1").arg(error);
     else if (text.isEmpty())
@@ -455,27 +444,20 @@ void CaptureOcr::work(const std::stop_token& stop)
             continue;
         }
         QStringList lines;
-        QList<QStringList> table;
-        if (reader) {
-            QImage picture = job.image;
-            if (job.scale > 1.0)
-                picture = picture.scaled(std::max(1, static_cast<int>(std::lround(picture.width() * job.scale))),
-                    std::max(1, static_cast<int>(std::lround(picture.height() * job.scale))), Qt::IgnoreAspectRatio,
-                    Qt::SmoothTransformation);
-            if (!reader->read(picture, &lines, &error, &table))
-                lines.clear();
-        }
+        OcrTable table;
+        if (reader && !reader->readTable(job.image, job.scale, &lines, &table, &error))
+            lines.clear();
         qInfo().noquote() << u"Screen capture: text read in %1 ms (loading %2 ms), %3x%4 at %5x, %6 lines"_s.arg(clock.elapsed())
                                  .arg(loadMs)
                                  .arg(job.image.width())
                                  .arg(job.image.height())
                                  .arg(job.scale, 0, 'f', 2)
                                  .arg(lines.size())
-                          + (table.isEmpty() ? QString() : u", a table of %1 columns"_s.arg(table.first().size()));
+                          + (table.isEmpty() ? QString() : u", a table of %1 rows, %2 columns, %3 merged cells"_s.arg(table.rows.size()).arg(table.rows.first().size()).arg(table.spans.size()));
         if (!error.isEmpty())
             qWarning().noquote() << "Screen capture: text recognition failed:" << error;
         QMetaObject::invokeMethod(this,
-            [this, round = job.round, text = lines.join(u'\n'), table = tabbed(table), error] { done(round, text, table, error); },
+            [this, round = job.round, text = lines.join(u'\n'), table = std::move(table), error] { done(round, text, table, error); },
             Qt::QueuedConnection);
     }
 }

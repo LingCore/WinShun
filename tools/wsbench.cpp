@@ -316,6 +316,7 @@
 #include "TextUtil.h"
 #include "Tools.h"
 #include "platform/PaddleOcr.h"
+#include "platform/OcrTable.h"
 #include "platform/SystemSwitches.h"
 #include "Unc.h"
 #include "WebShortcut.h"
@@ -6906,6 +6907,29 @@ int runOcr(QStringList args)
         args.remove(at, 2);
     }
     const bool quiet = args.removeAll(u"--quiet"_s) > 0; // the times only
+    QString tablesFile; // --tables FILE: each picture's table (复制为表格) as JSON, {"name": [["cell", ...], ...]}
+    if (const qsizetype at = args.indexOf(u"--tables"_s); at >= 0 && at + 1 < args.size()) {
+        tablesFile = args[at + 1];
+        args.remove(at, 2);
+    }
+    // --table-model FILE: the tables as the screenshot plugin reads them, with the table model (PaddleOcr::readTable)
+    if (const qsizetype at = args.indexOf(u"--table-model"_s); at >= 0 && at + 1 < args.size()) {
+        ws::PaddleOcr::setTableModel(args[at + 1]);
+        args.remove(at, 2);
+    }
+    // --words-only: the tables from where the words stand alone (ocrTable), as before the lines and the model
+    const bool wordsOnly = args.removeAll(u"--words-only"_s) > 0;
+    QString htmlFolder; // --html FOLDER: each table as the clipboard gets it for Excel, <picture>.html
+    if (const qsizetype at = args.indexOf(u"--html"_s); at >= 0 && at + 1 < args.size()) {
+        htmlFolder = args[at + 1];
+        args.remove(at, 2);
+    }
+    // --as-capture: each picture made larger first as the screenshot plugin
+    // does for one taken at the scale in its name ("table@125.png": 125%).
+    const bool asCapture = args.removeAll(u"--as-capture"_s) > 0;
+    if (args.removeAll(u"--trace"_s) > 0) // each step of every reading (PaddleOcr::setTrace)
+        ws::PaddleOcr::setTrace([](const QString& step) { std::printf("  %ls\n", qUtf16Printable(step)); });
+    QJsonObject tables;
     QStringList files;
     for (const QString& arg : std::as_const(args)) {
         if (QFileInfo(arg).isDir()) {
@@ -6916,7 +6940,7 @@ int runOcr(QStringList args)
         }
     }
     if (files.isEmpty()) {
-        std::printf("wsbench --ocr <picture or folder>... [--threads N] [--quiet]\n");
+        std::printf("wsbench --ocr <picture or folder>... [--threads N] [--quiet] [--as-capture] [--trace] [--tables FILE [--table-model FILE] [--words-only] [--html FOLDER]]\n");
         return 1;
     }
     QElapsedTimer t;
@@ -6931,16 +6955,52 @@ int runOcr(QStringList args)
     std::vector<double> times;
     for (const QString& file : std::as_const(files)) {
         const QImage image(file);
+        double larger = 1.0;
+        if (asCapture) {
+            const QString name = QFileInfo(file).completeBaseName();
+            const double dpr = name.contains(u'@') ? name.section(u'@', -1).toDouble() / 100 : 1.0;
+            const double scale = dpr >= 1.5 ? 1.0 : std::min(2.0, 2000.0 / image.width()); // capture::ocrUpscale
+            larger = scale >= 1.25 ? scale : 1.0;
+        }
         t.start();
         QStringList lines;
-        const bool ok = ocr->read(image, &lines, &error);
+        QList<QStringList> table;
+        bool ok = false;
+        if (!tablesFile.isEmpty() && !wordsOnly) {
+            ws::OcrTable seen;
+            ok = ocr->readTable(image, larger, &lines, &seen, &error);
+            table = seen.rows;
+            if (!htmlFolder.isEmpty() && !seen.isEmpty()) {
+                QFile page(QDir(htmlFolder).filePath(QFileInfo(file).completeBaseName() + u".html"_s));
+                if (QDir().mkpath(htmlFolder) && page.open(QIODevice::WriteOnly))
+                    page.write("<html><head><meta charset=\"utf-8\"></head><body>" + seen.html().toUtf8() + "</body></html>");
+            }
+        } else {
+            const QImage read = larger > 1.0 ? image.scaled(static_cast<int>(std::lround(image.width() * larger)),
+                                                   static_cast<int>(std::lround(image.height() * larger)), Qt::IgnoreAspectRatio, Qt::SmoothTransformation)
+                                             : image;
+            ok = ocr->read(read, &lines, &error, tablesFile.isEmpty() ? nullptr : &table);
+        }
         times.push_back(msSince(t));
+        if (!tablesFile.isEmpty()) {
+            QJsonArray rows;
+            for (const QStringList& row : std::as_const(table))
+                rows.append(QJsonArray::fromStringList(row));
+            tables.insert(QFileInfo(file).completeBaseName(), rows);
+        }
         std::printf("%ls\t%dx%d\t%.0f ms\t%ls\n", qUtf16Printable(QFileInfo(file).fileName()), image.width(), image.height(),
             times.back(), qUtf16Printable(!ok ? u"FAILED: "_s + error : quiet ? QString() : lines.join(u" | "_s)));
     }
     std::ranges::sort(times);
     std::printf("%zu pictures: median %.0f ms, 90%% %.0f ms, slowest %.0f ms, all %.1f s\n", times.size(),
         times[times.size() / 2], times[times.size() * 9 / 10], times.back(), std::accumulate(times.begin(), times.end(), 0.0) / 1000);
+    if (!tablesFile.isEmpty()) {
+        QFile out(tablesFile);
+        if (!out.open(QIODevice::WriteOnly) || out.write(QJsonDocument(tables).toJson()) < 0) {
+            std::printf("Could not write %ls\n", qUtf16Printable(tablesFile));
+            return 1;
+        }
+    }
     return 0;
 }
 

@@ -216,6 +216,7 @@ CaptureApp::CaptureApp(Protocol& protocol, QString appDir, QString dataDir, QObj
             m_pins->restyle();
     });
     capture::CaptureOcr::setProgramFolder(m_appDir); // onnxruntime.dll and ocr\: Win顺's
+    PaddleOcr::setTableModel(QCoreApplication::applicationDirPath() + u"/table/slanet-plus.onnx"_s); // the plugin's own
     QString componentRoot = qEnvironmentVariable("WS_COMPONENTS_DIR");
     if (componentRoot.isEmpty())
         componentRoot = QFileInfo(m_dataDir).fileName() == u"winshun.capture.data"
@@ -1066,6 +1067,17 @@ capture::CaptureOcr& CaptureApp::captureOcr()
         connect(m_captureOcr.get(), &capture::CaptureOcr::copyRequested, this, [this](const QString& text) {
             if (!text.isEmpty())
                 copyText(text);
+        });        // A table goes to the clipboard as text (tabs between the cells) and
+        // as HTML, which Excel, WPS and Word take first: merged cells arrive
+        // merged. Set here, not through Win顺 (clipboard_copy takes text only).
+        connect(m_captureOcr.get(), &capture::CaptureOcr::copyTableRequested, this, [](const QString& text, const QString& html) {
+            if (text.isEmpty())
+                return;
+            auto* data = new QMimeData;
+            data->setText(text);
+            if (!html.isEmpty())
+                data->setHtml(html);
+            QGuiApplication::clipboard()->setMimeData(data);
         });
         connect(m_captureOcr.get(), &capture::CaptureOcr::searchRequested, this, [this](const QString& query) { searchText(query, false); });
         connect(m_captureOcr.get(), &capture::CaptureOcr::webSearchRequested, this, [this](const QString& query) { searchText(query, true); });

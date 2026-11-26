@@ -1049,7 +1049,7 @@ set_tests_properties(tst_clipimage PROPERTIES
 qt_add_executable(tst_cliplifecycle tst_cliplifecycle.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/ClipboardWatcher.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/TextRecognizer.cpp
-    ${PROJECT_SOURCE_DIR}/src/app/platform/PaddleOcr.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/PaddleOcr.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/OcrTable.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/OcrFiles.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/CrashRecord.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/CodeAddress.cpp
@@ -1347,13 +1347,14 @@ target_include_directories(tst_siteicon PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_link_libraries(tst_siteicon PRIVATE Qt6::Gui Qt6::Svg Qt6::Test)
 
 # The words in pictures: PP-OCRv6 through ONNX Runtime, the real models.
-qt_add_executable(tst_ocr tst_ocr.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/PaddleOcr.cpp
+qt_add_executable(tst_ocr tst_ocr.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/PaddleOcr.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/OcrTable.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/OcrFiles.cpp
     ${PROJECT_SOURCE_DIR}/src/capture/CaptureOcr.cpp)
 target_include_directories(tst_ocr PRIVATE ${PROJECT_SOURCE_DIR}/src/app/platform)
 target_include_directories(tst_ocr PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_link_libraries(tst_ocr PRIVATE winshun_options wscapture Qt6::Qml Qt6::Test onnxruntime_headers)
 set_target_properties(tst_ocr PROPERTIES QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
+target_compile_definitions(tst_ocr PRIVATE WINSHUN_TABLE_MODEL="${WS_TABLE_MODEL}") # tableReadWithModel
 
 # The larger reading model a user may install (ocr::preciseModel), for the
 # test that reads Japanese with it: fetched once per build folder.
@@ -1366,7 +1367,7 @@ qt_add_executable(tst_ocrpackage tst_ocrpackage.cpp
     ${PROJECT_SOURCE_DIR}/src/capture/CaptureOcr.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/OcrPackage.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/OcrFiles.cpp
-    ${PROJECT_SOURCE_DIR}/src/app/platform/PaddleOcr.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/PaddleOcr.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/OcrTable.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/Http.cpp)
 target_include_directories(tst_ocrpackage PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_link_libraries(tst_ocrpackage PRIVATE winshun_options wscore wscapture miniz Qt6::Gui Qt6::Qml Qt6::Network Qt6::Test onnxruntime_headers winhttp)

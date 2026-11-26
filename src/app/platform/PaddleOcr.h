@@ -12,6 +12,8 @@
 
 namespace ws {
 
+struct OcrTable; // OcrTable.h
+
 // The words in a picture, read by PP-OCRv6 tiny (PaddleOCR: a model that
 // finds the lines of text, one that reads each line; Chinese, English and
 // the Latin-script languages) run by ONNX Runtime on the processor. With
@@ -85,7 +87,20 @@ public:
     // `table`: the same lines as a table's rows of cells, when they stand as
     // one (ocrTable); else empty.
     bool read(const QImage& image, QStringList* lines, QString* error = nullptr, QList<QStringList>* table = nullptr);
-    // The lines as found, each with its corners and its characters' places,
+    // The model that reads a table's rows, columns and merged cells from the
+    // picture (SLANet_plus, PaddleOCR's; 7 MB, comes with the screenshot
+    // plugin): its file, for every reader made in this process. Unset or
+    // missing, readTable() works tables out from where the words stand alone.
+    static void setTableModel(const QString& file);
+    static bool hasTableModel();
+    // read()'s lines, and the picture's table when it is one: its rows,
+    // columns and merged cells from the lines drawn in it (a ruled table);
+    // else as the table model sees them, where it is there and sure; else
+    // ocrTable's rows. A line read across two cells is cut between them. No
+    // table: `table` is empty. `larger`: the words are read with the picture
+    // made this many times larger (a screenshot taken at 100%: twice), the
+    // table's lines and cells are looked for in the picture as it is.
+    bool readTable(const QImage& image, double larger, QStringList* lines, OcrTable* table, QString* error = nullptr);    // The lines as found, each with its corners and its characters' places,
     // in the picture's own pixels; the same reading as read(), in no order.
     bool readPieces(
         const QImage& image, QList<OcrPiece>* pieces, QString* error = nullptr, const OcrOptions& options = {});

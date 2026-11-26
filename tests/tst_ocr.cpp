@@ -2,6 +2,7 @@
 // build put next to this test, on text drawn as a screenshot shows it.
 
 #include "Geometry.h"
+#include "OcrTable.h"
 #include "PaddleOcr.h"
 #include "SmartRedact.h"
 #include "CaptureOcr.h"
@@ -692,6 +693,159 @@ private slots:
         QVERIFY(ws::ocrTable({piece(0, 0, 50, u"a"_s), piece(200, 0, 260, u"b"_s)}).isEmpty()); // one line
     }
 
+    // The table model's words as cells: placed as HTML places them, a cell
+    // from above pushing those under it to the right.
+    void tableStructureFromWords()
+    {
+        const QStringList words {u"<thead>"_s, u"<tr>"_s, u"<td"_s, u" rowspan=\"2\""_s, u">"_s, u"</td>"_s, u"<td"_s, u" colspan=\"2\""_s, u">"_s, u"</td>"_s,
+            u"</tr>"_s, u"<tr>"_s, u"<td></td>"_s, u"<td></td>"_s, u"</tr>"_s, u"</thead>"_s, u"<tbody>"_s, u"<tr>"_s, u"<td></td>"_s, u"<td></td>"_s,
+            u"<td></td>"_s, u"</tr>"_s, u"</tbody>"_s};
+        std::vector<QRectF> boxes;
+        for (int i = 0; i < 7; ++i)
+            boxes.emplace_back(10.0 * i, 0, 8, 8);
+        const ws::table::Structure s = ws::table::structureOf(words, boxes);
+        QCOMPARE(s.rows, 3);
+        QCOMPARE(s.columns, 3);
+        QCOMPARE(s.cells.size(), std::size_t(7));
+        const auto at = [&](std::size_t i) { return QList<int> {s.cells[i].row, s.cells[i].column, s.cells[i].rows, s.cells[i].columns}; };
+        QCOMPARE(at(0), (QList<int> {0, 0, 2, 1}));
+        QCOMPARE(at(1), (QList<int> {0, 1, 1, 2}));
+        QCOMPARE(at(2), (QList<int> {1, 1, 1, 1})); // beside the cell from above
+        QCOMPARE(at(3), (QList<int> {1, 2, 1, 1}));
+        QCOMPARE(at(6), (QList<int> {2, 2, 1, 1}));
+        QCOMPARE(s.cells[3].box, QRectF(30, 0, 8, 8)); // the boxes in the cells' order
+
+        // A cell said to reach below the last row ends there; nothing is no table.
+        const ws::table::Structure deep = ws::table::structureOf({u"<tr>"_s, u"<td"_s, u" rowspan=\"9\""_s, u">"_s, u"</td>"_s, u"<td></td>"_s, u"</tr>"_s}, {});
+        QCOMPARE(deep.rows, 1);
+        QCOMPARE(deep.cells[0].rows, 1);
+        QCOMPARE(ws::table::structureOf({}, {}).rows, 0);
+    }
+
+    // Lines put into the model's cells: by the cell they cover, two lines of
+    // one cell together, a line read across two cells cut between them, and
+    // a line beside the cells in the nearest.
+    void tableFilledFromPieces()
+    {
+        ws::table::Structure s;
+        s.rows = 3;
+        s.columns = 3;
+        const auto cell = [&](int row, int column, QRectF box, int rows = 1, int columns = 1) { s.cells.push_back({row, column, rows, columns, box}); };
+        cell(0, 0, {0, 0, 100, 60}, 2, 1); // 部门, down two rows
+        cell(0, 1, {110, 0, 200, 25}, 1, 2); // 上半年, across two columns
+        cell(1, 1, {110, 32, 90, 25});
+        cell(1, 2, {215, 32, 90, 25});
+        cell(2, 0, {0, 68, 100, 50});
+        cell(2, 1, {110, 68, 90, 50});
+        cell(2, 2, {215, 68, 90, 50});
+        ws::OcrPiece both = piece(120, 36, 300, u"一季度二季度"_s); // read as one line
+        for (int i = 0; i < 6; ++i)
+            both.chars.append({i, i < 3 ? 0.08f + 0.1f * static_cast<float>(i) : 0.62f + 0.1f * static_cast<float>(i - 3)});
+        const QList<ws::OcrPiece> pieces {
+            piece(20, 20, 70, u"部门"_s), piece(180, 4, 240, u"上半年"_s), both,
+            piece(10, 72, 90, u"研发"_s), piece(10, 94, 90, u"一部"_s), // two lines in a cell
+            piece(120, 72, 190, u"Quarterly"_s), piece(120, 94, 180, u"report"_s),
+            piece(310, 80, 360, u"8192"_s), // just outside the last cell
+        };
+        const ws::OcrTable table = ws::table::filled(s, pieces);
+        QCOMPARE(table.rows.size(), 3);
+        QCOMPARE(table.rows[0], (QStringList {u"部门"_s, u"上半年"_s, {}}));
+        QCOMPARE(table.rows[1], (QStringList {{}, u"一季度"_s, u"二季度"_s}));
+        QCOMPARE(table.rows[2], (QStringList {u"研发一部"_s, u"Quarterly report"_s, u"8192"_s}));
+        QCOMPARE(table.spans, (QList<ws::OcrTable::Span> {{0, 0, 2, 1}, {0, 1, 1, 2}}));
+        QVERIFY(table.standsAsTable());
+        QCOMPARE(table.tabbed(), u"部门\t上半年\t\n\t一季度\t二季度\n研发一部\tQuarterly report\t8192"_s);
+        QCOMPARE(table.html(), u"<table><tr><td rowspan=\"2\">部门</td><td colspan=\"2\">上半年</td></tr><tr><td>一季度</td><td>二季度</td></tr>"
+                               "<tr><td>研发一部</td><td>Quarterly report</td><td>8192</td></tr></table>"_s);
+
+        // No line of writing is torn here; a title above and a note below the
+        // cells get rows of their own, the merged cells moving down with theirs.
+        int torn = -1;
+        QList<ws::OcrPiece> more = pieces;
+        more.append(piece(60, -40, 260, u"上半年业绩"_s));
+        more.append(piece(0, 130, 160, u"注：单位万元"_s));
+        const ws::OcrTable titled = ws::table::filled(s, more, &torn);
+        QCOMPARE(torn, 0);
+        QCOMPARE(titled.rows.size(), 5);
+        QCOMPARE(titled.rows.first(), (QStringList {u"上半年业绩"_s, {}, {}}));
+        QCOMPARE(titled.rows.last(), (QStringList {u"注：单位万元"_s, {}, {}}));
+        QCOMPARE(titled.spans, (QList<ws::OcrTable::Span> {{1, 0, 2, 1}, {1, 1, 1, 2}}));
+
+        // A row too many, as the model now and then sees one: 一季度 and 二季度,
+        // side by side on the screen, would be in two rows.
+        ws::table::Structure wrong = s;
+        wrong.rows = 4;
+        wrong.cells[3] = {3, 2, 1, 1, QRectF(215, 32, 90, 25)};
+        ws::OcrPiece first = piece(120, 36, 190, u"一季度"_s), second = piece(225, 36, 300, u"二季度"_s);
+        ws::table::filled(wrong, {first, second, piece(20, 20, 70, u"部门"_s), piece(10, 80, 90, u"研发"_s)}, &torn);
+        QCOMPARE(torn, 1);
+    }
+
+    // A ruled table's cells from the lines drawn in the picture: the squares
+    // between them, two with no line between them one cell. Selected inside
+    // its outer border it is the same table; ruled across only it has no
+    // cells to be told from its lines.
+    void tableFromRuledLines()
+    {
+        const int x[] = {20, 160, 300, 440};
+        const int y[] = {20, 60, 100, 140, 180};
+        const auto drawn = [&](bool down, const QColor& paper, const QColor& ink) {
+            QImage image(460, 200, QImage::Format_RGB32);
+            image.fill(paper);
+            QPainter painter(&image);
+            painter.setPen(ink);
+            painter.drawRect(x[0], y[0], x[3] - x[0], y[4] - y[0]);
+            for (int r = 1; r < 4; ++r)
+                painter.drawLine(r == 3 ? x[1] : x[0], y[r], x[3], y[r]); // the first column's last cell is two rows high
+            if (down) {
+                painter.drawLine(x[1], y[0], x[1], y[4]);
+                painter.drawLine(x[2], y[1], x[2], y[4]); // the heading's second cell is two columns wide
+            }
+            // Writing in a cell, with strokes as tall as writing is: none of it a line of the table.
+            QFont font(u"Microsoft YaHei UI"_s);
+            font.setPixelSize(16);
+            font.setUnderline(true);
+            painter.setFont(font);
+            painter.setPen(ink);
+            painter.drawText(QRect(x[1], y[2], x[2] - x[1], y[3] - y[2]), Qt::AlignCenter, u"Illustrated|11"_s);
+            return image;
+        };
+        const auto check = [&](const ws::table::Structure& s, const char* what) {
+            QVERIFY2(s.rows == 4 && s.columns == 3 && s.cells.size() == 10,
+                qPrintable(u"%1: %2 x %3, %4 cells"_s.arg(QLatin1StringView(what)).arg(s.rows).arg(s.columns).arg(s.cells.size())));
+            const auto at = [&](std::size_t i) { return QList<int> {s.cells[i].row, s.cells[i].column, s.cells[i].rows, s.cells[i].columns}; };
+            QCOMPARE(at(0), (QList<int> {0, 0, 1, 1}));
+            QCOMPARE(at(1), (QList<int> {0, 1, 1, 2}));
+            QCOMPARE(at(5), (QList<int> {2, 0, 2, 1}));
+            QCOMPARE(at(9), (QList<int> {3, 2, 1, 1}));
+        };
+        const ws::table::Structure s = ws::table::ruledStructure(drawn(true, Qt::white, QColor(0x90, 0x90, 0x90)), 20);
+        check(s, "light");
+        QVERIFY(std::abs(s.cells[1].box.left() - x[1]) <= 1.5 && std::abs(s.cells[1].box.right() - x[3]) <= 1.5);
+        QVERIFY(std::abs(s.cells[5].box.top() - y[2]) <= 1.5 && std::abs(s.cells[5].box.bottom() - y[4]) <= 1.5);
+        check(ws::table::ruledStructure(drawn(true, QColor(0x1f, 0x1f, 0x1f), QColor(0x60, 0x60, 0x60)), 20), "dark");
+        // Without its outer border (what was selected ends 3 pixels inside it).
+        check(ws::table::ruledStructure(drawn(true, Qt::white, QColor(0x90, 0x90, 0x90)).copy(x[0] + 3, y[0] + 3, x[3] - x[0] - 6, y[4] - y[0] - 6), 20), "inside");
+        QCOMPARE(ws::table::ruledStructure(drawn(false, Qt::white, QColor(0x90, 0x90, 0x90)), 20).rows, 0);
+        QCOMPARE(ws::table::ruledStructure(QImage(), 20).rows, 0);
+    }
+
+    // What a spreadsheet would change is marked as text; the rest is escaped
+    // and left for it to read as it likes. One column of words is no table.
+    void tableAsHtml()
+    {
+        ws::OcrTable table;
+        table.rows = {{u"编号"_s, u"A<B & C"_s}, {u"007"_s, u"123456789012345678"_s}, {u"3-4"_s, u"1E5"_s}, {u"12.50"_s, u"2026-11-26"_s}};
+        const QString text = u" style='mso-number-format:\"\\@\"'"_s;
+        QCOMPARE(table.html(), u"<table><tr><td>编号</td><td>A&lt;B &amp; C</td></tr><tr><td%1>007</td><td%1>123456789012345678</td></tr>"
+                               "<tr><td%1>3-4</td><td%1>1E5</td></tr><tr><td>12.50</td><td>2026-11-26</td></tr></table>"_s.arg(text));
+        QVERIFY(table.standsAsTable());
+        ws::OcrTable lines;
+        lines.rows = {{u"第一行"_s, {}}, {u"第二行"_s, {}}, {u"第三行"_s, u"旁边"_s}};
+        QVERIFY(!lines.standsAsTable());
+        QVERIFY(!ws::OcrTable().standsAsTable());
+    }
+
     // A table drawn and read for real: its cells come back in place.
     void tableRead()
     {
@@ -718,6 +872,78 @@ private slots:
         QVERIFY2(ocr->read(image, &lines, &error, &table), qPrintable(error));
         QCOMPARE(lines.size(), cells.size());
         QCOMPARE(table, cells);
+        // readTable without the table model: the same rows, nothing merged.
+        ws::PaddleOcr::setTableModel({});
+        ws::OcrTable plain;
+        QVERIFY2(ocr->readTable(image, 1.0, &lines, &plain, &error), qPrintable(error));
+        QCOMPARE(plain.rows, cells);
+        QVERIFY(plain.spans.isEmpty());
+    }
+
+    // With the table model (what the screenshot plugin has in table\): a ruled
+    // table with a heading across two columns and a cell down two rows comes
+    // back with both merged; sentences are no table to it either.
+    void tableReadWithModel()
+    {
+        ws::PaddleOcr::setTableModel(QString::fromUtf8(WINSHUN_TABLE_MODEL));
+        QVERIFY(ws::PaddleOcr::hasTableModel());
+        const auto restore = qScopeGuard([] { ws::PaddleOcr::setTableModel({}); });
+        QFont font(u"Microsoft YaHei UI"_s);
+        font.setPixelSize(16);
+        QImage image(460, 190, QImage::Format_RGB32);
+        image.fill(Qt::white);
+        {
+            QPainter painter(&image);
+            painter.setFont(font);
+            painter.setPen(QColor(0x90, 0x90, 0x90));
+            const int x[] = {20, 160, 300, 440};
+            const int y[] = {20, 60, 100, 140, 180};
+            painter.drawRect(x[0], y[0], x[3] - x[0], y[4] - y[0]);
+            for (int r = 1; r < 4; ++r)
+                painter.drawLine(r == 3 ? x[1] : x[0], y[r], x[3], y[r]);
+            painter.drawLine(x[1], y[0], x[1], y[4]);
+            painter.drawLine(x[2], y[1], x[2], y[4]);
+            painter.setPen(Qt::black);
+            const auto cell = [&](int column, int row, int columns, int rows, const QString& text) {
+                painter.drawText(QRect(x[column], y[row], x[column + columns] - x[column], y[row + rows] - y[row]), Qt::AlignCenter, text);
+            };
+            cell(0, 0, 1, 1, u"部门"_s);
+            cell(1, 0, 2, 1, u"上半年"_s);
+            cell(0, 1, 1, 1, u"名称"_s);
+            cell(1, 1, 1, 1, u"一季度"_s);
+            cell(2, 1, 1, 1, u"二季度"_s);
+            cell(0, 2, 1, 2, u"研发部"_s);
+            cell(1, 2, 1, 1, u"1024"_s);
+            cell(2, 2, 1, 1, u"2048"_s);
+            cell(1, 3, 1, 1, u"4096"_s);
+            cell(2, 3, 1, 1, u"8192"_s);
+        }
+        QString error;
+        const std::unique_ptr<ws::PaddleOcr> ocr = ws::PaddleOcr::load(QCoreApplication::applicationDirPath(), 2, &error);
+        QVERIFY2(ocr, qPrintable(error));
+        QStringList lines;
+        ws::OcrTable table;
+        QVERIFY2(ocr->readTable(image, 1.0, &lines, &table, &error), qPrintable(error));
+        const QList<QStringList> cells {{u"部门"_s, u"上半年"_s, {}}, {u"名称"_s, u"一季度"_s, u"二季度"_s}, {u"研发部"_s, u"1024"_s, u"2048"_s},
+            {{}, u"4096"_s, u"8192"_s}};
+        QVERIFY2(table.rows == cells, qPrintable(table.html()));
+        QCOMPARE(table.spans, (QList<ws::OcrTable::Span> {{0, 1, 1, 2}, {2, 0, 2, 1}}));
+
+        QImage words(520, 150, QImage::Format_RGB32);
+        words.fill(Qt::white);
+        {
+            QPainter painter(&words);
+            painter.setFont(font);
+            painter.setPen(Qt::black);
+            const QStringList sentences {u"截图是日常办公里最常用的功能之一，很多时候截下来的是一段文字。"_s,
+                u"文字识别把图片里的字变回可以选中、复制和搜索的文本。"_s, u"识别完成后可以直接复制全部，也可以只选中其中一部分。"_s,
+                u"如果是外文，还能顺手翻译成中文，译文显示在原文下方。"_s};
+            for (qsizetype i = 0; i < sentences.size(); ++i)
+                painter.drawText(16, 34 + 30 * static_cast<int>(i), sentences[i]);
+        }
+        QVERIFY2(ocr->readTable(words, 1.0, &lines, &table, &error), qPrintable(error));
+        QCOMPARE(lines.size(), 4);
+        QVERIFY2(table.isEmpty(), qPrintable(table.tabbed()));
     }
 
     // 合并换行: joins soft-wrapped lines inside paragraphs while preserving

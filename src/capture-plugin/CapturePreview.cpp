@@ -546,8 +546,17 @@ int runOcr(const QStringList& args)
     // its cells with tabs, ocr-table.png. Then plain lines: no such button,
     // ocr-lines.png.
     if (args.contains(u"--table"_s)) {
+        // --table-model FILE: with the table model, as the plugin has it in
+        // its table\ folder; a second table with merged cells is then read
+        // too (ocr-table-merged.png), and its HTML checked for them.
+        const QString model = valueAfter(args, u"--table-model");
+        PaddleOcr::setTableModel(model);
         QString copied;
-        QObject::connect(&reader, &capture::CaptureOcr::copyRequested, &reader, [&](const QString& text) { copied = text; });
+        QString copiedHtml;
+        QObject::connect(&reader, &capture::CaptureOcr::copyTableRequested, &reader, [&](const QString& text, const QString& html) {
+            copied = text;
+            copiedHtml = html;
+        });
         const QList<QStringList> cells {{u"姓名"_s, u"部门"_s, u"工号"_s}, {u"张三"_s, u"研发部"_s, u"1024"_s},
             {u"李四"_s, u"市场部"_s, u"2048"_s}, {u"Alice"_s, u"Sales"_s, u"4096"_s}};
         const auto drawn = [](const QList<QStringList>& rows) {
@@ -581,11 +590,57 @@ int runOcr(const QStringList& args)
         QStringList expected;
         for (const QStringList& row : cells)
             expected.append(row.join(u'\t'));
-        const bool right = copied == expected.join(u'\n');
+        const bool right = copied == expected.join(u'\n')
+            && copiedHtml.startsWith(u"<table><tr><td>姓名</td><td>部门</td><td>工号</td></tr>") && copiedHtml.endsWith(u"</table>");
         if (!reader.message().isEmpty())
             say(u"table: message %1"_s.arg(reader.message()));
-        say(u"table: button %1, copied %2"_s.arg(shown ? u"shown"_s : u"missing"_s, right ? u"right"_s : u"WRONG: "_s + copied));
+        say(u"table: button %1, copied %2"_s.arg(shown ? u"shown"_s : u"missing"_s, right ? u"right"_s : u"WRONG: "_s + copied + u" / "_s + copiedHtml));
         bool all = shown && right && saveGrab(window, out.filePath(u"ocr-table.png"_s));
+        if (!model.isEmpty()) {
+            // Ruled, with a heading across two columns and a cell down two
+            // rows: the words alone would not say so.
+            QImage merged(460, 190, QImage::Format_RGB32);
+            merged.fill(Qt::white);
+            {
+                QPainter painter(&merged);
+                QFont font(u"Microsoft YaHei UI"_s);
+                font.setPixelSize(16);
+                painter.setFont(font);
+                painter.setPen(QColor(0x90, 0x90, 0x90));
+                const int x[] = {20, 160, 300, 440};
+                const int y[] = {20, 60, 100, 140, 180};
+                painter.drawRect(x[0], y[0], x[3] - x[0], y[4] - y[0]);
+                for (int r = 1; r < 4; ++r)
+                    painter.drawLine(r == 3 ? x[1] : x[0], y[r], x[3], y[r]); // 研发部 reaches down two rows
+                painter.drawLine(x[1], y[0], x[1], y[4]);
+                painter.drawLine(x[2], y[1], x[2], y[4]); // 上半年 reaches across two columns
+                painter.setPen(Qt::black);
+                const auto cell = [&](int column, int row, int columns, int rows, const QString& text) {
+                    painter.drawText(QRect(x[column], y[row], x[column + columns] - x[column], y[row + rows] - y[row]), Qt::AlignCenter, text);
+                };
+                cell(0, 0, 1, 1, u"部门"_s);
+                cell(1, 0, 2, 1, u"上半年"_s);
+                cell(0, 1, 1, 1, u"名称"_s);
+                cell(1, 1, 1, 1, u"一季度"_s);
+                cell(2, 1, 1, 1, u"二季度"_s);
+                cell(0, 2, 1, 2, u"研发部"_s);
+                cell(1, 2, 1, 1, u"1024"_s);
+                cell(2, 2, 1, 1, u"2048"_s);
+                cell(1, 3, 1, 1, u"4096"_s);
+                cell(2, 3, 1, 1, u"8192"_s);
+            }
+            copied.clear();
+            copiedHtml.clear();
+            readIt(merged);
+            if (button)
+                QMetaObject::invokeMethod(button, "clicked");
+            const bool across = copiedHtml.contains(u"<td colspan=\"2\">上半年</td>");
+            const bool down = copiedHtml.contains(u"<td rowspan=\"2\">研发部</td>");
+            const bool cells4 = copied == u"部门\t上半年\t\n名称\t一季度\t二季度\n研发部\t1024\t2048\n\t4096\t8192";
+            say(u"merged table: across %1, down %2, cells %3"_s.arg(across ? u"right"_s : u"WRONG"_s, down ? u"right"_s : u"WRONG"_s,
+                cells4 ? u"right"_s : u"WRONG: "_s + copied + u" / "_s + copiedHtml));
+            all = across && down && cells4 && saveGrab(window, out.filePath(u"ocr-table-merged.png"_s)) && all;
+        }
         readIt(drawn({{u"第一行文字，不是表格"_s}, {u"第二行也是一整句话"_s}}));
         const bool hidden = button && !button->property("visible").toBool() && reader.table().isEmpty();
         say(u"lines: button %1, text %2"_s.arg(hidden ? u"hidden"_s : u"SHOWN"_s, reader.text()));
