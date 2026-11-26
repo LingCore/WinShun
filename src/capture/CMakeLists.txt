@@ -14,7 +14,9 @@
 # (CountdownWindow) and a pin's key card (GitHub #343: PinKeyCard), and the keys a recording shows (GitHub #98: Keycaps, which
 # keys and rows; KeycapRender, their picture; KeyStream, the hooks while
 # recording), and the recording's pointer trail (CursorTrail, its line;
-# CursorArt, the pointer drawn over it as Windows shows it). What the
+# CursorArt, the pointer drawn over it as Windows shows it), and the
+# formula's LaTeX that 公式识别 reads, tidies and writes as MathML and
+# Typst (Latex, LatexSymbols, LatexExport). What the
 # overlays bind to (CaptureSession, CaptureImage) and the controller
 # (Capture) are in this folder too, but built into WinShun's QML module
 # (src/app/CMakeLists.txt), which registers their types.
@@ -81,11 +83,25 @@ add_library(wscapture STATIC
     LaserTrail.cpp LaserTrail.h
     LiveStroke.cpp LiveStroke.h
     PresenterState.h
+    Latex.cpp LatexExport.cpp Latex.h
+    LatexSymbols.cpp LatexSymbols.h
 )
 target_include_directories(wscapture PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 # miniz: the projects' zip (AnnotationFormat). ole32: UI Automation (ScrollInput).
 target_link_libraries(wscapture PUBLIC winshun_options Qt6::Gui
     PRIVATE miniz ZXing::ZXing windowsapp windowscodecs d3d11 d2d1 dxgi mfplat mfreadwrite mfuuid oleaut32 dwmapi user32 gdi32 advapi32 ole32 winmm)
+
+# 公式识别's formulas drawn as TeX draws them (FormulaPicture): MicroTeX with
+# Latin Modern Math (third_party/microtex), the font's outlines in the
+# library, for the capture plugin and tst_formula only.
+add_subdirectory(${PROJECT_SOURCE_DIR}/third_party/microtex ${CMAKE_BINARY_DIR}/third_party/microtex EXCLUDE_FROM_ALL)
+add_library(wsformula STATIC FormulaPicture.cpp FormulaPicture.h)
+target_include_directories(wsformula PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(wsformula PUBLIC winshun_options Qt6::Gui PRIVATE microtex Qt6::Svg)
+qt_add_resources(wsformula "microtex_font"
+    PREFIX /microtex
+    BASE "${PROJECT_SOURCE_DIR}/third_party/microtex/res"
+    FILES "${PROJECT_SOURCE_DIR}/third_party/microtex/res/latinmodern-math.clm2")
 
 # Optional media components: Windows N still starts and takes screenshots.
 target_link_options(wscapture INTERFACE /DELAYLOAD:mfplat.dll /DELAYLOAD:mfreadwrite.dll)

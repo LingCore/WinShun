@@ -875,6 +875,16 @@ add_test(NAME tst_smartredact COMMAND tst_smartredact)
 set_tests_properties(tst_smartredact PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# 公式识别's LaTeX (src/capture/Latex*): the formula model's spelling tidied,
+# what is written read back unchanged, odd sources, MathML and Typst.
+qt_add_executable(tst_formula tst_formula.cpp)
+target_link_libraries(tst_formula PRIVATE wscapture wsformula Qt6::Test)
+set_target_properties(tst_formula PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_formula COMMAND tst_formula -o -,txt)
+# Windows' own platform, not offscreen: \text{} is drawn with Windows' fonts.
+set_tests_properties(tst_formula PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # Stage 7 (src/capture: PinTools, CaptureTools, QrCode): a pin's turns,
 # collapsed forms, corner drags and picked text, the colour formats, the
 # delayed capture's countdown, Shift+R's monitor, the cursor drawn into a
