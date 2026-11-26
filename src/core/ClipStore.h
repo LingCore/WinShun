@@ -352,9 +352,13 @@ public:
     bool keepsPlaceOnPaste() const { return m_keepsPlace; }
     // On (Settings::clipboardDuplicates, Ditto's "allow duplicates"), what
     // was copied before is a new entry on top when copied again, and the old
-    // one stays where it is. Only a copy of what the newest entry is already
-    // is still that entry (Ctrl+C pressed twice, a program that writes the
-    // clipboard twice for one copy). Off, the entry it matches moves up.
+    // one stays where it is: the newest one too, so the same thing copied
+    // twice running is two entries, whether or not a paste moved it up in
+    // between. Only what the newest entry is, written again within
+    // kSameCopyMs of it, is still that entry: one copy, of a program that
+    // writes the clipboard twice for it or of Ctrl+C pressed twice in a
+    // hurry. Off, the entry it matches moves up.
+    static constexpr qint64 kSameCopyMs = 500;
     void setKeepsDuplicates(bool on) { m_keepsDuplicates = on; }
     bool keepsDuplicates() const { return m_keepsDuplicates; }
     // The pictures (and projects) of removed entries stay until

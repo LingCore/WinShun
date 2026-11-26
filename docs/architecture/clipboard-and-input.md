@@ -32,7 +32,7 @@
 ### 2.2 异步写库与 SQLite（`ClipStore`）
 
 - **线程边界**：内存列表（前 64K 字符）仅主线程访问；SQLite 与图片读写交单写库线程 `ClipStore::Writer` 串行队列。写操作先改内存、单调分配不复用 ID 入队，读盘同队列保序；落盘前 `imagePending` 为真，完成经 `pictureSaved` 刷新、失败经 `lost` 回滚，退出排空。
-- **去重与单条快捷键**：`add` 默认按 `hash` 合并到已有条目并移到最前；`setKeepsDuplicates`（`[Clipboard] KeepDuplicates`）开启后只合并与最新一条相同的（连按 `Ctrl+C`），启动时读入的 `initial` 仍全表合并，自己写出的粘贴经 `ours` 走 `touch` 不新增。`clips.hotkey`（`NOT NULL DEFAULT ''`，旧库 `ALTER` 补列；空值绑 `COALESCE(?, '')`）存单条快捷键，一键一条（`setHotkey` 夺回他条，无分组的入 `kPinned`），`restore` 遇键已被占则清空。`Clipboard::entryHotkeys` 变化 → `App::applyEntryHotkeys` 以 `RegisterHotKey` id 100–299 注册，与 Win顺 自身键、他程占用冲突写入设置行 `error` 与 `noteApplyProblem`；按下走 `pasteByHotkey`（面板开着时同面板粘贴，否则 `pasteDirect`）。
+- **去重与单条快捷键**：`add` 默认按 `hash` 合并到已有条目并移到最前；`setKeepsDuplicates`（`[Clipboard] KeepDuplicates`）开启后每次复制各记一条，只有与最新一条相同且距其 `used` 不到 `kSameCopyMs`（500 ms）的才并入（程序一次复制写两遍剪贴板、手快连按 `Ctrl+C`；不按“是否最新一条”合并，否则未开“粘贴后保持位置”时粘贴把条目顶到最前，再复制它就被吞掉），启动时读入的 `initial` 仍全表合并，自己写出的粘贴经 `ours` 走 `touch` 不新增。`clips.hotkey`（`NOT NULL DEFAULT ''`，旧库 `ALTER` 补列；空值绑 `COALESCE(?, '')`）存单条快捷键，一键一条（`setHotkey` 夺回他条，无分组的入 `kPinned`），`restore` 遇键已被占则清空。`Clipboard::entryHotkeys` 变化 → `App::applyEntryHotkeys` 以 `RegisterHotKey` id 100–299 注册，与 Win顺 自身键、他程占用冲突写入设置行 `error` 与 `noteApplyProblem`；按下走 `pasteByHotkey`（面板开着时同面板粘贴，否则 `pasteDirect`）。
 - **SQLite 回收**：仅用 Qt SQLite 驱动，WAL（`journal_size_limit` ≤ 1 MB）+ `auto_vacuum=FULL`（旧库写库线程 `VACUUM` 迁移），删除提交即截断空闲页；图片原格式存盘，撤销期保留。
 
 ### 2.3 图片原格式、动图与公式

@@ -788,10 +788,17 @@ qint64 ClipStore::add(const ClipCapture& capture, qint64 now)
     if (!m_open)
         return 0;
     const QByteArray hash = capture.hash.isEmpty() ? clipHash(capture.kind, capture.text) : capture.hash;
-    // Keeping duplicates, only the newest entry is this copy again; what was
-    // on the clipboard as the history started is never a copy at all.
+    // Keeping duplicates, every copy is an entry of its own; only the newest
+    // one written again within kSameCopyMs is that copy still. What was on
+    // the clipboard as the history started is never a copy at all.
+    const auto sameCopy = [&] {
+        if (m_clips.empty() || m_clips.front().hash != hash)
+            return false;
+        const qint64 since = now - m_clips.front().used;
+        return since >= 0 && since < kSameCopyMs;
+    };
     const auto same = m_keepsDuplicates && !capture.initial
-        ? (!m_clips.empty() && m_clips.front().hash == hash ? m_clips.begin() : m_clips.end())
+        ? (sameCopy() ? m_clips.begin() : m_clips.end())
         : std::ranges::find(m_clips, hash, &Clip::hash);
     if (same != m_clips.end() && capture.initial)
         return same->id; // listed already, and not copied just now

@@ -321,9 +321,11 @@ private slots:
     }
 
     // 保留重复项 (Ditto's "allow duplicates"): copied again, a new entry on
-    // top; only the newest copied again at once stays one entry.
+    // top, the newest one too; only what is written again within kSameCopyMs
+    // of it is the same copy.
     void duplicatesKeptWhenAsked()
     {
+        constexpr qint64 kSame = ClipStore::kSameCopyMs;
         QTemporaryDir dir;
         ClipStore store(dir.path());
         QVERIFY(store.open(kStart));
@@ -331,46 +333,73 @@ private slots:
         store.setKeepsDuplicates(true);
         const qint64 a = store.add(text(u"甲"_s), kStart);
         const qint64 b = store.add(text(u"乙"_s), kStart + 1);
-        // Ctrl+C twice (or a program writing the clipboard twice): one entry, its time and source new.
+        // A program writing the clipboard twice (or Ctrl+C twice in a hurry): one entry, its time and source new.
         QCOMPARE(store.add(text(u"乙"_s, u"微信"_s), kStart + 2), b);
         QCOMPARE(store.clips().size(), std::size_t(2));
         QCOMPARE(store.clip(b)->used, kStart + 2);
         QCOMPARE(store.clip(b)->source, u"微信"_s);
+        // ... each write counted from the one before it, up to the last moment.
+        QCOMPARE(store.add(text(u"乙"_s), kStart + 1 + kSame), b);
+        QCOMPARE(store.clips().size(), std::size_t(2));
         // An older one copied again: a new entry on top, the old one where it was.
-        const qint64 again = store.add(text(u"甲"_s), kStart + 3);
+        qint64 now = kStart + 2 * kSame;
+        const qint64 again = store.add(text(u"甲"_s), now);
         QVERIFY(again > b);
         QCOMPARE(texts(store), (QStringList {u"甲"_s, u"乙"_s, u"甲"_s}));
         QCOMPARE(store.clip(a)->used, kStart);
-        QCOMPARE(store.clip(again)->created, kStart + 3);
+        QCOMPARE(store.clip(again)->created, now);
+        // The newest one copied again, twice running: entries of their own too.
+        const qint64 running = store.add(text(u"甲"_s), now += kSame);
+        QVERIFY(running > again);
+        QVERIFY(store.add(text(u"甲"_s), now += 60'000) > running);
+        QCOMPARE(texts(store), (QStringList {u"甲"_s, u"甲"_s, u"甲"_s, u"乙"_s, u"甲"_s}));
+        QCOMPARE(store.clip(again)->used, kStart + 2 * kSame);
+        // The clock set back: no telling how long ago, a copy of its own.
+        const qint64 newest = store.clips().front().id;
+        QVERIFY(store.add(text(u"甲"_s), now - 1) != newest);
+        QCOMPARE(store.clips().size(), std::size_t(6));
         // An old one in a group stays in it; the copy is a new entry in none.
         store.setGroup(std::span(&b, 1), ClipStore::kPinned);
-        const qint64 copy = store.add(text(u"乙"_s), kStart + 4);
+        const qint64 copy = store.add(text(u"乙"_s), now += kSame);
         QVERIFY(copy != b);
         QCOMPARE(store.clip(copy)->group, qint64(0));
         QCOMPARE(store.clip(b)->group, ClipStore::kPinned);
         // What was on the clipboard as the history started is not a copy: no new entry.
         ClipCapture already = text(u"甲"_s);
         already.initial = true;
-        QCOMPARE(store.add(already, kStart + 5), again); // the first listed of the two
-        QCOMPARE(store.clips().size(), std::size_t(4));
+        const qint64 firstListed = store.clips()[1].id; // of those that are 甲
+        QCOMPARE(store.add(already, now += kSame), firstListed);
+        QCOMPARE(store.clips().size(), std::size_t(7));
         // Pasting from the history is not a copy either: the entry moves, none is added.
-        store.touch(a, kStart + 6);
-        QCOMPARE(store.clips().size(), std::size_t(4));
+        store.touch(a, now += kSame);
+        QCOMPARE(store.clips().size(), std::size_t(7));
         QCOMPARE(store.clips().front().id, a);
-        // ... and copying what was just pasted is still that one.
-        QCOMPARE(store.add(text(u"甲"_s), kStart + 7), a);
-        QCOMPARE(store.clips().size(), std::size_t(4));
+        // ... what the paste itself sets off is still that one,
+        QCOMPARE(store.add(text(u"甲"_s), now + 1), a);
+        QCOMPARE(store.clips().size(), std::size_t(7));
+        // ... and copying it after is a copy like any other, though the
+        // paste moved it to the top (粘贴后保持位置 off) ...
+        const qint64 afterPaste = store.add(text(u"甲"_s), now += kSame + 1);
+        QVERIFY(afterPaste != a);
+        QCOMPARE(store.clips().size(), std::size_t(8));
+        // ... as it is when the paste left it where it was.
+        store.setKeepsPlaceOnPaste(true);
+        store.touch(afterPaste, now += kSame);
+        QVERIFY(store.add(text(u"甲"_s), now += kSame) != afterPaste);
+        QCOMPARE(store.clips().size(), std::size_t(9));
+        store.setKeepsPlaceOnPaste(false);
         // Its words changed to another entry's: allowed while duplicates are kept.
         QCOMPARE(store.setText(copy, u"甲"_s), ClipStore::TextChange::Changed);
         store.setKeepsDuplicates(false);
         QCOMPARE(store.setText(copy, u"乙"_s), ClipStore::TextChange::Duplicate);
-        // Off again: a copy moves the first entry it matches up.
-        QCOMPARE(store.add(text(u"乙"_s), kStart + 8), b);
+        // Off again: a copy moves the first entry it matches up, however long after.
+        QCOMPARE(store.add(text(u"乙"_s), now += kSame), b);
         QCOMPARE(store.clips().front().id, b);
+        QCOMPARE(store.add(text(u"乙"_s), now += 60'000), b);
         // All of them kept on disk as entries of their own.
         store.close();
-        QVERIFY(store.open(kStart + 9));
-        QCOMPARE(store.clips().size(), std::size_t(4));
+        QVERIFY(store.open(now + 1));
+        QCOMPARE(store.clips().size(), std::size_t(9));
     }
 
     // An entry's own shortcut (Clip::hotkey): one entry each, kept in 固定,

@@ -9287,8 +9287,8 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Copying the same content again adds a new entry; when off, only one is kept and moved to the top</translation>
     </message>
     <message>
-        <source>紧接着复制同样的内容（比如连按两次 Ctrl+C）仍只记一条。从剪贴板里粘贴出去不算复制，不会多出一条</source>
-        <translation>Copying the same content twice in a row (such as pressing Ctrl+C twice) still records it once. Pasting from the clipboard is not a copy and adds no entry</translation>
+        <source>连着复制同样的内容也各记一条。只有半秒内的重复才算同一次复制（有的程序复制一次会写两遍剪贴板）。从剪贴板里粘贴出去不算复制，不会多出一条</source>
+        <translation>Copying the same content twice in a row adds an entry each time. Only a repeat within half a second counts as the same copy (some programs write the clipboard twice for one copy). Pasting from the clipboard is not a copy and adds no entry</translation>
     </message>
     <message>
         <source>剪贴板大小</source>
@@ -9895,8 +9895,8 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>The tab the clipboard shows each time it opens; right-click a tab to set it there too</translation>
     </message>
     <message>
-        <source>重新复制同样的内容仍会排到最前。粘贴过的条目右下角带蓝色对勾，也不会因“保留天数”到期而被删</source>
-        <translation>Recopying the same content will still bring it to the top. Pasted items show a blue checkmark in the bottom-right corner and will not be deleted when retention days expire</translation>
+        <source>重新复制同样的内容仍会排到最前（开着“保留重复项”时是在最前新记一条）。粘贴过的条目右下角带蓝色对勾，也不会因“保留天数”到期而被删</source>
+        <translation>Recopying the same content will still bring it to the top (with “Keep duplicates” on, as a new entry there). Pasted items show a blue checkmark in the bottom-right corner and will not be deleted when retention days expire</translation>
     </message>
     <message>
         <source>按住修饰键每按一次往下选一条，松开粘贴</source>
