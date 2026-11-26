@@ -1,6 +1,7 @@
 #include "Favorites.h"
 #include "FileIconProvider.h"
 #include "SiteIconImage.h"
+#include "ThumbnailProvider.h"
 
 #include <QBuffer>
 #include <QDir>
@@ -45,6 +46,72 @@ class TestCommandIcons : public QObject {
     Q_OBJECT
 
 private slots:
+    // A type outside the built-in list gets its thumbnail when a program on
+    // this PC makes thumbnails of it (CorelDRAW's .cdr: asked for, never
+    // shown, the list not having it). Three made-up types under the user's
+    // own classes, removed after: one with a thumbnail handler (Windows' own
+    // for pictures, so that a real thumbnail can be asked for), one with it
+    // but called a document, one with none.
+    void thumbnailsOfTypesWithAHandler()
+    {
+        const wchar_t* const kHandler = L"{C7657C4A-9F68-40fa-A4DF-96BC08EB3551}"; // Windows' photo thumbnail provider
+        const std::wstring classes = L"Software\\Classes\\";
+        std::vector<std::wstring> made;
+        const auto cleanup = qScopeGuard([&] {
+            for (const std::wstring& key : made)
+                ::RegDeleteTreeW(HKEY_CURRENT_USER, key.c_str());
+        });
+        const auto set = [](const std::wstring& key, const wchar_t* name, const wchar_t* value) {
+            return ::RegSetKeyValueW(HKEY_CURRENT_USER, key.c_str(), name, REG_SZ, value,
+                       static_cast<DWORD>((std::wcslen(value) + 1) * sizeof(wchar_t))) == ERROR_SUCCESS;
+        };
+        const auto addType = [&](const wchar_t* extension, bool handler, const wchar_t* perceived) {
+            const std::wstring key = classes + extension;
+            HKEY there = nullptr;
+            if (::RegOpenKeyExW(HKEY_CURRENT_USER, key.c_str(), 0, KEY_READ, &there) == ERROR_SUCCESS) {
+                ::RegCloseKey(there);
+                return false; // someone's real type: not touched
+            }
+            made.push_back(key);
+            bool ok = set(key, nullptr, L"WinShun test type");
+            if (handler)
+                ok = ok && set(key + L"\\ShellEx\\{e357fccd-a995-4576-b01f-234630154e96}", nullptr, kHandler);
+            if (perceived)
+                ok = ok && set(key, L"PerceivedType", perceived);
+            return ok;
+        };
+        QVERIFY(addType(L".wsthumbdraw", true, nullptr));
+        QVERIFY(addType(L".wsthumbdoc", true, L"document"));
+        QVERIFY(addType(L".wsthumbnone", false, nullptr));
+
+        QVERIFY(ThumbnailProvider::hasThumbnailType(u"D:\\设计\\海报.wsthumbdraw"_s));
+        QVERIFY(ThumbnailProvider::hasThumbnailType(u"D:\\设计\\海报.WSTHUMBDRAW"_s));
+        QVERIFY(!ThumbnailProvider::hasThumbnailType(u"D:\\设计\\合同.wsthumbdoc"_s)); // a document keeps its icon
+        QVERIFY(!ThumbnailProvider::hasThumbnailType(u"D:\\设计\\海报.wsthumbnone"_s));
+        // As before: the built-in types wherever they are, no shortcut, no name without a type.
+        QVERIFY(ThumbnailProvider::hasThumbnailType(u"D:\\a\\photo.JPG"_s));
+        QVERIFY(ThumbnailProvider::hasThumbnailType(u"D:\\a\\clip.mkv"_s));
+        QVERIFY(!ThumbnailProvider::hasThumbnailType(u"D:\\a\\readme.txt"_s));
+        QVERIFY(!ThumbnailProvider::hasThumbnailType(u"D:\\a\\Photoshop.lnk"_s));
+        QVERIFY(!ThumbnailProvider::hasThumbnailType(u"D:\\a\\notes v1.2 final"_s));
+        QVERIFY(!ThumbnailProvider::hasThumbnailType(u"D:\\a.b\\noextension"_s));
+        QVERIFY(!ThumbnailProvider::hasThumbnailType(u"D:\\a\\trailing."_s));
+        QVERIFY(!ThumbnailProvider::url(u"D:\\设计\\海报.wsthumbdraw"_s, 7).isEmpty());
+        QVERIFY(ThumbnailProvider::url(u"\\\\nas\\设计\\海报.wsthumbdraw"_s, 7).isEmpty()); // a share: not read for a thumbnail
+
+        // The thumbnail itself, by the handler registered: a picture saved under the made-up type.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QImage picture(96, 64, QImage::Format_RGB32);
+        picture.fill(QColor(220, 30, 30));
+        const QString path = QDir::toNativeSeparators(dir.filePath(u"海报.wsthumbdraw"_s));
+        QVERIFY(picture.save(path, "PNG"));
+        const QImage thumbnail = FileIconProvider::thumbnail(path, 48, false);
+        QVERIFY2(!thumbnail.isNull(), "the registered handler made no thumbnail");
+        const QColor middle = thumbnail.pixelColor(thumbnail.width() / 2, thumbnail.height() / 2);
+        QVERIFY2(middle.red() > 180 && middle.green() < 80 && middle.blue() < 80, qPrintable(middle.name()));
+    }
+
     void largeIconCacheHasBoundedMemory()
     {
         FileIconProvider provider;

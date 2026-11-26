@@ -1253,6 +1253,7 @@ set_tests_properties(tst_proxy PROPERTIES
 # pictures and fall back immediately for offline programs. Never executes a command.
 qt_add_executable(tst_commandicons tst_commandicons.cpp
     ${PROJECT_SOURCE_DIR}/src/app/FileIconProvider.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/ThumbnailProvider.cpp
     ${PROJECT_SOURCE_DIR}/src/app/SiteIconImage.cpp
     ${PROJECT_SOURCE_DIR}/src/app/SvgIcon.cpp
     ${PROJECT_SOURCE_DIR}/src/app/SystemTheme.cpp

@@ -5,6 +5,7 @@
 
 #include <QCache>
 #include <QFileInfo>
+#include <QHash>
 #include <QImage>
 #include <QMutex>
 #include <QRunnable>
@@ -12,9 +13,11 @@
 #include <QThreadPool>
 
 #include <windows.h>
+#include <shlwapi.h>
 
 #include <algorithm>
 #include <atomic>
+#include <string>
 
 using namespace Qt::StringLiterals;
 
@@ -108,10 +111,64 @@ QImage makeThumbnail(const QString& path, int px, const PooledImageResponse::Han
 
 ThumbnailProvider::ThumbnailProvider() = default;
 
+namespace {
+
+// Whether a program installed on this PC makes thumbnails of the type: its
+// thumbnail handler is registered for the extension (CorelDRAW's for .cdr,
+// a slicer's for .stl and .3mf, a CAD program's, PowerToys' for .svg), by
+// IThumbnailProvider or the older IExtractImage. Read from the registry, as
+// Explorer finds it (the extension, its program's type, SystemFileAssociations).
+bool hasHandler(const std::wstring& extension)
+{
+    for (const wchar_t* interfaceId : {L"{e357fccd-a995-4576-b01f-234630154e96}", L"{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}"}) {
+        wchar_t handler[64];
+        DWORD size = static_cast<DWORD>(std::size(handler));
+        if (::AssocQueryStringW(ASSOCF_NONE, ASSOCSTR_SHELLEXTENSION, extension.c_str(), interfaceId, handler, &size) == S_OK)
+            return true;
+    }
+    return false;
+}
+
+// A type outside the list below, shown by its thumbnail when a program here
+// makes one. Not the kinds whose icon says more in a row than a small white
+// page does (Word, Excel and PowerPoint files have handlers too: text,
+// documents), nor music (a cover is no file's picture), nor what stands for
+// something else (a shortcut's handler gives its target's, a library's its
+// folders'). Asked once per extension: a program installed since is seen
+// after a restart.
+bool handlerType(const QString& suffix)
+{
+    static const QStringList kNever {u"lnk"_s, u"url"_s, u"theme"_s, u"themepack"_s, u"library-ms"_s, u"search-ms"_s};
+    if (kNever.contains(suffix))
+        return false;
+    static QMutex mutex;
+    static QHash<QString, bool> known;
+    {
+        QMutexLocker lock(&mutex);
+        if (const auto it = known.constFind(suffix); it != known.cend())
+            return *it;
+    }
+    const std::wstring extension = L'.' + suffix.toStdWString();
+    PERCEIVED kind = PERCEIVED_TYPE_UNSPECIFIED;
+    PERCEIVEDFLAG flags = PERCEIVEDFLAG_UNDEFINED;
+    if (FAILED(::AssocGetPerceivedType(extension.c_str(), &kind, &flags, nullptr)))
+        kind = PERCEIVED_TYPE_UNSPECIFIED;
+    const bool pictured = kind == PERCEIVED_TYPE_IMAGE || kind == PERCEIVED_TYPE_VIDEO || kind == PERCEIVED_TYPE_UNSPECIFIED
+        || kind == PERCEIVED_TYPE_CUSTOM || kind == PERCEIVED_TYPE_UNKNOWN;
+    const bool has = pictured && hasHandler(extension);
+    QMutexLocker lock(&mutex);
+    known.insert(suffix, has);
+    return has;
+}
+
+} // namespace
+
 bool ThumbnailProvider::hasThumbnailType(const QString& path)
 {
     // Types Windows (or a common add-on: HEIF, RAW, WebP image extensions,
-    // a PDF reader) makes thumbnails of. Others are not asked about.
+    // a PDF reader) makes thumbnails of: asked about wherever they are. Any
+    // other type only when a program on this PC makes its thumbnails
+    // (handlerType): the rest are not asked about.
     static const QStringList kTypes {
         // pictures
         u"jpg"_s, u"jpeg"_s, u"jpe"_s, u"jfif"_s, u"png"_s, u"gif"_s, u"bmp"_s, u"dib"_s, u"tif"_s, u"tiff"_s,
@@ -120,11 +177,17 @@ bool ThumbnailProvider::hasThumbnailType(const QString& path)
         u"dng"_s, u"cr2"_s, u"cr3"_s, u"nef"_s, u"arw"_s, u"orf"_s, u"rw2"_s, u"raf"_s,
         // documents
         u"pdf"_s};
+    constexpr qsizetype kLongestSuffix = 12; // "afdesign", "sldprt": a longer last part is no type with thumbnails
     const qsizetype dot = path.lastIndexOf(u'.');
-    if (dot < 0 || path.size() - dot > 6 || path.indexOf(u'\\', dot) >= 0)
+    if (dot < 0 || dot + 1 == path.size() || path.size() - dot - 1 > kLongestSuffix || path.indexOf(u'\\', dot) >= 0)
         return false;
     const QString suffix = path.mid(dot + 1).toLower();
-    return kTypes.contains(suffix) || isVideo(suffix);
+    if (kTypes.contains(suffix) || isVideo(suffix))
+        return true;
+    // A name's last part with a space or the like is no extension ("v1.2 final").
+    if (!std::ranges::all_of(suffix, [](QChar c) { return c.isLetterOrNumber() || c == u'-' || c == u'_'; }))
+        return false;
+    return handlerType(suffix);
 }
 
 qint64 ThumbnailProvider::cachedBytes()

@@ -31,8 +31,9 @@ public:
     QQuickImageResponse* requestImageResponse(const QString& id, const QSize& requestedSize) override;
 
     // A file's thumbnail address, or "" for one not worth asking about:
-    // a type that seldom has one (only pictures, videos, PDF and the like
-    // do), a network path (thumbnails read the file). `modified` (seconds
+    // a type that seldom has one (pictures, videos, PDF and the like do,
+    // and the types a program installed here makes thumbnails of: CorelDRAW
+    // drawings, 3D models), a network path (thumbnails read the file). `modified` (seconds
     // since 1970, SearchResult::modified) is part of it: a file written
     // since gets a new address, never the old picture.
     static QString url(const QString& path, std::uint32_t modified);
