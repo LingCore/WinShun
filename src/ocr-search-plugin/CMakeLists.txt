@@ -1,7 +1,7 @@
 set(app_dir ${PROJECT_SOURCE_DIR}/src/app)
 qt_add_library(wsocrsearch STATIC OcrStore.cpp OcrStore.h OcrSource.cpp OcrSource.h
     OcrWorker.cpp OcrWorker.h
-    ${app_dir}/platform/PaddleOcr.cpp ${app_dir}/platform/OcrFiles.cpp ${app_dir}/PictureFile.cpp)
+    ${app_dir}/platform/PaddleOcr.cpp ${app_dir}/platform/OcrTable.cpp ${app_dir}/platform/OcrFiles.cpp ${app_dir}/PictureFile.cpp)
 target_include_directories(wsocrsearch PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${app_dir})
 target_link_libraries(wsocrsearch PUBLIC wscore Qt6::Gui Qt6::Sql PRIVATE wsextract pdfium onnxruntime_headers windowscodecs)
 # Traditional to simplified Chinese characters for search: OpenCC's

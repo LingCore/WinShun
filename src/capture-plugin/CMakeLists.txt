@@ -5,6 +5,16 @@
 # the plugin itself, built on that Qt. The build stages both, with the
 # package's files, into library-plugins/winshun.capture (top CMakeLists.txt).
 
+# The table model of 复制为表格 (PaddleOcr::readTable): SLANet_plus, PaddleOCR's
+# (Apache 2.0), as RapidAI publishes it for ONNX Runtime with its words in the
+# file. It says a table's rows, columns and merged cells; the words in them
+# are read by Win顺's own OCR. Downloaded once per build folder and staged
+# into the package's table\ (top CMakeLists.txt).
+set(WS_TABLE_MODEL "${CMAKE_BINARY_DIR}/_deps/slanet-plus.onnx" CACHE INTERNAL "")
+if(NOT EXISTS "${WS_TABLE_MODEL}")
+    winshun_download("https://www.modelscope.cn/models/RapidAI/RapidTable/resolve/v2.0.0/slanet-plus.onnx"
+        "${WS_TABLE_MODEL}" "d57a942af6a2f57d6a4a0372573c696a2379bf5857c45e2ac69993f3b334514b")
+endif()
 add_executable(WinShunCapture stub/main.cpp ${PROJECT_SOURCE_DIR}/resources/WinShunCapture.rc)
 target_link_libraries(WinShunCapture PRIVATE winshun_options)
 set_target_properties(WinShunCapture PROPERTIES AUTOMOC OFF MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
@@ -65,6 +75,7 @@ qt_add_library(WinShunCaptureApp SHARED
     ${app_dir}/platform/IdleTrim.cpp ${app_dir}/platform/IdleTrim.h
     ${app_dir}/platform/Integrity.cpp ${app_dir}/platform/Integrity.h
     ${app_dir}/platform/PaddleOcr.cpp ${app_dir}/platform/PaddleOcr.h
+    ${app_dir}/platform/OcrTable.cpp ${app_dir}/platform/OcrTable.h
     ${app_dir}/platform/OcrFiles.cpp ${app_dir}/platform/OcrFiles.h
     ${app_dir}/platform/RegistryWatch.cpp ${app_dir}/platform/RegistryWatch.h
     ${app_dir}/platform/ShellDialogs.cpp

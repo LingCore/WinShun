@@ -149,6 +149,7 @@ qt_add_executable(WinShun WIN32
     platform/TaskbarSearchBox.cpp platform/TaskbarSearchBox.h
     platform/TextCaret.cpp platform/TextCaret.h
     platform/PaddleOcr.cpp platform/PaddleOcr.h
+    platform/OcrTable.cpp platform/OcrTable.h
     platform/OcrFiles.cpp platform/OcrFiles.h
     platform/TextRecognizer.cpp platform/TextRecognizer.h
     platform/VolumeNotifier.cpp platform/VolumeNotifier.h

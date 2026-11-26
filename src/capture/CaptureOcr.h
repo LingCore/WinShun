@@ -6,6 +6,7 @@
 #include <QtQml/qqmlregistration.h>
 
 #include "SmartRedact.h"
+#include "platform/OcrTable.h"
 
 #include <atomic>
 #include <condition_variable>
@@ -107,11 +108,12 @@ public:
     QString title() const { return m_title; }
     QString link() const { return m_link; }
     QString table() const { return m_table; }
-    // Cells with tabs, rows with line breaks; a tab or line break in a cell becomes a space.
-    static QString tabbed(const QList<QStringList>& table);
+    // The same table for the programs that take one with its merged cells
+    // (Excel, WPS, Word): <table> with rowspan and colspan (OcrTable::html).
+    QString tableHtml() const { return m_tableHtml; }
 
     Q_INVOKABLE void copyAll(const QString& text) { emit copyRequested(text); }
-    Q_INVOKABLE void copyTable() { if (!m_table.isEmpty()) emit copyRequested(m_table); }
+    Q_INVOKABLE void copyTable() { if (!m_table.isEmpty()) emit copyTableRequested(m_table, m_tableHtml); }
     // The text (the selection, else all of it) as one line, for the search box.
     Q_INVOKABLE void search(const QString& text);
     // The same one line, for the default web search.
@@ -144,6 +146,8 @@ public:
 signals:
     void changed();
     void copyRequested(const QString& text);
+    // The table as text (tabs between cells) and as HTML: both go to the clipboard.
+    void copyTableRequested(const QString& text, const QString& html);
     void searchRequested(const QString& query);
     void webSearchRequested(const QString& query);
     void translationChanged();
@@ -179,7 +183,7 @@ private:
     };
     void enqueueScan(const QImage& image, const QRect& region, double dpr, bool grayscale, std::function<void(RedactScan)> done);
     void work(const std::stop_token& stop);
-    void done(int round, const QString& text, const QString& table, const QString& error);
+    void done(int round, const QString& text, const OcrTable& table, const QString& error);
     void clearTranslation();
     void scanDone(int ticket, RedactScan scan);
     void lineScanDone(int ticket, QList<RedactLine> lines);
@@ -190,6 +194,7 @@ private:
     QString m_title;
     QString m_link;
     QString m_table;
+    QString m_tableHtml;
     int m_round = 0;
     QImage m_pendingImage;
     double m_pendingDpr = 1;

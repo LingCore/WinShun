@@ -1,5 +1,6 @@
 #include "PaddleOcr.h"
 #include "OcrFiles.h"
+#include "OcrTable.h"
 
 // The API comes from the DLL loaded here (Ort::InitApi), not from linking it.
 #define ORT_API_MANUAL_INIT
@@ -75,6 +76,20 @@ using Quad = std::array<QPointF, 4>; // top left, top right, bottom right, botto
 const wchar_t* const kDetModel = L"PP-OCRv6_det_tiny.onnx";
 const wchar_t* const kRecModel = L"PP-OCRv6_rec_tiny.onnx";
 
+// The table model (SLANet_plus): the picture's longer side made this long,
+// the rest of the square left empty; its cells' boxes are in that square.
+constexpr int kTableSide = 488;
+// Darker than this on average (0…255): a dark table is shown to the model as
+// a light one, which is what it learned from.
+constexpr int kTableDark = 110;
+// The model is this sure of a table's rows and columns (0.994 and up on 34
+// table screenshots); of the cells it makes of a paragraph, code or a chat
+// 0.92 to 0.95. Below: the table is worked out without it.
+constexpr double kTableSure = 0.98;
+
+std::mutex g_tableModelMutex;
+QString g_tableModel; // PaddleOcr::setTableModel
+
 QString filePath(const QString& folder, const wchar_t* name, bool model)
 {
     return QDir::toNativeSeparators(folder + (model ? u"/ocr/"_s : u"/"_s) + QString::fromWCharArray(name));
@@ -149,6 +164,20 @@ void joinThread(OrtCustomThreadHandle handle)
     HANDLE thread = const_cast<HANDLE>(reinterpret_cast<const void*>(handle));
     ::WaitForSingleObject(thread, INFINITE);
     ::CloseHandle(thread);
+}
+
+// How every model is run: on the readers' shared threads.
+Ort::SessionOptions sessionOptions()
+{
+    Ort::SessionOptions options;
+    options.DisablePerSessionThreads()
+        .SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL)
+        .DisableCpuMemArena() // memory back after each picture
+        // A planned block per input size is ~135 MB more than the
+        // detection's own peak when a tall picture's strips repeat a size
+        // (measured on 2000x4000..3200x12500), and no faster.
+        .DisableMemPattern();
+    return options;
 }
 
 double distance(QPointF a, QPointF b)
@@ -699,6 +728,18 @@ struct PaddleOcr::Impl {
     bool own = false; // rec is the user's own
     Ort::MemoryInfo memory = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
 
+    // The table model, loaded when the first table is read (never for the
+    // clipboard and OCR search, which read none).
+    Ort::Session tableSession {nullptr};
+    std::string tableIn;
+    std::vector<std::string> tableOut;
+    QStringList tableWords; // by the model's classes: begin first, end last
+    bool tableTried = false;
+    bool loadTable();
+    // The picture's cells as the table model sees them; none when it is not
+    // there, did not come to an end (a table too long for it) or failed.
+    table::Structure tableStructure(const QImage& rgb);
+
     std::vector<Quad> detect(const QImage& strip);
     // `places`, when given, gets for each line the (index in the text, middle
     // along the line as a fraction of its width) of every character.
@@ -779,14 +820,7 @@ std::unique_ptr<PaddleOcr> PaddleOcr::load(const QString& programFolder, int thr
             .SetGlobalCustomCreateThreadFn(createThread)
             .SetGlobalCustomJoinThreadFn(joinThread);
         impl->env = Ort::Env(threading, ORT_LOGGING_LEVEL_ERROR, "WinShun");
-        Ort::SessionOptions options;
-        options.DisablePerSessionThreads()
-            .SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL)
-            .DisableCpuMemArena() // memory back after each picture
-            // A planned block per input size is ~135 MB more than the
-            // detection's own peak when a tall picture's strips repeat a size
-            // (measured on 2000x4000..3200x12500), and no faster.
-            .DisableMemPattern();
+        const Ort::SessionOptions options = sessionOptions();
         const auto open = [&](const wchar_t* name) {
             const QString file = filePath(resolvedFolder, name, true);
             return Ort::Session(impl->env, reinterpret_cast<const wchar_t*>(file.utf16()), options);
@@ -854,6 +888,218 @@ std::unique_ptr<PaddleOcr> PaddleOcr::load(const QString& programFolder, int thr
     return ocr;
 }
 
+void PaddleOcr::setTableModel(const QString& file)
+{
+    const std::lock_guard lock(g_tableModelMutex);
+    g_tableModel = file;
+}
+
+bool PaddleOcr::hasTableModel()
+{
+    const std::lock_guard lock(g_tableModelMutex);
+    return !g_tableModel.isEmpty() && QFile::exists(g_tableModel);
+}
+
+bool PaddleOcr::Impl::loadTable()
+{
+    if (tableTried)
+        return static_cast<bool>(tableSession);
+    tableTried = true;
+    QString file;
+    {
+        const std::lock_guard lock(g_tableModelMutex);
+        file = QDir::toNativeSeparators(g_tableModel);
+    }
+    if (file.isEmpty() || !QFile::exists(file))
+        return false;
+    try {
+        Ort::Session session(env, reinterpret_cast<const wchar_t*>(file.utf16()), sessionOptions());
+        Ort::AllocatorWithDefaultOptions allocator;
+        const Ort::AllocatedStringPtr words = session.GetModelMetadata().LookupCustomMetadataMapAllocated("character", allocator);
+        if (!words || session.GetInputCount() != 1 || session.GetOutputCount() != 2)
+            throw std::runtime_error("not a table structure model with its words in it");
+        // The model's words, as PaddleOCR decodes them: an empty cell is one
+        // word, and around them "begin" and "end".
+        QStringList list = QString::fromUtf8(words.get()).remove(u'\r').split(u'\n', Qt::SkipEmptyParts);
+        for (QString& word : list) {
+            if (!word.startsWith(u' ')) // " colspan=…" keeps its space
+                word = word.trimmed();
+        }
+        if (!list.contains(u"<td></td>"_s))
+            list.append(u"<td></td>"_s);
+        list.removeAll(u"<td>"_s);
+        list.prepend(QString());
+        list.append(QString());
+        tableWords = std::move(list);
+        tableIn = session.GetInputNameAllocated(0, allocator).get();
+        tableOut = {session.GetOutputNameAllocated(0, allocator).get(), session.GetOutputNameAllocated(1, allocator).get()};
+        tableSession = std::move(session);
+    } catch (const std::exception& e) {
+        qWarning().noquote() << "Text recognition: the table model did not load, tables are worked out without it:" << e.what();
+    }
+    return static_cast<bool>(tableSession);
+}
+
+table::Structure PaddleOcr::Impl::tableStructure(const QImage& rgb)
+{
+    if (!loadTable() || rgb.isNull())
+        return {};
+    const double ratio = static_cast<double>(kTableSide) / std::max(rgb.width(), rgb.height());
+    const int w = std::clamp(static_cast<int>(rgb.width() * ratio), 1, kTableSide);
+    const int h = std::clamp(static_cast<int>(rgb.height() * ratio), 1, kTableSide);
+    QImage small = scaledRgb(rgb, w, h);
+    {
+        qint64 sum = 0;
+        for (int y = 0; y < h; ++y) {
+            const uchar* line = small.constScanLine(y);
+            for (int x = 0; x < 3 * w; ++x)
+                sum += line[x];
+        }
+        if (sum / (3ll * w * h) < kTableDark)
+            small.invertPixels();
+    }
+    // Blue, green, red planes, each by the mean and deviation PaddleOCR gives
+    // its first, second and third plane; 0 where the picture is not.
+    static constexpr float kMean[3] = {0.485f, 0.456f, 0.406f};
+    static constexpr float kDeviation[3] = {0.229f, 0.224f, 0.225f};
+    const std::size_t plane = static_cast<std::size_t>(kTableSide) * kTableSide;
+    std::vector<float> planes(3 * plane, 0.f);
+    for (int y = 0; y < h; ++y) {
+        const uchar* line = small.constScanLine(y);
+        float* out = planes.data() + static_cast<std::size_t>(y) * kTableSide;
+        for (int x = 0; x < w; ++x) {
+            for (int c = 0; c < 3; ++c)
+                out[c * plane + x] = (line[3 * x + 2 - c] / 255.f - kMean[c]) / kDeviation[c];
+        }
+    }
+    const std::array<int64_t, 4> shape {1, 3, kTableSide, kTableSide};
+    const Ort::Value in = Ort::Value::CreateTensor<float>(memory, planes.data(), planes.size(), shape.data(), shape.size());
+    const char* inName = tableIn.c_str();
+    const char* outNames[2] = {tableOut[0].c_str(), tableOut[1].c_str()};
+    const std::vector<Ort::Value> out = tableSession.Run(Ort::RunOptions {nullptr}, &inName, &in, 1, outNames, 2);
+    // One answer says the words (a score for each of them at every step), the
+    // other where each step's cell is (4 or 8 numbers, 0…1 of the square).
+    const std::vector<int64_t> first = out[0].GetTensorTypeAndShapeInfo().GetShape();
+    const std::vector<int64_t> second = out[1].GetTensorTypeAndShapeInfo().GetShape();
+    if (first.size() != 3 || second.size() != 3 || first[1] != second[1])
+        throw std::runtime_error("unexpected table model output");
+    const bool wordsFirst = first[2] == tableWords.size();
+    const std::vector<int64_t>& wordShape = wordsFirst ? first : second;
+    const std::vector<int64_t>& boxShape = wordsFirst ? second : first;
+    if (wordShape[2] != tableWords.size() || (boxShape[2] != 4 && boxShape[2] != 8))
+        throw std::runtime_error("the table model's words do not match its classes");
+    const float* scores = out[wordsFirst ? 0 : 1].GetTensorData<float>();
+    const float* places = out[wordsFirst ? 1 : 0].GetTensorData<float>();
+    const auto steps = static_cast<std::size_t>(wordShape[1]);
+    const auto classes = static_cast<std::size_t>(wordShape[2]);
+    const auto numbers = static_cast<std::size_t>(boxShape[2]);
+    const std::size_t end = classes - 1;
+    QStringList words;
+    std::vector<QRectF> boxes;
+    bool ended = false;
+    double sure = 0; // the words' scores, added up
+    for (std::size_t s = 0; s < steps; ++s) {
+        const float* step = scores + s * classes;
+        const std::size_t best = static_cast<std::size_t>(std::max_element(step, step + classes) - step);
+        if (s > 0 && best == end) {
+            ended = true;
+            break;
+        }
+        if (best == 0 || best == end)
+            continue;
+        const QString& word = tableWords[static_cast<qsizetype>(best)];
+        if (word == u"<td" || word == u"<td></td>") {
+            const float* p = places + s * numbers;
+            double left = 1, top = 1, right = 0, bottom = 0;
+            for (std::size_t k = 0; k + 1 < numbers; k += 2) {
+                left = std::min<double>(left, p[k]);
+                right = std::max<double>(right, p[k]);
+                top = std::min<double>(top, p[k + 1]);
+                bottom = std::max<double>(bottom, p[k + 1]);
+            }
+            const double toPicture = kTableSide / ratio;
+            boxes.emplace_back(QPointF(left * toPicture, top * toPicture), QPointF(right * toPicture, bottom * toPicture));
+        }
+        words.append(word);
+        sure += step[best];
+    }
+    sure = words.isEmpty() ? 0 : sure / static_cast<double>(words.size());
+    trace([&] { return u"table: %1 words, %2 cells, sure %3%4"_s.arg(words.size()).arg(boxes.size()).arg(sure, 0, 'f', 3).arg(ended ? QString() : u", not ended"_s); });
+    if (!ended)
+        return {}; // longer than the model can say: its rows would stop short
+    table::Structure structure = table::structureOf(words, boxes);
+    structure.sure = sure;
+    return structure;
+}
+
+bool PaddleOcr::readTable(const QImage& image, double larger, QStringList* lines, OcrTable* table, QString* error)
+{
+    lines->clear();
+    *table = {};
+    QList<OcrPiece> found;
+    {
+        QImage enlarged;
+        if (larger > 1.0)
+            enlarged = image.scaled(std::max(1, static_cast<int>(std::lround(image.width() * larger))),
+                std::max(1, static_cast<int>(std::lround(image.height() * larger))), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+        if (!find(larger > 1.0 ? enlarged : image, &found, true, error, {}))
+            return false;
+    }
+    std::vector<Piece> pieces;
+    for (const OcrPiece& p : std::as_const(found)) {
+        const QRectF box = p.quad.boundingRect();
+        pieces.push_back({box.left(), box.top(), box.right(), box.bottom(), p.text});
+    }
+    for (const Line& line : linesOf(pieces))
+        lines->append(joined(line.pieces));
+    // Without lines or the model, or where neither is sure: from where the words stand.
+    table->rows = tableOf(std::move(pieces));
+    if (found.size() < 4 || static_cast<qint64>(image.width()) * image.height() * std::max(1.0, larger * larger) > kMaxPixels)
+        return true; // (a picture that large was read smaller: its lines are not where its cells are)
+    try {
+        QImage picture = image;
+        if (image.format() != QImage::Format_RGB888) {
+            picture = QImage(image.size(), QImage::Format_RGB888);
+            picture.fill(Qt::white);
+            QPainter painter(&picture);
+            painter.drawImage(0, 0, image);
+        }
+        // The lines read, in the picture as it is.
+        std::vector<double> heights;
+        if (larger > 1.0) {
+            for (OcrPiece& p : found) {
+                for (QPointF& corner : p.quad)
+                    corner /= larger;
+            }
+        }
+        for (const OcrPiece& p : std::as_const(found))
+            heights.push_back(p.quad.boundingRect().height());
+        std::ranges::nth_element(heights, heights.begin() + static_cast<std::ptrdiff_t>(heights.size() / 2));
+        // What makes cells of a picture makes them of any picture: its table
+        // is one when the words in it stand as a table's.
+        // Nor is it taken when it tears a line of writing into two rows.
+        const auto taken = [&](const table::Structure& structure, const char16_t* by) {
+            if (structure.rows < 2 || structure.columns < 2)
+                return false;
+            int torn = 0;
+            OcrTable seen = table::filled(structure, found, &torn);
+            const bool good = torn == 0 && seen.standsAsTable();
+            trace([&] { return u"table by %1: %2 x %3, %4 lines torn, %5"_s.arg(QStringView(by)).arg(structure.rows).arg(structure.columns)
+                .arg(torn).arg(good ? u"taken"_s : u"not taken"_s); });
+            if (!good)
+                return false;
+            *table = std::move(seen);
+            return true;
+        };
+        if (!taken(table::ruledStructure(picture, heights[heights.size() / 2]), u"its lines")) {
+            if (const table::Structure structure = d->tableStructure(picture); structure.sure >= kTableSure)
+                taken(structure, u"the model");
+        }
+    } catch (const std::exception& e) {
+        qWarning().noquote() << "Text recognition: the table model failed, the table is worked out without it:" << e.what();
+    }
+    return true;
+}
 std::vector<Quad> PaddleOcr::Impl::detect(const QImage& strip)
 {
     const int w = round32(strip.width()), h = round32(strip.height());
