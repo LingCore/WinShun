@@ -175,6 +175,8 @@ Hook {
 
 `--preview-results <dir> --style-buttons --style fluent|brand|tactile|liquid [--dark] [--scale 1.5]` 检查真实按钮部件：图标选中、文字分页、打开预览、主操作、选中工具按钮、禁用、键盘焦点，以及用窗口内鼠标事件切换列表／大图。输出各状态 PNG 与 `buttons.json`；数据在临时目录，不操作系统剪贴板。
 
+`--preview-results <dir> --row-states --style … [--dark] [--scale 1]` 是真实搜索窗（Main.qml）里的三行结果：第一行是键盘所在行，第三行在指针下，看选中和悬停在真实行上分不分得开（`row-states.png`）。选中与悬停的量化门槛见 [配色规则](../../../../docs/colors.md) 第 9 条，`tst_appearance` 的 `rowStates`、`selectionTokens` 把关；改 `rowSelected`、`selection`、`hover`、托盘或灰字后跑它。
+
 ## 6. 液态玻璃
 
 `liquid` 沿用相同的主题与钩子契约。`GlassSurface` 只绘制单层平面和按需细边，不采样桌面、复制文字或添加持续动画；玻璃感由窗口原生 Acrylic 背景承担。主搜索栏不套边框，页签用短强调色标记，列表选中保持中性底色与左侧标记。`Look` 复用 fluent 的提示键、分隔线和滚动条，同时注入 liquid token。

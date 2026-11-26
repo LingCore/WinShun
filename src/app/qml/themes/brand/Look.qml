@@ -35,7 +35,7 @@ QtObject {
     // ---- Neutrals ----
     readonly property color ink: dark ? "#F2F2F5" : "#1B1B20"
     readonly property color ink2: dark ? "#B6B6BF" : "#5C5C66"
-    readonly property color ink3: dark ? "#8C8C96" : "#8A8A93"
+    readonly property color ink3: dark ? "#8C8C96" : "#74747D" // light: ≥ 3:1 on a selected tile too
     // The window without Mica (透明效果 off, or inactive): the prototype's Mica tone, settled.
     readonly property color windowFill: dark ? "#202024" : "#FAF9FA"
     // The results area: one step lighter (light) / darker (dark) than the window.
@@ -55,11 +55,14 @@ QtObject {
     readonly property color neutralFillInk: dark ? "#1B1B20" : "#FFFFFF"
     readonly property color capEdge: dark ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(0, 0, 0, 0.14)
     readonly property color capsuleFill: dark ? Qt.rgba(1, 1, 1, 0.07) : Qt.rgba(0, 0, 0, 0.045)
-    readonly property color rowSelected: dark ? Qt.rgba(1, 1, 1, 0.07) : "#FFFFFF"
+    // Dark: white 7 % was lost on a dim screen (GitHub #474); 10 % stands
+    // clear of the list and of the row under the pointer.
+    readonly property color rowSelected: dark ? Qt.rgba(1, 1, 1, 0.10) : "#FFFFFF"
     // Light: a white face on a near-white list tells little by its fill, so
     // its edge and shadow carry it; fainter (0.08 / 0.04) it read weaker
     // than the grey under the pointer on the row beside it (GitHub #267).
-    readonly property color rowSelectedEdge: dark ? Qt.rgba(1, 1, 1, 0.05) : Qt.rgba(0, 0, 0, 0.16)
+    // Dark: a rim a step lighter than the face, as a key cap's.
+    readonly property color rowSelectedEdge: dark ? Qt.rgba(1, 1, 1, 0.14) : Qt.rgba(0, 0, 0, 0.16)
     readonly property color rowSelectedShadow: dark ? "transparent" : Qt.rgba(0, 0, 0, 0.10)
     readonly property color rowHover: dark ? Qt.rgba(1, 1, 1, 0.035) : Qt.rgba(0, 0, 0, 0.025)
     // Under the pointer on a settings card (rows, the panel's choices): the same lightness step in dark as in light (CIE L* 2.2) —
@@ -282,7 +285,8 @@ QtObject {
     readonly property color subtext: ink2
     readonly property color faint: ink3
     readonly property color hover: hoverFill
-    readonly property color selection: dark ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.06)
+    // The keyboard's tile, a chosen chip or card: clearly more than hover (GitHub #474).
+    readonly property color selection: dark ? Qt.rgba(1, 1, 1, 0.11) : Qt.rgba(0, 0, 0, 0.10)
     readonly property color textSelection: Qt.rgba(brandInk.r, brandInk.g, brandInk.b, 0.30)
     readonly property color badge: dark ? Qt.rgba(1, 1, 1, 0.07) : Qt.rgba(0, 0, 0, 0.05) // neutral: brand stays on the ring and the matches
     readonly property color track: segTrack

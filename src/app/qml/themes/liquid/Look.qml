@@ -50,7 +50,8 @@ QtObject {
     readonly property color hover: dark ? Qt.rgba(1, 1, 1, 0.05) : Qt.rgba(0, 0, 0, 0.035)
     // Firmer than hover, as Fluent's: a press must not look like letting go.
     readonly property color pressed: dark ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.055)
-    readonly property color selection: dark ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.055)
+    // The selected row, tile and nav item: clearly more than hover, on a poor screen too (GitHub #474).
+    readonly property color selection: dark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.10)
     readonly property color navHover: hover
     readonly property color navSelected: selection
     readonly property color track: dark ? Qt.rgba(0, 0, 0, 0.16) : Qt.rgba(0, 0, 0, 0.04)

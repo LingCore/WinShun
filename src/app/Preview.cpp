@@ -12731,6 +12731,8 @@ int runResults(const QStringList& args)
         return checkNavigationWorkflows(&engine, out, args.contains(u"--flipped"_s)) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--name-filter-poster"_s))
         return checkNameFilterPoster(&engine, out) ? std::min(g_warnings, 100) : 4;
+    if (args.contains(u"--row-states"_s))
+        return checkRowStatesPoster(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--search-experience"_s))
         return checkSearchExperience(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--pure-search"_s))

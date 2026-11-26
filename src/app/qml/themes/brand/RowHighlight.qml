@@ -2,8 +2,8 @@ import QtQuick
 import QtQuick.Effects
 
 // rowHighlight: the floor under a result, clipboard, panel or menu row.
-// The selected row is a neutral raised face — near-white with a very faint
-// 1 px edge and a hairline shadow (light), white 7 % (dark) — and a neutral
+// The selected row is a neutral raised face — white with a 1 px edge and a
+// hairline shadow (light), white 10 % with a lighter rim (dark) — and a neutral
 // ink bar on its left (3 × 16) that grows in. No red or pink here. current
 // without selected (keyboard-current, not chosen): the edge alone. Under the
 // pointer: a whisper of grey. Fills its host (the row's box, inset 10 from

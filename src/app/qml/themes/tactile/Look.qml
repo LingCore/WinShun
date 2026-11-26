@@ -222,7 +222,8 @@ QtObject {
     readonly property color subtext: ink2
     readonly property color faint: ink3
     readonly property color hover: rowHover
-    readonly property color selection: dark ? white(0.07) : warm(0.06)
+    // The keyboard's tile, a chosen chip or card: clearly more than hover (GitHub #474).
+    readonly property color selection: dark ? white(0.10) : warm(0.11)
     readonly property color textSelection: Qt.rgba(led.r, led.g, led.b, 0.30)
     readonly property color badge: dark ? Qt.rgba(1, 122 / 255, 48 / 255, 0.14) : Qt.rgba(242 / 255, 96 / 255, 15 / 255, 0.10)
     readonly property color track: slot

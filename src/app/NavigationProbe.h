@@ -21,6 +21,10 @@ bool checkNavigationWorkflows(QQmlEngine* engine, const QDir& output, bool flipp
 // The panel's 名称 filter on a believable folder of office files, for the
 // release poster (--name-filter-poster); writes name-filter-poster.png.
 bool checkNameFilterPoster(QQmlEngine* engine, const QDir& output);
+// The search window on the same files, the first row the keyboard's and
+// the third under the pointer, in the --style and scheme given: how the two
+// read on real rows (--row-states, GitHub #474); writes row-states.png.
+bool checkRowStatesPoster(QQmlEngine* engine, const QDir& output);
 bool checkNavigationSettings(QQuickWindow* window, SettingsEditor* editor, const QDir& output);
 bool checkOptimizationSettings(QQuickWindow* window, SettingsEditor* editor, const QDir& output);
 bool checkClipboardAlignment(QQmlEngine* engine, const QDir& output, bool flipped);
