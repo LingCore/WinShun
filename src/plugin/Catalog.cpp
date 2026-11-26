@@ -470,23 +470,31 @@ std::vector<Match> Catalog::contentMatches(const QString& text) const
     return out;
 }
 
+const Command* Catalog::loneKeyword(const QString& typed, const Entry** entry) const
+{
+    const Entry* found = nullptr;
+    const Command* command = nullptr;
+    const QString word = typed.trimmed();
+    if (!word.isEmpty() && !word.contains(u' ') && !typed.endsWith(u' ')) {
+        if (const auto it = m_keywords.find(word.toLower()); it != m_keywords.end())
+            command = commandOf(*it, &found);
+    }
+    if (entry)
+        *entry = found;
+    return command;
+}
+
 std::optional<Match> Catalog::hint(const QString& typed) const
 {
-    const QString word = typed.trimmed();
-    if (word.isEmpty() || word.contains(u' ') || typed.endsWith(u' '))
-        return std::nullopt;
-    const auto it = m_keywords.find(word.toLower());
-    if (it == m_keywords.end())
-        return std::nullopt;
     const Entry* entry = nullptr;
-    const Command* command = commandOf(*it, &entry);
+    const Command* command = loneKeyword(typed, &entry);
     if (!command || command->mode != Command::Mode::List)
         return std::nullopt;
     Match m;
     m.entry = entry;
     m.command = command;
     m.kind = Match::Kind::Keyword;
-    m.keyword = word;
+    m.keyword = typed.trimmed();
     return m;
 }
 

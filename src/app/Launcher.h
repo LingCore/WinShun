@@ -412,7 +412,8 @@ public:
     Q_INVOKABLE void leaveKeyword(); // the chip clicked: the box is emptied
     // Shift+Tab in keyword mode (GitHub #411): the keyword and the words after
     // it looked for as names instead, the keyword in quotes ("disk" ???), so
-    // it opens no plugin. False when no keyword has the list.
+    // it opens no plugin. The same for a keyword typed alone whose row leads
+    // the list (keywordAlone, GitHub #479). False when neither is there.
     Q_INVOKABLE bool searchKeywordAsWords();
 
     // The screenshot history: the clipboard history's pictures Win顺's
@@ -1099,6 +1100,11 @@ private:
     // decides whether the rows are new ones).
     std::optional<KeywordMode> matchKeyword(const QString& text) const;
     std::optional<KeywordMode> matchScreenshotKeyword(const QString& text) const;
+    // The box holds a keyword alone, nothing after it, and its row leads the
+    // list though the list is still the name search's: a plugin command's
+    // (Catalog::loneKeyword, where Merge places its hint row or its answer)
+    // or the screenshot history's (placeScreenshotHint).
+    bool keywordAlone() const;
     SearchResults screenshotRows(const QString& words) const;
     void placeScreenshotHint(); // the screenshot keyword typed alone: its hint row first
     void performScreenshot(const SearchResult& result, Action action);

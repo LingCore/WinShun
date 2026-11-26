@@ -154,6 +154,11 @@ public:
     // launcher offers it as a row ("kill — 结束进程（按空格进入）"). Nothing
     // when no enabled command has that keyword in use.
     std::optional<Match> hint(const QString& text) const;
+    // The enabled command whose keyword `text` is, alone (nothing after it),
+    // of either mode: its row leads the list then, hint()'s for a list
+    // command, the answer for an instant one, though the list is still the
+    // name search's. Null when the word is no keyword in use.
+    const Command* loneKeyword(const QString& text, const Entry** entry = nullptr) const;
     // The same, and then (`partial`) the commands whose keywords begin with
     // the word typed, once it has two characters: at most kPrefixHints,
     // the shortest keywords first, none when more than kPrefixCandidates

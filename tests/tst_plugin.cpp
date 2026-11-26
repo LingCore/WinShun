@@ -2728,6 +2728,14 @@ private slots:
         QVERIFY(!catalog.hint(u"kill "_s)); // in the command already
         QVERIFY(!catalog.hint(u"empty"_s)); // instant: no hint, the command itself
         QVERIFY(!catalog.hint(u"kil"_s));
+        // loneKeyword(): either mode, typed alone (Shift+Tab's, GitHub #479).
+        const ws::plugin::Entry* lone = nullptr;
+        QCOMPARE(catalog.loneKeyword(u" kill"_s, &lone)->id, u"kill"_s);
+        QCOMPARE(lone->id, u"test.kw"_s);
+        QCOMPARE(catalog.loneKeyword(u"EMPTY"_s)->id, u"empty"_s);
+        QVERIFY(!catalog.loneKeyword(u"kill "_s)); // in the command already
+        QVERIFY(!catalog.loneKeyword(u"kill note"_s));
+        QVERIFY(!catalog.loneKeyword(u"kil"_s, &lone) && !lone);
         QVERIFY(!f.host->query(u"kill"_s, Scope::All, 1)); // nobody answers the bare keyword
         // hints(): the exact keyword, then the keywords a word of two or
         // more characters begins (an instant command's too), not a letter's.

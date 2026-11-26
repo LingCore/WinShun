@@ -7904,7 +7904,8 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
         check(manifest.open(QIODevice::WriteOnly), "could not create the isolated history plugin");
         manifest.write(R"({"manifest":1,"id":"test.history","name":"History fixture","version":"1.0.0","commands":[
             {"id":"sum","keyword":"sum","title":"Sum","run":{"items":[{"id":"r","title":"21"}]}},
-            {"id":"hide","keyword":"hide","title":"Hidden","history":false,"run":{"items":[{"id":"r","title":"x"}]}}]})");
+            {"id":"hide","keyword":"hide","title":"Hidden","history":false,"run":{"items":[{"id":"r","title":"x"}]}},
+            {"id":"calc","keyword":"calc","mode":"instant","title":"Calc","run":{"items":[{"id":"r","title":"42"}]}}]})");
         manifest.close();
         plugin::Host host({.userPluginDir = temporary.filePath(u"plugins"_s)});
         host.catalog().scan();
@@ -7929,6 +7930,36 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
             "#411: Shift+Tab did not turn the keyword into a quoted word of the name search");
         check(!launcher.searchKeywordAsWords(), "#411: Shift+Tab claimed a keyword with none there");
         say(u"#411 Shift+Tab on \"sum 3*7\": the box reads %1, keyword \"%2\""_s.arg(launcher.query(), launcher.pluginKeyword()));
+        // GitHub #479: a keyword typed alone, nothing after it, is no keyword
+        // mode, though its row leads the list (a list command's hint row, an
+        // instant one's answer): Shift+Tab went back a scope, to 内容. It
+        // quotes the word as in keyword mode, and the footer says so where Tab
+        // has nothing of its own to say.
+        for (const QString& alone : {u"sum"_s, u"calc"_s}) {
+            query(alone);
+            pump(100);
+            query(alone); // the plugin's answer in
+            const SearchResult* first = launcher.results()->at(0);
+            check(launcher.pluginKeyword().isEmpty() && first && first->isPlugin(),
+                "#479: the keyword typed alone did not lead the list, or took it");
+            const QString tabHint = launcher.keyHints().value(u"tabKeys"_s).toString() + u' '
+                + launcher.keyHints().value(u"tab"_s).toString();
+            check(launcher.searchKeywordAsWords(), "#479: Shift+Tab did not quote a keyword typed alone");
+            query(launcher.query());
+            bool pluginRow = false;
+            for (int i = 0; i < launcher.results()->count(); ++i)
+                pluginRow = pluginRow || launcher.results()->at(i)->isPlugin();
+            check(launcher.query() == u'"' + alone + u"\" " && launcher.scope() == Launcher::All && !pluginRow,
+                "#479: the quoted keyword still opened its plugin, or the scope changed");
+            say(u"#479 Shift+Tab on \"%1\" alone (footer: %2): the box reads %3"_s.arg(alone, tabHint, launcher.query()));
+        }
+        query(u"calc"_s);
+        pump(100);
+        query(u"calc"_s);
+        check(launcher.keyHints().value(u"tabKeys"_s).toString() == u"Shift+Tab",
+            "#479: an instant command's keyword alone did not offer Shift+Tab");
+        query(u"su"_s); // keywords only begin with it: the list is the search's, Shift+Tab the scopes'
+        check(!launcher.searchKeywordAsWords(), "#479: Shift+Tab claimed a word a keyword only begins with");
         query({});
         launcher.setPluginHost(nullptr);
     }

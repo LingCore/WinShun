@@ -4711,14 +4711,15 @@ void Launcher::refreshKeyHints()
         if (pathtext::splitTyped(m_query).name.isEmpty() && stepBack()) {
             tabKeys = u"Ctrl+Backspace"_s;
             tab = tr("返回上一级");
-        } else if (!m_query.trimmed().isEmpty()) {
+        } else if (!m_query.trimmed().isEmpty() && !keywordAlone()) {
             tab = tr("切换范围");
         }
         break;
     case navigation::TabAction::None: break;
     }
-    // A keyword took the list: Shift+Tab looks for the words as names (GitHub #411).
-    if (tab.isEmpty() && m_keyword) {
+    // A keyword took the list, or leads it typed alone: Shift+Tab looks for
+    // the words as names (GitHub #411, #479).
+    if (tab.isEmpty() && (m_keyword || keywordAlone())) {
         tabKeys = u"Shift+Tab"_s;
         tab = tr("改搜文件名");
     }
@@ -7990,14 +7991,33 @@ void Launcher::leaveKeyword()
 
 bool Launcher::searchKeywordAsWords()
 {
-    if (!m_keyword)
-        return false;
     // Only the first word as typed is a keyword (Catalog::match): quoted, it
     // is a word of the name, as any quoted word is.
-    const QString words = m_keyword->words.trimmed();
-    setQuery(u'"' + m_keyword->keyword + u'"' + (words.isEmpty() ? u" "_s : u' ' + words));
+    QString keyword;
+    QString words;
+    if (m_keyword) {
+        keyword = m_keyword->keyword;
+        words = m_keyword->words.trimmed();
+    } else if (keywordAlone()) {
+        keyword = m_query.trimmed();
+    } else {
+        return false;
+    }
+    setQuery(u'"' + keyword + u'"' + (words.isEmpty() ? u" "_s : u' ' + words));
     emit caretRequested(static_cast<int>(m_query.size()), false);
     return true;
+}
+
+bool Launcher::keywordAlone() const
+{
+    if (m_keyword || m_filePrefix || !m_queryError.isEmpty())
+        return false;
+    if (!m_shotKeyword.isEmpty() && m_shotHooks.list && m_scope == All
+        && searchText().compare(m_shotKeyword, Qt::CaseInsensitive) == 0)
+        return true;
+    // Where Merge offers it (startPluginQuery's begin(): 全部, or the panel outside 内容).
+    return m_plugins && m_merge && (m_scope == All || m_panel) && m_scope != Content && m_scope != Apps
+        && m_plugins->catalog().loneKeyword(m_query);
 }
 
 // ---- The screenshot history (jt) ----------------------------------------

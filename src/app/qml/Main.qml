@@ -1149,13 +1149,13 @@ Window {
             break
         case Qt.Key_Backtab:
             // Back through the scopes, as Shift+Tab goes back in Windows;
-            // Ctrl+Shift+Tab back along the strip.
+            // Ctrl+Shift+Tab back along the strip. A keyword that has the
+            // list, or leads it typed alone: the words looked for as names
+            // instead (GitHub #411, #479).
             if (ctrl)
                 stepStrip(-1)
-            else if (window.launcher.pluginKeyword.length === 0)
+            else if (!window.launcher.searchKeywordAsWords())
                 window.launcher.cycleScope(-1)
-            else // a keyword has the list: the words looked for as names (GitHub #411)
-                window.launcher.searchKeywordAsWords()
             break
         case Qt.Key_Backspace:
             // Ctrl+Backspace at the end of a path: a level up, out of a folder
