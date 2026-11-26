@@ -3582,6 +3582,16 @@ QVariantList SettingsEditor::shares() const
             tone = u"error"_s;
             status = error.value();
         }
+        // Left out by 排除目录 (the drive mapped to it excluded, say): it is
+        // not read, and the card says why nothing of it is found.
+        const bool excluded = m_settings.excludesShare(share.path);
+        if (excluded) {
+            tone = u"idle"_s;
+            busy = false;
+            signIn = false;
+            // Two lines: at the usual width one line ended with its last word alone on the next.
+            status = tr("在“排除目录”里，不搜索") + u'\n' + tr("要搜索它，先到“文件夹”页把它移出排除目录");
+        }
         QString contentStatus = tr("打开后，电脑空闲时读取文件内容；离线时也能搜到");
         if (share.content && !m_settings.contentSearch) {
             contentStatus = tr("内容搜索已关闭，不读取文件内容");
@@ -3595,12 +3605,13 @@ QVariantList SettingsEditor::shares() const
             {u"path"_s, share.path},
             {u"name"_s, shareTitle(share)},
             {u"wsl"_s, isWsl},
-            {u"startable"_s, isWsl && !starting && it != m_shareStatuses.end()
+            {u"startable"_s, isWsl && !starting && !excluded && it != m_shareStatuses.end()
                 && (it->problem == share::Problem::WslStopped || m_wslStartProblems.contains(share.path))},
             {u"tone"_s, tone},
             {u"status"_s, status},
             {u"signIn"_s, signIn},
-            {u"suspect"_s, it != m_shareStatuses.end() && it->state == State::Suspect},
+            {u"excluded"_s, excluded},
+            {u"suspect"_s, !excluded && it != m_shareStatuses.end() && it->state == State::Suspect},
             {u"busy"_s, busy},
             {u"content"_s, share.content},
             {u"contentStatus"_s, contentStatus},

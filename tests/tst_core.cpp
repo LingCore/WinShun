@@ -7661,6 +7661,16 @@ private slots:
         QVERIFY(crawler.isExcludedPath(L"\\\\nas\\docs\\#recycle\\b.txt"));
         QVERIFY(crawler.isExcludedPath(L"\\\\nas\\docs\\a\\docs\\b.txt"));
         QVERIFY(crawler.isExcludedPath(L"\\\\nas\\docs\\private\\b.txt"));
+
+        // A share excluded whole (a drive mapped to it, written as "Z:\"):
+        // the share itself, all in it, and a folder of it added on its own.
+        // By its path: a share only named like an excluded folder stays.
+        const Crawler whole(CrawlRules {{L"\\\\NAS\\Video"}, {L"docs"}, {}, {}});
+        QVERIFY(whole.isExcludedPath(L"\\\\nas\\video"));
+        QVERIFY(whole.isExcludedPath(L"\\\\nas\\video\\rushes\\a.mov"));
+        QVERIFY(!whole.isExcludedPath(L"\\\\nas\\video2\\a.mov"));
+        QVERIFY(!whole.isExcludedPath(L"\\\\nas\\docs"));
+        QVERIFY(!whole.isExcludedPath(L"\\\\nas\\docs\\a.txt"));
     }
 
     // GitHub #406: Win顺's data folder is left out, the plugins in it are not.

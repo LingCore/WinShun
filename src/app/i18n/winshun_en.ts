@@ -17427,6 +17427,14 @@ Content index: %5</translation>
         <translation>Indexed in a moment</translation>
     </message>
     <message>
+        <source>在“排除目录”里，不搜索</source>
+        <translation>In Excluded folders: not searched</translation>
+    </message>
+    <message>
+        <source>要搜索它，先到“文件夹”页把它移出排除目录</source>
+        <translation>To search it, take it out of Excluded folders on the Folders page</translation>
+    </message>
+    <message>
         <source>上次核对 %1（用时 %2）</source>
         <translation>last checked %1 (took %2)</translation>
     </message>

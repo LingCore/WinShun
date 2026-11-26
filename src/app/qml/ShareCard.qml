@@ -164,7 +164,8 @@ Rectangle {
         }
         FlatButton {
             dpr: card.dpr
-            visible: card.kind === "share" ? !card.share.signIn && card.share.startable !== true : card.share.verifiable === true
+            visible: card.kind === "share" ? !card.share.signIn && card.share.startable !== true && card.share.excluded !== true
+                                           : card.share.verifiable === true
             enabled: !card.share.busy
             implicitHeight: 32
             flat: true

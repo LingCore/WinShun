@@ -185,13 +185,30 @@ std::wstring normalizeName(const QString& name)
     return QDir::toNativeSeparators(name.trimmed()).toStdWString();
 }
 
+// A share's place, not one of this PC's disks: "\\host\..." or a drive letter
+// mapped to one. By the letter's type as the process's drive map has it, and
+// as Windows remembers it for the user (an elevated Win顺 does not see the
+// user's letters): nothing is read from the network.
+bool onNetwork(std::wstring_view p)
+{
+    if (unc::isUnc(p))
+        return true;
+    if (p.size() < 2 || p[1] != L':' || !std::iswalpha(p[0]))
+        return false;
+    const wchar_t root[] {p[0], L':', L'\\', L'\0'};
+    const UINT type = ::GetDriveTypeW(root);
+    return type == DRIVE_REMOTE || (type == DRIVE_NO_ROOT_DIR && !unc::fromMappedDrive(std::wstring_view(root, 2)).empty());
+}
+
 std::wstring normalizePath(const QString& path)
 {
     std::wstring p = win32::expandEnvironment(QDir::toNativeSeparators(path.trimmed()).toStdWString());
     while (p.size() > 3 && p.back() == L'\\')
         p.pop_back();
     // %TEMP% can be an 8.3 short path (C:\Users\JOHNDO~1\...); the crawler sees long names.
-    if (const DWORD n = ::GetLongPathNameW(p.c_str(), nullptr, 0); n > 0) {
+    // Not asked of a server: one that does not answer would hold whoever asks
+    // (the start, the settings window) for as long as Windows waits for it.
+    if (const DWORD n = onNetwork(p) ? 0 : ::GetLongPathNameW(p.c_str(), nullptr, 0); n > 0) {
         std::wstring full(n, L'\0');
         if (const DWORD written = ::GetLongPathNameW(p.c_str(), full.data(), n); written > 0 && written < n) {
             full.resize(written);
@@ -201,6 +218,27 @@ std::wstring normalizePath(const QString& path)
     if (p.size() == 3 && p[1] == L':' && p[2] == L'\\')
         p.pop_back(); // "C:\" -> "C:"
     return p;
+}
+
+// A folder left out of the search, as the index names it. One on a mapped
+// drive ("Z:\rushes") is the share's ("\\nas\video\rushes"): network places
+// are kept by their UNC paths, whatever letter stands for them today, and
+// the letter would match nothing there.
+struct ExcludedPath {
+    std::wstring path;
+    bool wholeDrive = false; // written as a drive ("D:\", a mapped "Z:\" too)
+};
+
+ExcludedPath excludedPath(const QString& text)
+{
+    ExcludedPath excluded {normalizePath(text)};
+    std::wstring& p = excluded.path;
+    excluded.wholeDrive = p.size() == 2 && p[1] == L':';
+    if (p.size() >= 2 && p[1] == L':' && onNetwork(p)) {
+        if (std::wstring share = unc::fromMappedDrive(p); !share.empty())
+            p = std::move(share);
+    }
+    return excluded;
 }
 
 template <typename T> T readOrDefault(QSettings& s, const QString& key, const T& fallback)
@@ -556,16 +594,7 @@ QString Settings::sharePath(const QString& text)
 
 bool Settings::isNetworkPath(const QString& path)
 {
-    const std::wstring p = win32::expandEnvironment(QDir::toNativeSeparators(path.trimmed()).toStdWString());
-    if (unc::isUnc(p))
-        return true;
-    if (p.size() < 2 || p[1] != L':' || !std::iswalpha(p[0]))
-        return false;
-    // The letter's type as the process's drive map has it: nothing is read.
-    const wchar_t root[] {p[0], L':', L'\\', L'\0'};
-    const UINT type = ::GetDriveTypeW(root);
-    // An elevated Win顺 does not see the user's mapped letters: as Windows remembers them.
-    return type == DRIVE_REMOTE || (type == DRIVE_NO_ROOT_DIR && !unc::fromMappedDrive(std::wstring(root, 2)).empty());
+    return onNetwork(win32::expandEnvironment(QDir::toNativeSeparators(path.trimmed()).toStdWString()));
 }
 
 std::vector<Settings::KnownFolder> Settings::knownFolders()
@@ -1722,23 +1751,14 @@ ContentSizeLimits Settings::contentSizeLimits() const
     return limits;
 }
 
-namespace {
-
-bool isWholeDrive(std::wstring_view path)
-{
-    return path.size() == 2 && path[1] == L':';
-}
-
-} // namespace
-
 CrawlRules Settings::crawlRules() const
 {
     CrawlRules rules;
     for (const QString& p : excludedPaths) {
         if (p.trimmed().isEmpty())
             continue;
-        if (std::wstring path = normalizePath(p); !everythingCompat || isWholeDrive(path))
-            rules.excludedPaths.push_back(std::move(path));
+        if (ExcludedPath excluded = excludedPath(p); !everythingCompat || excluded.wholeDrive)
+            rules.excludedPaths.push_back(std::move(excluded.path));
     }
     // Our own files churn constantly. Not when they are a drive's root (an
     // empty drive chosen for the index): that would leave the whole drive out.
@@ -1778,8 +1798,8 @@ CrawlRules Settings::hiddenRules() const
     for (const QString& p : excludedPaths) {
         if (p.trimmed().isEmpty())
             continue;
-        if (std::wstring path = normalizePath(p); !isWholeDrive(path))
-            rules.excludedPaths.push_back(std::move(path));
+        if (ExcludedPath excluded = excludedPath(p); !excluded.wholeDrive)
+            rules.excludedPaths.push_back(std::move(excluded.path));
     }
     for (const QString& n : excludedNames) {
         if (!n.trimmed().isEmpty())
@@ -1847,7 +1867,19 @@ QString Settings::resolvedEnvPath(const QString& text)
 
 std::wstring Settings::excludedCompareKey(const QString& path)
 {
-    return normalizePath(cleanFolderPath(path));
+    return excludedPath(cleanFolderPath(path)).path;
+}
+
+bool Settings::excludesShare(const QString& share) const
+{
+    // By the folders alone: a name rule is for the folders inside a share,
+    // not for the place the user added by its path.
+    CrawlRules paths;
+    for (const QString& p : excludedPaths) {
+        if (!p.trimmed().isEmpty())
+            paths.excludedPaths.push_back(excludedPath(p).path);
+    }
+    return !paths.excludedPaths.empty() && Crawler(paths).isExcludedPath(share.toStdWString());
 }
 
 std::vector<std::wstring> Settings::indexFolderPaths() const
@@ -1894,9 +1926,15 @@ bool Settings::foldersInEffect(bool walked, bool elevated, bool serviceWanted, n
 ShareIndexer::Options Settings::shareOptions() const
 {
     ShareIndexer::Options o;
-    for (const NetworkShare& n : shares)
-        o.shares.push_back({n.path.toStdWString(), n.name.toStdWString(), n.content, n.scan});
     o.rules = crawlRules();
+    // A share in a folder left out of the search (the drive mapped to it
+    // excluded whole, say) is not read at all: what is excluded wins over what
+    // is added, on a server as on this PC's disks (the settings say so on its card).
+    const Crawler excluded(CrawlRules {o.rules.excludedPaths, {}, {}, {}, {}});
+    for (const NetworkShare& n : shares) {
+        if (std::wstring path = n.path.toStdWString(); !excluded.isExcludedPath(path))
+            o.shares.push_back({std::move(path), n.name.toStdWString(), n.content, n.scan});
+    }
     for (const QString& n : networkExcludedNames) {
         if (!n.trimmed().isEmpty())
             o.rules.excludedNames.push_back(normalizeName(n));

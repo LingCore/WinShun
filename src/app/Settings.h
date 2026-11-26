@@ -766,8 +766,13 @@ struct Settings {
     // If `text` contains %VAR% and expands cleanly to a different path with no
     // unresolved %VAR% remaining, returns that expanded path; otherwise empty.
     static QString resolvedEnvPath(const QString& text);
-    // Normalized expanded comparison key for an excluded folder path.
+    // Normalized expanded comparison key for an excluded folder path: as the
+    // index names the folder, so one on a mapped drive is its share's
+    // ("Z:\rushes" -> "\\nas\video\rushes").
     static std::wstring excludedCompareKey(const QString& path);
+    // Whether a share (NetworkShare::path) lies in a folder of excludedPaths,
+    // or is one: it is then not read (shareOptions() leaves it out).
+    bool excludesShare(const QString& share) const;
     // GitHub #52: the first time only the chosen folders are indexed, a list
     // never set (indexFoldersChosen) is taken for good as it is: the
     // account's known folders as load() found them, or as changed since.

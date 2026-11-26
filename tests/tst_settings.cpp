@@ -1320,6 +1320,93 @@ private slots:
         QCOMPARE(hidden.excludedNames, std::vector<std::wstring> {L"node_modules"});
     }
 
+    // A folder excluded by a mapped drive's letter ("Z:\rushes", "Z:\") is the
+    // share's: network places are indexed by their UNC paths, and the letter
+    // matched nothing there, so what was excluded was still found. A share
+    // excluded whole, or inside an excluded folder, is not read at all.
+    // Only a newly created key for an unused drive letter is touched: no
+    // connection is made, no existing mapping changed.
+    void excludedOnMappedDrive()
+    {
+        QString drive;
+        std::wstring key;
+        HKEY mapping = nullptr;
+        const DWORD drives = ::GetLogicalDrives();
+        for (wchar_t letter = L'Z'; letter >= L'D'; --letter) {
+            if (drives & (DWORD {1} << (letter - L'A')))
+                continue;
+            key = L"Network\\" + std::wstring(1, letter);
+            DWORD disposition = 0;
+            if (::RegCreateKeyExW(HKEY_CURRENT_USER, key.c_str(), 0, nullptr, 0, KEY_SET_VALUE, nullptr, &mapping, &disposition)
+                != ERROR_SUCCESS)
+                continue;
+            if (disposition == REG_CREATED_NEW_KEY) {
+                drive = QString(QChar(letter)) + u':';
+                break;
+            }
+            ::RegCloseKey(mapping);
+            mapping = nullptr;
+        }
+        QVERIFY2(mapping, "No unused drive letter for an isolated mapping");
+        const auto cleanup = qScopeGuard([&] {
+            ::RegCloseKey(mapping);
+            ::RegDeleteKeyW(HKEY_CURRENT_USER, key.c_str());
+        });
+        const std::wstring remote = L"\\\\wsnas-test\\Video";
+        QCOMPARE(::RegSetValueExW(mapping, L"RemotePath", 0, REG_SZ, reinterpret_cast<const BYTE*>(remote.c_str()),
+                     static_cast<DWORD>((remote.size() + 1) * sizeof(wchar_t))), ERROR_SUCCESS);
+
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.load();
+        settings.shares = {{u"\\\\wsnas-test\\Video"_s, {}}, {u"\\\\wsnas-test\\Docs"_s, {}}};
+        const auto has = [](const std::vector<std::wstring>& list, const wchar_t* item) {
+            return std::ranges::any_of(list, [&](const std::wstring& s) { return ws::win32::equalsIgnoreCase(s, item); });
+        };
+        const auto sharePaths = [&] {
+            QStringList paths;
+            for (const ws::ShareConfig& share : settings.shareOptions().shares)
+                paths.append(QString::fromStdWString(share.path));
+            return paths;
+        };
+
+        // A folder on the drive: its share's folder, in the rules and as the key.
+        settings.excludedPaths = {drive + u"\\rushes\\"_s};
+        QVERIFY(has(settings.crawlRules().excludedPaths, L"\\\\wsnas-test\\Video\\rushes"));
+        QCOMPARE(QString::fromStdWString(ws::Settings::excludedCompareKey(drive + u"\\rushes"_s)), u"\\\\wsnas-test\\Video\\rushes"_s);
+        QVERIFY(ws::Crawler(settings.crawlRules()).isExcludedPath(L"\\\\wsnas-test\\Video\\rushes\\a.mov"));
+        QVERIFY(!settings.excludesShare(u"\\\\wsnas-test\\Video"_s));
+        QCOMPARE(sharePaths(), (QStringList {u"\\\\wsnas-test\\Video"_s, u"\\\\wsnas-test\\Docs"_s}));
+
+        // The whole drive: its share is left out, the other one stays.
+        settings.excludedPaths = {drive + u'\\'};
+        QVERIFY(has(settings.crawlRules().excludedPaths, L"\\\\wsnas-test\\Video"));
+        QVERIFY(settings.excludesShare(u"\\\\wsnas-test\\Video"_s));
+        QVERIFY(!settings.excludesShare(u"\\\\wsnas-test\\Docs"_s));
+        QCOMPARE(sharePaths(), QStringList {u"\\\\wsnas-test\\Docs"_s});
+        // ... and stays a whole drive for Everything's way of excluding.
+        settings.everythingCompat = true;
+        QVERIFY(has(settings.crawlRules().excludedPaths, L"\\\\wsnas-test\\Video"));
+        QVERIFY(settings.hiddenRules().excludedPaths.empty());
+        QCOMPARE(sharePaths(), QStringList {u"\\\\wsnas-test\\Docs"_s});
+        settings.everythingCompat = false;
+
+        // Written as the share itself, or as a folder a share was added in.
+        settings.excludedPaths = {u"\\\\wsnas-test\\docs"_s};
+        QCOMPARE(sharePaths(), QStringList {u"\\\\wsnas-test\\Video"_s});
+        settings.shares = {{u"\\\\wsnas-test\\Docs\\Team\\2026"_s, {}}};
+        settings.excludedPaths = {u"\\\\wsnas-test\\Docs\\Team"_s};
+        QVERIFY(settings.excludesShare(u"\\\\wsnas-test\\Docs\\Team\\2026"_s));
+        QVERIFY(sharePaths().isEmpty());
+
+        // A name rule is for the folders in a share, not for the share added by its path.
+        settings.excludedPaths.clear();
+        settings.excludedNames = {u"2026"_s};
+        QCOMPARE(sharePaths(), QStringList {u"\\\\wsnas-test\\Docs\\Team\\2026"_s});
+    }
+
     // GitHub #406: Win顺's own data folder stays out of the index, the
     // plugins installed in it do not (ranked with the program folders).
     void ownFolderKeepsItsPlugins()

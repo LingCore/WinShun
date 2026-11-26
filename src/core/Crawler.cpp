@@ -435,6 +435,12 @@ bool Crawler::isExcludedPath(std::wstring_view fullPath) const
         const std::wstring_view drive = fullPath.substr(0, start);
         if (drive.size() == 2 && drive[1] == L':' && isExcludedDir(drive, drive))
             return true;
+    } else if (const std::wstring_view root = fullPath.substr(0, std::min(start, fullPath.size()));
+               !holdsOnlyTheWay(root)
+               && std::ranges::any_of(m_rules.excludedPaths, [&](const std::wstring& p) { return win32::equalsIgnoreCase(p, root); })) {
+        // A whole share ("\\nas\docs": a drive mapped to it excluded whole).
+        // By its path alone: a name rule is for the folders in it.
+        return true;
     }
     if (start >= fullPath.size())
         return false;

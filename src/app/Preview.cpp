@@ -1832,6 +1832,10 @@ int runSettings(const QStringList& args)
     const QString shareSignIn = u"\\\\nas\\photos"_s;
     const QString shareWsl = u"\\\\wsl.localhost\\Ubuntu-24.04\\home\\me\\项目"_s;
     settings.shares = {{shareOnline, u"公司资料"_s}, {shareSignIn, {}}, {shareWsl, {}}};
+    if (args.contains(u"--share-excluded"_s)) { // a share in a folder of 排除目录: its card says so
+        settings.shares.append({u"\\\\nas\\video"_s, {}});
+        settings.excludedPaths.append(u"\\\\nas\\video"_s);
+    }
     settings.hotkey = u"Alt+Space"_s;
     settings.doubleCtrlExcludedApps = {u"TheFinals.exe"_s};
     settings.clipboardHotkey = u"Win+Alt+V"_s;
