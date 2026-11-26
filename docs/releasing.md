@@ -2,6 +2,19 @@
 
 “发布新版本”包含代码梳理、文档、截图、验证、打包、提交推送和 GitHub Release。只有上传一个新程序，或者只修改 README 文字，都不算完成。用户明确限制范围时以当次要求为准。
 
+## 步骤总览
+
+用户说“发布新版本”就按这个顺序做完，每一步的做法和注意事项在后面各节。
+
+1. **收拢代码**：查 `git status`、各分支和 `.worktrees/`、其他正在工作的会话；把做完的分支合并进 `main`，未提交的修改核对后提交；合并后全量构建一次（各分支自己的会话不一定构建过全部测试）。合并完的分支和工作树在发布成功后回收。
+2. **定版本**：改 `CMakeLists.txt` 的 `project(VERSION)`；有变化的官方插件各升一版。
+3. **文档与截图**：发布说明、中英文 README、使用说明、features.en.md、涉及的插件文档；新功能补拍海报。
+4. **验证与打包**：只跑本次改动涉及的测试；`scripts/release.ps1` 打包（自带安装实测）；本机跑一次应用内升级实测；写 `docs/validation/release<版本>/`。
+5. **推送与发布**：推送 `main`；先发布有变化的官方插件到插件库；再 `scripts/release.ps1 -Publish`（GitHub Release、CNB 镜像、Scoop 一并完成）。
+6. **发布后核对**：GitHub 附件的 SHA256、CNB 下载、lcstp.com 两个接口、插件库 index；关闭这一版解决的 issue 并回复；回收分支、工作树和本次的临时构建目录。
+
+开始前先确认 GitHub 能不能用，见[GitHub 网页登录不了时](#github-网页登录不了时)。
+
 ## 先确认发布内容
 
 检查 `git status --short`、最近提交、现有版本与 GitHub 最新 Release。若有协作聊天正在修改同一项目，先确认其结果；不要和另一个发布流程同时写版本、图片或安装包。区分本次改动、无关编辑和用户数据，按功能拆分 commit，不用清理或回滚抹平差异。
@@ -76,6 +89,29 @@ curl.exe -s 'https://lcstp.com/updates/winshun/stable.json?platform=windows&arch
 ```
 
 两条都要查到新版本：安装版那条好了不代表便携版也好了。lcstp.com 每个平台和架构只认一个安装包、一个 zip，同类多出一个就两个都不用，这条又会退回上一个版本。所以 Release 上另外加的附件（离线安装包、OCR 组件、增量包）要在服务器里登记为“不用于自动更新”。0.36.0 第一次带增量包时，便携版就因此停在 0.35.0，直到服务器把 `-delta-from-` 的 zip 和 `-delta-setup.exe` 也算进去。以后再给 Release 加新种类的附件，先改服务器。
+
+### GitHub 网页登录不了时
+
+发版不经过网页：推送、建 Release、传附件、发布插件、回复 issue 全部用这台电脑上 `gh` 保存的令牌。网页登录不了（密码、两步验证丢失）不等于不能发版，先查令牌还在不在：
+
+```powershell
+gh auth status                                                   # 应显示 Logged in ... account LingCore
+gh api repos/LingCore/WinShun --jq .permissions.push             # true
+gh api repos/LingCore/WinShun-plugins --jq .permissions.push     # true
+git ls-remote --heads origin main                                # 能列出提交
+```
+
+四条都通过就照常发版，流程一步不变。这期间注意：
+
+- 不要运行 `gh auth logout`、`gh auth login`、`gh auth refresh`，也不要清 Windows 凭据管理器里 github.com 的条目：重新授权要在网页上登录，令牌丢了就找不回来。
+- 在网页上改密码、走账号找回流程可能让现有令牌失效。用户处理账号之前先把要发的版本发完，处理之后重新跑上面四条。
+- 只能在网页上做的事这段时间做不了：改仓库设置和 Actions 密钥（插件库 index 的签名密钥在 GitHub Environment 里）、审批首次贡献者的 Actions 运行、建新的个人令牌。插件库的发布和签名由 Actions 完成，令牌能触发，不受影响。
+
+令牌失效（上面任何一条失败）时**不能发版**，只能做到打包：
+
+- 能做：构建、测试、`scripts/release.ps1`（不带 `-Publish`）出安装包和便携包、`tools/verify-installer.ps1`、本机应用内升级实测。增量包要从 GitHub 下载旧版本，下不到时脚本只警告、不出增量包。
+- 做不了：软件内更新、下载页和 CNB 镜像都以 GitHub Release 为准（lcstp.com 从 GitHub 同步，`scripts/cnb-mirror.ps1` 按 GitHub 的附件和 SHA256 核对），插件库 index 和 Scoop 清单也在 GitHub。没有 GitHub，新版本到不了任何用户手里。
+- 这时如实告诉用户“包已打好、没有发布”，把产物留在 `dist/<任务名>/`，等账号恢复后从同一个提交重新走“推送与发布”。不要改成只在 CNB 建 Release：软件内更新看不到它，还会和之后 GitHub 上的同名标签对不上。
 
 ### 国内镜像（CNB）
 
