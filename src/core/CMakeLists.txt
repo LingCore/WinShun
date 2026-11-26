@@ -66,6 +66,7 @@ qt_add_library(wscore STATIC
     ShareLister.cpp ShareLister.h
     ShareReach.cpp ShareReach.h
     ShareRetry.h
+    ShareWidth.cpp ShareWidth.h
     HotkeySteps.h
     PasteKeys.h
     ShortcutAgain.h

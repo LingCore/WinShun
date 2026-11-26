@@ -15,6 +15,7 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <cmath>
 #include <iterator>
 
 using namespace std::chrono_literals;
@@ -44,6 +45,8 @@ constexpr auto kWslVerify = 30s; // Linux changes are reconciled even without no
 constexpr auto kSuspectRetry = 30min; // a share that came back nearly empty, read again
 constexpr auto kForever = std::chrono::hours(24 * 365);
 constexpr int kPassShare = 60; // verified at most every this many times as long as a pass takes
+constexpr auto kAwayWait = 2h; // ... and when nobody is at the computer, or this much later anyway (passDue)
+constexpr auto kAwayPoll = 1min; // whether somebody is, asked this often once the time has come
 constexpr std::size_t kSuspectMin = 1000; // missing items that can be a mount not ready yet
 constexpr std::size_t kRemoveBatch = 256; // removals per write lock
 constexpr std::size_t kMaxPending = 100'000; // live changes queued; beyond, the share is verified instead
@@ -205,7 +208,8 @@ struct ShareIndexer::Share {
     Clock::time_point probedAt {}; // its server last asked (run), or about to be (lookedAt)
     bool acceptMissing = false;
     bool passRunning = false;
-    int passThreads = 0; // folders read at a time by the pass running, or the last one
+    int passWidest = 0; // folders read at a time by the last pass at most ...
+    double passWidth = 0; // ... and over its time (share::Width)
     std::stop_source passStop; // settings changes cancel an obsolete pass
     bool removed = false;
     std::vector<FsChange> pending; // live changes, applied between passes
@@ -745,6 +749,7 @@ void ShareIndexer::run(std::stop_token stop, Share& share)
     // Read before: verified once a little after start, for what changed
     // while we were not running. Asking for it (or a new share) goes first.
     auto nextPass = Clock::now() + (last != 0 ? kStartupDelay : 0s);
+    bool forAway = false; // the next pass is one of every hour's: it waits for the user to be away (passDue)
     share::Retry retry(options().retry);
     bool answered = true; // by the probe, the last time it was asked
     bool cutShort = false; // the last wait while away was woken before its time
@@ -970,11 +975,12 @@ void ShareIndexer::run(std::stop_token stop, Share& share)
         bool due = false;
         bool building = false;
         bool back = false; // from offline for the probe alone
+        const bool itsTime = passDue(Clock::now() - nextPass, forAway, win32::userAway());
         {
             std::lock_guard lock(m_mutex);
             building = share.status.lastVerified == 0;
             back = share.status.state == State::Problem && probeOnly;
-            due = building || share.verifyRequested || Clock::now() >= nextPass
+            due = building || share.verifyRequested || itsTime
                 || (share.status.state == State::Problem && !probeOnly); // came back: read what we missed
             share.verifyRequested = false;
         }
@@ -1001,31 +1007,32 @@ void ShareIndexer::run(std::stop_token stop, Share& share)
                 checked({}); // the answer: read, or why not
             const Options o = options();
             Status st;
-            int threads = 0;
+            int widest = 0;
+            double width = 0;
             {
                 std::lock_guard lock(m_mutex);
                 st = share.status;
-                threads = share.passThreads;
+                widest = share.passWidest;
+                width = share.passWidth;
             }
-            // In the diagnostics: when the share was read, how hard and how
+            // In the diagnostics: when the share was read, how wide and how
             // long. A file manager slow on the server at those times is this.
             journal(u"share-pass"_s,
-                {{u"building"_s, wasBuilding}, {u"asked"_s, manual}, {u"read"_s, read}, {u"threads"_s, threads},
+                {{u"building"_s, wasBuilding}, {u"asked"_s, manual}, {u"read"_s, read}, {u"widest"_s, widest},
+                    {u"width"_s, std::round(width * 10) / 10},
                     {u"ms"_s, static_cast<qint64>(std::chrono::duration_cast<std::chrono::milliseconds>(passTime).count())},
                     {u"items"_s, static_cast<qint64>(st.items)}});
             if (read) {
                 retry.read();
                 const Clock::duration every = isWsl ? Clock::duration(kWslVerify)
                     : st.watching ? o.verifyEvery : o.verifyEveryUnwatched;
-                // A share that takes long to read is not read most of the
-                // time. By what the pass would take at its usual width: one
-                // read slowly for the user's sake comes round no later for it.
-                const int usual = passThreads(o.threads, false, true, true);
-                const Clock::duration cost = threads > 0 && threads < usual ? passTime * threads / usual : passTime;
+                // A share that takes long to read is not read most of the time.
                 nextPass = Clock::now()
-                    + (every.count() > 0 ? std::max<Clock::duration>(every, cost * kPassShare) : kForever);
+                    + (every.count() > 0 ? std::max<Clock::duration>(every, passTime * kPassShare) : kForever);
+                forAway = !isWsl; // WSL is this PC: nobody's server to keep busy
             } else if (st.state == State::Suspect) {
                 nextPass = Clock::now() + kSuspectRetry;
+                forAway = false;
             } else if (st.state == State::Problem) {
                 if (isWsl) {
                     if (!wait(stop, share, kWslPoll))
@@ -1055,7 +1062,9 @@ void ShareIndexer::run(std::stop_token stop, Share& share)
         // WSL and WebDAV tell of nothing: asked now and then whether they are
         // still there, nothing read unless that changed (GitHub #114: a
         // WebDAV server stopped showed 在线 until the hourly pass).
-        const auto untilPass = nextPass - Clock::now();
+        auto untilPass = nextPass - Clock::now();
+        if (forAway && untilPass <= 0s)
+            untilPass = kAwayPoll; // its time has come with someone at the computer
         const auto until = isWsl ? std::min<Clock::duration>(untilPass, kWslPoll)
             : dav                ? std::min<Clock::duration>(untilPass, options().webDavPoll)
                                  : untilPass;
@@ -1072,17 +1081,21 @@ bool ShareIndexer::believesGone(std::size_t missing, std::size_t live, Read read
     return read == Read::Failed ? missing * 10 <= live : missing <= std::max(kSuspectMin, live / 2);
 }
 
-int ShareIndexer::passThreads(int threads, bool building, bool manual, bool userAway) noexcept
+bool ShareIndexer::passDue(Clock::duration late, bool forAway, bool userAway) noexcept
 {
-    if (building)
-        return std::max(1, threads); // waited for: nothing of the share is found until it is read
-    const int verifying = std::max(2, threads / 2);
-    // Read again by itself with someone at the computer: two folders at a
-    // time. A NAS (a small processor, disks that seek) reading eight folders
-    // at once for Win顺 answers the same person's file manager late, or not
-    // for seconds ("the file manager hangs opening a shared folder"), and
-    // nobody waits for this pass. Asked for (立即核对), or nobody there: as fast as before.
-    return manual || userAway ? verifying : std::min(2, verifying);
+    return late >= 0s && (!forAway || userAway || late >= kAwayWait);
+}
+
+share::Width::Limit ShareIndexer::passWidth(int threads, bool building, bool manual, bool userAway) noexcept
+{
+    // A NAS answers one PC's requests one after another: each folder Win顺
+    // reads at the same time is one more a file manager on this PC waits
+    // behind, for every request of its own ("the file manager hangs opening
+    // a shared folder", share::Width). With nobody there: as wide as ever.
+    const int most = building ? std::max(1, threads) : std::max(2, threads / 2);
+    if (userAway)
+        return {most, false};
+    return {building || manual ? most : 1, true};
 }
 
 bool ShareIndexer::pass(std::stop_token stop, Share& share, bool building, bool manual)
@@ -1124,11 +1137,13 @@ bool ShareIndexer::pass(std::stop_token stop, Share& share, bool building, bool 
     share::Lister lister(crawler, path, {o.excludedFiles, false, 64 * 1024, &share.progress}, passStop);
     std::vector<EntryId> gone;
     Crawler::SyncStats stats;
-    const int threads = passThreads(o.threads, building, manual, win32::userAway());
-    {
-        std::lock_guard lock(m_mutex);
-        share.passThreads = threads;
-    }
+    // As many threads as it is ever read at; `width` lets them in. Who is
+    // at the computer is asked again as the pass goes: a share read wide
+    // with nobody there is read gently the moment someone is back.
+    share::Width width([&] { return passWidth(o.threads, building, manual, win32::userAway()); });
+    const Crawler::Gate gate {[&](std::stop_token stopped) { return width.enter(stopped); },
+        [&](std::optional<std::size_t> items) { width.leave(items); }};
+    const int threads = passWidth(o.threads, building, manual, true).most;
     crawler.sync(*index, {{root, path, EntryFlag::Remote}}, threads, false, passStop.get_token(),
         [&](const Crawler::Root& dir, DirListing& out) {
             if (!manual && !scan.allows(minuteOfDay()))
@@ -1142,7 +1157,12 @@ bool ShareIndexer::pass(std::stop_token stop, Share& share, bool building, bool 
                 return false;
             limitListing(out, ShareScan::depth(path, dir.path), scan);
             return read;
-        }, &gone, &stats);
+        }, &gone, &stats, &gate);
+    {
+        std::lock_guard lock(m_mutex);
+        share.passWidest = width.widest();
+        share.passWidth = width.mean();
+    }
     if (m_callbacks.reading)
         m_callbacks.reading(path, false);
     std::size_t missing = 0; // items in what the pass found gone

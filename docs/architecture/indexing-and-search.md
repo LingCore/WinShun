@@ -55,7 +55,7 @@
 ## 3. 网络共享、WebDAV 与 WSL
 
 - **独立线程模型**：每个远程位置（SMB / WebDAV / WSL）作为 `FileIndex` 独立根（继承 `EntryFlag::Remote`），由 `ShareIndexer` 分配专属线程，不打断本地索引。
-  - **SMB（`ShareLister`）**：`share::probe` 多地址并发竞速连 445 发 SMB1/SMB2 NEGOTIATE 区分 SMB2 与 SMB1Only；列目录用 `FileFullDirectoryInfo`（16 路并发）；监听挂独立 `watchLoop` 线程（移除卡死监听不阻塞主线程）并配合定期全量核对。
+  - **SMB（`ShareLister`）**：`share::probe` 多地址并发竞速连 445 发 SMB1/SMB2 NEGOTIATE 区分 SMB2 与 SMB1Only；列目录用 `FileFullDirectoryInfo`，同时读几个文件夹由 `share::Width` 定（无人时首次 16、核对 8；有人在用电脑时从 1 起实测，更快才加宽，自动核对固定 1）；监听挂独立 `watchLoop` 线程（移除卡死监听不阻塞主线程）并配合定期全量核对。
   - **WebDAV（`WebDav`）**：经 Windows WebClient 访问；`unc::canonical` 归一 URL/映射盘/`DavWWWRoot` 为 `\\host@SSL@port\path`；在线探测用独立线程 DNS + 并发 HTTP `OPTIONS` / TLS ClientHello（穿透 TUN 代理假连通）；列目录用 `FindFirstFileEx`；在线期每 5 分钟及打开启动器超 1 分钟轻量探活；WebClient 停止时由 `webdav::startClient` 发 ETW 触发事件无提权拉起并预热。
   - **WSL（`Wsl`）**：`distributions()` 只读注册表（绝不拉起已停发行版），后台有界调 `wsl --list --running --quiet` 共享 5 秒运行态缓存，列目录用 `FindFirstFileEx`。
 - **延后删除、离线重试与凭据**：核对期 `pinIds()` 锁编号，遇断线/共享级错误整轮不删，消失项超 `max(1000, 一半)` 标 `State::Suspect` 待半小时复核或用户确认。离线按 1/2/4/5 分钟退避，网络变化/唤醒安静 5 秒重试，并用 `share::openRoot`（15 秒超时）纠偏慢 NAS 误报。Win顺 不自存密码，交互登录写 Windows 凭据管理器，后台永不弹框；UI 与搜索线程绝不阻塞等远端服务器。
