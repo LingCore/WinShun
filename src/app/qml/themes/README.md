@@ -149,6 +149,9 @@ Hook {
 `capsuleRadius` `capsulePadding` `capsuleKeyRadius` `capsuleFill` `typeChipHeight`（0：UiScale） `menuItemHeight` `menuPadding`
 `pageTabsInset` `checkSize` `scrim` `menuHoverEdge` `animFast` `animMove`，函数 `edge(dpr)`（窗口边、窗口级分隔线）、`hair(dpr)`（部件内部的 1 设备像素线）。
 只有部分风格有的值：`Theme.tok("名字", 默认)`。
+`fieldInset` 与 `fieldKeyInsetAt` 按“紧凑”及以上的 56 高搜索行设计；宿主摆搜索框一律用 `Theme.fieldInsetYIn(行高)`（框的上下留白）和
+`Theme.fieldKeyInsetIn(框高, dpr)`（框里键的缩进）：行矮（“密集”44、文件夹窗口）时先让留白，框至少 `fieldLeast`（28）、键至少 `fieldKeyLeast`（20），
+左右仍是 `fieldInset`（#480：触感风格在密集下范围键只剩 10 高，字被裁掉）。风格不用为密集另给数值。
 
 需要新钩子或新 token：写进交付说明，由 A 统一加到 fluent/Look.qml 和 Hook.qml，不要自己改共用文件。
 

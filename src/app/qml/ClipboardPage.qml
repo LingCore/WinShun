@@ -893,11 +893,14 @@ Item {
 
             // The style's search field (Theme.searchField), as the launcher's
             // row: inset by fieldInset (0 in fluent, where the row is the
-            // field and nothing is drawn: flat), a box where the style has one.
+            // field and nothing is drawn: flat), a box where the style has one;
+            // less above and below in a low row (密集, GitHub #480).
             Hook {
                 id: fieldPart
                 anchors.fill: parent
                 anchors.margins: Theme.fieldInset
+                anchors.topMargin: Theme.fieldInsetYIn(header.height)
+                anchors.bottomMargin: Theme.fieldInsetYIn(header.height)
                 part: Theme.searchField
                 flat: Theme.fieldInset <= 0
                 focused: input.activeFocus

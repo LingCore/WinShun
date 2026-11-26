@@ -197,6 +197,19 @@ QtObject {
     readonly property real fieldInset: pick("fieldInset")
     readonly property real fieldRadius: pick("fieldRadius")
     function fieldKeyInsetAt(dpr: real): real { return (look.fieldKeyInsetAt ?? base.fieldKeyInsetAt)(dpr) }
+    // A style's field and the keys in it are drawn for rows of 紧凑's 56 and
+    // up. In a lower row (密集's 44, a folder window's) the insets give way,
+    // never the keys (GitHub #480): the field keeps fieldLeast of the row, its
+    // keys fieldKeyLeast of the field (密集's chip height). Its left and right
+    // stay fieldInset, in line with the rows. Density is the host's, as the menus'.
+    readonly property int fieldLeast: 28
+    readonly property int fieldKeyLeast: 20
+    function fieldInsetYIn(rowHeight: real): real {
+        return Math.max(0, Math.min(fieldInset, Math.floor((rowHeight - fieldLeast) / 2)))
+    }
+    function fieldKeyInsetIn(fieldHeight: real, dpr: real): real {
+        return Math.max(0, Math.min(fieldKeyInsetAt(dpr), Math.floor((fieldHeight - fieldKeyLeast) / 2 * dpr) / dpr))
+    }
     readonly property real rowInset: pick("rowInset")
     readonly property real iconInset: pick("iconInset")
     readonly property real textStart: pick("textStart")

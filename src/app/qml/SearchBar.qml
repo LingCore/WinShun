@@ -143,8 +143,10 @@ Item {
     // from the row by fieldInset (0 in fluent: the whole row, nothing drawn),
     // and the keys in it (pin, expand, .*, the scopes) inset from its top,
     // bottom and right; never taller than they are, nor nearer the right
-    // edge than 10.
-    readonly property real keyInset: Theme.fieldKeyInsetAt(dpr)
+    // edge than 10. In a low row (密集, a folder's window) the insets above
+    // and below give way to the keys (Theme.fieldInsetYIn, GitHub #480).
+    readonly property real fieldInsetY: Theme.fieldInsetYIn(height)
+    readonly property real keyInset: Theme.fieldKeyInsetIn(fieldPart.height, dpr)
     readonly property real keyHeight: Math.min(tabs.implicitHeight, fieldPart.height - 2 * keyInset)
     readonly property real keysRight: Math.max(10, Theme.fieldInset + keyInset)
 
@@ -152,6 +154,8 @@ Item {
         id: fieldPart
         anchors.fill: parent
         anchors.margins: Theme.fieldInset
+        anchors.topMargin: bar.fieldInsetY
+        anchors.bottomMargin: bar.fieldInsetY
         part: Theme.searchField
         flat: true
         focused: input.activeFocus
@@ -249,7 +253,8 @@ Item {
 
         visible: !bar.inBox
         anchors.top: parent.top
-        anchors.topMargin: Theme.fieldInset > 0 ? 0 : 4
+        // Above a style's field, as far from it however near the top it comes.
+        anchors.topMargin: Theme.fieldInset > 0 ? bar.fieldInsetY - Theme.fieldInset : 4
         anchors.horizontalCenter: parent.horizontalCenter
         width: 48
         height: 10
