@@ -123,16 +123,20 @@ void writeDibRows(const QImage& image, uchar* target)
 {
     Q_ASSERT(dibRowsReady(image));
     const std::size_t row = static_cast<std::size_t>(image.width()) * 4;
-    const bool premultiplied = image.format() == QImage::Format_ARGB32_Premultiplied;
+    const QImage::Format format = image.format();
     for (int y = image.height() - 1; y >= 0; --y, target += row) {
-        if (!premultiplied) {
+        if (format == QImage::Format_ARGB32) {
             std::memcpy(target, image.constScanLine(y), row);
             continue;
         }
-        // Opaque pixels, a screenshot's all, are the same either way.
         const auto* from = reinterpret_cast<const QRgb*>(image.constScanLine(y));
         for (int x = 0; x < image.width(); ++x) {
-            const QRgb pixel = qAlpha(from[x]) == 255 ? from[x] : qUnpremultiply(from[x]);
+            // RGB32's fourth byte means nothing and need not be 0xFF (a screen
+            // grab's is what GDI left, 0): opaque, or a program that takes it
+            // for transparency gets an empty picture (GitHub #497). Opaque
+            // premultiplied pixels, a screenshot's all, are the same either way.
+            const QRgb pixel = format == QImage::Format_RGB32 ? from[x] | 0xFF000000u
+                               : qAlpha(from[x]) == 255 ? from[x] : qUnpremultiply(from[x]);
             std::memcpy(target + static_cast<std::size_t>(x) * 4, &pixel, sizeof pixel);
         }
     }

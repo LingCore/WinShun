@@ -428,6 +428,30 @@ private slots:
         }
     }
 
+    // A screen grab's pixels come from GDI, which leaves each one's fourth
+    // byte 0; as Format_RGB32 that byte means nothing. Written as they are,
+    // a program that takes the byte for transparency saw an empty picture
+    // (GitHub #497).
+    void rgb32UnusedByteIsWrittenOpaque()
+    {
+        QByteArray grabbed(6 * 4 * 4, '\0');
+        auto* pixels = reinterpret_cast<quint32*>(grabbed.data());
+        for (int i = 0; i < 6 * 4; ++i)
+            pixels[i] = 0x00204060u + static_cast<quint32>(i); // no 0xFF on top
+        const QImage picture(reinterpret_cast<const uchar*>(grabbed.constData()), 6, 4, 6 * 4, QImage::Format_RGB32);
+        QVERIFY(dibRowsReady(picture));
+        QByteArray rows(static_cast<qsizetype>(dibRowsSize(picture)), '\0');
+        writeDibRows(picture, reinterpret_cast<uchar*>(rows.data()));
+        const auto* written = reinterpret_cast<const quint32*>(rows.constData());
+        for (int y = 0; y < 4; ++y) {
+            for (int x = 0; x < 6; ++x) // bottom-up
+                QCOMPARE(written[(3 - y) * 6 + x], 0xFF204060u + static_cast<quint32>(y * 6 + x));
+        }
+        // The same picture on its way from the screenshot plugin.
+        const QImage handed = picture.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+        QCOMPARE(handed.pixel(2, 1), 0xFF204060u + 8u);
+    }
+
     // A screenshot comes with its pixels (ClipWrite::image): the clipboard
     // gets those, its PNG as it was handed over.
     void pixelsInHandAreWrittenAsTheyAre()
@@ -460,6 +484,61 @@ private slots:
                 QCOMPARE(back.pixelColor(11, 8), QColor(35, 120, 210));
             }
         }
+    }
+
+    // What other programs make of a screenshot copied (GitHub #497: pasted,
+    // an empty .bmp): the bitmap Windows gives one that asks for CF_BITMAP,
+    // and CF_DIB's bytes as one that writes them into a .bmp file takes them.
+    void screenshotReadAsOtherProgramsReadIt()
+    {
+        if (!m_isolated)
+            QSKIP("Private clipboard unavailable; the user's clipboard is never used");
+        QImage picture(12, 9, QImage::Format_ARGB32_Premultiplied);
+        picture.fill(qRgba(35, 120, 210, 255));
+        picture.setPixel(3, 2, qRgba(250, 10, 20, 255));
+        QByteArray png;
+        QBuffer buffer(&png);
+        QVERIFY(buffer.open(QIODevice::WriteOnly) && picture.save(&buffer, "PNG"));
+        ClipboardWatcher watcher({}, {});
+        std::atomic<int> copied = -1;
+        watcher.write({.imageData = png, .image = picture}, [&](bool ok) { copied = ok ? 1 : 0; });
+        QTRY_COMPARE_WITH_TIMEOUT(copied.load(), 1, 3000);
+
+        QVERIFY(::OpenClipboard(nullptr));
+        const auto close = qScopeGuard([] { ::CloseClipboard(); });
+        // CF_BITMAP, made by Windows from what is there.
+        const auto bitmap = static_cast<HBITMAP>(::GetClipboardData(CF_BITMAP));
+        QVERIFY2(bitmap, qPrintable(u"no CF_BITMAP: error %1"_s.arg(::GetLastError())));
+        BITMAPINFO info {};
+        info.bmiHeader.biSize = sizeof info.bmiHeader;
+        info.bmiHeader.biWidth = picture.width();
+        info.bmiHeader.biHeight = -picture.height(); // top-down
+        info.bmiHeader.biPlanes = 1;
+        info.bmiHeader.biBitCount = 32;
+        info.bmiHeader.biCompression = BI_RGB;
+        QImage seen(picture.size(), QImage::Format_RGB32);
+        const HDC screen = ::GetDC(nullptr);
+        const int rows = ::GetDIBits(screen, bitmap, 0, static_cast<UINT>(picture.height()), seen.bits(), &info, DIB_RGB_COLORS);
+        ::ReleaseDC(nullptr, screen);
+        QCOMPARE(rows, picture.height());
+        QCOMPARE(seen.pixelColor(3, 2), QColor(250, 10, 20));
+        QCOMPARE(seen.pixelColor(11, 8), QColor(35, 120, 210));
+
+        // CF_DIB: a plain 32-bit bitmap, each pixel's fourth byte opaque (a
+        // program that takes it for transparency must not get an empty picture).
+        const HANDLE handle = ::GetClipboardData(CF_DIB);
+        QVERIFY(handle);
+        const auto* dib = static_cast<const uchar*>(::GlobalLock(handle));
+        QVERIFY(dib);
+        const auto unlock = qScopeGuard([handle] { ::GlobalUnlock(handle); });
+        BITMAPINFOHEADER header {};
+        std::memcpy(&header, dib, sizeof header);
+        QCOMPARE(header.biSize, DWORD {sizeof header});
+        QCOMPARE(header.biCompression, DWORD {BI_RGB});
+        QCOMPARE(header.biBitCount, WORD {32});
+        QVERIFY(::GlobalSize(handle) >= sizeof header + std::size_t {12 * 9 * 4});
+        for (int i = 0; i < 12 * 9; ++i)
+            QCOMPARE(dib[sizeof header + i * 4 + 3], uchar {0xFF});
     }
 
     // 有道词典's 划词 presses Ctrl+C in the program in front; files copied

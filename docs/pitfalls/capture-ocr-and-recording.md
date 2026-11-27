@@ -24,6 +24,7 @@
 - **插件化菜单统一与诊断日志白名单（#138）**：拆为独立进程后，贴图右键菜单若仍走系统 `shell::popupMenu` 会与宿主字体、行距、图标、勾选位置分裂；插件独立目录日志不会自动进主程序诊断包 → 自有菜单统一复用 `traymenu::popup` 并通过回调衔接业务状态；`diagnostics::exportArchive` 白名单须纳入 `plugins/winshun.capture.data/diagnostics/events*.jsonl`（不含插件设置和历史图），`capture` 事件另记 `graphics`、`refresh_hz`、`presented`（`copy` / `flip` / `software`）、`begun_ms`、`shown_ms`、`page_faults`。
 - **截图插件的 Qt 日志须自己写到 stderr**：插件与录屏工作进程都没有控制台，Qt 默认把 `qWarning` / `qInfo` 交给 `OutputDebugString`，而宿主只按行收插件 stderr 记入 `plugins.log`，录屏结束摘要（编码器、抓屏方式、帧数）和各类告警曾全部丢失 → 两个入口（`winshunCaptureMain`、`winshunCaptureWorker`）启动即装 UTF-8 stderr 消息处理器（跳过 debug，同 OCR 插件）；工作进程的 stderr 由插件转记为 `Recording worker: …`，最终进 `plugins.log` 与诊断包。新加依赖系统能力的分支（如老系统退化）须 `qWarning` 记一行。
 - **遮罩 QML 隐性错误与像素 / 帧率校验陷阱**：`QImage` 在 QML 中是不透明 variant，读 `.width` 得 `undefined` 且无警告；子 `Item` 声明 `left` / `top` / `right` / `bottom` 会覆盖 FINAL 锚线致窗口创建失败；.NET / GDI+ `Graphics.CopyFromScreen`（`GetHdc` / `ReleaseHdc`）存在哨兵色缺陷（KB 311221，实测 `#0D0B0C` 即 `(13,11,12)` 被当未绘制跳过成黑 / 旧色）→ QML 判图改由 C++ 暴露 `bool hasImage`；避开锚线属性名；像素真值校验用 DXGI 桌面复制、原生 GDI `BitBlt` 到 DIB 或导出文件，含指针比对以日志记录的实际 `GetCursorInfo` 句柄坐标为准；测流畅度须以高于刷新率的连续输入测“输入到出帧”延迟并对照空窗基线，勿把 `grabWindow()` 或脚本 `Sleep` 空档当掉帧。
+- **`Format_RGB32` 的第四个字节不保证是 `0xFF`（#497）**：GDI `BitBlt` 抓屏写进 32 位 DIB 时这个字节是系统留下的值（本机是 255，别的机器可以是 0），包成 `Format_RGB32` 的 `QImage` 后 Qt 自己不看它，但按行 `memcpy` 出去就原样带走；写进剪贴板的 `CF_DIB` 被当成透明度的程序读成一张空图 → 凡是把像素原样交给 Qt 以外的地方（剪贴板、文件、别的进程），`RGB32` 一律补 `0xFF000000`（`writeDibRows`），测试用第四字节为 0 的图（`tst_clipimage` 的 `rgb32UnusedByteIsWrittenOpaque`）。
 
 ## 标注、智能打码、贴图与编辑器
 
