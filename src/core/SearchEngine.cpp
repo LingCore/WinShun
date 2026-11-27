@@ -2148,6 +2148,15 @@ void SearchEngine::runNameSearch(const Job& job)
                             [&](const SearchResult& r) { return !yielding.contains(r.path); });
                     }
                 }
+                // Fuzzy always on: apps come before files, so an app only
+                // guessed (System Informer for "tim") would stand above a
+                // file named as typed. Guesses go after every row that is
+                // not one, in their order; one chosen for this text stays.
+                if (autoFuzzyNow && rankBy == RankBy::Match && request.order.key == SortKey::Rank && !insideFirst) {
+                    std::stable_partition(top.begin() + explicitRows, top.end(), [&](const SearchResult& r) {
+                        return !r.fuzzy || learnedFor(History::affinity(request.historyAffinity, r.path), r, true);
+                    });
+                }
                 if (top.size() > request.limit)
                     top.resize(request.limit);
                 results = std::move(top);

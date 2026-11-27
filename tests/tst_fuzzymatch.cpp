@@ -429,6 +429,12 @@ private slots:
         IndexService::Options opts;
         opts.content.enabled = false;
         IndexService service(dir.filePath(u"index"_s), opts);
+        {
+            auto idx = service.index();
+            const auto lock = idx->writeLock();
+            idx->add(idx->addRoot("T:"), "tim.txt", 0);
+        }
+        const QString file = u"T:\\tim.txt"_s;
 
         AppCatalog apps;
         auto appList = std::make_shared<AppList>();
@@ -479,6 +485,9 @@ private slots:
             const QStringList rows = run(u"tim"_s, FuzzyMode::On, now);
             QVERIFY2(rows.value(0) == tim, text(rows));
             QVERIFY2(rows.contains(informer + u"*~"_s), text(rows));
+            // Apps come before files, a guessed one after a file named as typed.
+            QVERIFY2(rows.contains(file), text(rows));
+            QVERIFY2(rows.indexOf(file) < rows.indexOf(informer + u"*~"_s), text(rows));
         }
         // The same of a favorite folder outside the index.
         favorites = {{Favorite::Kind::Folder, folder, u"System Informer"_s, {}}};
