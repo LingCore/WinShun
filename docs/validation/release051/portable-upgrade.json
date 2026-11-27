@@ -1,0 +1,90 @@
+{
+  "mode": "Portable",
+  "hold": false,
+  "before": {
+    "version": "0.50.0",
+    "exeSha": "06b0d7962060ddd256e54c67756d2b244ef0a9ccf675f575a61c8cf9229b2ece",
+    "runningFromHere": 0,
+    "running": 0,
+    "elevated": [],
+    "aside": [],
+    "service": "STATE : 4 RUNNING",
+    "serviceBinary": "BINARY_PATH_NAME : \"C:\\Program Files\\WinShun\\WinShunService.exe\"",
+    "task": "<Command>C:\\Program Files\\WinShun\\WinShun.exe</Command> <Arguments>--background</Arguments>",
+    "installedVersion": "0.51.0"
+  },
+  "dataBefore": [
+    "history.txt",
+    "index.bin",
+    "kept-through-the-update.txt",
+    "mcp-tools.json",
+    "plugin-index.json",
+    "plugins.log",
+    "query-history.json",
+    "README.txt",
+    "scope.json",
+    "state.ini",
+    "update.ini",
+    "WinShun.log"
+  ],
+  "updated": true,
+  "seconds": 33.3,
+  "after": {
+    "version": "0.51.0",
+    "exeSha": "48791894de9b708fdd521a7666b16dc1d8acd769b44ab5d257c029e679beed37",
+    "runningFromHere": 1,
+    "running": 1,
+    "elevated": [
+      false
+    ],
+    "aside": [],
+    "service": "STATE : 4 RUNNING",
+    "serviceBinary": "BINARY_PATH_NAME : \"C:\\Program Files\\WinShun\\WinShunService.exe\"",
+    "task": "<Command>C:\\Program Files\\WinShun\\WinShun.exe</Command> <Arguments>--background</Arguments>",
+    "installedVersion": "0.51.0"
+  },
+  "markerKept": true,
+  "dataAfter": [
+    "history.txt",
+    "index.bin",
+    "kept-through-the-update.txt",
+    "mcp-tools.json",
+    "plugin-index.json",
+    "plugins.log",
+    "query-history.json",
+    "README.txt",
+    "scope.json",
+    "state.ini",
+    "update.ini",
+    "WinShun.log"
+  ],
+  "feedRequests": [
+    "0.51.0 from F:\\电脑便捷工具\\dist\\release051 on http://127.0.0.1:47631/stable.json, deltas: ['WinShun-0.51.0-x64-delta-from-0.48.0.zip', 'WinShun-0.51.0-x64-delta-from-0.49.0.zip', 'WinShun-0.51.0-x64-delta-from-0.50.0.zip'], push: normal",
+    "\"GET /stable.json HTTP/1.1\" 200 -",
+    "\"GET /stable.json?package=portable HTTP/1.1\" 200 -",
+    "\"GET /WinShun-0.51.0-x64-delta-from-0.50.0.zip HTTP/1.1\" 200 -"
+  ],
+  "downloaded": [
+    "WinShun-0.51.0-x64-delta-from-0.50.0.zip"
+  ],
+  "helperLog": [],
+  "leftBehind": [],
+  "installedAfter": {
+    "version": "0.51.0",
+    "exeSha": "48791894de9b708fdd521a7666b16dc1d8acd769b44ab5d257c029e679beed37",
+    "runningFromHere": 1,
+    "running": 2,
+    "elevated": [
+      false,
+      false
+    ],
+    "aside": [],
+    "service": "STATE : 4 RUNNING",
+    "serviceBinary": "BINARY_PATH_NAME : \"C:\\Program Files\\WinShun\\WinShunService.exe\"",
+    "task": "<Command>C:\\Program Files\\WinShun\\WinShun.exe</Command> <Arguments>--background</Arguments>",
+    "installedVersion": "0.51.0",
+    "iniBytes": 9919,
+    "historySha": "82e8d722961841ae9d4b14c144e2eb688943c119517c5e2cd36811b518e8a300",
+    "indexBytes": 26490352
+  }
+}
