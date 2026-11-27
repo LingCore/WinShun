@@ -175,6 +175,29 @@ private slots:
         QVERIFY2(problems.isEmpty(), qPrintable(u"non-ASCII without a UTF-8 BOM:"_s + report(problems)));
     }
 
+    // An icon written as a private-use character can be lost by a tool that
+    // rewrites the file: `glyph: "" // ChromeClose` was the 公式识别 window's
+    // close button, there and not to be seen (a chat report, 2026-11-27). An
+    // empty glyph that a comment names is such a loss.
+    void namedGlyphsAreNotEmpty()
+    {
+        static const QRegularExpression lost(uR"(\b\w*[gG]lyph\w*:\s*""\s*//\s*\w)"_s);
+        QStringList problems;
+        int count = 0;
+        for (const QString& path : textFiles()) {
+            if (!path.endsWith(u".qml"_s, Qt::CaseInsensitive))
+                continue;
+            ++count;
+            const QStringList lines = QString::fromUtf8(bytesOf(path)).split(u'\n');
+            for (qsizetype i = 0; i < lines.size(); ++i) {
+                if (lost.match(lines[i]).hasMatch())
+                    problems.append(u"%1:%2"_s.arg(relative(path)).arg(i + 1));
+            }
+        }
+        QVERIFY(count > 100);
+        QVERIFY2(problems.isEmpty(), qPrintable(u"an icon's character is gone:"_s + report(problems)));
+    }
+
     // cmd reads a batch file in the OEM code page and chokes on a BOM.
     void batchFilesAreAscii()
     {

@@ -125,7 +125,7 @@ Window {
             flat: true
             width: 32
             height: 32
-            glyph: "" // ChromeClose
+            glyph: "\uE8BB" // ChromeClose
             Accessible.name: qsTr("关闭")
             onClicked: window.formula.close()
             Component.onCompleted: window.frame.addControl(closeButton)
