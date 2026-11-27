@@ -27,7 +27,9 @@ Window {
     title: qsTr("演示")
 
     onActiveChanged: if (active) ink.forceActiveFocus()
-    onBoardKindChanged: if (onBoard) board.kind = boardKind
+    // Asked of `boardKind` itself: `onBoard` may still be the old answer
+    // here, and the black board opened from none came up white (GitHub #485).
+    onBoardKindChanged: board.show(boardKind)
 
     Item {
         id: ink
@@ -53,6 +55,11 @@ Window {
             id: board
             // The last board shown: it fades out in its own colour.
             property int kind: PresenterState.Board.White
+            function show(wanted: int) {
+                if (wanted !== PresenterState.Board.None)
+                    kind = wanted
+            }
+            Component.onCompleted: show(window.boardKind) // made with a board open already
             anchors.fill: parent
             color: kind === PresenterState.Board.Black ? window.presenter.blackBoardColor : window.presenter.whiteBoardColor
             opacity: window.onBoard ? 1 : 0
