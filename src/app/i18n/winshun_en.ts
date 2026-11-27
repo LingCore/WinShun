@@ -7256,8 +7256,8 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>File manager for opening folders</translation>
     </message>
     <message>
-        <source>文件管理器;资源管理器;打开文件夹;打开所在位置;Total Commander;Directory Opus;TC;Opus;XYplorer;Pulse;OneCommander;自定义;其他;Tessoa;custom</source>
-        <translation>file manager;explorer;open folder;open file location;Total Commander;Directory Opus;TC;Opus;XYplorer;Pulse;OneCommander;custom;other;Tessoa</translation>
+        <source>文件管理器;资源管理器;文件浏览器;默认文件管理器;打开文件夹;打开所在位置;Total Commander;Directory Opus;TC;Opus;XYplorer;Pulse;OneCommander;Q-Dir;QDir;自定义;其他;Tessoa;custom</source>
+        <translation>file manager;explorer;file browser;default file manager;open folder;open file location;Total Commander;Directory Opus;TC;Opus;XYplorer;Pulse;OneCommander;Q-Dir;QDir;custom;other;Tessoa</translation>
     </message>
     <message>
         <source>Ctrl+G 转到文件管理器的文件夹</source>
