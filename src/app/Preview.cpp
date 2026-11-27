@@ -16771,6 +16771,11 @@ int runWindowMemory(const QStringList& args)
         pump(1500);
         stage(u"%1 deleted"_s.arg(QFileInfo(file).fileName()));
     }
+    engine.collectGarbage();
+    // The profile prepare() named: only the engine's cache folder is in it.
+    if (const QFileInfo profile(Settings::profile()); profile.fileName().startsWith(u"WinShun-preview-")
+        && QDir::cleanPath(profile.absolutePath()).compare(QDir::cleanPath(QDir::tempPath()), Qt::CaseInsensitive) == 0)
+        QDir(profile.absoluteFilePath()).removeRecursively();
     return ok ? 0 : 4;
 }
 
@@ -17123,7 +17128,7 @@ int runRuntime(const QStringList& args)
                     || args.contains(u"--duplicates-check"_s) || args.contains(u"--field-focus-check"_s)
                     || args.contains(u"--full-screen-game-check"_s)
                     || args.contains(u"--launcher-settings-check"_s) || args.contains(u"--launcher-open-check"_s)
-                    || args.contains(u"--settings-memory-check"_s)
+                    || args.contains(u"--settings-memory-check"_s) || args.contains(u"--settings-reopen-check"_s)
                     || args.contains(u"--pinned-stacking-check"_s))
                 && profile.fileName().startsWith(u"WinShun-preview-")
                 && QDir::cleanPath(profile.absolutePath()).compare(QDir::cleanPath(QDir::tempPath()), Qt::CaseInsensitive) == 0)
