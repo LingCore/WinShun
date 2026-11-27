@@ -30,6 +30,22 @@ Kind installKind(const QString& appDir, bool portable);
 // that did not happen. Cut to a length a notice can show.
 QString setupBlockedBy(const QByteArray& log);
 
+// Where an update's downloads, the helper's copy and the logs go. A portable
+// copy keeps them with itself, in "data\Updates" (GitHub #484: nothing of it
+// on the system drive; the swap leaves "data" alone, so the helper still runs
+// from outside what it replaces). An installed copy, and a Scoop one, whose
+// "data" is Scoop's to keep: <localData>\WinShun\Updates. A --profile's own
+// folder for tests. `profile` is the portable copy's "data" when there is one.
+QString updatesFolder(Kind kind, const QString& profile, const QString& portableFolder, const QString& localData);
+
+// What a portable copy of an earlier version left on the system drive:
+// <localData>\WinShun with nothing in it but "Updates" (the logs, the helper's
+// copy). Both go when that is all there is: with anything else there, an
+// installed copy shares the folder and it is left as it is. Files are removed
+// one by one and the folders only once empty: nothing inside a folder or
+// behind a link is touched. True when something was removed.
+bool removeStrayUpdates(const QString& localWinShun);
+
 // A copy made by Setup (for all users or this one) is installed.
 bool setupInstalled();
 

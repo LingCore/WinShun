@@ -69,16 +69,18 @@ QString appDir()
     return QDir::toNativeSeparators(QCoreApplication::applicationDirPath());
 }
 
-// The downloads: %LOCALAPPDATA%\WinShun\Updates, the user's own, also for a
-// portable copy (not its "data", which the update leaves as it is); a
-// --profile's own folder for tests.
+QString localData()
+{
+    return QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
+}
+
+// The downloads, the helper's copy and the logs (update::updatesFolder):
+// %LOCALAPPDATA%\WinShun\Updates, a portable copy's own data\Updates.
 QString updatesDir()
 {
-    const QString profile = Settings::profile();
-    if (!profile.isEmpty() && profile != Settings::portableFolder())
-        return profile + u"\\Updates"_s;
-    return QDir::toNativeSeparators(QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation)
-        + u"/WinShun/Updates"_s);
+    static const QString folder = update::updatesFolder(update::installKind(appDir(), !Settings::portableFolder().isEmpty()),
+        Settings::profile(), Settings::portableFolder(), localData());
+    return folder;
 }
 
 // The update service: the latest version for this Windows and package.
@@ -1110,6 +1112,9 @@ void Updater::cleanUp()
             if (dir.exists())
                 all = dir.removeRecursively() && all;
         }
+        // Versions before 0.51 kept a portable copy's downloads on the system drive (GitHub #484).
+        if (Settings::profile() == Settings::portableFolder())
+            update::removeStrayUpdates(localData() + u"/WinShun"_s);
     }
     static int retries = 0;
     if (!all && retries++ < 3)

@@ -28,6 +28,8 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
+#include "TestJunction.h" // after winsock2.h: it brings windows.h
+
 #include <atomic>
 #include <map>
 #include <mutex>
@@ -723,6 +725,62 @@ private slots:
         QCOMPARE(update::installKind(plain, true), update::Kind::Portable);
     }
 
+    // A portable copy keeps its downloads, the helper's copy and the logs
+    // with itself (GitHub #484); the others in the user's own folder.
+    void updatesFolderByKind()
+    {
+        using update::Kind;
+        const QString local = u"C:/Users/me/AppData/Local"_s;
+        const QString data = uR"(D:\Tools\WinShun\data)"_s;
+        QCOMPARE(update::updatesFolder(Kind::Portable, data, data, local), uR"(D:\Tools\WinShun\data\Updates)"_s);
+        QCOMPARE(update::updatesFolder(Kind::Scoop, data, data, local), uR"(C:\Users\me\AppData\Local\WinShun\Updates)"_s);
+        QCOMPARE(update::updatesFolder(Kind::AllUsers, {}, {}, local), uR"(C:\Users\me\AppData\Local\WinShun\Updates)"_s);
+        QCOMPARE(update::updatesFolder(Kind::CurrentUser, {}, {}, local), uR"(C:\Users\me\AppData\Local\WinShun\Updates)"_s);
+        // --profile, for tests: its own, whatever the copy is.
+        QCOMPARE(update::updatesFolder(Kind::Portable, uR"(E:\probe)"_s, data, local), uR"(E:\probe\Updates)"_s);
+        QCOMPARE(update::updatesFolder(Kind::None, uR"(E:\probe)"_s, {}, local), uR"(E:\probe\Updates)"_s);
+    }
+
+    // What an earlier version's portable copy left in %LOCALAPPDATA%\WinShun
+    // goes, with the folder, only when that is all there is.
+    void strayUpdatesOfAPortableCopy()
+    {
+        QTemporaryDir dir;
+        MadeLinks made; // after the folder: the link goes first, as a link
+        const auto leave = [&](const QString& name) {
+            const QString folder = dir.filePath(name);
+            writeFile(folder + u"/Updates/update.log"_s, "log");
+            writeFile(folder + u"/Updates/WinShunUpdate.exe"_s, "helper");
+            return folder;
+        };
+        const QString alone = leave(u"alone"_s);
+        QVERIFY(update::removeStrayUpdates(alone));
+        QVERIFY(!QFileInfo::exists(alone));
+
+        // An installed copy's files beside it: its folder, left as it is.
+        const QString shared = leave(u"shared"_s);
+        writeFile(shared + u"/state.ini"_s, "installed");
+        QVERIFY(!update::removeStrayUpdates(shared));
+        QCOMPARE(readFile(shared + u"/Updates/update.log"_s), QByteArray("log"));
+
+        // A folder in it (an installed copy's delta): not a portable copy's leavings.
+        const QString delta = leave(u"delta"_s);
+        writeFile(delta + u"/Updates/WinShun-0.50.0-x64-delta/payload"_s, "x");
+        QVERIFY(!update::removeStrayUpdates(delta));
+        QCOMPARE(readFile(delta + u"/Updates/WinShunUpdate.exe"_s), QByteArray("helper"));
+
+        // "Updates" a link to somewhere else: nothing behind it is touched.
+        writeFile(dir.filePath(u"elsewhere/kept.txt"_s), "kept");
+        const QString linked = dir.filePath(u"linked"_s);
+        QVERIFY(QDir().mkpath(linked));
+        QVERIFY(makeJunction(made << linked + u"/Updates"_s, dir.filePath(u"elsewhere"_s)));
+        QVERIFY(!update::removeStrayUpdates(linked));
+        QCOMPARE(readFile(dir.filePath(u"elsewhere/kept.txt"_s)), QByteArray("kept"));
+        QVERIFY(QFileInfo::exists(linked + u"/Updates"_s));
+
+        QVERIFY(!update::removeStrayUpdates(dir.filePath(u"none"_s)));
+    }
+
     void unpacksPortableZip()
     {
         QTemporaryDir dir;
@@ -896,12 +954,18 @@ private slots:
     void helperStartsNewVersion_data()
     {
         QTest::addColumn<bool>("runAsAdministrator");
-        QTest::newRow("plain") << false;
-        QTest::newRow("run-as-administrator") << true;
+        QTest::addColumn<bool>("fromData");
+        QTest::newRow("plain") << false << false;
+        QTest::newRow("run-as-administrator") << true << false;
+        // As Updater runs it for a portable copy (GitHub #484): the helper's
+        // copy and its log in the copy's own data\Updates, inside the folder
+        // whose other entries it replaces.
+        QTest::newRow("from-the-data-folder") << false << true;
     }
     void helperStartsNewVersion()
     {
         QFETCH(bool, runAsAdministrator);
+        QFETCH(bool, fromData);
         if (runAsAdministrator && !elevatesWithoutPrompt())
             QSKIP("needs an administrator account with normal rights here and UAC that elevates without asking "
                   "(ConsentPromptBehaviorAdmin=0); elsewhere the prompt would wait for an answer");
@@ -924,9 +988,16 @@ private slots:
                 LSTATUS(ERROR_SUCCESS));
         }
 
-        const QString log = dir.filePath(u"update.log"_s);
+        const QString updates = fromData ? app + u"/data/Updates"_s : dir.path();
+        const QString log = updates + u"/update.log"_s;
+        QString helperExe = QStringLiteral(WINSHUN_UPDATE_EXE);
+        if (fromData) {
+            QVERIFY(QDir().mkpath(updates));
+            helperExe = updates + u"/WinShunUpdate.exe"_s;
+            QVERIFY(QFile::copy(QStringLiteral(WINSHUN_UPDATE_EXE), helperExe));
+        }
         QProcess helper;
-        helper.start(QStringLiteral(WINSHUN_UPDATE_EXE),
+        helper.start(helperExe,
             {u"--portable"_s, u"--pid"_s, u"0"_s, u"--ready"_s, u"Local\\WinShun.Test.Ready.%1"_s.arg(QUuid::createUuid().toString(QUuid::Id128)),
                 u"--instance"_s, u"Local\\WinShun.Test.Instance.%1"_s.arg(QUuid::createUuid().toString(QUuid::Id128)),
                 u"--app"_s, QDir::toNativeSeparators(app), u"--stage"_s, QDir::toNativeSeparators(app + u"/.stage"_s),
@@ -939,6 +1010,8 @@ private slots:
         QCOMPARE(readFile(app + u"/data/keep.txt"_s), QByteArray("the user's"));
         QVERIFY(!QFileInfo::exists(app + u"/.backup"_s));
         QVERIFY(!QFileInfo::exists(app + u"/.stage"_s));
+        if (fromData) // its own copy and its log stayed where they were, with the user's files
+            QVERIFY(QFileInfo::exists(helperExe) && !readFile(log).isEmpty());
         // The stand-in ends by itself (one running as administrator is not
         // ours to end): the folder goes once it has. QTRY_ evaluates its
         // expression again after the wait, so it must hold once the file is gone.

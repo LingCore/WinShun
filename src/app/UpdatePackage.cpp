@@ -17,6 +17,7 @@
 #include <miniz.h>
 #include <windows.h>
 
+#include <algorithm>
 #include <cstring>
 
 using namespace Qt::StringLiterals;
@@ -103,6 +104,33 @@ Kind installKind(const QString& appDir, bool portable)
     if (sameFolder(installLocation(HKEY_CURRENT_USER, 0), appDir))
         return Kind::CurrentUser;
     return Kind::None;
+}
+
+QString updatesFolder(Kind kind, const QString& profile, const QString& portableFolder, const QString& localData)
+{
+    const bool portable = !profile.isEmpty() && profile == portableFolder;
+    const QString base = profile.isEmpty() || (portable && kind != Kind::Portable) ? localData + u"/WinShun"_s : profile;
+    return QDir::toNativeSeparators(QDir::cleanPath(base + u"/Updates"_s));
+}
+
+bool removeStrayUpdates(const QString& localWinShun)
+{
+    const auto real = [](const QFileInfo& folder) { return folder.isDir() && !folder.isSymLink() && !folder.isJunction(); };
+    const QDir parent(localWinShun);
+    const QFileInfoList all = parent.entryInfoList(QDir::AllEntries | QDir::Hidden | QDir::System | QDir::NoDotAndDotDot);
+    if (!real(QFileInfo(localWinShun)) || all.size() != 1 || all.first().fileName().compare(u"Updates"_s, Qt::CaseInsensitive) != 0
+        || !real(all.first()))
+        return false;
+    const QDir updates(all.first().absoluteFilePath());
+    const QFileInfoList left = updates.entryInfoList(QDir::AllEntries | QDir::Hidden | QDir::System | QDir::NoDotAndDotDot);
+    if (std::ranges::any_of(left, [](const QFileInfo& entry) { return !entry.isFile() || entry.isSymLink(); }))
+        return false; // a folder in it: not what an update of a portable copy leaves
+    bool removed = false;
+    for (const QFileInfo& entry : left)
+        removed = QFile::remove(entry.absoluteFilePath()) || removed;
+    if (parent.rmdir(all.first().fileName())) // only when empty
+        QDir().rmdir(parent.absolutePath());
+    return removed;
 }
 
 bool setupInstalled()
