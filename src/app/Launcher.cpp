@@ -8,6 +8,7 @@
 #include "Wsl.h"
 
 #include "AppCatalog.h"
+#include "CommandLaunch.h"
 #include "Crawler.h"
 #include "Details.h"
 #include "FileIconProvider.h"
@@ -4675,6 +4676,21 @@ void Launcher::refreshStatus()
         const QString count = tr("共 %Ln 项", nullptr, totalMatches());
         s = s.isEmpty() ? count : count + u" · "_s + s;
     }
+    // 内容 there too (GitHub #476): the files listed with the words in them,
+    // as a figure that stays while the scan goes on (the divider shows how
+    // far it is) and says when scrolling brings more.
+    if (m_panel && m_haveResults && !m_replacePending && !m_keyword && m_scope == Content && s.isEmpty()) {
+        QSet<QString> files;
+        for (int i = 0; i < m_results.count(); ++i) {
+            if (const SearchResult* r = m_results.at(i); r && r->line != 0)
+                files.insert(r->path);
+        }
+        if (const int found = static_cast<int>(files.size()); found > 0) {
+            s = m_contentRunning ? tr("已找到 %Ln 个文件，还在找…", nullptr, found)
+                : m_moreContent  ? tr("已列出 %Ln 个文件，往下滚动列出更多", nullptr, found)
+                                 : tr("共 %Ln 个文件", nullptr, found);
+        }
+    }
     if (const int selected = m_results.selectedCount(); selected > 0)
         s = tr("已选择 %Ln 项", nullptr, selected);
     if (!m_queryError.isEmpty())
@@ -6469,7 +6485,15 @@ void Launcher::performApp(const SearchResult& app, Action action)
             return;
         }
         remember(app.path, m_shownText);
-        shell::launchApp(app.path, action == RunAsAdmin, reportFailure(app.name));
+        // A terminal found while typing in a folder opens in that folder, as
+        // typing its name in Explorer's address bar does (GitHub #430).
+        if (const QString terminal = typedInFolder() ? commandlaunch::terminalOfApp(app.path, app.target) : QString();
+            !terminal.isEmpty() && QFileInfo(m_typingFolder).isAbsolute()) {
+            qInfo().noquote() << u"Opening the terminal %1 in the folder typed in"_s.arg(terminal);
+            shell::openTerminalIn(terminal, {}, m_typingFolder, reportFailure(app.name), action == RunAsAdmin);
+        } else {
+            shell::launchApp(app.path, action == RunAsAdmin, reportFailure(app.name));
+        }
         emit dismissRequested();
         break;
     case Reveal:

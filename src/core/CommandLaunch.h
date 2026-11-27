@@ -75,6 +75,13 @@ Plan silentPlan(const QString& program, const QString& arguments, Kind kind, con
 // flag (`pwsh`) also pass it explicitly so elevation never falls back to System32.
 QString terminalArguments(const QString& id, const QString& folder, bool asAdministrator = false);
 
+// Which of those terminals an installed app is ("" when none): by its
+// program's file name (`target`, or the end of the launch path
+// "shell:AppsFolder\<id>" of a desktop app), a Store app by its package.
+// For a terminal opened from the apps while typing in a folder, which then
+// opens in that folder (GitHub #430).
+QString terminalOfApp(const QString& launchPath, const QString& target);
+
 // Whether text typed after the keyword may be an argument of a batch file.
 // cmd.exe reads & | < > ^ and %VARIABLES% even in an argument that is not
 // quoted, and its quotes are not the ones other programs use, so a word with

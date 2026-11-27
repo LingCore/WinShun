@@ -210,4 +210,29 @@ QString terminalArguments(const QString& id, const QString& folder, bool asAdmin
     return {};
 }
 
+QString terminalOfApp(const QString& launchPath, const QString& target)
+{
+    static const std::array<std::pair<QLatin1StringView, QLatin1StringView>, 7> programs {{
+        {"cmd.exe"_L1, "cmd"_L1},
+        {"powershell.exe"_L1, "powershell"_L1},
+        {"pwsh.exe"_L1, "pwsh"_L1},
+        {"wt.exe"_L1, "wt"_L1},
+        {"windowsterminal.exe"_L1, "wt"_L1},
+        {"git-bash.exe"_L1, "gitbash"_L1},
+        {"wsl.exe"_L1, "wsl"_L1},
+    }};
+    for (const QString& path : {target, launchPath}) {
+        const QString name = path.sliced(std::max(path.lastIndexOf(u'\\'), path.lastIndexOf(u'/')) + 1);
+        for (const auto& [file, id] : programs) {
+            if (name.compare(file, Qt::CaseInsensitive) == 0)
+                return QString(id);
+        }
+    }
+    if (launchPath.contains(u"\\Microsoft.WindowsTerminal"_s, Qt::CaseInsensitive))
+        return u"wt"_s;
+    if (launchPath.contains(u"\\Microsoft.PowerShell_"_s, Qt::CaseInsensitive))
+        return u"pwsh"_s;
+    return {};
+}
+
 } // namespace ws::commandlaunch

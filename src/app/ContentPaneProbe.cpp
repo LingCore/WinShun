@@ -436,6 +436,10 @@ bool checkContentPane(QQmlEngine* qml, const QDir& output)
         launcher.setQuery(u"马上|立即"_s); // an expression of its own: either
         check(u"regex_mode_alternation"_s, until([&] { return !launcher.searching() && found(minutes) && found(notice); })
             && launcher.results()->count() == 2);
+        // The panel says how many files have the words (GitHub #476), 内容 too.
+        check(u"content_count_in_status"_s, until([&] { return launcher.statusText().contains(u'2'); }) && launcher.panel());
+        if (!launcher.statusText().contains(u'2'))
+            qInfo().noquote() << u"content status: \"%1\", panel %2"_s.arg(launcher.statusText()).arg(launcher.panel());
         launcher.setQuery(u"发布("_s);
         check(u"regex_broken_says_why"_s, until([&] { return !launcher.queryError().isEmpty() && !launcher.searching(); })
             && launcher.statusText() == launcher.queryError() && launcher.results()->count() == 0);

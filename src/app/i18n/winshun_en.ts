@@ -15168,6 +15168,27 @@ Content index: %5</translation>
         </translation>
     </message>
     <message numerus="yes">
+        <source>已找到 %Ln 个文件，还在找…</source>
+        <translation>
+            <numerusform>%Ln file found so far…</numerusform>
+            <numerusform>%Ln files found so far…</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>已列出 %Ln 个文件，往下滚动列出更多</source>
+        <translation>
+            <numerusform>%Ln file listed, scroll down for more</numerusform>
+            <numerusform>%Ln files listed, scroll down for more</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>共 %Ln 个文件</source>
+        <translation>
+            <numerusform>%Ln file in all</numerusform>
+            <numerusform>%Ln files in all</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
         <source>已选择 %Ln 项</source>
         <translation>
             <numerusform>%Ln selected</numerusform>

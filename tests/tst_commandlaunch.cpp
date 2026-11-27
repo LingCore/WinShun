@@ -54,6 +54,24 @@ class TestCommandLaunch : public QObject {
     Q_OBJECT
 
 private slots:
+    // Typed in a folder, a terminal found among the apps opens in that folder
+    // (GitHub #430): which terminal an app row is, by its program or its app id.
+    void terminalOfAnAppRow()
+    {
+        QCOMPARE(terminalOfApp(uR"(shell:AppsFolder\{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\cmd.exe)"_s, uR"(C:\Windows\System32\cmd.exe)"_s), u"cmd"_s);
+        QCOMPARE(terminalOfApp(uR"(shell:AppsFolder\{D65231B0-B2F1-4857-A4CE-A8E7C6EA7D27}\WindowsPowerShell\v1.0\powershell.exe)"_s, QString()), u"powershell"_s);
+        QCOMPARE(terminalOfApp(u"shell:AppsFolder\\x"_s, uR"(C:\Program Files\PowerShell\7\PWSH.EXE)"_s), u"pwsh"_s);
+        QCOMPARE(terminalOfApp(uR"(shell:AppsFolder\Microsoft.PowerShell_8wekyb3d8bbwe!App)"_s, uR"(C:\Program Files\WindowsApps\Microsoft.PowerShell_7)"_s), u"pwsh"_s);
+        QCOMPARE(terminalOfApp(uR"(shell:AppsFolder\Microsoft.WindowsTerminal_8wekyb3d8bbwe!App)"_s, QString()), u"wt"_s);
+        QCOMPARE(terminalOfApp(u"shell:AppsFolder\\x"_s, uR"(C:\Program Files\Git\git-bash.exe)"_s), u"gitbash"_s);
+        QCOMPARE(terminalOfApp(u"shell:AppsFolder\\x"_s, uR"(C:\Windows\System32\wsl.exe)"_s), u"wsl"_s);
+        // Not terminals: the script editor, a program that only has the word in its name.
+        QCOMPARE(terminalOfApp(u"shell:AppsFolder\\x"_s, uR"(C:\Windows\System32\WindowsPowerShell\v1.0\powershell_ise.exe)"_s), QString());
+        QCOMPARE(terminalOfApp(u"shell:AppsFolder\\x"_s, uR"(D:\tools\mycmd.exe)"_s), QString());
+        QCOMPARE(terminalOfApp(uR"(shell:AppsFolder\Microsoft.WindowsNotepad_8wekyb3d8bbwe!App)"_s, QString()), QString());
+        QCOMPARE(terminalOfApp(QString(), QString()), QString());
+    }
+
     // 在终端中打开 (GitHub #386): each terminal is told the folder its own way,
     // as one argument even with spaces, a drive's root and a semicolon in it.
     void terminalArgumentsPerTerminal()
