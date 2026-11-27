@@ -173,6 +173,7 @@ private:
     bool m_checking = false;
     bool m_checkedThisRun = false;
     QString m_etag; // of this run's last answer from the service
+    QString m_lastSaid; // the answer last written to the journal (update-check)
     bool m_chinese = true;
     QString m_problem;
     QDateTime m_lastChecked;

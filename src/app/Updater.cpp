@@ -1,5 +1,6 @@
 #include "Updater.h"
 
+#include "Diagnostics.h"
 #include "Settings.h"
 #include "UpdateDelta.h"
 #include "UsageReport.h"
@@ -384,6 +385,18 @@ void Updater::finishCheck(int status, const QByteArray& body, unsigned long erro
     }
     std::optional<release::Info> latest;
     const release::Answer answer = release::judge(status, body, currentVersion(), &latest);
+    // What the service said, for a report of "it only finds an older version"
+    // (GitHub #487): each check asked for by hand, and the automatic ones
+    // whose answer is another than the last (every 10 minutes otherwise).
+    const QString said = answer == release::Answer::Invalid ? u"invalid %1 %2"_s.arg(status).arg(error)
+                         : latest ? latest->version : u"up to date"_s;
+    if (manual || said != m_lastSaid) {
+        m_lastSaid = said;
+        diagnostics::record(u"update-check"_s,
+            {{u"manual"_s, manual}, {u"status"_s, status}, {u"answer"_s, said}, {u"current"_s, currentVersion()},
+                {u"installing"_s, m_stage != Stage::Idle}, {u"shown"_s, m_release ? m_release->version : QString()},
+                {u"skipped"_s, state().value(u"SkippedVersion"_s).toString()}});
+    }
     if (answer == release::Answer::Invalid) {
         QString problem;
         if (status == 403 || status == 429)

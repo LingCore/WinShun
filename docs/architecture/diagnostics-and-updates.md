@@ -83,6 +83,7 @@ Win顺 在读取任何设置之前按以下优先级确定目录：
 | 事件名 | 来源 | 核心内容与频控 |
 |---|---|---|
 | `app-start` / `app-crash` | `main.cpp` / `CrashRecord` | 启动环境与权限；上次闪退原因/线程/`activity`/调用栈 |
+| `update-check` | `Updater::finishCheck` | 更新服务的回答（版本或失败码）、本机版本、正在安装与否、界面上显示的版本、已跳过的版本；手动检查每次都记，自动检查只在回答变了时记 |
 | `app-message-repeated` | `RepeatFilter` | 10 秒内重复超 3 次的 `WinShun.log` 折叠计数 |
 | `content-*` | `ContentIndexer` | 轮次起止、限速、直读/回退、30 秒吞吐、最久 8 项活动槽、>3 秒慢读（每轮前 8 次） |
 | `ui-font` / `screens` / `graphics` / `graphics-error` / `power` / `fonts-changed` / `font-database-changed` / `text-check` | `DisplayDiagnostics` / `TextCheck` | 字体、屏幕参数、显卡驱动、场景图错误、睡眠与字形自检 |
