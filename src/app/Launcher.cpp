@@ -5955,7 +5955,18 @@ void Launcher::followPreview()
     if (!m_preview)
         return;
     if (m_preview->isOpen()) {
-        m_preview->follow(previewItem(m_results.at(m_currentRow)));
+        const std::optional<FilePreview::Item> item = previewItem(m_results.at(m_currentRow));
+        // The box emptied, nothing listed to show: an empty window beside it
+        // is only in the way (GitHub #492). Still wanted: back on the next
+        // row with a file, as when the launcher opens. Not while words are
+        // typed (a row without a file, or no match yet: it would flicker),
+        // nor QuickLook's or Seer's window, which is theirs to close.
+        if (!item && m_results.count() == 0 && m_query.trimmed().isEmpty() && !m_preview->showsElsewhere()) {
+            m_preview->close();
+            m_previewResume = true;
+            return;
+        }
+        m_preview->follow(item);
         return;
     }
     // In the panel's details their 预览 tab is the preview: the window waits

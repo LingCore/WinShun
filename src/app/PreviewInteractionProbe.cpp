@@ -293,6 +293,18 @@ bool checkPreviewInteractions(QQmlEngine* engine, const QDir& output)
     check(!filePreview.isOpen(), u"switching Files to All closes the old floating preview"_s);
     wait(100);
     check(!filePreview.isOpen(), u"queued search updates do not reopen the old preview"_s);
+    // GitHub #492: the box emptied with nothing listed, the window goes; with
+    // words in it and no row to show, it stays and says so.
+    launcher.setQuery(u"no-such-file-492"_s);
+    filePreview.show({.path = u"winshun-plugin:fixture"_s, .name = u"Fixture"_s,
+        .text = std::make_shared<const QString>(u"Preview content"_s)});
+    launcher.setCurrentRow(1);
+    launcher.setCurrentRow(0);
+    check(filePreview.isOpen(), u"words typed that find nothing keep the preview window"_s);
+    launcher.setQuery({});
+    launcher.setCurrentRow(1);
+    launcher.setCurrentRow(0);
+    check(!filePreview.isOpen(), u"emptying the box closes a preview with nothing to show"_s);
     launcher.setPanel(true);
     launcher.setContentOptions(true, {}, {}, true, true);
     filePreview.show({.path = u"winshun-plugin:fixture"_s, .name = u"Fixture"_s,
