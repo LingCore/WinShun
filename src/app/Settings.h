@@ -607,6 +607,10 @@ struct Settings {
     // A picture's thumbnail in the list: "small" on a row as high as any other (GitHub #328),
     // "standard" on a taller one, "large" enough to make out its details (forum #137).
     QString clipboardPictureSize = QStringLiteral("standard");
+    // The clipboard window opens pinned, as after Ctrl+T: it stays up after a
+    // paste, for pasting several entries one after another (a chat request,
+    // 2026-11-27). Ctrl+T unpins it for that opening.
+    bool clipboardKeepPinned = false;
     bool clipboardKeepPlace = false; // pasting from the history leaves the entry where it is (GitHub #122); off: it moves to the top
     // What was copied before, copied again, is a new entry (Ditto's "allow
     // duplicates", ClipStore::setKeepsDuplicates); off: the old one moves to the top.

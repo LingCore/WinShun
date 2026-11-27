@@ -14,7 +14,10 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
+#include <QMutex>
 #include <QSaveFile>
+#include <QSettings>
 #include <QStandardPaths>
 #include <QString>
 #include <QStringList>
@@ -116,11 +119,49 @@ std::wstring registryText(HKEY root, const wchar_t* key, const wchar_t* value, D
     return text;
 }
 
+// A portable copy (on a USB stick, in a folder of the user's) leaves nothing
+// in the registry: it was known only while it ran, so folders could not be
+// opened in a Total Commander that was closed (a chat report, 2026-11-27).
+// The program a running one was seen as is kept in the state file
+// ([FileManagers]) and used while that file is still there.
+struct ProgramMemory {
+    QMutex mutex;
+    QString file; // none: nothing kept (tests, the previews)
+    QHash<QString, QString> seen; // as read and as written
+};
+ProgramMemory& programMemory()
+{
+    static ProgramMemory memory;
+    return memory;
+}
+
+std::wstring remembering(const char* name, std::wstring running)
+{
+    ProgramMemory& memory = programMemory();
+    const QMutexLocker lock(&memory.mutex);
+    const QString key = QString::fromLatin1(name);
+    const QString path = QString::fromStdWString(running);
+    if (!memory.file.isEmpty() && memory.seen.value(key).compare(path, Qt::CaseInsensitive) != 0) {
+        memory.seen.insert(key, path);
+        QSettings state(memory.file, QSettings::IniFormat);
+        state.setValue(u"FileManagers/"_s + key, path);
+    }
+    return running;
+}
+
+std::wstring remembered(const char* name)
+{
+    ProgramMemory& memory = programMemory();
+    const QMutexLocker lock(&memory.mutex);
+    const std::wstring path = memory.seen.value(QString::fromLatin1(name)).toStdWString();
+    return !path.empty() && isFile(path) ? path : std::wstring();
+}
+
 std::wstring totalCommanderProgram()
 {
     if (const HWND running = ::FindWindowW(L"TTOTAL_CMD", nullptr)) {
         if (std::wstring program = programOf(running); !program.empty())
-            return program;
+            return remembering("TotalCommander", std::move(program));
     }
     constexpr const wchar_t* kKey = L"Software\\Ghisler\\Total Commander";
     for (const std::wstring& dir : {registryText(HKEY_CURRENT_USER, kKey, L"InstallDir"),
@@ -133,7 +174,7 @@ std::wstring totalCommanderProgram()
                 return dir + name;
         }
     }
-    return {};
+    return remembered("TotalCommander");
 }
 
 std::wstring opusProgram()
@@ -227,9 +268,9 @@ HWND xyplorerWindow()
 std::wstring xyplorerProgram()
 {
     if (std::wstring program = programOf(xyplorerRuntimeWindow()); !program.empty())
-        return program;
+        return remembering("XYplorer", std::move(program));
     if (std::wstring program = programOf(xyplorerWindow()); !program.empty())
-        return program;
+        return remembering("XYplorer", std::move(program));
     for (const wchar_t* key : {L"Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\XYplorer.exe",
              L"Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\XYplorerFree.exe"}) {
         for (std::wstring exe : {registryText(HKEY_CURRENT_USER, key, nullptr),
@@ -241,7 +282,7 @@ std::wstring xyplorerProgram()
                 return exe;
         }
     }
-    return {};
+    return remembered("XYplorer"); // the portable one
 }
 
 // The window XYplorer answers to (askXYplorer): what it sends is kept in
@@ -807,7 +848,7 @@ std::wstring pulseProgram()
 {
     for (HWND hwnd = nullptr; (hwnd = ::FindWindowExW(nullptr, hwnd, kPulseClass, nullptr));) {
         if (std::wstring program = programOf(hwnd); isPulseProgram(program))
-            return program; // maybe the portable one, which leaves no trace in the registry
+            return remembering("Pulse", std::move(program)); // maybe the portable one, which leaves no trace in the registry
     }
     const std::pair<HKEY, DWORD> places[] {
         {HKEY_LOCAL_MACHINE, RRF_SUBKEY_WOW6464KEY}, {HKEY_LOCAL_MACHINE, RRF_SUBKEY_WOW6432KEY}, {HKEY_CURRENT_USER, 0}};
@@ -820,7 +861,7 @@ std::wstring pulseProgram()
                 return dir + L"\\pulse.exe";
         }
     }
-    return {};
+    return remembered("Pulse");
 }
 
 // The Pulse that runs may take the front for what it is handed: that comes
@@ -1915,6 +1956,20 @@ bool reveal(Kind kind, const std::vector<std::wstring>& paths)
         shown = true;
     }
     return shown;
+}
+
+void setProgramMemory(const QString& stateFile)
+{
+    ProgramMemory& memory = programMemory();
+    const QMutexLocker lock(&memory.mutex);
+    memory.file = stateFile;
+    memory.seen.clear();
+    if (stateFile.isEmpty())
+        return;
+    QSettings state(stateFile, QSettings::IniFormat);
+    state.beginGroup(u"FileManagers"_s);
+    for (const QString& key : state.childKeys())
+        memory.seen.insert(key, state.value(key).toString());
 }
 
 void setCustomCommands(const QString& open, const QString& reveal)

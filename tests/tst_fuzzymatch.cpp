@@ -2,11 +2,13 @@
 #include "EverythingIpc.h"
 #include "FileIndex.h"
 #include "FuzzyMatch.h"
+#include "History.h"
 #include "IndexService.h"
 #include "NameSearch.h"
 #include "Query.h"
 #include "SearchEngine.h"
 
+#include <QDateTime>
 #include <QDir>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -357,6 +359,61 @@ private slots:
             QCOMPARE(hits.size(), std::size_t(1));
             QCOMPARE(apps[hits[0].index].id, u"test.vcode"_s);
         }
+    }
+
+    // "tim" with fuzzy always on (a chat report, 2026-11-27): the app named
+    // TIM comes before System Informer and RealTimeSync, whatever their order
+    // in the catalog.
+    void appNamedAsTypedComesFirstWithFuzzyOn()
+    {
+        AppList apps;
+        const auto add = [&apps](const QString& name, const QString& id, const QString& target) {
+            AppInfo app;
+            app.name = name;
+            app.id = id;
+            app.target = target;
+            app.prepare();
+            apps.push_back(app);
+        };
+        add(u"System Informer"_s, u"test.si"_s, u"C:\\Program Files\\SystemInformer\\SystemInformer.exe"_s);
+        add(u"RealTimeSync"_s, u"test.rts"_s, u"C:\\Program Files\\FreeFileSync\\RealTimeSync.exe"_s);
+        add(u"TIM"_s, u"test.tim"_s, u"C:\\Program Files (x86)\\Tencent\\TIM\\Bin\\TIM.exe"_s);
+        for (const FuzzyMode mode : {FuzzyMode::Off, FuzzyMode::Fallback, FuzzyMode::On}) {
+            const ParsedQuery q = parseQuery(u"tim"_s);
+            const NameMatcher m(q, mode == FuzzyMode::On);
+            const auto hits = searchApps(apps, q, m, {}, {}, mode);
+            QVERIFY(!hits.empty());
+            QStringList order;
+            for (const auto& hit : hits)
+                order.append(apps[hit.index].name + (hit.fuzzy ? u"~"_s : QString()));
+            qInfo().noquote() << int(mode) << order.join(u", "_s);
+            QCOMPARE(apps[hits[0].index].id, u"test.tim"_s);
+        }
+        // System Informer opened every day, never from "tim": how much it is
+        // used does not lift a fuzzy guess over the apps that have the letters.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        History history(dir.filePath(u"history.json"_s));
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        for (int i = 0; i < 30; ++i)
+            history.record(appLaunchPath(u"test.si"_s), u"sys"_s, now - i * 3'600'000LL);
+        const ParsedQuery q = parseQuery(u"tim"_s);
+        const NameMatcher m(q, true);
+        const auto score = [&](const History::Affinities& affinities) {
+            QHash<QString, int> scores;
+            for (const AppHit& hit : searchApps(apps, q, m, history.items(), affinities, FuzzyMode::On))
+                scores.insert(apps[hit.index].id, hit.score);
+            return scores;
+        };
+        const QHash<QString, int> used = score(history.affinities(u"tim"_s, now));
+        QVERIFY(used.contains(u"test.si"_s));
+        QVERIFY2(used.value(u"test.si"_s) < used.value(u"test.rts"_s),
+            qPrintable(u"System Informer %1, RealTimeSync %2"_s.arg(used.value(u"test.si"_s)).arg(used.value(u"test.rts"_s))));
+        // Chosen for "tim" itself, it is what "tim" means to this user: first, as anything learned.
+        for (int i = 0; i < 3; ++i)
+            history.record(appLaunchPath(u"test.si"_s), u"tim"_s, now + i);
+        const QHash<QString, int> learned = score(history.affinities(u"tim"_s, now + 10));
+        QVERIFY(learned.value(u"test.si"_s) > learned.value(u"test.rts"_s));
     }
 
     void searchEngineEndToEndModes()

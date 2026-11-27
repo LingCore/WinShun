@@ -520,6 +520,42 @@ int runPlugins(const QStringList& args)
     settle(window);
     say(u"showing %1x%2"_s.arg(window->width()).arg(window->height()));
     pump(500); // the bindings settle (sizes, the asynchronous icons)
+    // --filter <words>: the 插件库 filtered by them, as a link to one plugin
+    // leaves it (a chat report, 2026-11-27: "44 个插件" over one tile, and
+    // nothing to say why). The row says how many are listed, the box has an
+    // x, and a click on it lists them all again.
+    if (const QString words = valueAfter(args, u"--filter"); !words.isEmpty()) {
+        PluginGallery* gallery = editor->plugins()->gallery();
+        gallery->setFilter(words);
+        pump(300);
+        settle(window);
+        const std::function<QQuickItem*(QQuickItem*)> shownClear = [&](QQuickItem* item) -> QQuickItem* {
+            if (item->objectName() == u"inputClear" && item->isVisible())
+                return item;
+            for (QQuickItem* child : item->childItems()) {
+                if (QQuickItem* found = shownClear(child))
+                    return found;
+            }
+            return nullptr;
+        };
+        QQuickItem* clear = shownClear(window->contentItem());
+        bool ok = clear != nullptr && gallery->shownCount() < gallery->count();
+        say(u"filter \"%1\": %2 of %3 listed, the x %4"_s.arg(words).arg(gallery->shownCount()).arg(gallery->count())
+                .arg(clear ? u"shown"_s : u"NOT shown"_s));
+        ok = saveGrab(window, out) && ok;
+        if (clear) {
+            const QPointF at = clear->mapToScene(QPointF(clear->width() / 2, clear->height() / 2));
+            QMouseEvent press(QEvent::MouseButtonPress, at, window->mapToGlobal(at), Qt::LeftButton, Qt::LeftButton, {});
+            QCoreApplication::sendEvent(window, &press);
+            QMouseEvent release(QEvent::MouseButtonRelease, at, window->mapToGlobal(at), Qt::LeftButton, {}, {});
+            QCoreApplication::sendEvent(window, &release);
+            pump(200);
+            const bool emptied = gallery->filter().isEmpty() && gallery->shownCount() == gallery->count() && !shownClear(window->contentItem());
+            say(u"the x clicked: %1"_s.arg(emptied ? u"all listed again"_s : u"NOT emptied"_s));
+            ok = ok && emptied;
+        }
+        return finish(window, ok);
+    }
     // A menu open (DropMenu): 添加插件's ("add"), or the "…" of the first card
     // ("card"), whose entries run over the cards below it. Each lives on the
     // window's content item (the cards' are not QObject children of the

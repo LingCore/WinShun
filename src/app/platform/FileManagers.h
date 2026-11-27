@@ -56,6 +56,12 @@ inline constexpr std::pair<Kind, const char*> kSettingNames[] {
     {Kind::Custom, "custom"},
 };
 
+// Where the program of a file manager seen running is kept (state.ini's
+// [FileManagers]; read now): a portable Total Commander, XYplorer or Pulse
+// leaves nothing in the registry, and is then known while it is closed too,
+// as long as its file is there. Empty: nothing kept.
+void setProgramMemory(const QString& stateFile);
+
 // The command lines for Kind::Custom (Settings::fileManagerOpenCommand and
 // fileManagerRevealCommand; pathtext::customCommand says how they are read).
 // No reveal command: an item's folder is opened instead.

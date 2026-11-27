@@ -2525,6 +2525,14 @@ void SettingsEditor::setClipboardPlainByDefault(bool on)
     commit();
 }
 
+void SettingsEditor::setClipboardKeepPinned(bool on)
+{
+    if (m_settings.clipboardKeepPinned == on)
+        return;
+    m_settings.clipboardKeepPinned = on;
+    commit();
+}
+
 void SettingsEditor::setClipboardKeepPlace(bool on)
 {
     if (m_settings.clipboardKeepPlace == on)

@@ -1291,6 +1291,10 @@
         <translation>Keep place after pasting</translation>
     </message>
     <message>
+        <source>打开时钉住</source>
+        <translation>Open pinned</translation>
+    </message>
+    <message>
         <source>保留重复项</source>
         <translation>Keep duplicates</translation>
     </message>
@@ -4780,7 +4784,18 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
     </message>
 </context>
 <context>
+    <name>InputBox</name>
+    <message>
+        <source>清空</source>
+        <translation>Clear</translation>
+    </message>
+</context>
+<context>
     <name>PluginGallerySection</name>
+    <message>
+        <source>%1，筛选后显示 %2 个</source>
+        <translation>%1, %2 shown by the filter</translation>
+    </message>
     <message>
         <source>返回插件库</source>
         <translation>Back to plugin library</translation>
@@ -8130,6 +8145,18 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>粘贴后保持位置</source>
         <translation>Keep place after pasting</translation>
+    </message>
+    <message>
+        <source>打开时钉住</source>
+        <translation>Open pinned</translation>
+    </message>
+    <message>
+        <source>钉住;一直;保持;不收起;不关闭;连续粘贴;粘贴多条;Ctrl+T;pin;keep open;stay open</source>
+        <translation>pin;always;keep;stay up;do not close;paste several;paste one after another;Ctrl+T;pinned;keep open;stay open</translation>
+    </message>
+    <message>
+        <source>不用每次按 Ctrl+T：剪贴板打开就是钉住的，粘贴后不收起，适合连着粘贴好几条；按 Esc 关闭，Ctrl+T 可以临时取消</source>
+        <translation>No Ctrl+T each time: the clipboard opens pinned and stays up after a paste, for pasting several entries one after another. Esc closes it, and Ctrl+T unpins it for that opening</translation>
     </message>
     <message>
         <source>位置;顺序;排序;跳到最前;置顶;不动;固定顺序;粘贴后</source>

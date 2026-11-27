@@ -311,6 +311,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QString clipboardUiSize READ clipboardUiSize WRITE setClipboardUiSize NOTIFY changed FINAL) // follow | dense | compact | standard | roomy
     Q_PROPERTY(QString clipboardPictureSize READ clipboardPictureSize WRITE setClipboardPictureSize NOTIFY changed FINAL)
     Q_PROPERTY(bool clipboardKeepPlace READ clipboardKeepPlace WRITE setClipboardKeepPlace NOTIFY changed FINAL)
+    Q_PROPERTY(bool clipboardKeepPinned READ clipboardKeepPinned WRITE setClipboardKeepPinned NOTIFY changed FINAL)
     Q_PROPERTY(bool clipboardDuplicates READ clipboardDuplicates WRITE setClipboardDuplicates NOTIFY changed FINAL)
     Q_PROPERTY(QString clipboardOpenAt READ clipboardOpenAt WRITE setClipboardOpenAt NOTIFY changed FINAL) // caret | pointer | last
     Q_PROPERTY(bool clipboardPreviewRestore READ clipboardPreviewRestore WRITE setClipboardPreviewRestore NOTIFY changed FINAL)
@@ -853,6 +854,8 @@ public:
     void setClipboardPictureSize(const QString& size);
     bool clipboardKeepPlace() const { return m_settings.clipboardKeepPlace; }
     void setClipboardKeepPlace(bool on);
+    bool clipboardKeepPinned() const { return m_settings.clipboardKeepPinned; }
+    void setClipboardKeepPinned(bool on);
     bool clipboardDuplicates() const { return m_settings.clipboardDuplicates; }
     void setClipboardDuplicates(bool on);
     QString clipboardOpenAt() const { return m_settings.clipboardOpenAt; }

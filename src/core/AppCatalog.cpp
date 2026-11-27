@@ -692,8 +692,17 @@ std::vector<AppHit> searchApps(
                 || std::ranges::any_of(app.aliases, typed));
         if (app.auxiliary)
             score -= 30;
-        if (recent.contains(app.id))
-            score += affinities.isEmpty() ? 4 : History::affinity(affinities, app.launchPath()).bonus();
+        if (recent.contains(app.id)) {
+            // A fuzzy guess is lifted only by having been chosen for this
+            // text (or one like it), not by how much the app is used: System
+            // Informer, opened daily, went above TIM for "tim" (the search
+            // engine orders apps by this score alone).
+            const History::Affinity affinity = History::affinity(affinities, app.launchPath());
+            if (!isFuzzy)
+                score += affinities.isEmpty() ? 4 : affinity.bonus();
+            else if (affinity.group < 3)
+                score += affinity.bonus();
+        }
         hits.push_back({i, score, otherName, exact, isFuzzy});
     }
     // Stable: normal matches before fuzzy matches; equal scores keep alphabetical order.

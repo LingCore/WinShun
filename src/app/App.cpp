@@ -568,6 +568,7 @@ bool App::start(const StartOptions& options)
     // Updated from a version without the clipboard history: tell about it once.
     const bool clipboardIsNew = !firstRun && !Settings::hasClipboardSettings();
     m_settings.load();
+    filemanager::setProgramMemory(statePath()); // a portable file manager seen running is known when closed too
     uifont::apply(m_settings.uiFont); // before QML text items take their default font
     applyAutostartLevel(); // may set the mode (an old elevated task): before the index is made
     applyAppearance(); // before any window: the first frame is already in the chosen theme and language
@@ -6925,7 +6926,8 @@ void App::showClipboard()
         const ForegroundFacts over = foreground::facts();
         m_clipOver = {.at = ::GetTickCount64(), .fullScreen = over.coversMonitor, .exclusive = over.exclusiveFullScreen};
         m_clipboard->setTarget(foreground);
-        m_clipboard->setPinned(false); // as it opens, whatever closed it last (a close of Qt's own)
+        // As it opens, whatever closed it last (a close of Qt's own): pinned only when set so (打开时钉住).
+        m_clipboard->setPinned(m_settings.clipboardKeepPinned);
         m_clipboard->setActive(true); // under the launcher's search box, it folds its rows away (Main.qml)
         m_clipboard->handleShown(); // the list alone again: its width as it opens
         const bool byCaret = m_settings.clipboardOpenAt == u"caret";

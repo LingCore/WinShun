@@ -7373,6 +7373,19 @@ Window {
                     }
                 }
 
+                SettingRow { // a chat request, 2026-11-27: several entries pasted one after another
+                    title: qsTr("打开时钉住")
+                    keywords: qsTr("钉住;一直;保持;不收起;不关闭;连续粘贴;粘贴多条;Ctrl+T;pin;keep open;stay open").split(";")
+                    description: qsTr("不用每次按 Ctrl+T：剪贴板打开就是钉住的，粘贴后不收起，适合连着粘贴好几条；按 Esc 关闭，Ctrl+T 可以临时取消")
+
+                    ToggleSwitch {
+                        objectName: "clipboardKeepPinnedSwitch"
+                        dpr: window.dpr
+                        checked: window.editor.clipboardKeepPinned
+                        onToggled: (on) => window.editor.clipboardKeepPinned = on
+                    }
+                }
+
                 SettingRow {
                     title: qsTr("粘贴后保持位置")
                     keywords: qsTr("位置;顺序;排序;跳到最前;置顶;不动;固定顺序;粘贴后").split(";")

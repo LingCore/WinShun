@@ -24,6 +24,11 @@ Rectangle {
     function select(from: int, to: int) { input.select(from, to) }
     function showStart() { input.cursorPosition = 0 } // a text longer than the box: its beginning in view
 
+    // A filter's box: an x at its right end empties it while it has text, so
+    // what is being filtered by is never left there unnoticed.
+    property bool clearable: false
+    signal cleared()
+
     property bool error: false // the value is not taken: the style's error mark
     property real dpr: 0 // the window's, passed by a host that has it (GitHub #111)
     // Screen.* only when no host passed it: a default binding to it would make a
@@ -64,7 +69,7 @@ Rectangle {
         id: input
         anchors.fill: parent
         anchors.leftMargin: 10
-        anchors.rightMargin: 10
+        anchors.rightMargin: clearButton.visible ? clearButton.width + 4 : 10
         verticalAlignment: TextInput.AlignVCenter
         clip: true
         color: field.out("textColor", Theme.text)
@@ -100,4 +105,42 @@ Rectangle {
         }
     }
 
+    Item {
+        id: clearButton
+        objectName: "inputClear"
+        visible: box.clearable && !input.readOnly && input.text.length > 0
+        anchors.right: parent.right
+        anchors.rightMargin: 4
+        anchors.verticalCenter: parent.verticalCenter
+        width: 24
+        height: 24
+        Accessible.role: Accessible.Button
+        Accessible.name: qsTr("清空")
+        Accessible.onPressAction: clearButton.empty()
+
+        function empty() {
+            input.text = ""
+            input.forceActiveFocus(Qt.MouseFocusReason)
+            box.cleared()
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            radius: Theme.controlRadius
+            color: Theme.text
+            opacity: clearArea.pressed ? 0.12 : clearArea.containsMouse ? 0.07 : 0
+        }
+        Glyph {
+            anchors.centerIn: parent
+            iconName: "x"
+            size: 14
+            color: clearArea.containsMouse ? Theme.text : Theme.subtext
+        }
+        MouseArea {
+            id: clearArea
+            anchors.fill: parent
+            hoverEnabled: true
+            onClicked: clearButton.empty()
+        }
+    }
 }

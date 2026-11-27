@@ -17,6 +17,7 @@
 #include <QJsonObject>
 #include <QLibraryInfo>
 #include <QScopeGuard>
+#include <QSettings>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QProcess>
@@ -730,6 +731,52 @@ private slots:
         auto destroy = qScopeGuard([&] { ::DestroyWindow(window); });
         QVERIFY(!ws::filemanager::kindOf(window));
         QVERIFY(!ws::filemanager::kindOf(nullptr));
+    }
+
+    // A portable Total Commander leaves nothing in the registry: once seen
+    // running it is known when closed too, as long as its file is there
+    // (a chat report, 2026-11-27).
+    void portableTotalCommanderIsRemembered()
+    {
+        using ws::filemanager::Kind;
+        ws::filemanager::setProgramMemory({});
+        if (::FindWindowW(L"TTOTAL_CMD", nullptr))
+            QSKIP("Total Commander is running on this PC");
+        // Installed here (the registry names it): what is seen running is still kept, the rest cannot be told apart.
+        const bool inRegistry = ws::filemanager::installed(Kind::TotalCommander);
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString state = dir.filePath(u"state.ini"_s);
+        ws::filemanager::setProgramMemory(state);
+        const auto forget = qScopeGuard([] { ws::filemanager::setProgramMemory({}); });
+        QCOMPARE(ws::filemanager::installed(Kind::TotalCommander), inRegistry);
+        constexpr const wchar_t* name = L"TTOTAL_CMD";
+        WNDCLASSW wc {};
+        wc.lpfnWndProc = ::DefWindowProcW;
+        wc.hInstance = ::GetModuleHandleW(nullptr);
+        wc.lpszClassName = name;
+        QVERIFY(::RegisterClassW(&wc));
+        auto unregister = qScopeGuard([&] { ::UnregisterClassW(name, wc.hInstance); });
+        const HWND window = ::CreateWindowExW(
+            0, name, L"Total Commander", WS_OVERLAPPED, 0, 0, 100, 100, nullptr, nullptr, wc.hInstance, nullptr);
+        QVERIFY(window);
+        QVERIFY(ws::filemanager::installed(Kind::TotalCommander)); // running: this program stands for it
+        ::DestroyWindow(window);
+        QVERIFY(!::FindWindowW(name, nullptr));
+        QVERIFY(ws::filemanager::installed(Kind::TotalCommander)); // closed: remembered
+        const QString kept = QSettings(state, QSettings::IniFormat).value(u"FileManagers/TotalCommander"_s).toString();
+        QCOMPARE(QFileInfo(kept), QFileInfo(QCoreApplication::applicationFilePath()));
+        // Another run reads it back; a program that is gone is not offered.
+        ws::filemanager::setProgramMemory(state);
+        QVERIFY(ws::filemanager::installed(Kind::TotalCommander));
+        {
+            QSettings edit(state, QSettings::IniFormat);
+            edit.setValue(u"FileManagers/TotalCommander"_s, dir.filePath(u"gone\\TOTALCMD64.EXE"_s));
+        }
+        ws::filemanager::setProgramMemory(state);
+        QCOMPARE(ws::filemanager::installed(Kind::TotalCommander), inRegistry);
+        if (inRegistry)
+            QSKIP("Total Commander is installed on this PC: only the keeping of the program seen running was checked");
     }
 
     void oneCommanderNavigation_data()

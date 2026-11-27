@@ -2206,6 +2206,7 @@ private slots:
         QVERIFY(!fresh.favoriteTiles);
         QVERIFY(fresh.pinnedOnTop);
         QVERIFY(!fresh.keepPinned);
+        QVERIFY(!fresh.clipboardKeepPinned);
         QVERIFY(fresh.previewFollowsPointer);
         QVERIFY(fresh.previewRestore); // GitHub #258: a preview left open comes back, unless turned off
         QVERIFY(!fresh.clipboardPreviewRestore); // the clipboard's closes with it (GitHub #174), unless turned on
@@ -2221,6 +2222,7 @@ private slots:
             s.favoriteTiles = true;
             s.pinnedOnTop = false;
             s.keepPinned = true;
+            s.clipboardKeepPinned = true;
             s.previewFollowsPointer = false;
             s.previewRestore = false;
             s.clipboardPreviewRestore = true;
@@ -2235,6 +2237,7 @@ private slots:
             QVERIFY(back.favoriteTiles);
             QVERIFY(!back.pinnedOnTop);
             QVERIFY(back.keepPinned);
+            QVERIFY(back.clipboardKeepPinned);
             QVERIFY(!back.previewFollowsPointer);
             QVERIFY(!back.previewRestore);
             QVERIFY(back.clipboardPreviewRestore);

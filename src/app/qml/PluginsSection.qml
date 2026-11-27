@@ -521,6 +521,7 @@ SettingsSection {
                 visible: pluginsSection.filterShown && !pluginsSection.detailOpen
                 width: Math.min(parent.width, 320)
                 implicitHeight: 32
+                clearable: true
                 placeholder: qsTr("筛选：名称、关键字、说明")
                 text: pluginsSection.installedFilter
                 onTextChanged: pluginsSection.installedFilter = text

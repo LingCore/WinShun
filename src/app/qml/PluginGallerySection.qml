@@ -84,7 +84,11 @@ SettingsSection {
         title: qsTr("插件库")
         tip: qsTr("只安装你需要的功能。下载后先核对文件，安装并启用时会先列出它要的权限，同意后即可使用。")
         keywords: qsTr("下载插件;安装插件;更新插件;商店;市场;store;gallery;download").split(";")
-        description: gallerySection.gallery.status
+        // Filtered, how many of them are listed: "44 个插件" over one tile read as a fault.
+        description: gallerySection.gallery.status.length > 0 && gallerySection.gallery.filter.trim().length > 0
+                         && gallerySection.gallery.shownCount < gallerySection.gallery.count
+                     ? qsTr("%1，筛选后显示 %2 个").arg(gallerySection.gallery.status).arg(gallerySection.gallery.shownCount)
+                     : gallerySection.gallery.status
         bodyShown: gallerySection.detailOpen || gallerySection.gallery.count > 0 || gallerySection.gallery.problem.length > 0
 
         FlatButton {
@@ -287,6 +291,7 @@ SettingsSection {
                                     - (hiddenChip.visible ? hiddenChip.width + parent.spacing : 0)
                                     - (hiddenButton.visible ? hiddenButton.width + parent.spacing : 0), 320)
                     implicitHeight: 32
+                    clearable: true
                     placeholder: qsTr("筛选：名称、关键字、说明")
                     text: gallerySection.gallery.filter
                     onTextChanged: gallerySection.gallery.filter = text
