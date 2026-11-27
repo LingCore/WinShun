@@ -401,6 +401,15 @@ add_test(NAME tst_searchnavigation COMMAND $<TARGET_FILE:WinShun>
 set_tests_properties(tst_searchnavigation PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# The launcher's controller on a temporary index: scopes and kinds of file,
+# Tab into folders and back, what Enter does and says for a row typed in a
+# folder's window (a terminal opens there, GitHub #430). Nothing is opened in
+# the shell.
+add_test(NAME tst_launcherfilters COMMAND $<TARGET_FILE:WinShun>
+    --preview-results "${CMAKE_CURRENT_BINARY_DIR}/launcher-filters" --file-type-folder --renderer d3d11)
+set_tests_properties(tst_launcherfilters PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 add_test(NAME tst_foregroundmemory COMMAND $<TARGET_FILE:WinShun>
     --preview-results "${CMAKE_CURRENT_BINARY_DIR}/foreground-memory" --foreground-memory --require-lazy-panel --renderer d3d11 --scale 1.5)
 set_tests_properties(tst_foregroundmemory PROPERTIES RUN_SERIAL TRUE TIMEOUT 90

@@ -458,6 +458,7 @@ SearchResult fromApp(const AppInfo& app, bool recent, int otherName = -1)
     r.path = app.launchPath();
     r.app = app.kind;
     r.elevatable = app.elevatable;
+    r.hosted = app.hosted;
     r.target = app.target;
     r.recent = recent;
     return r;

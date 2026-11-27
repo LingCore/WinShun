@@ -14787,6 +14787,14 @@ Content index: %5</translation>
         <translation>Locate in the original window</translation>
     </message>
     <message>
+        <source>在此文件夹打开</source>
+        <translation>Open in this folder</translation>
+    </message>
+    <message>
+        <source>以管理员身份在此文件夹打开</source>
+        <translation>Open in this folder as administrator</translation>
+    </message>
+    <message>
         <source>正在向插件获取详情…</source>
         <translation>Asking the plugin for details…</translation>
     </message>

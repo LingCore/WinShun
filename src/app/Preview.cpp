@@ -32,6 +32,7 @@
 #include "IndexService.h"
 #include "Onboarding.h"
 #include "Launcher.h"
+#include "PathText.h"
 #include "Placement.h"
 #include "SystemCatalog.h"
 #include "CliSetup.h"
@@ -131,6 +132,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <thread>
 
 #include <windows.h>
@@ -7838,6 +7840,74 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
         settled();
         check(launcher.stepOut() && launcher.query() == prefix + u"报告"_s && !launcher.typingFolder().isEmpty(),
             "#454 stepOut from a folder chosen did not come back to the folder's window");
+        {
+            // GitHub #430: a terminal opened while typing in a folder's window
+            // opens in that folder, whichever row found it: its program as a
+            // file (pwsh.exe: the row Enter was on for the reporter, whose
+            // terminal came up in its own folder with 0.51.0, which only
+            // looked at the app's row), or the app. Said in the footer before
+            // Enter. Never for an app that runs something else in a terminal.
+            QDir(temporary.path()).mkpath(u"tools"_s);
+            const QString program = QDir::toNativeSeparators(temporary.filePath(u"tools/pwsh.exe"_s));
+            {
+                QFile file(program);
+                check(file.open(QIODevice::WriteOnly), "#430 the terminal's program could not be written");
+            }
+            std::optional<Launcher::TerminalRequest> asked;
+            launcher.setTerminalOpener([&](const Launcher::TerminalRequest& request) {
+                asked = request;
+                return true;
+            });
+            const auto found = [&](const SearchResult& row, const QString& typed) {
+                query(typed);
+                settled();
+                launcher.results()->assign({row}, {});
+                launcher.setCurrentRow(-1);
+                launcher.setCurrentRow(0);
+                asked.reset();
+            };
+            const auto enterHint = [&] { return launcher.keyHints().value(u"enter"_s).toString(); };
+            const QString hereHint = QCoreApplication::translate("ws::Launcher", "在此文件夹打开");
+            const QString openHint = QCoreApplication::translate("ws::Launcher", "打开");
+            const auto askedFor = [&](const QString& terminal, const QString& itsProgram, bool admin) {
+                return asked && asked->terminal == terminal && asked->program == itsProgram
+                    && pathtext::sameFolder(asked->folder, base) && asked->asAdministrator == admin;
+            };
+            const SearchResult file {.name = u"pwsh.exe"_s, .path = program};
+            launcher.setTypingFolder(prefix);
+            found(file, prefix + u"pwsh"_s);
+            check(enterHint() == hereHint, "#430 the footer did not say a terminal's program opens in the folder typed in");
+            launcher.trigger(0, Launcher::Open);
+            check(askedFor(u"pwsh"_s, program, false), "#430 a terminal's program found as a file did not open in the folder typed in");
+            const SearchResult app {.name = u"PowerShell 7 (x64)"_s, .path = u"shell:AppsFolder\\WinShun.Test.Pwsh"_s,
+                .app = AppKind::Desktop, .elevatable = true, .target = program};
+            found(app, prefix + u"pwsh"_s);
+            check(enterHint() == hereHint, "#430 the footer did not say a terminal app opens in the folder typed in");
+            launcher.trigger(0, Launcher::Open);
+            check(askedFor(u"pwsh"_s, program, false), "#430 a terminal app did not open in the folder typed in");
+            // What a row does is asked of terminalTypedIn alone, which the
+            // footer shows: nothing is started for the rows that keep 打开.
+            SearchResult prompt = app; // x64 Native Tools Command Prompt: cmd /k vcvars64.bat
+            prompt.hosted = true;
+            found(prompt, prefix + u"pwsh"_s);
+            check(enterHint() == openHint, "#430 an app that runs something else in a terminal was taken for the terminal");
+            found({.name = u"报告.txt"_s, .path = QDir::toNativeSeparators(temporary.filePath(u"报告.txt"_s))}, prefix + u"报告"_s);
+            check(enterHint() == openHint, "#430 a file that is no terminal lost its 打开");
+            found({.name = u"pwsh.exe"_s, .path = QDir::toNativeSeparators(temporary.filePath(u"tools"_s)), .isDir = true},
+                prefix + u"pwsh"_s);
+            check(enterHint() != hereHint, "#430 a folder named as a terminal was taken for one");
+            launcher.setTypingFolder({});
+            found(file, u"pwsh"_s);
+            check(enterHint() == openHint, "#430 not typed in a folder, a terminal's program lost its 打开");
+            found(app, u"pwsh"_s);
+            check(enterHint() == openHint, "#430 not typed in a folder, a terminal app lost its 打开");
+            // Last: as administrator may be remembered for the row (GitHub #313).
+            launcher.setTypingFolder(prefix);
+            found(file, prefix + u"pwsh"_s);
+            launcher.trigger(0, Launcher::RunAsAdmin);
+            check(askedFor(u"pwsh"_s, program, true), "#430 as administrator, a terminal's program did not open in the folder typed in");
+            launcher.setTerminalOpener({});
+        }
         launcher.setTypingFolder({});
         query({});
     }
@@ -11605,9 +11675,9 @@ bool checkNumberColumn(QQmlEngine* qmlEngine, const QDir& output, int width)
         QString termFolder;
         bool termAdmin = false;
         int termCalls = 0;
-        launcher.setTerminalOpener([&](const QString& folder, bool asAdmin) {
-            termFolder = folder;
-            termAdmin = asAdmin;
+        launcher.setTerminalOpener([&](const Launcher::TerminalRequest& request) {
+            termFolder = request.folder;
+            termAdmin = request.asAdministrator;
             ++termCalls;
             return true;
         });

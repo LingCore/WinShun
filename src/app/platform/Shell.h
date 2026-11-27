@@ -107,6 +107,15 @@ std::vector<TerminalChoice> installedTerminals();
 // command prompt.
 void openTerminalIn(const QString& choice, const QString& command, const QString& folder, std::function<void(bool)> done = {},
     bool asAdministrator = false);
+// The terminal `id` (commandlaunch::terminalOfApp's) in `folder`, started
+// from `program` when that is a file: the one that was found, which need not
+// be the one installed (a second PowerShell 7, a portable Git's
+// git-bash.exe). The command prompt is always Windows' own (openTerminal),
+// Windows Terminal always the one installed: its program inside the package
+// cannot be started by its path. False, and nothing started: no such
+// terminal here.
+bool openTerminalProgram(const QString& id, const QString& program, const QString& folder,
+    std::function<void(bool)> done = {}, bool asAdministrator = false);
 // A command or shell location ("%windir%\system32\control.exe /name X",
 // "ms-settings:display"): a place in Windows (see SystemCatalog).
 void run(const QString& command, std::function<void(bool)> done = {});

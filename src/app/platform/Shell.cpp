@@ -850,6 +850,26 @@ QString terminalProgram(const QString& id)
     return {};
 }
 
+// `program`, the terminal `id`, in `folder`: told the folder its own way.
+void startTerminal(const QString& id, const QString& program, const QString& folder, std::function<void(bool)> done,
+    bool asAdministrator)
+{
+    ::AllowSetForegroundWindow(ASFW_ANY);
+    const QString arguments = commandlaunch::terminalArguments(id, folder, asAdministrator);
+    runOnShellThread([id, program, arguments, dir = QDir::toNativeSeparators(folder).toStdWString(), asAdministrator,
+                         done = std::move(done)] {
+        bool ok = false;
+        if (!asAdministrator)
+            ok = executeUnelevated(program.toStdWString(), arguments.toStdWString(), dir);
+        else if (id == u"powershell") // Windows PowerShell 5.1 has no -WorkingDirectory and ignores runas lpDirectory
+            ok = startElevatedConsole(program, arguments, dir);
+        else
+            ok = executeAsAdministratorAllowCancel(program.toStdWString(), arguments.toStdWString(), dir);
+        if (done)
+            done(ok);
+    });
+}
+
 } // namespace
 
 std::vector<TerminalChoice> installedTerminals()
@@ -883,20 +903,22 @@ void openTerminalIn(const QString& choice, const QString& command, const QString
         openTerminal(folder, std::move(done), asAdministrator);
         return;
     }
-    ::AllowSetForegroundWindow(ASFW_ANY);
-    const QString arguments = commandlaunch::terminalArguments(choice, folder, asAdministrator);
-    runOnShellThread([choice, program, arguments, dir = QDir::toNativeSeparators(folder).toStdWString(),
-                         asAdministrator, done = std::move(done)] {
-        bool ok = false;
-        if (!asAdministrator)
-            ok = executeUnelevated(program.toStdWString(), arguments.toStdWString(), dir);
-        else if (choice == u"powershell") // Windows PowerShell 5.1 has no -WorkingDirectory and ignores runas lpDirectory
-            ok = startElevatedConsole(program, arguments, dir);
-        else
-            ok = executeAsAdministratorAllowCancel(program.toStdWString(), arguments.toStdWString(), dir);
-        if (done)
-            done(ok);
-    });
+    startTerminal(choice, program, folder, std::move(done), asAdministrator);
+}
+
+bool openTerminalProgram(const QString& id, const QString& program, const QString& folder, std::function<void(bool)> done,
+    bool asAdministrator)
+{
+    if (id == u"cmd") { // a share needs its pushd
+        openTerminal(folder, std::move(done), asAdministrator);
+        return true;
+    }
+    const QString own = id != u"wt" && !program.isEmpty() && QFileInfo(program).isFile() ? QDir::toNativeSeparators(program)
+                                                                                         : terminalProgram(id);
+    if (own.isEmpty())
+        return false;
+    startTerminal(id, own, folder, std::move(done), asAdministrator);
+    return true;
 }
 
 void run(const QString& command, std::function<void(bool)> done)

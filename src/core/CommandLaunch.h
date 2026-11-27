@@ -78,7 +78,8 @@ QString terminalArguments(const QString& id, const QString& folder, bool asAdmin
 // Which of those terminals an installed app is ("" when none): by its
 // program's file name (`target`, or the end of the launch path
 // "shell:AppsFolder\<id>" of a desktop app), a Store app by its package.
-// For a terminal opened from the apps while typing in a folder, which then
+// A program found as a file is asked the same way, its path as `target` and
+// no launch path. For a terminal opened while typing in a folder, which then
 // opens in that folder (GitHub #430).
 QString terminalOfApp(const QString& launchPath, const QString& target);
 

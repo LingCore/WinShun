@@ -901,7 +901,17 @@ public:
     // window of the file manager (App: the Explorer tab the launcher was
     // opened from by typing, GitHub #39). Remembered as opened either way.
     void setFolderOpener(std::function<bool(const QString& folder)> opener) { m_folderOpener = std::move(opener); }
-    void setTerminalOpener(std::function<bool(const QString& folder, bool asAdministrator)> opener)
+    // A terminal about to be opened in a folder: by 在终端中打开 (the one
+    // chosen in the settings), or because it was found and opened while
+    // typing in a folder's window (GitHub #430; `program`: the file found,
+    // "" for the one installed). A test takes it here instead of the shell.
+    struct TerminalRequest {
+        QString terminal; // Settings::terminal's id
+        QString program;
+        QString folder;
+        bool asAdministrator = false;
+    };
+    void setTerminalOpener(std::function<bool(const TerminalRequest& request)> opener)
     {
         m_terminalOpener = std::move(opener);
     }
@@ -1381,7 +1391,7 @@ private:
     std::unique_ptr<ContentPane> m_contentPane;
     QPointer<QWindow> m_window;
     std::function<bool(const QString& folder)> m_folderOpener; // setFolderOpener
-    std::function<bool(const QString& folder, bool asAdministrator)> m_terminalOpener; // setTerminalOpener (tests)
+    std::function<bool(const TerminalRequest& request)> m_terminalOpener; // setTerminalOpener (tests)
     std::function<bool(const QString& path)> m_revealer; // setRevealer
 
     QString m_query;
@@ -1490,6 +1500,17 @@ private:
     // list is the names' (not 内容, which takes the folder as a path typed;
     // not the panel, which has a folder filter of its own).
     bool typedInFolder() const;
+    // Which terminal `r` is (commandlaunch::terminalOfApp's id) when the box
+    // is for a folder typed in, "" otherwise: Enter then opens it in that
+    // folder, as its name typed in Explorer's address bar does, and says so
+    // beforehand (GitHub #430). The app, and its program found as a file
+    // (pwsh.exe, cmd.exe): with millions of files indexed that row is as
+    // likely the first. Not an app that runs something else in it (a
+    // developer prompt is cmd /k vcvars64.bat), which starts as its shortcut
+    // says.
+    QString terminalTypedIn(const SearchResult& r) const;
+    // Opens it there; false when `r` is no such terminal, or it is not here.
+    bool openTerminalTypedIn(const SearchResult& r, bool asAdministrator);
     // The box's text less a kind of file named in it ("doc: 报告" -> "报告").
     const QString& typedWithoutKind() const;
     // What the name search looks for: typed in a folder, the words after it
