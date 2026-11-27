@@ -37,6 +37,8 @@
 ### 复测（提权清空备用列表，模拟“还回去的页被别的程序占走”）
 
 ```powershell
+# 先提权启动助手（收到 purge.request 时写出修改页并清空备用列表）：
+Start-Process pwsh -Verb RunAs -WindowStyle Hidden -ArgumentList '-NoProfile','-File','tools\purge-standby.ps1','-Dir','<dir>'
 build\release\WinShun.exe --probe-runtime <run> --idle-open-check --renderer d3d11 --idle-open-cycles 8 `
     --idle-open-index "C:\Windows;C:\Program Files" --idle-open-query setup --idle-open-pressure <dir> --idle-open-memory-load 86
 ```

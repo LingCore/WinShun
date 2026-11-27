@@ -50,7 +50,8 @@ namespace ws::preview {
 //            then left alone for --idle-open-rest more. With
 //            --idle-open-pressure, Windows is then short of memory
 //            (`pressed`): what was given back is no longer in memory and
-//            comes from the disk. An elevated helper does that, asked through
+//            comes from the disk. An elevated helper does that
+//            (tools/purge-standby.ps1), asked through
 //            <folder>\purge.request and answering with purge.done: it writes
 //            the modified pages out and empties the standby list.
 //   warm     opened again a moment after that one closed
