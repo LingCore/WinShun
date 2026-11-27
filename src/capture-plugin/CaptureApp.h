@@ -105,7 +105,7 @@ private:
     // made the pin for this, and takes it away when the OCR window opens instead.
     void translatePin(capture::PinWindow* pin, bool own);
     // Bubble: 识别屏幕文字's, copied and said in the card by the region.
-    enum class OcrThen { Copy, Search, Web, Bubble };
+    enum class OcrThen { Search, Web, Bubble };
     void captureOcrThen(const QImage& image, double dpr, const QRect& where, OcrThen then);
     void quickOcrDone();
     // 识别屏幕文字 (#198): the hotkey, the search box, the tray menu; 截图翻译
@@ -190,7 +190,7 @@ private:
     QPointer<QQuickWindow> m_editWindow;
     std::unique_ptr<capture::CaptureOcr> m_captureOcr;
     std::unique_ptr<capture::CaptureOcr> m_quickOcr;
-    OcrThen m_quickOcrThen = OcrThen::Copy;
+    OcrThen m_quickOcrThen = OcrThen::Bubble;
     std::unique_ptr<capture::CaptureOcr> m_translateOcr; // translateInPlace's reader, while it reads
     int m_translateTicket = 0; // the latest translateInPlace: an older one's answers are dropped
     QRect m_quickOcrWhere; // the region read, physical: the card goes by it

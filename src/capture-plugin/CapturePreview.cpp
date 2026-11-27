@@ -2808,6 +2808,20 @@ int runCaptureTools(const QStringList& args)
         pump(150);
         saved = saveGrab(window, out.filePath(name.toString() + u".png"_s)) && saved;
     };
+    // A rectangle just drawn is selected: its outline and handles are over
+    // it, the picture inside still to be seen (GitHub #498: a black block).
+    tool(Kind::Rect);
+    drag({520, 30}, {700, 110});
+    grab(u"rect-selected");
+    {
+        const QImage shot = window->grabWindow();
+        const qreal dpr = shot.devicePixelRatio();
+        const QColor inside = shot.pixelColor(qRound((20 + 610) * dpr), qRound((20 + 70) * dpr));
+        const bool clear = inside.red() > 240 && inside.green() > 240 && inside.blue() > 240;
+        say(u"selected rectangle: the picture inside it is %1 (%2), selection %3"_s.arg(clear ? u"shown"_s : u"COVERED"_s,
+            inside.name()).arg(model.selection().size()));
+        saved = saved && clear && !model.selection().isEmpty();
+    }
     tool(Kind::Arrow);
     model.setPanel({{u"lineMode"_s, u"bezier"_s}});
     drag({410, 180}, {760, 180});

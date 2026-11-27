@@ -611,8 +611,12 @@ void CaptureApp::apply()
                 translateInPlace(image, dpr, where);
                 return;
             }
-            captureOcrThen(image, dpr, where,
-                then == Action::OcrCopy ? OcrThen::Copy : then == Action::OcrSearch ? OcrThen::Search : OcrThen::Web);
+            // Shift+C: copied and said in the card, with 编辑, as 识别屏幕文字 does (GitHub #489).
+            if (then == Action::OcrCopy) {
+                readScreenText(image, dpr, where);
+                return;
+            }
+            captureOcrThen(image, dpr, where, then == Action::OcrSearch ? OcrThen::Search : OcrThen::Web);
         };
         callbacks.readText = [this](const QImage& image, double dpr, const QRect& where) { readScreenText(image, dpr, where); };
         // Not in the frozen picture: hidden, and one composition waited for, so
@@ -1461,7 +1465,7 @@ void CaptureApp::translatePin(capture::PinWindow* pin, bool own)
     });
 }
 
-// The mouse buttons' 识别文字并复制 / 搜索 / 网页搜索: read on a reader of its
+// 识别文字并复制 (readScreenText) and the mouse buttons' 搜索 / 网页搜索: read on a reader of its
 // own, so the OCR window is left alone. Without the models the window opens
 // instead, which says so.
 void CaptureApp::captureOcrThen(const QImage& image, double dpr, const QRect& where, OcrThen then)
@@ -1503,10 +1507,6 @@ void CaptureApp::quickOcrDone()
         return;
     }
     switch (then) {
-    case OcrThen::Copy:
-        copyText(text);
-        notify(tr("识别文字"), tr("已复制识别的文字")); // not the words: a toast stays in the Action Center
-        break;
     case OcrThen::Search:
         searchText(capture::CaptureOcr::oneLine(text), false);
         break;
@@ -1654,9 +1654,7 @@ capture::PinManager& CaptureApp::pins()
         };
         callbacks.ocr = [this](const QImage& image, double dpr, const QRect& where) { showCaptureOcr(image, dpr, where); };
         callbacks.formula = [this](const QImage& image, const QRect& where) { showFormula(image, where); };
-        callbacks.ocrCopy = [this](const QImage& image, double dpr, const QRect& where) {
-            captureOcrThen(image, dpr, where, OcrThen::Copy);
-        };
+        callbacks.ocrCopy = [this](const QImage& image, double dpr, const QRect& where) { readScreenText(image, dpr, where); };
         callbacks.edit = [this](capture::PinWindow* pin) { editPin(pin); };
         callbacks.translate = [this](capture::PinWindow* pin) { translatePin(pin, false); };
         callbacks.closing = [this](capture::PinWindow* pin) { onPinClosing(pin); };
