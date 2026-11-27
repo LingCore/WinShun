@@ -92,6 +92,8 @@ public:
                     replies[(*message)["id"].toInt()] = *message;
                 else if (message && (*message)["method"].toString() == "winshun/refresh")
                     ++refreshes;
+                else if (message && (*message)["method"].toString() == "winshun/status")
+                    statuses.push_back((*message)["params"]);
             }
         });
         process.start(QCoreApplication::applicationDirPath() + QStringLiteral("/WinShunTranslate.exe"));
@@ -121,6 +123,7 @@ public:
     QByteArray output;
     std::map<long long, Json> replies;
     int refreshes = 0;
+    std::vector<Json> statuses; // winshun/status: the card's line, as it changed
 };
 
 } // namespace
@@ -196,6 +199,73 @@ private slots:
         send("shutdown", Json::Object {}, 4);
         QVERIFY(QTest::qWaitFor([&] { return process.state() == QProcess::NotRunning; }));
         QCOMPARE(process.exitCode(), 0);
+    }
+
+    // GitHub #495: 测试连接 on the card (winshun/status's button) sends one
+    // word to the service chosen and the line says how it went; no line
+    // while there is nothing to test.
+    void testConnectionOnTheCard()
+    {
+        QTcpServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost, 0));
+        QObject::connect(&server, &QTcpServer::newConnection, &server, [&] {
+            while (auto* socket = server.nextPendingConnection()) {
+                auto input = std::make_shared<QByteArray>();
+                QObject::connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+                QObject::connect(socket, &QTcpSocket::readyRead, socket, [socket, input] {
+                    input->append(socket->readAll());
+                    if (!input->contains("\r\n\r\n") || !input->endsWith('}'))
+                        return;
+                    const bool good = input->contains("Bearer good");
+                    input->clear(); // the connection is kept: the next request comes on it
+                    const QByteArray body = good ? QByteArray(R"({"choices":[{"message":{"content":"你好"}}]})")
+                                                 : QByteArray(R"({"error":{"message":"Incorrect API key provided"}})");
+                    socket->write((good ? QByteArray("HTTP/1.1 200 OK") : QByteArray("HTTP/1.1 401 Unauthorized"))
+                        + "\r\nContent-Length: " + QByteArray::number(body.size()) + "\r\n\r\n" + body);
+                });
+            }
+        });
+        const std::string endpoint = "http://127.0.0.1:" + std::to_string(server.serverPort());
+        QTemporaryDir data;
+        QVERIFY(data.isValid());
+        Runner plugin;
+        QVERIFY(plugin.process.waitForStarted());
+        const auto toneCame = [&plugin](const std::string& tone, std::size_t from) {
+            return QTest::qWaitFor([&] {
+                return std::any_of(plugin.statuses.begin() + static_cast<std::ptrdiff_t>(std::min(from, plugin.statuses.size())),
+                    plugin.statuses.end(), [&](const Json& s) { return s["tone"].toString() == tone; });
+            }, 10000);
+        };
+        // No service chosen: nothing to test, no line.
+        plugin.send("initialize", Json::Object {{"locale", "zh"}, {"dataDir", data.path().toStdString()},
+            {"settings", Json::Object {{"provider", "none"}}}}, 1);
+        QVERIFY(plugin.answered(1));
+        QTest::qWait(200);
+        QVERIFY(std::none_of(plugin.statuses.cbegin(), plugin.statuses.cend(), [](const Json& s) { return !s["text"].toString().empty(); }));
+
+        // A service with a wrong key: untried with the button, then what the service said.
+        std::size_t seen = plugin.statuses.size();
+        plugin.send("settingsChanged", Json::Object {{"settings", Json::Object {{"provider", "openai"}, {"apiKey", "bad"}, {"endpoint", endpoint}}}});
+        QVERIFY(toneCame("idle", seen));
+        QCOMPARE(plugin.statuses.back()["actions"].toArray()[0]["id"].toString(), std::string("test"));
+        seen = plugin.statuses.size();
+        plugin.send("action", Json::Object {{"command", ""}, {"action", "test"}, {"trigger", "status"}}, 2);
+        QVERIFY(plugin.answered(2));
+        QVERIFY(toneCame("busy", seen));
+        QVERIFY(toneCame("error", seen));
+        QCOMPARE(plugin.statuses.back()["actions"].toArray().size(), std::size_t(1)); // to try again
+
+        // The right key: reached.
+        seen = plugin.statuses.size();
+        plugin.send("settingsChanged", Json::Object {{"settings", Json::Object {{"provider", "openai"}, {"apiKey", "good"}, {"endpoint", endpoint}}}});
+        QVERIFY(toneCame("idle", seen));
+        seen = plugin.statuses.size();
+        plugin.send("action", Json::Object {{"command", ""}, {"action", "test"}, {"trigger", "status"}}, 3);
+        QVERIFY(plugin.answered(3));
+        QVERIFY2(toneCame("ok", seen), plugin.statuses.back().dump().c_str());
+        QVERIFY2(plugin.statuses.back()["text"].toString().find("连接正常") != std::string::npos, plugin.statuses.back()["text"].toString().c_str());
+        plugin.send("shutdown", Json::Object {}, 4);
+        QVERIFY(QTest::qWaitFor([&] { return plugin.process.state() == QProcess::NotRunning; }));
     }
 
     // A chat service typed to in the launcher: the reply as it comes, asked

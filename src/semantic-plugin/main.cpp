@@ -351,6 +351,7 @@ private:
             at = end + 1;
         }
         m_notes = settings["types"].toString() == "notes";
+        m_testNote.clear(); // of the service, key or model before
         ++m_generation;
         m_wake.notify_all();
     }
@@ -435,6 +436,12 @@ private:
         const auto button = [](const char* id, const std::string& title) {
             return Json::Array {Json::Object {{"id", id}, {"title", title}}};
         };
+        // 测试连接 (GitHub #495), beside the phase's own button where the model
+        // service is not at work already: one short text is sent to it (test).
+        const Json testButton = Json::Object {{"id", "test"}, {"title", zh("测试连接", "Test connection")}};
+        const auto withTest = [&testButton](const char* id, const std::string& title) {
+            return Json::Array {Json::Object {{"id", id}, {"title", title}}, testButton};
+        };
         Json::Object r;
         switch (s.phase) {
         case Phase::Starting:
@@ -445,7 +452,8 @@ private:
             r = {{"text", zh("还没选模型服务：在下面的“模型服务”里选一个，就开始建立语义索引", "No model service yet: pick one under “Model service” below, and the semantic index is built")}, {"tone", "warn"}};
             break;
         case Phase::NoContentIndex:
-            r = {{"text", zh("要先打开文件内容搜索：设置 → 搜索范围 → 文件内容", "Turn on file content search first: Settings → Search scope → File contents")}, {"tone", "warn"}};
+            r = {{"text", zh("要先打开文件内容搜索：设置 → 搜索范围 → 文件内容", "Turn on file content search first: Settings → Search scope → File contents")}, {"tone", "warn"},
+                {"actions", Json::Array {testButton}}};
             break;
         case Phase::WaitingForYes:
             if (s.toSend == 0) {
@@ -453,7 +461,7 @@ private:
                 break;
             }
             r = {{"text", zh("等你确认：", "Waiting for your yes: ") + consentText(s, p)}, {"tone", "warn"},
-                {"actions", button("start", zh("开始建立索引", "Build the index"))}};
+                {"actions", withTest("start", zh("开始建立索引", "Build the index"))}};
             break;
         case Phase::Indexing:
             r = {{"text", (s.paused ? zh("语义索引已暂停：", "The semantic index is paused: ") : zh("正在建立语义索引：", "Building the semantic index: ")) + progressText(s)},
@@ -464,12 +472,21 @@ private:
         case Phase::Ready:
             r = {{"text", zh("语义索引已就绪：" + thousands(m_store ? m_store->files() : 0) + " 个文件", "The semantic index is ready: " + thousands(m_store ? m_store->files() : 0) + " files")
                     + (s.contentStillReading ? zh("；文件内容搜索读完的新文件会接着加进来", "; files content search is still reading join it later") : std::string())},
-                {"tone", "ok"}};
+                {"tone", "ok"}, {"actions", Json::Array {testButton}}};
             break;
         case Phase::Failed:
             r = {{"text", zh("语义索引停下了：" + s.error + "。过一会儿会自己再试", "The semantic index stopped: " + s.error + ". It tries again in a while")}, {"tone", "warn"},
-                {"actions", button("retry", zh("重试", "Try again"))}};
+                {"actions", withTest("retry", zh("重试", "Try again"))}};
             break;
+        }
+        // What the last test said goes first, while the index is where it was then.
+        {
+            const std::lock_guard lock(m_mutex);
+            if (!m_testNote.empty() && m_testPhase == s.phase) {
+                r["text"] = m_testNote + zh("；", "; ") + r["text"].toString();
+                if (m_testTone != "ok")
+                    r["tone"] = m_testTone;
+            }
         }
         return r;
     }
@@ -645,10 +662,43 @@ private:
         return items;
     }
 
+    // 测试连接 on the card (GitHub #495): one short text to the model service
+    // as a query sends it; the card's line says how it went (reportNow).
+    void test()
+    {
+        Provider p;
+        Phase phase;
+        {
+            const std::lock_guard lock(m_mutex);
+            p = m_provider;
+            phase = m_status.phase;
+            if (p.id == "none")
+                return;
+            m_testNote = zh("正在测试连接…", "Testing the connection…");
+            m_testTone = "busy";
+            m_testPhase = phase;
+        }
+        publish(true);
+        const auto started = std::chrono::steady_clock::now();
+        const Embedded e = embed(p, {"hello"}, true, chinese());
+        char seconds[32];
+        std::snprintf(seconds, sizeof seconds, "%.1f", std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count());
+        const bool ok = e.error.empty() && !e.vectors.empty();
+        const std::lock_guard lock(m_mutex);
+        m_testNote = ok ? zh(p.name + " 连接正常，用时 " + seconds + " 秒", p.name + " reached in " + seconds + " s")
+                        : zh("没有连上 " + p.name + "：", "Could not reach " + p.name + ": ") + (e.error.empty() ? zh("模型没有回答", "no answer from the model") : e.error);
+        m_testTone = ok ? "ok" : "error";
+        m_testPhase = m_status.phase;
+    }
+
     Json action(const Json& params)
     {
         const std::string what = params["action"].toString();
         const std::string item = params["item"]["id"].toString();
+        if (what == "test" && params["trigger"].toString() == "status") {
+            test();
+            return Json::Array {};
+        }
         if (item == "start" || what == "start") {
             {
                 const std::lock_guard lock(m_mutex);
@@ -1126,6 +1176,9 @@ private:
     bool m_stop = false;
     Status m_status;
 
+    std::string m_testNote; // m_mutex: what 测试连接 last said, for the card's line (reportNow)
+    std::string m_testTone; // busy | ok | error
+    Phase m_testPhase {}; // the index's phase then: the note goes when it moves on
     std::mutex m_publishMutex; // what follows: the last winshun/status sent
     std::chrono::steady_clock::time_point m_published {};
     std::string m_publishedText;

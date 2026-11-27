@@ -192,6 +192,7 @@ struct Process {
     std::map<long long, Json> replies;
     std::deque<Json> tools; // winshun/tool requests not answered yet
     std::vector<std::string> notices; // winshun/notify texts
+    std::vector<Json> statuses; // winshun/status: the card's line, as it changed
     long long nextId = 1;
 
     bool start(const QString& dataDir, Json settings)
@@ -209,6 +210,8 @@ struct Process {
                     tools.push_back(*message);
                 else if (method == "winshun/notify")
                     notices.push_back((*message)["params"]["text"].toString());
+                else if (method == "winshun/status")
+                    statuses.push_back((*message)["params"]);
                 else if (method.empty() && (*message)["id"].isNumber())
                     replies[(*message)["id"].toInt()] = *message;
             }
@@ -585,6 +588,60 @@ private slots:
         QCOMPARE(rows.toArray().at(0)["open"]["url"].toString(), std::string("winshun:settings"));
         QVERIFY(p.call("shutdown", Json::Object {}).isObject());
         QTRY_COMPARE(p.process.state(), QProcess::NotRunning); // gone by itself
+    }
+
+    // GitHub #495: the card's line (winshun/status) says whether each place
+    // was reached, and its 测试连接 reads the place without uploading anything.
+    void testConnectionOnTheCard()
+    {
+        FakeCloud cloud;
+        QVERIFY(cloud.ok());
+        cloud.davFolder = true;
+        QTemporaryDir data;
+        QVERIFY(data.isValid());
+        const auto settings = [&](const char* password) {
+            return Json(Json::Object {{"webdavUrl", cloud.base() + "/dav/WinShun"}, {"webdavUser", "user"}, {"webdavPassword", password},
+                {"automatic", false}, {"keep", 2}});
+        };
+        Process p;
+        QVERIFY(p.start(data.path(), settings("wrong")));
+        const auto toneCame = [&p](const std::string& tone, std::size_t from) {
+            return QTest::qWaitFor([&] {
+                return std::any_of(p.statuses.begin() + static_cast<std::ptrdiff_t>(std::min(from, p.statuses.size())), p.statuses.end(),
+                    [&](const Json& s) { return s["tone"].toString() == tone; });
+            }, 15000);
+        };
+        const auto press = [&p] {
+            return p.call("action", Json::Object {{"command", ""}, {"action", "test"}, {"trigger", "status"}}).isObject();
+        };
+        // Set up, not tried: said so, with the button.
+        QVERIFY(toneCame("idle", 0));
+        QCOMPARE(p.statuses.back()["actions"].toArray().size(), std::size_t(1));
+        QCOMPARE(p.statuses.back()["actions"].toArray().at(0)["id"].toString(), std::string("test"));
+        QVERIFY(p.statuses.back()["text"].toString().find("WebDAV") != std::string::npos);
+
+        // A wrong password: the line turns to the error, the button stays.
+        std::size_t seen = p.statuses.size();
+        QVERIFY(press());
+        QVERIFY(toneCame("error", seen));
+        QCOMPARE(p.statuses.back()["tone"].toString(), std::string("error"));
+        QCOMPARE(p.statuses.back()["actions"].toArray().size(), std::size_t(1));
+
+        // The right one typed in: untried again, then reached.
+        seen = p.statuses.size();
+        p.write(Json::Object {{"jsonrpc", "2.0"}, {"method", "settingsChanged"}, {"params", Json::Object {{"settings", settings("secret")}}}});
+        QVERIFY(toneCame("idle", seen));
+        seen = p.statuses.size();
+        QVERIFY(press());
+        QVERIFY(toneCame("busy", seen));
+        QVERIFY(toneCame("ok", seen));
+        QCOMPARE(p.statuses.back()["tone"].toString(), std::string("ok"));
+        QVERIFY(p.statuses.back()["text"].toString().find("WebDAV") != std::string::npos);
+        // Read only: nothing was put there, and Win顺 was not asked for a backup.
+        QVERIFY(std::none_of(cloud.requests.cbegin(), cloud.requests.cend(), [](const QByteArray& r) { return r.startsWith("PUT"); }));
+        QVERIFY(p.tools.empty());
+        QVERIFY(p.call("shutdown", Json::Object {}).isObject());
+        QTRY_COMPARE(p.process.state(), QProcess::NotRunning);
     }
 };
 

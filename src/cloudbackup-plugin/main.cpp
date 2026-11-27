@@ -119,20 +119,25 @@ protected:
             loadState();
             m_nextAuto = Clock::now() + kFirst;
         }
+        publishStatus();
         m_worker = std::thread([this] { work(); });
     }
 
     void settingsChanged(const Json& settings) override
     {
-        const std::lock_guard lock(m_mutex);
-        m_config = cb::settingsFrom(settings);
-        m_zh = chinese();
-        for (auto& [key, place] : m_places) {
-            place.listed = false; // perhaps another place now: asked again
-            place.triedAt = {};
+        {
+            const std::lock_guard lock(m_mutex);
+            m_config = cb::settingsFrom(settings);
+            m_zh = chinese();
+            for (auto& [key, place] : m_places) {
+                place.listed = false; // perhaps another place now: asked again
+                place.triedAt = {};
+                place.error.clear(); // of the address or the password before
+            }
+            m_nextAuto = Clock::now() + kAfterSettings;
+            m_cv.notify_all();
         }
-        m_nextAuto = Clock::now() + kAfterSettings;
-        m_cv.notify_all();
+        publishStatus();
     }
 
     void shuttingDown() override { stop(); }
@@ -168,9 +173,18 @@ protected:
 
     Effects action(const winshun::ActionRequest& a) override
     {
-        const std::string what = a.item["data"]["do"].toString();
         const std::lock_guard lock(m_mutex);
         const bool zh = m_zh;
+        // 测试连接 on the card (GitHub #495): the places are read, nothing is
+        // uploaded; the card's line says what came of it (publishStatus).
+        if (a.trigger == "status") {
+            if (a.action == "test") {
+                m_wantList = true;
+                m_cv.notify_all();
+            }
+            return {};
+        }
+        const std::string what = a.item["data"]["do"].toString();
         if (what == "backup") {
             m_wantNow = true;
             m_cv.notify_all();
@@ -366,6 +380,7 @@ private:
             m_busyPlace.clear();
             lock.unlock();
             refresh(); // the rows changed: the launcher asks again
+            publishStatus();
             lock.lock();
         }
     }
@@ -388,6 +403,56 @@ private:
             m_busyText = text;
         }
         refresh();
+        publishStatus();
+    }
+
+    // The line on the plugin's card in the settings (winshun/status), with
+    // 测试连接 (GitHub #495: an address or a password typed in, and nothing
+    // said whether it works until a backup was due): each place set up, and
+    // whether it was reached the last time it was tried. Said when it changed.
+    void publishStatus()
+    {
+        std::string text;
+        std::string tone = "idle";
+        std::vector<std::pair<std::string, std::string>> buttons;
+        const std::lock_guard said(m_statusMutex);
+        {
+            const std::lock_guard lock(m_mutex);
+            const bool zh = m_zh;
+            const auto label = [](const std::string& key) { return key == "webdav" ? std::string("WebDAV") : std::string("GitHub"); };
+            if (m_working && !m_busyPlace.empty()) {
+                text = label(m_busyPlace) + " · " + m_busyText;
+                tone = "busy";
+            } else {
+                bool failed = false;
+                bool reached = true;
+                for (const char* key : {"webdav", "github"}) {
+                    if (!configured(key))
+                        continue;
+                    const Place& place = m_places[key];
+                    if (!text.empty())
+                        text += zh ? "；" : "; ";
+                    if (!place.error.empty()) {
+                        text += label(key) + (zh ? "：" : ": ") + place.error;
+                        failed = true;
+                    } else if (place.listed) {
+                        text += label(key) + (zh ? " 连接正常" : " reached");
+                    } else {
+                        text += label(key) + (zh ? " 还没有连接过" : " not tried yet");
+                        reached = false;
+                    }
+                }
+                if (!text.empty()) {
+                    tone = failed ? "error" : reached ? "ok" : "idle";
+                    buttons.push_back({"test", zh ? "测试连接" : "Test connection"});
+                }
+            }
+        }
+        const std::string now = tone + '\n' + text;
+        if (now == m_statusSaid)
+            return;
+        m_statusSaid = now;
+        status(text, -1, tone, buttons); // no place set up: an empty text takes the line away
     }
 
     // A listing's outcome into the place; the place as it is then.
@@ -628,6 +693,8 @@ private:
     std::string m_busyPlace; // what the worker is at, for the rows
     std::string m_busyText;
     std::string m_toasted; // worker only: the failure a notification told of
+    std::mutex m_statusMutex; // m_statusSaid, and the order the lines are sent in
+    std::string m_statusSaid; // the card's line as last told (publishStatus)
 };
 
 } // namespace

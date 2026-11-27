@@ -89,6 +89,7 @@ public:
     {
         stopWorker();
         stopJob();
+        stopTest();
     }
 
 protected:
@@ -129,15 +130,28 @@ protected:
         }
     }
 
+    void initialized() override { publishUntried(); }
+
     void settingsChanged(const Json&) override
     {
         stopWorker();
         stopJob();
+        stopTest();
+        publishUntried(); // another service, key or model: what the last test said is not about it
     }
     void shuttingDown() override
     {
         stopWorker();
         stopJob();
+        stopTest();
+    }
+
+    // 测试连接 on the plugin's card (winshun/status's button, GitHub #495).
+    winshun::Effects action(const winshun::ActionRequest& a) override
+    {
+        if (a.trigger == "status" && a.action == "test")
+            startTest();
+        return {};
     }
 
 private:
@@ -368,6 +382,83 @@ private:
         refresh();
     }
 
+    // ---- 测试连接 (GitHub #495) ----------------------------------------------------------
+    // A key, an address and a model typed in, and nothing said whether they
+    // work until something was translated: the card has a line and a button
+    // (winshun/status). The test sends one word to the service chosen, as a
+    // translation is sent, and the line says how it went.
+
+    std::vector<std::pair<std::string, std::string>> testButton(bool zh) const
+    {
+        return {{"test", zh ? "测试连接" : "Test connection"}};
+    }
+
+    // Nothing tested yet for these settings; no line while there is nothing
+    // to test (no service chosen, its key missing: the card's rows say so).
+    void publishUntried()
+    {
+        const tr::Settings s = tr::settingsFrom(settings());
+        const bool zh = chinese();
+        winshun::Query q;
+        q.text = kTestWord;
+        if (gate(q, s, zh))
+            status({});
+        else
+            status(zh ? "填好后可以测试一下能不能连上" : "Test whether the service can be reached", -1, "idle", testButton(zh));
+    }
+
+    void stopTest()
+    {
+        m_testCanceled = true;
+        if (m_tester.joinable())
+            m_tester.join();
+    }
+
+    void startTest()
+    {
+        stopTest();
+        m_testCanceled = false;
+        const tr::Settings s = tr::settingsFrom(settings());
+        const bool zh = chinese();
+        const bool settingsLinks = links();
+        status(zh ? "正在测试连接…" : "Testing the connection…", -1, "busy");
+        m_tester = std::thread([this, s, zh, settingsLinks] {
+            winshun::Query q;
+            q.text = kTestWord;
+            q.source = "command";
+            Outcome outcome;
+            const auto started = Clock::now();
+            if (auto early = gate(q, s, zh)) {
+                outcome.items = std::move(*early);
+            } else {
+                const std::string target = tr::targetOf(q.text, s.target);
+                const tr::Request request = tr::buildRequest(s, q.text, target);
+                const tr::Response response = tr::post(request.url, request.body, request.authorization,
+                    s.provider == "local" ? kLocalJobBudgetMs : kCommandBudgetMs, &m_testCanceled, request.headers);
+                logRequest(s, started, response);
+                if (m_testCanceled)
+                    return;
+                outcome = conclude(q, s, response, nullptr, q.text, target, zh, settingsLinks);
+            }
+            if (m_testCanceled)
+                return;
+            if (outcome.cacheable) { // a translation came
+                char seconds[32];
+                std::snprintf(seconds, sizeof seconds, "%.1f", std::chrono::duration<double>(Clock::now() - started).count());
+                status(zh ? std::string("连接正常，用时 ") + seconds + " 秒" : std::string("Reached in ") + seconds + " s", -1, "ok", testButton(zh));
+                return;
+            }
+            // The row a translation would have shown: what is wrong, and what to do.
+            std::string why = outcome.items.empty() ? std::string(zh ? "没有回答" : "No answer") : outcome.items.front().title;
+            if (!outcome.items.empty() && !outcome.items.front().subtitle.empty())
+                why += (zh ? "：" : ": ") + outcome.items.front().subtitle;
+            status((zh ? "没有连上 · " : "Not reached · ") + tr::cut(why, 160), -1, "error", testButton(zh));
+        });
+    }
+
+    static constexpr const char* kTestWord = "hello";
+    std::thread m_tester;
+    std::atomic_bool m_testCanceled = false;
     std::thread m_worker;
     std::atomic_bool m_canceled = false;
     long long m_queryId = 0;
