@@ -380,19 +380,25 @@ private slots:
         // spelling, the dialog shows nothing new and the wait for its address
         // to change runs its full second and a half, as with a folder slow
         // to list. The focus stays where it was put meanwhile.
-        const HWND view = [dialog] {
+        // The items view is the DirectUIHWND under SHELLDLL_DefView. The
+        // dialog builds it a moment after its address shows the folder, so it
+        // is waited for (looked up at once, it was missing on a busy PC).
+        const auto findView = [dialog] {
             HWND found = nullptr;
             ::EnumChildWindows(dialog, [](HWND child, LPARAM data) -> BOOL {
                 wchar_t name[32] {};
                 ::GetClassNameW(child, name, 32);
-                if (::wcscmp(name, L"DirectUIHWND") != 0 || !::IsWindowVisible(child) || !::FindWindowExW(child, nullptr, L"CtrlNotifySink", nullptr))
+                wchar_t parent[32] {};
+                ::GetClassNameW(::GetParent(child), parent, 32);
+                if (::wcscmp(name, L"DirectUIHWND") != 0 || ::wcscmp(parent, L"SHELLDLL_DefView") != 0 || !::IsWindowVisible(child))
                     return TRUE;
                 *reinterpret_cast<HWND*>(data) = child;
                 return FALSE;
             }, reinterpret_cast<LPARAM>(&found));
             return found;
-        }();
-        QVERIFY2(view, "the dialog's list of files was not found");
+        };
+        HWND view = nullptr;
+        QTRY_VERIFY2_WITH_TIMEOUT((view = findView()) != nullptr, "the dialog's list of files was not found", 5000);
         const QString again = target + u"\\..\\"_s + QFileInfo(start).fileName();
         std::atomic<bool> going {true};
         auto moved = std::async(std::launch::async, [&] {
@@ -1101,6 +1107,15 @@ private slots:
         QFETCH(bool, explicitDirectory);
         if (!::GetShellWindow())
             QSKIP("No desktop shell in this test session");
+        // Windows PowerShell's Start entry may be gone (removed with its
+        // shortcut): launched anyway, Windows shows its "cannot find" message
+        // box on the desktop of whoever runs the test.
+        IShellItem* entry = nullptr;
+        if (FAILED(::SHCreateItemFromParsingName(
+                L"shell:AppsFolder\\{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe",
+                nullptr, IID_PPV_ARGS(&entry))))
+            QSKIP("Windows PowerShell has no Start entry on this PC");
+        entry->Release();
         QTemporaryDir temporary;
         QVERIFY(temporary.isValid());
         const QString output = temporary.filePath(u"app-console.json"_s);
