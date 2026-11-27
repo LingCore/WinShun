@@ -971,6 +971,15 @@ private:
     // GitHub #265, memory short: the pages an opening needs are read back ahead.
     std::shared_ptr<HotPages> m_launcherPages;
     std::shared_ptr<HotPages> m_clipPages;
+    // What a use of the launcher needs past its opening: the search typed,
+    // its rows and their icons, what is opened from them. Learnt as the
+    // launcher goes, the first time since the memory was given back
+    // (learnLauncherUse), and kept only while Windows is short of memory
+    // (IdleTrim::Keep::ShortOfMemory): with room it is back by soft faults,
+    // and kept at all times it would be the memory at rest (GitHub #459).
+    std::shared_ptr<HotPages> m_usePages;
+    bool m_recordUse = false; // this use of the launcher is the first since the memory was given back
+    void learnLauncherUse();
     // How much of them stays when the memory is given back (HotPages::kept);
     // another amount only for a probe (--idle-open-kept). Any thread.
     std::atomic<std::size_t> m_keptMost {HotPages::kKeptBytes};

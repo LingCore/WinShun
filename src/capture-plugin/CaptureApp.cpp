@@ -253,7 +253,14 @@ CaptureApp::CaptureApp(Protocol& protocol, QString appDir, QString dataDir, QObj
         // A recording's hooks and media thread, a delayed or long screenshot:
         // their pages are touched all the time (see App).
         return m_capture && m_capture->busy() ? "capturing or recording" : nullptr;
-    }, [] { return false; });
+    }, [] { return false; }, [this](IdleTrim::Keep keep) {
+        // With room, everything goes: what a capture needs is read back as
+        // the next one starts (callbacks.starting). Windows short of memory,
+        // it would be another program's by then and come from the disk under
+        // the hotkey, so that much stays; the pictures put away go all the
+        // same (GitHub #500: 420 MB of them stayed for hours).
+        return keep == IdleTrim::Keep::ShortOfMemory ? HotPages::kept({m_hotPages.get()}) : PageSet();
+    });
 
     m_applyLater.setSingleShot(true);
     m_applyLater.setInterval(0);

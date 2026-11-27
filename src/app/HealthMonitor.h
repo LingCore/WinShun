@@ -45,7 +45,8 @@ public:
         std::function<QVariantList()> tasks; // BackgroundStatus::toVariant
         std::function<std::pair<qint64, qint64>()> lastTrim; // ms since 1970 (0: none), MB
         // Windows' memory in use, in percent (IdleTrim::memoryLoad): short of
-        // it, idle memory is held, and the page says so. Null: not told.
+        // it, more stays when the memory is given back, and the page says
+        // so. Null: not told.
         std::function<int()> memoryLoad;
     };
 

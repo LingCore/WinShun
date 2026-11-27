@@ -59,7 +59,8 @@ namespace ws::preview {
 // --idle-open-kept: at most so much stays when the memory is given back,
 // instead of HotPages::kKeptBytes: what an opening costs with less kept.
 // --idle-open-memory-load: IdleTrim reads Windows' memory as this much in use
-// (IdleTrim::kShortOfMemoryLoad and up: held, nothing given back).
+// (IdleTrim::kShortOfMemoryLoad and up: the hot pages and the file index's
+// names stay, the rest is given back).
 // `cpu` is how busy the whole machine was from a second before the opening
 // until it was seen, 0 to 1: other work under way spoils a time.
 // --idle-open-query: typed into the launcher once it is up, at each `use`,
@@ -240,6 +241,7 @@ struct IdleOpenProbe {
             {u"working_mb_before"_s, megabytes(before.WorkingSetSize)},
             {u"private_mb_up"_s, megabytes(settled.PrivateWorkingSetSize)},
             {u"hot_mb"_s, megabytes((clipboard ? app.m_clipPages : app.m_launcherPages)->bytes())},
+            {u"use_mb"_s, megabytes(app.m_usePages->bytes())}, // the launcher's use past its opening; stays while memory is short
             {u"cpu"_s, all ? std::round(100.0 * (1.0 - static_cast<double>(machineAfter.idle - machineBefore.idle) / static_cast<double>(all))) / 100 : 0.0},
         };
         if (!clipboard && app.m_launcher && !app.m_launcher->query().isEmpty())

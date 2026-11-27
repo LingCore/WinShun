@@ -286,25 +286,28 @@ SettingsPage {
                     height: Theme.edge(healthPage.dpr)
                     color: Theme.cardBorder
                 }
-                Row {
+                Text {
+                    id: processName
                     x: 18
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: 10
-
-                    Text {
-                        text: process.modelData.name
-                        color: Theme.text
-                        font.pixelSize: Theme.fontBody
-                    }
-                    Text {
-                        visible: process.note.length > 0
-                        anchors.baseline: parent.children[0].baseline
-                        text: process.note
-                        color: Theme.subtext
-                        font.pixelSize: Theme.fontCaption
-                    }
+                    text: process.modelData.name
+                    color: Theme.text
+                    font.pixelSize: Theme.fontBody
+                }
+                Text { // up to the figures, as PartLine's: a long note (English) ran under them
+                    visible: process.note.length > 0
+                    anchors.left: processName.right
+                    anchors.leftMargin: 10
+                    anchors.right: figures.left
+                    anchors.rightMargin: 12
+                    anchors.baseline: processName.baseline
+                    text: process.note
+                    color: Theme.subtext
+                    font.pixelSize: Theme.fontCaption
+                    elide: Text.ElideRight
                 }
                 Row {
+                    id: figures
                     anchors.right: parent.right
                     anchors.rightMargin: 18
                     anchors.verticalCenter: parent.verticalCenter

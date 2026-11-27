@@ -827,10 +827,23 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
         // it, the focus left where it was), a pinned launcher, a file dialog's bar.
         return (m_clipWindow && m_clipWindow->isVisible() && !m_clipPrewarming.load())
             || (m_launcher && m_launcher->pinned() && launcherShown()) || (m_dialogBar && m_dialogBar->isShown());
-    }, [this] {
+    }, [this](IdleTrim::Keep keep) {
         // What the launcher and the clipboard need to come up stays (HotPages),
         // up to HotPages::kKeptBytes.
-        return HotPages::kept({m_launcherPages.get(), m_clipPages.get()}, m_keptMost.load());
+        if (keep == IdleTrim::Keep::Lean)
+            return HotPages::kept({m_launcherPages.get(), m_clipPages.get()}, m_keptMost.load());
+        // Windows short of memory: more of those, what a use of the launcher
+        // needs past its opening (m_usePages), and what every name search
+        // reads of the file index from end to end. Given back, they would be
+        // other programs' within minutes and come from the disk a page at a
+        // time under the first search (GitHub #471). The settings' pages, the
+        // pictures and all else go as ever (GitHub #500).
+        PageSet pages = HotPages::kept({m_launcherPages.get(), m_clipPages.get(), m_usePages.get()}, HotPages::kKeptBytesShort);
+        if (const std::shared_ptr<FileIndex> index = m_index ? m_index->index() : nullptr) {
+            const auto lock = index->longReadLock();
+            pages = pages.united(PageSet::within(index->searchBlocks()));
+        }
+        return pages;
     });
     // Stuck, with nothing to say where (GitHub #111): from now on the journal has it.
     if (diagnostics::enabled()) {
@@ -841,6 +854,7 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     connect(m_index.get(), &IndexService::stateChanged, m_idleTrim.get(), &IdleTrim::poke);
     m_launcherPages = std::make_shared<HotPages>();
     m_clipPages = std::make_shared<HotPages>();
+    m_usePages = std::make_shared<HotPages>();
     m_apps = std::make_unique<AppCatalog>();
     m_places = std::make_unique<SystemCatalog>();
     m_engine = std::make_unique<SearchEngine>(m_index.get(), m_apps.get(), m_places.get());
@@ -6422,16 +6436,23 @@ void App::beginTrigger(TriggerSource source, std::uint64_t pressedAt, std::optio
     // the disk a page at a time as the search went through it: 4.4 s on a
     // busy computer (GitHub #471).
     const std::shared_ptr<FileIndex> index = !clipboard && shouldPrefetch && m_index ? m_index->index() : nullptr;
-    if (shouldPrefetch && (hotBytes > 0 || index)) {
-        std::thread([kept = hotBytes > 0 ? pages->pages() : PageSet(), index] {
+    // And, while Windows is short of memory, what the use needs after that
+    // (m_usePages): it stayed, unless Windows took it all the same.
+    const PageSet use = !clipboard && shouldPrefetch && m_usePages && m_idleTrim && m_idleTrim->shortOfMemory()
+        ? m_usePages->pages() : PageSet();
+    if (shouldPrefetch && (hotBytes > 0 || index || !use.empty())) {
+        std::thread([kept = hotBytes > 0 ? pages->pages() : PageSet(), use, index] {
             kept.prefetch();
             if (index) {
                 const auto lock = index->longReadLock();
                 index->prefetchSearch();
             }
+            use.prefetch();
         }).detach();
     }
     m_recordPages = trimmedAt > m_openingSeenMs[idx] ? pages : nullptr;
+    if (!clipboard)
+        m_recordUse = m_recordPages != nullptr;
     m_triggers->begin(source, pressedAt, context);
 }
 
@@ -6475,13 +6496,16 @@ void App::finishOpeningWarmup(TriggerWindow window)
     if (m_recordPages && m_recordPages == own) {
         QPointer<App> self(this);
         std::thread([self, isLauncher, shouldWarm, pages = std::exchange(m_recordPages, nullptr),
-                        launcher = m_launcherPages, clipboard = m_clipPages,
+                        launcher = m_launcherPages, clipboard = m_clipPages, use = m_usePages,
                         index = m_index ? m_index->index() : nullptr] {
             const PageSet resident = PageSet::resident();
             if (isLauncher && self)
                 QMetaObject::invokeMethod(self, &App::finishDeferredLauncherRefresh, Qt::QueuedConnection);
             pages->pruneUncommitted();
-            PageSet used = resident.without(launcher->pages()).without(clipboard->pages());
+            // Not what stayed for the use after the opening (m_usePages, while
+            // Windows is short of memory): in memory now, it would pass for
+            // what the opening brought back, and stay at all times from then on.
+            PageSet used = resident.without(launcher->pages()).without(clipboard->pages()).without(use->pages());
             if (index) {
                 const auto lock = index->longReadLock();
                 used = used.without(PageSet::within(index->memoryBlocks()));
@@ -8458,6 +8482,7 @@ void App::hideLauncher()
     stopLauncherRouting(); // the keys are the window's in front again
     if (!m_window || !m_window->isVisible() || m_launcherClosing)
         return;
+    learnLauncherUse();
     if (m_launcher->systemMenuOpen())
         ::EndMenu(); // the shell's menu over it (Shift+right-click) goes with it: double Ctrl, say
     m_launcherHidden.start();
@@ -8510,6 +8535,28 @@ void App::hideLauncher()
         if (m_launcherClosing)
             finishHidingLauncher();
     });
+}
+
+// The launcher goes, having been used for the first time since the memory
+// was given back: what is in memory now and was not kept came back for this
+// use (or for what ran meanwhile; HotPages tells them apart over two such
+// uses). Less what its opening needs, which m_launcherPages has, and the
+// file index, which is kept by its blocks.
+void App::learnLauncherUse()
+{
+    if (!std::exchange(m_recordUse, false) || !m_launcher || m_launcher->query().isEmpty())
+        return; // nothing typed: the opening alone
+    std::thread([pages = m_usePages, launcher = m_launcherPages, clipboard = m_clipPages,
+                    index = m_index ? m_index->index() : nullptr] {
+        const PageSet resident = PageSet::resident();
+        pages->pruneUncommitted();
+        PageSet used = resident.without(launcher->pages()).without(clipboard->pages()).without(pages->pages());
+        if (index) {
+            const auto lock = index->longReadLock();
+            used = used.without(PageSet::within(index->memoryBlocks()));
+        }
+        pages->learn(used);
+    }).detach();
 }
 
 void App::finishHidingLauncher()

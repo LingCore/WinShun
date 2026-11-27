@@ -1947,7 +1947,8 @@ int runSettings(const QStringList& args)
     editor->setIndexFolderState(indexState);
     editor->setContentIndexStatus(u"已收录 337,215 个文件，其中 5,815 个文档"_s);
     // The 运行状况 page (settings page 10): made-up current readings, indexing content or (--health-idle) at rest;
-    // --health-memory-load <percent>: Windows' memory that much in use (80 and up: idle memory held, GitHub #471).
+    // --health-memory-load <percent>: Windows' memory that much in use (IdleTrim::kShortOfMemoryLoad and up: the
+    // page says what stays then, GitHub #471, #500).
     const qsizetype memoryLoadAt = args.indexOf(u"--health-memory-load"_s);
     const int memoryLoad = memoryLoadAt >= 0 && memoryLoadAt + 1 < args.size() ? std::clamp(args[memoryLoadAt + 1].toInt(), 0, 100) : -1;
     editor->setMonitor(args.contains(u"--health-monitor"_s) ? new HealthMonitor({}, editor)

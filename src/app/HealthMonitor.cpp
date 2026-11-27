@@ -460,9 +460,9 @@ void HealthMonitor::publish()
     now[u"idleText"_s] = BackgroundStatus::idleText();
     const auto [atMs, freed] = m_sources.lastTrim ? m_sources.lastTrim() : std::pair<qint64, qint64>(0, 0);
     QString lastTrim = atMs == 0 ? tr("还没有归还过") : tr("上次归还：%1，还了 %2 MB").arg(clock(atMs)).arg(freed);
-    // Why nothing goes back now (IdleTrim holds while Windows is short, GitHub #471).
+    // Why more stays now than at other times (IdleTrim::Keep::ShortOfMemory, GitHub #471, #500).
     if (const int load = m_sources.memoryLoad ? m_sources.memoryLoad() : -1; load >= IdleTrim::kShortOfMemoryLoad)
-        lastTrim += u'\n' + tr("系统内存已用 %1%，闲着时先不归还，宽裕了再还").arg(load);
+        lastTrim += u'\n' + tr("系统内存已用 %1%：下次呼出和搜索要用的先留着，其余照常归还").arg(load);
     now[u"lastTrim"_s] = lastTrim;
     m_now = now;
     emit updated();
