@@ -1889,6 +1889,26 @@ bool previewPageMemory(QQuickWindow* window, const QStringList& args, const QDir
     const auto pageOf = [&](int index) { return named(window, kSlotIds[index])->property("item").value<QObject*>(); };
 
     row(u"window, page 0"_s, pageOf(0));
+    { // What the window is made of besides its pages: each part's objects, the largest first.
+        QList<std::pair<int, QString>> parts;
+        const auto count = [&parts](QObject* part) {
+            QString name = QString::fromLatin1(part->metaObject()->className());
+            if (const qsizetype cut = name.indexOf(u"_QML"_s); cut > 0)
+                name.truncate(cut);
+            if (!part->objectName().isEmpty())
+                name += u" '"_s + part->objectName() + u'\'';
+            parts.append({static_cast<int>(part->findChildren<QObject*>().size()) + 1, name});
+        };
+        for (QObject* child : window->children())
+            count(child);
+        for (QQuickItem* child : window->contentItem()->childItems())
+            count(child);
+        std::ranges::sort(parts, std::greater<>());
+        QStringList text;
+        for (const auto& [objects, name] : parts.first(std::min<qsizetype>(parts.size(), 16)))
+            text.append(u"%1 %2"_s.arg(objects).arg(name));
+        say(u"page memory: the window's %1 objects, by part: %2"_s.arg(window->findChildren<QObject*>().size()).arg(text.join(u"; "_s)));
+    }
     const memory::Census atFirst = memory::census(true);
     const trace::Totals atWindow = traced.isEmpty() ? trace::Totals() : trace::held();
     if (traced == u"0" || traced == u"window")
