@@ -275,6 +275,9 @@ private:
     void showSettingsNow(const std::function<void(QQuickWindow*)>& at = {});
     bool settingsShown() const; // the settings window on show (it is kept, hidden, once made)
     void settingsFirstFrame(int opening); // after the first frame of an opening: what waited for it
+    // The settings window put pages away: once their objects are gone, what
+    // they held goes back (and, closed, what the window draws with).
+    void settingsPagesWentAway(bool open);
     bool showOnboarding(const StartOptions& options);
     void revealOnboarding(); // the guide's window up and in front
     void finishOnboarding(const StartOptions& options);

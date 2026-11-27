@@ -748,8 +748,9 @@ public:
     HealthMonitor* monitor() const { return m_monitor; }
     void setMonitor(HealthMonitor* monitor);
     Q_INVOKABLE void giveMemoryBack() { emit giveBackMemoryRequested(); }
-    // The window, open, put away the pages left behind (SettingsWindow.putPagesAway).
-    Q_INVOKABLE void pagesPutAway() { emit pagesPutAwayWhileOpen(); }
+    // The window put pages away (SettingsWindow.putPagesAway): `open`, the ones
+    // left behind while it is on show; closed a while, all but the first.
+    Q_INVOKABLE void pagesPutAway(bool open) { emit pagesWentAway(open); }
     QString contentIndexStatus() const { return m_contentIndexStatus; }
     void setContentIndexStatus(const QString& status); // "已收录 … 个文件"; set by the app
     QString renderer() const { return m_settings.renderer; }
@@ -1332,7 +1333,7 @@ signals:
     void contentIndexStatusChanged();
     void monitorChanged();
     void giveBackMemoryRequested();
-    void pagesPutAwayWhileOpen();
+    void pagesWentAway(bool open);
     void indexFolderChanged();
     void recordingHotkeyChanged(); // the app suspends its hotkeys meanwhile
     void autostartChanged();

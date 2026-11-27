@@ -391,15 +391,18 @@ Window {
                 return
             }
         }
-        if (leftPagesGone) { // their memory back now, not when the window is next left (App, IdleTrim.freed)
+        // Their memory back now, not when the window is next left; closed, what
+        // the window draws with too, whether a page went or not (App::settingsPagesWentAway).
+        if (leftPagesGone || !shown) {
             leftPagesGone = false
-            editor.pagesPutAway()
+            editor.pagesPutAway(shown)
         }
         if (keysSlot.item === null) { // 按键一览's sections went with their page: made again as on a first opening
             shortcutsWanted = false
             shortcutModel.clear()
         }
-        gc() // the pages' JavaScript side
+        // Their JavaScript side: collected by the App once the objects are
+        // gone (destroy() is a deleteLater; nothing of them could go from here).
     }
 
     // The page if it has been made; null if not (or no such page).

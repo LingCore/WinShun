@@ -11,6 +11,7 @@
 #include "PastePlainProbe.h"
 #include "SettingsMotionProbe.h"
 #include "platform/AllocationTrace.h"
+#include "platform/MemoryCensus.h"
 #include "InteractionOptimizationProbe.h"
 #include "UiFont.h"
 
@@ -1819,6 +1820,124 @@ bool previewLazyPages(QQuickWindow* window, const std::function<QQuickWindow*()>
     return ok;
 }
 
+// ---- --preview-settings --page-memory [--page-memory-trace <page>] ------------------------
+// What each page of the settings window costs, one after another on a window
+// that has only made its first: private memory committed and in use, this
+// process's share of the graphics memory (in the PC's own memory on an
+// integrated card), how many objects the page is and of which types. With
+// --page-memory-trace <page> (a number, or "all"), who asked for the heap
+// memory that page (or all of them) brought, by call stack (allocationTrace,
+// started before the window is made: the numbers of such a run are not the
+// app's). Written to page-memory.json.
+bool previewPageMemory(QQuickWindow* window, const QStringList& args, const QDir& out)
+{
+    namespace trace = memory::allocationTrace;
+    const auto mb = [](std::uint64_t bytes) { return std::round(static_cast<double>(bytes) / 1048576.0 * 10) / 10; };
+    const QString traced = valueAfter(args, u"--page-memory-trace");
+    const int pageCount = static_cast<int>(std::size(kSlotIds));
+    QJsonArray rows;
+    QJsonObject sitesOf;
+    memory::Census last = memory::census(false);
+    const auto sites = [&](const trace::Totals* before) {
+        std::int64_t total = 0;
+        QJsonArray list;
+        const auto held = trace::sites(trace::held(), before, 4000, &total);
+        list.append(QJsonObject {{u"total_mb"_s, mb(static_cast<std::uint64_t>(std::max<std::int64_t>(0, total)))},
+            {u"untold_blocks"_s, trace::untold()}});
+        for (const auto& site : held) {
+            list.append(QJsonObject {{u"mb"_s, std::round(static_cast<double>(site.bytes) / 1048576.0 * 100) / 100},
+                {u"blocks"_s, site.blocks}, {u"frames"_s, QJsonArray::fromStringList(site.frames)}});
+        }
+        return list;
+    };
+    const auto row = [&](const QString& stage, QObject* page) {
+        const memory::Census now = memory::census(false);
+        QJsonObject r {{u"stage"_s, stage}, {u"commit_mb"_s, mb(now.commit)}, {u"private_mb"_s, mb(now.privateWorkingSet)},
+            {u"video_dedicated_mb"_s, mb(now.videoDedicated)}, {u"video_shared_mb"_s, mb(now.videoShared)},
+            {u"commit_grew_mb"_s, std::round((static_cast<double>(now.commit) - static_cast<double>(last.commit)) / 104857.6) / 10},
+            {u"video_grew_mb"_s, std::round((static_cast<double>(now.videoDedicated + now.videoShared)
+                                                - static_cast<double>(last.videoDedicated + last.videoShared)) / 104857.6) / 10}};
+        if (page) {
+            const QList<QObject*> objects = page->findChildren<QObject*>();
+            QHash<QString, int> classes;
+            int items = 0;
+            for (QObject* object : objects) {
+                QString name = QString::fromLatin1(object->metaObject()->className());
+                if (const qsizetype cut = name.indexOf(u"_QML"_s); cut > 0)
+                    name.truncate(cut);
+                ++classes[name];
+                items += qobject_cast<QQuickItem*>(object) != nullptr;
+            }
+            QList<std::pair<int, QString>> most;
+            for (auto it = classes.cbegin(); it != classes.cend(); ++it)
+                most.append({it.value(), it.key()});
+            std::ranges::sort(most, std::greater<>());
+            QJsonObject top;
+            for (const auto& [count, name] : most.first(std::min<qsizetype>(most.size(), 24)))
+                top[name] = count;
+            r[u"objects"_s] = objects.size();
+            r[u"items"_s] = items;
+            r[u"classes"_s] = top;
+        }
+        say(u"page memory: %1: commit %2 MB (%3), private %4 MB, video %5 + %6 MB%7"_s.arg(stage).arg(r[u"commit_mb"_s].toDouble())
+                .arg(r[u"commit_grew_mb"_s].toDouble(), 0, 'f', 1, u'+').arg(r[u"private_mb"_s].toDouble())
+                .arg(r[u"video_dedicated_mb"_s].toDouble()).arg(r[u"video_shared_mb"_s].toDouble())
+                .arg(page ? u", %1 objects (%2 items)"_s.arg(r[u"objects"_s].toInt()).arg(r[u"items"_s].toInt()) : QString()));
+        rows.append(r);
+        last = now;
+    };
+    const auto pageOf = [&](int index) { return named(window, kSlotIds[index])->property("item").value<QObject*>(); };
+
+    row(u"window, page 0"_s, pageOf(0));
+    const memory::Census atFirst = memory::census(true);
+    const trace::Totals atWindow = traced.isEmpty() ? trace::Totals() : trace::held();
+    if (traced == u"0" || traced == u"window")
+        sitesOf[u"window"_s] = sites(nullptr);
+    for (int page = 1; page < pageCount; ++page) {
+        const trace::Totals before = traced == QString::number(page) ? trace::held() : trace::Totals();
+        const int tabs = std::max(1, evaluateIn(window, u"pageTabs[%1]?.length ?? 1"_s.arg(page)).toInt());
+        for (int tab = 0; tab < tabs; ++tab) {
+            QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, page), Q_ARG(QVariant, tab));
+            settle(window);
+        }
+        row(u"page %1 (%2)"_s.arg(page).arg(QLatin1StringView(kSlotIds[page])), pageOf(page));
+        if (traced == QString::number(page))
+            sitesOf[QString::number(page)] = sites(&before);
+    }
+    if (traced == u"all")
+        sitesOf[u"all"_s] = sites(&atWindow);
+    // Left for half a minute (leftPages), all but the one on show go: what stays.
+    window->setProperty("leftPagesMs", 50);
+    QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, 0), Q_ARG(QVariant, 0));
+    settle(window);
+    pump(600);
+    settle(window);
+    row(u"left, back on page 0 (made %1)"_s.arg(pagesText(madePages(window))), nullptr);
+    say(u"page memory: heap in use with the first page only: %1 MB in %2 blocks"_s.arg(mb(atFirst.heapBytes)).arg(atFirst.heapBlocks));
+    if (!traced.isEmpty())
+        sitesOf[u"kept"_s] = sites(&atWindow); // what the pages left behind when they went
+
+    const memory::Census walked = memory::census(true);
+    QJsonArray buckets;
+    static constexpr const char* kNames[] = {"<=64 B", "<=256 B", "<=1 KB", "<=4 KB", "<=64 KB", "<=1 MB", ">1 MB"};
+    for (std::size_t i = 0; i < walked.heap.size(); ++i) {
+        buckets.append(QJsonObject {{u"size"_s, QLatin1StringView(kNames[i])}, {u"blocks"_s, static_cast<qint64>(walked.heap[i].count)},
+            {u"mb"_s, mb(walked.heap[i].bytes)}});
+    }
+    QJsonArray large;
+    for (std::size_t i = 0; i < std::min<std::size_t>(walked.large.size(), 60); ++i)
+        large.append(u"%1%2"_s.arg(mb(walked.large[i].bytes)).arg(walked.large[i].heap ? u" heap"_s : walked.large[i].code ? u" code"_s : QString()));
+    QFile file(out.filePath(u"page-memory.json"_s));
+    const bool written = file.open(QIODevice::WriteOnly | QIODevice::Truncate)
+        && file.write(QJsonDocument(QJsonObject {{u"scale"_s, window->devicePixelRatio()}, {u"traced"_s, traced}, {u"stages"_s, rows},
+                                        {u"heap_mb"_s, mb(walked.heapBytes)}, {u"heap_committed_mb"_s, mb(walked.heapCommitted)}, {u"outside_heaps_mb"_s, mb(walked.privateOutsideHeaps)}, {u"first_heap_committed_mb"_s, mb(atFirst.heapCommitted)}, {u"first_outside_heaps_mb"_s, mb(atFirst.privateOutsideHeaps)}, {u"heap_blocks"_s, static_cast<qint64>(walked.heapBlocks)},
+                                        {u"heap_by_size"_s, buckets}, {u"large_private_mb"_s, large}, {u"sites"_s, sitesOf}})
+                          .toJson()) > 0;
+    say(u"page memory: heap %1 MB in %2 blocks; %3"_s.arg(mb(walked.heapBytes)).arg(walked.heapBlocks)
+            .arg(written ? u"written "_s + file.fileName() : u"NOT written"_s));
+    return written;
+}
+
 int runSettings(const QStringList& args)
 {
     if (args.contains(u"--glass-controls"_s))
@@ -1832,6 +1951,8 @@ int runSettings(const QStringList& args)
     QTranslator translator;
     if (args.contains(u"--english"_s) && translator.load(u":/i18n/winshun_en.qm"_s))
         QCoreApplication::installTranslator(&translator);
+    if (args.contains(u"--page-memory-trace"_s) && !memory::allocationTrace::start()) // before anything of the window is made
+        return 4;
     say(u"starting (dark %1, scale %2)"_s.arg(dark).arg(qEnvironmentVariable("QT_SCALE_FACTOR")));
     // Where Qt came from and what the text is set in: two runs of the same
     // build can differ in line heights when they resolve these differently.
@@ -2048,6 +2169,8 @@ int runSettings(const QStringList& args)
         editor->setWindow(window);
         return finish(window, ok);
     }
+    if (args.contains(u"--page-memory"_s))
+        return finish(window, previewPageMemory(window, args, out));
     QMetaObject::invokeMethod(window, "loadAllPages");
     settle(window);
 
@@ -16187,10 +16310,10 @@ bool probeSettingsReopen(App& app, const QStringList& args, const QDir& out, QJs
         check(runningInWindow(window).isEmpty(), u"unload_leaves_nothing_running"_s);
         report.insert(u"unload_commit_mb"_s, QJsonObject {{u"with_pages"_s, std::round(withPages)}, {u"after"_s, std::round(after)}});
         say(u"settings pages put away: commit with all pages %1 MB, after %2 MB"_s.arg(std::round(withPages)).arg(std::round(after)));
-        // Of the ~100 MB of heap blocks the ten pages held (650,000 of them), most
-        // stays the heaps' own, free for what comes next and out of memory once
-        // it was given back; ~38 MB go back to Windows at once (measured at 150%).
-        check(withPages - after > 20, u"unload_gives_memory_back"_s);
+        // The ten pages' heap blocks (~700,000) go back to Windows with them,
+        // and what the window draws with: ~150 MB (the heap the manifest asks
+        // for; the default one kept what was freed, and ~38 MB went back).
+        check(withPages - after > 100, u"unload_gives_memory_back"_s);
 
         window = open([&] { app.showSettings(); }, u"after pages were put away"_s);
         check(app.settingsOpening().reused && js(window, u"currentPage === 0 && pageItem(0) !== null"_s).toBool()
@@ -16271,6 +16394,124 @@ bool probeSettingsReopen(App& app, const QStringList& args, const QDir& out, QJs
     if (json.open(QIODevice::WriteOnly))
         json.write(QJsonDocument(report).toJson());
     return passed;
+}
+
+// ---- --settings-memory-check (runtime probe) ----------------------------------------
+// What the settings window costs the production App, on a real window (its own
+// Direct3D device and swap chain, which the off-screen previews do not have):
+// before it was ever opened, opened on its first page, with every page made,
+// closed, and closed a while (App::putSettingsAway). Each stage: private memory
+// committed and in use, the heaps' share of it and how much of that is blocks in
+// use, the rest (the JavaScript heap, the graphics driver's). Written to
+// settings-memory.json. Shown without activation, no input sent.
+bool probeSettingsMemory(App& app, const QDir& out)
+{
+    QJsonArray stages;
+    const auto mb = [](std::uint64_t bytes) { return std::round(static_cast<double>(bytes) / 1048576.0 * 10) / 10; };
+    const auto stage = [&](const QString& name) {
+        const memory::Census now = memory::census(true);
+        stages.append(QJsonObject {{u"stage"_s, name}, {u"commit_mb"_s, mb(now.commit)}, {u"private_mb"_s, mb(now.privateWorkingSet)},
+            {u"heaps_committed_mb"_s, mb(now.heapCommitted)}, {u"heaps_in_use_mb"_s, mb(now.heapBytes)},
+            {u"outside_heaps_mb"_s, mb(now.privateOutsideHeaps)}, {u"video_dedicated_mb"_s, mb(now.videoDedicated)},
+            {u"video_shared_mb"_s, mb(now.videoShared)}});
+        say(u"settings memory: %1: commit %2 MB, private %3 MB, heaps %4 MB committed with %5 MB in use, outside heaps %6 MB, video %7 + %8 MB"_s
+                .arg(name).arg(mb(now.commit)).arg(mb(now.privateWorkingSet)).arg(mb(now.heapCommitted)).arg(mb(now.heapBytes))
+                .arg(mb(now.privateOutsideHeaps)).arg(mb(now.videoDedicated)).arg(mb(now.videoShared)));
+        QStringList large; // what is no heap's, a megabyte and more: the JavaScript heap's segments, pictures, a driver's buffers
+        for (const auto& one : now.large) {
+            if (!one.heap && large.size() < 40)
+                large.append(u"%1%2"_s.arg(mb(one.bytes)).arg(one.code ? u"x"_s : QString()));
+        }
+        say(u"settings memory:   outside heaps, 1 MB and more: "_s + large.join(u' '));
+        return now;
+    };
+    const auto open = [&](const QString& what) -> QQuickWindow* {
+        const int before = app.settingsOpening().count;
+        app.showSettings();
+        QElapsedTimer waited;
+        waited.start();
+        while (waited.elapsed() < 5000 && (app.settingsOpening().count == before || app.settingsOpening().firstFrameMs < 0))
+            pump(10);
+        pump(300);
+        say(u"settings memory: %1: %2, first frame after %3 ms"_s.arg(what, app.settingsOpening().reused ? u"shown again"_s : u"made"_s)
+                .arg(app.settingsOpening().firstFrameMs));
+        return productionSettingsWindow();
+    };
+    QJsonArray openings;
+    const auto opened = [&](const QString& what) {
+        openings.append(QJsonObject {{u"what"_s, what}, {u"reused"_s, app.settingsOpening().reused},
+            {u"first_frame_ms"_s, app.settingsOpening().firstFrameMs}});
+    };
+
+    guiThreadIdle(2000);
+    const memory::Census before = stage(u"no settings window yet"_s);
+    QQuickWindow* window = open(u"first opening"_s);
+    if (!window)
+        return false;
+    opened(u"first"_s);
+    stage(u"opened, first page"_s);
+    const QImage first = window->grabWindow();
+    evaluateIn(window, u"loadAllPages()"_s);
+    guiThreadIdle(2000);
+    const memory::Census all = stage(u"every page made"_s);
+    app.setSettingsUnloadAfter(500);
+    window->close();
+    guiThreadIdle(200);
+    stage(u"closed"_s);
+    guiThreadIdle(5000);
+    const memory::Census away = stage(u"closed a while"_s);
+    window = open(u"opened again"_s);
+    opened(u"after it was put away"_s);
+    const bool shownAgain = window && window->isVisible()
+        && evaluateIn(window, u"currentPage === 0 && pageItem(0) !== null"_s).toBool();
+    stage(u"opened again, first page"_s);
+    // What it draws with was given up meanwhile (App::settingsPagesWentAway):
+    // made again, the window shows what it showed. Pixels that differ by more
+    // than a rounding: none but a line that tells something of now.
+    const QImage again = window ? window->grabWindow() : QImage();
+    double differing = 1;
+    if (!first.isNull() && first.size() == again.size()) {
+        const QImage a = first.convertToFormat(QImage::Format_RGB32), b = again.convertToFormat(QImage::Format_RGB32);
+        qint64 off = 0;
+        for (int y = 0; y < a.height(); ++y) {
+            const QRgb* la = reinterpret_cast<const QRgb*>(a.constScanLine(y));
+            const QRgb* lb = reinterpret_cast<const QRgb*>(b.constScanLine(y));
+            for (int x = 0; x < a.width(); ++x)
+                off += std::abs(qRed(la[x]) - qRed(lb[x])) > 24 || std::abs(qGreen(la[x]) - qGreen(lb[x])) > 24
+                    || std::abs(qBlue(la[x]) - qBlue(lb[x])) > 24;
+        }
+        differing = static_cast<double>(off) / (static_cast<double>(a.width()) * a.height());
+    }
+    const bool drawnAsBefore = differing < 0.01;
+    if (!drawnAsBefore) {
+        first.save(out.filePath(u"settings-memory-first.png"_s));
+        again.save(out.filePath(u"settings-memory-again.png"_s));
+    }
+    say(u"settings memory: drawn again after its graphics went: %1% of the pixels differ: %2"_s.arg(differing * 100, 0, 'f', 2)
+            .arg(drawnAsBefore ? u"ok"_s : u"FAILED"_s));
+    if (window)
+        window->close();
+    guiThreadIdle(5000);
+    const memory::Census awayAgain = stage(u"closed a while again"_s);
+
+    // What a closed settings window may leave behind, over what the App held
+    // before it was ever opened (--settings-memory-left, MB).
+    const double left = (static_cast<double>(away.commit) - static_cast<double>(before.commit)) / 1048576.0;
+    const double leftAgain = (static_cast<double>(awayAgain.commit) - static_cast<double>(before.commit)) / 1048576.0;
+    const double allowed = valueAfter(QCoreApplication::arguments(), u"--settings-memory-left", u"0"_s).toDouble();
+    // The card's memory, all of it back: the window's device went with its swap chain and textures.
+    const bool videoBack = away.videoDedicated + away.videoShared <= before.videoDedicated + before.videoShared + 4 * 1048576ULL;
+    if (!videoBack)
+        say(u"settings memory: FAILED: closed a while, it still holds graphics memory"_s);
+    const bool passed = shownAgain && drawnAsBefore && videoBack && (allowed <= 0 || (left <= allowed && leftAgain <= allowed));
+    say(u"settings memory: every page %1 MB over the start; closed a while %2 MB over it, again %3 MB%4: %5"_s
+            .arg(std::round((static_cast<double>(all.commit) - static_cast<double>(before.commit)) / 1048576.0)).arg(std::round(left))
+            .arg(std::round(leftAgain)).arg(allowed > 0 ? u" (allowed %1)"_s.arg(allowed) : QString(), passed ? u"passed"_s : u"FAILED"_s));
+    QFile json(out.filePath(u"settings-memory.json"_s));
+    return json.open(QIODevice::WriteOnly)
+        && json.write(QJsonDocument(QJsonObject {{u"stages"_s, stages}, {u"openings"_s, openings}, {u"left_mb"_s, std::round(left)},
+                                        {u"left_again_mb"_s, std::round(leftAgain)}, {u"passed"_s, passed}}).toJson()) > 0
+        && passed;
 }
 
 // --probe-runtime <folder> --live: the production App on the real desktop, at
@@ -16464,8 +16705,59 @@ int runLive(App& app, const QDir& out)
     return 0;
 }
 
+// --probe-runtime <folder> --window-memory <a.qml;b.qml> [--renderer d3d11] [--scale 2]
+// What a window costs by itself: each file (a Window) made, shown without
+// activation and deleted again, in an engine of its own with the app's
+// graphics settings; before, with it on show and after, this process's memory
+// and its share of the graphics cards'. For telling what of a window's cost
+// is the window (its Direct3D device, swap chain, atlas) and what its content.
+int runWindowMemory(const QStringList& args)
+{
+    const auto mb = [](std::uint64_t bytes) { return std::round(static_cast<double>(bytes) / 1048576.0 * 10) / 10; };
+    memory::Census last = memory::census(false);
+    const auto stage = [&](const QString& name) {
+        const memory::Census now = memory::census(false);
+        say(u"window memory: %1: commit %2 MB (%3), video %4 MB (%5) + %6 MB (%7)"_s.arg(name).arg(mb(now.commit))
+                .arg((static_cast<double>(now.commit) - static_cast<double>(last.commit)) / 1048576.0, 0, 'f', 1, u'+')
+                .arg(mb(now.videoDedicated))
+                .arg((static_cast<double>(now.videoDedicated) - static_cast<double>(last.videoDedicated)) / 1048576.0, 0, 'f', 1, u'+')
+                .arg(mb(now.videoShared))
+                .arg((static_cast<double>(now.videoShared) - static_cast<double>(last.videoShared)) / 1048576.0, 0, 'f', 1, u'+'));
+        last = now;
+    };
+    QQmlEngine engine;
+    pump(500);
+    stage(u"no window"_s);
+    bool ok = true;
+    for (const QString& file : valueAfter(args, u"--window-memory").split(u';', Qt::SkipEmptyParts)) {
+        QQmlComponent component(&engine, QUrl::fromLocalFile(file));
+        std::unique_ptr<QObject> object(component.create());
+        auto* window = qobject_cast<QQuickWindow*>(object.get());
+        if (!window) {
+            say(u"window memory: %1: %2"_s.arg(file, component.errorString()));
+            ok = false;
+            continue;
+        }
+        window->setFlag(Qt::WindowDoesNotAcceptFocus);
+        window->setProperty("_q_showWithoutActivating", true);
+        window->show();
+        pump(2500);
+        stage(u"%1 on show (%2x%3 at %4)"_s.arg(QFileInfo(file).fileName()).arg(window->width()).arg(window->height())
+                  .arg(window->devicePixelRatio()));
+        window->hide();
+        pump(1000);
+        stage(u"%1 hidden"_s.arg(QFileInfo(file).fileName()));
+        object.reset();
+        pump(1500);
+        stage(u"%1 deleted"_s.arg(QFileInfo(file).fileName()));
+    }
+    return ok ? 0 : 4;
+}
+
 int runRuntime(const QStringList& args)
 {
+    if (args.contains(u"--window-memory"_s))
+        return runWindowMemory(args);
     const QDir out(valueAfter(args, kRuntimeFlag));
     const QString probeHotkey = valueAfter(args, u"--probe-hotkey", u"Ctrl+Alt+Shift+F24"_s);
     // Redirect this process's HKCU writes too: profiles alone do not isolate
@@ -16811,6 +17103,7 @@ int runRuntime(const QStringList& args)
                     || args.contains(u"--duplicates-check"_s) || args.contains(u"--field-focus-check"_s)
                     || args.contains(u"--full-screen-game-check"_s)
                     || args.contains(u"--launcher-settings-check"_s) || args.contains(u"--launcher-open-check"_s)
+                    || args.contains(u"--settings-memory-check"_s)
                     || args.contains(u"--pinned-stacking-check"_s))
                 && profile.fileName().startsWith(u"WinShun-preview-")
                 && QDir::cleanPath(profile.absolutePath()).compare(QDir::cleanPath(QDir::tempPath()), Qt::CaseInsensitive) == 0)
@@ -16825,7 +17118,8 @@ int runRuntime(const QStringList& args)
         QElapsedTimer since;
         since.start();
         if (!app.start({.background = true, .clipboardDisplayProbe = args.contains(u"--clipboard-display-probe"_s),
-                .settingsProbe = args.contains(u"--settings-reopen-check"_s) || args.contains(u"--settings-motion-check"_s)}))
+                .settingsProbe = args.contains(u"--settings-reopen-check"_s) || args.contains(u"--settings-motion-check"_s)
+                    || args.contains(u"--settings-memory-check"_s)}))
             return 4;
         if (args.contains(u"--live"_s))
             return runLive(app, out); // its profile: probeProfile
@@ -16897,6 +17191,8 @@ int runRuntime(const QStringList& args)
             return checkDuplicates(app, args, out) ? 0 : 4; // its profile likewise
         if (args.contains(u"--settings-reopen-check"_s))
             return probeSettingsReopen(app, args, out, report) ? 0 : 4;
+        if (args.contains(u"--settings-memory-check"_s))
+            return probeSettingsMemory(app, out) ? 0 : 4; // its profile likewise
         if (args.contains(u"--settings-motion-check"_s))
             return checkSettingsMotion(app, args, out) ? 0 : 4; // its profile likewise
         if (args.contains(u"--clipboard-shell-probe"_s)) {

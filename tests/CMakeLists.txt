@@ -259,6 +259,18 @@ add_test(NAME tst_settingsreopen COMMAND $<TARGET_FILE:WinShun>
 set_tests_properties(tst_settingsreopen PROPERTIES RUN_SERIAL TRUE TIMEOUT 120
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# What the settings window leaves behind once it was closed a while (GitHub
+# #500): every page made, closed, then its pages, what it draws with and the
+# heap's freed blocks have gone back. No more than 170 MB over an App that
+# never opened it (242 MB before, with the graphics card's memory kept too;
+# ~110 MB now), none of the card's memory, and opened again it draws what it
+# drew. The real App, isolated, shown without activation.
+add_test(NAME tst_settingsmemory COMMAND $<TARGET_FILE:WinShun>
+    --probe-runtime "${CMAKE_CURRENT_BINARY_DIR}/settings-memory" --settings-memory-check --settings-memory-left 170
+    --settle-ms 1500 --renderer d3d11)
+set_tests_properties(tst_settingsmemory PROPERTIES RUN_SERIAL TRUE TIMEOUT 120
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # ws plugin (GitHub #251), end to end: the real ws.exe against the real App,
 # isolated (--probe-runtime) and on a pipe of the probe's own, through the
 # server, PluginCommands and the 插件 page's dialogs.

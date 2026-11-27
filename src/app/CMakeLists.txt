@@ -122,6 +122,7 @@ qt_add_executable(WinShun WIN32
     BackgroundStatus.cpp BackgroundStatus.h
     HealthMonitor.cpp HealthMonitor.h
     platform/AllocationTrace.cpp platform/AllocationTrace.h
+    platform/MemoryCensus.cpp platform/MemoryCensus.h
     platform/ProcessUsage.cpp platform/ProcessUsage.h
     platform/InputMode.cpp platform/InputMode.h
     platform/Integrity.cpp platform/Integrity.h

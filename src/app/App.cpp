@@ -4671,6 +4671,52 @@ bool App::settingsShown() const
     return m_settingsWindow && m_settingsWindow->isVisible();
 }
 
+namespace {
+
+// A window closed a while gives up what it draws with. Each window has a
+// Direct3D device, a swap chain and textures of its own (Qt's render loop
+// shares nothing between windows): ~33 MB of this process's memory and, for
+// 920 x 720 at 200%, ~60 MB of the graphics card's, which an integrated card
+// takes from the PC's own. Hidden, it kept all of it for as long as Win顺 ran.
+// Made again with the window's next frame. Only for this one release: closed
+// and opened again soon, the window is there at once, as before.
+void releaseGraphics(QQuickWindow* window)
+{
+    if (!window || window->isVisible())
+        return;
+    const bool graphics = window->isPersistentGraphics();
+    const bool sceneGraph = window->isPersistentSceneGraph();
+    window->setPersistentGraphics(false);
+    window->setPersistentSceneGraph(false);
+    window->releaseResources(); // waits for the render thread
+    window->setPersistentGraphics(graphics);
+    window->setPersistentSceneGraph(sceneGraph);
+}
+
+} // namespace
+
+// The pages are put away one per turn of the event loop, and destroy() is a
+// deleteLater: what they held is free a moment later, in the heap and still
+// in the working set. Then the JavaScript side goes (a collection before that
+// finds every object still there), and it is all given back: at once with the
+// window open (IdleTrim::freed), with the next giving back when it is closed.
+void App::settingsPagesWentAway(bool open)
+{
+    QTimer::singleShot(1s, this, [this, open] {
+        if (!m_settingsWindow || !m_qml)
+            return;
+        if (!open)
+            releaseGraphics(m_settingsWindow); // nothing if it was opened again meanwhile
+        m_qml->collectGarbage();
+        if (!m_idleTrim)
+            return;
+        if (open)
+            m_idleTrim->freed();
+        else
+            m_idleTrim->poke();
+    });
+}
+
 // Made the first time, then kept: closed, it is hidden (SettingsWindow.onClosing)
 // and puts itself back as a window made anew would be (resetForReopen). What
 // changes meanwhile is either told to its editor as it happens (the hotkeys'
@@ -4727,15 +4773,7 @@ void App::showSettingsNow(const std::function<void(QQuickWindow*)>& at)
         connect(editor, &SettingsEditor::edited, this, &App::settingsEdited);
         editor->setMonitor(m_health.get());
         connect(editor, &SettingsEditor::giveBackMemoryRequested, this, &App::giveMemoryBack);
-        // Pages put away with the window open: what they held is free in the
-        // heap and still in the working set. Given back once their objects
-        // are gone (destroy() is a deleteLater), though the window is in use.
-        connect(editor, &SettingsEditor::pagesPutAwayWhileOpen, this, [this] {
-            QTimer::singleShot(1s, this, [this] {
-                if (m_idleTrim)
-                    m_idleTrim->freed();
-            });
-        });
+        connect(editor, &SettingsEditor::pagesWentAway, this, &App::settingsPagesWentAway);
         connect(editor, &SettingsEditor::recordingHotkeyChanged, this, &App::applyHotkey);
         connect(editor, &SettingsEditor::recordingHotkeyChanged, this, &App::applyClipboardHotkeys);
         connect(editor, &SettingsEditor::recordingHotkeyChanged, this, &App::applyTaskbarHotkeys);
@@ -5076,15 +5114,14 @@ void App::showSettingsNow(const std::function<void(QQuickWindow*)>& at)
             }
         });
         // Closed for half a minute: the pages made for that opening are put
-        // away, the window and its first page stay for the next one (as quick
-        // as ever). Opened again sooner, everything is as it was left.
+        // away, and then what the window draws with (settingsPagesWentAway);
+        // the window and its first page stay for the next opening. Opened
+        // again sooner, everything is as it was left, and there at once.
         m_settingsUnload.setSingleShot(true);
         m_settingsUnload.setInterval(m_settingsUnloadMs);
-        connect(&m_settingsUnload, &QTimer::timeout, window, [this, window] {
-            if (window->isVisible())
-                return;
-            QMetaObject::invokeMethod(window, "unloadPages");
-            m_idleTrim->poke(); // what was freed and stayed in the working set
+        connect(&m_settingsUnload, &QTimer::timeout, window, [window] {
+            if (!window->isVisible())
+                QMetaObject::invokeMethod(window, "unloadPages");
         });
     } else if (opening) {
         // Shown again. A hotkey another program held may be free now: tried
