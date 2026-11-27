@@ -3227,6 +3227,18 @@
         <translation>Frequent</translation>
     </message>
     <message>
+        <source>创建时间</source>
+        <translation>Created</translation>
+    </message>
+    <message>
+        <source>来源</source>
+        <translation>Source</translation>
+    </message>
+    <message>
+        <source>%1倒序</source>
+        <translation>%1, reversed</translation>
+    </message>
+    <message>
         <source>清除最近使用记录</source>
         <translation>Clear recent items</translation>
     </message>

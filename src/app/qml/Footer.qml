@@ -6,7 +6,9 @@ import WinShun
 // On the left, how the list is chosen (Ctrl+S goes to the next): with nothing
 // typed, what was opened last or the files written last; else best match
 // first or by when last written, newest or oldest first (Ctrl+S goes round
-// these), or from the 更多 menu by name, folder, type or size (#44). Beside it a word
+// these), or from the 更多 menu by name, folder, type or size (#44); in the
+// panel its columns' headers do this, and the big pictures, which have none,
+// get the same chips for the panel's order (#483). Beside it a word
 // when there is something to say ("已复制路径"); keyboard hints on the
 // right (the three used most; the info button after them lists the rest),
 // then a button that clears the recent items (while there are some to clear),
@@ -270,13 +272,29 @@ Item {
 
     // Nothing typed: which start list. Else the order; not for a plugin
     // command's list, which is in the plugin's.
-    readonly property bool atStart: launcher.query.trim().length === 0 && launcher.scope !== Launcher.Content
+    readonly property bool atStart: !panelOrder && launcher.query.trim().length === 0 && launcher.scope !== Launcher.Content
+    // The panel's big pictures: the chips order the panel (its columns' order, Launcher.panelSortChoice).
+    readonly property bool panelOrder: launcher.panel && launcher.gallery
+    readonly property int shownSort: panelOrder ? launcher.panelSortChoice : launcher.sort
+    function chooseSort(sort: int) {
+        if (panelOrder)
+            launcher.choosePanelSort(sort)
+        else
+            launcher.sort = sort
+    }
+    // An order a column's header gave and no chip has, in the last chip.
+    readonly property string columnSortLabel: {
+        const names = ({ 1: qsTr("名称"), 2: qsTr("文件夹"), 5: qsTr("类型"), 6: qsTr("创建时间"), 7: qsTr("文件夹"), 8: qsTr("来源") })
+        const name = names[launcher.panelSortKey] ?? qsTr("更多")
+        const usual = launcher.panelSortKey === 6 // the newest made first, as the header's first click
+        return launcher.panelSortDescending === usual ? name : qsTr("%1倒序").arg(name)
+    }
 
     Choices {
         id: order
         objectName: "footerOrder" // the previews click its last chip
         // Not at the start with no start list (set so in the settings, GitHub #24).
-        visible: footer.launcher.pluginKeyword.length === 0 && !footer.launcher.panel // the panel's columns order it
+        visible: (footer.panelOrder || (footer.launcher.pluginKeyword.length === 0 && !footer.launcher.panel)) // the panel's columns order it, the big pictures have none
                  && footer.launcher.scope !== Launcher.Apps // the apps' own order: by use, or by name
                  && !(footer.atStart && footer.launcher.startList === Launcher.NoStartList)
         anchors.left: parent.left
@@ -284,11 +302,12 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         glyph: footer.atStart ? "\uE81C" : "\uE8CB" // History, Sort
         // Last chip: "更多", or the name of the sort chosen from its menu (#44).
-        labels: footer.compact ? [footer.compactSortLabels[footer.atStart ? footer.launcher.startList : footer.launcher.sort] ?? qsTr("更多")]
+        labels: footer.compact ? [footer.compactSortLabels[footer.atStart ? footer.launcher.startList : footer.shownSort] ?? qsTr("更多")]
                               : footer.atStart ? [qsTr("最近打开"), qsTr("最近修改")]
                                  : [qsTr("最匹配"), qsTr("最新"), qsTr("最早"),
-                                    footer.moreSorts ? footer.sortChipLabels[footer.launcher.sort - 3] : qsTr("更多")]
-        current: footer.compact ? 0 : footer.atStart ? footer.launcher.startList : footer.moreSorts ? 3 : footer.launcher.sort
+                                    !footer.moreSorts ? qsTr("更多")
+                                    : footer.shownSort < 0 ? footer.columnSortLabel : footer.sortChipLabels[footer.shownSort - 3]]
+        current: footer.compact ? 0 : footer.atStart ? footer.launcher.startList : footer.moreSorts ? 3 : footer.shownSort
         tip: footer.atStart ? qsTr("不输入时列出最近打开的，或最近修改的文件")
                               : qsTr("最匹配的在前，或按修改时间：最新的在前、最早的在前；“更多”里还能按名称、所在文件夹、类型、大小排")
         onActivated: (index) => {
@@ -299,7 +318,7 @@ Item {
             else if (index === 3)
                 sortMenu.open = !sortMenu.open // opened by it, closed by it again
             else
-                footer.launcher.sort = index
+                footer.chooseSort(index)
         }
         Component.onCompleted: footer.frame.addControl(order) // buttons, not part of the drag area
     }
@@ -311,28 +330,31 @@ Item {
     // On the chip the short word, so a long name does not push the key hints
     // out of the bar (#44); the menu has the full ones.
     readonly property var sortChipLabels: [qsTr("名称"), qsTr("文件夹"), qsTr("类型"), qsTr("大在前"), qsTr("小在前"), qsTr("常打开")]
-    readonly property bool moreSorts: launcher.sort >= Launcher.ByName
+    readonly property bool moreSorts: shownSort >= Launcher.ByName || shownSort < 0
+    // The panel has no count of what was opened to sort by.
+    readonly property var menuSortLabels: panelOrder ? sortLabels.slice(0, 5) : sortLabels
 
     DropMenu {
         id: sortMenu
         anchor: order
         menuWidth: 150
-        entries: (footer.compact ? footer.compactSortLabels : footer.sortLabels).map((label, i) => ({
+        entries: (footer.compact ? footer.compactSortLabels : footer.menuSortLabels).map((label, i) => ({
             text: label,
-            glyph: (footer.compact ? (footer.atStart ? footer.launcher.startList : footer.launcher.sort) === i
-                                  : footer.launcher.sort === i + Launcher.ByName) ? "" : ""
+            glyph: (footer.compact ? (footer.atStart ? footer.launcher.startList : footer.shownSort) === i
+                                  : footer.shownSort === i + Launcher.ByName) ? "" : ""
         }))
         onActivated: (index) => {
             if (footer.compact && footer.atStart)
                 footer.launcher.startList = index
             else
-                footer.launcher.sort = (footer.compact ? 0 : Launcher.ByName) + index
+                footer.chooseSort((footer.compact ? 0 : Launcher.ByName) + index)
         }
     }
 
     Connections {
         target: footer.launcher
         function onSortChanged() { sortMenu.open = false } // Ctrl+S while it is open
+        function onPanelSortChanged() { sortMenu.open = false }
     }
 
     Row {

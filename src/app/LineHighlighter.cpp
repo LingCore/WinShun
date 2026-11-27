@@ -60,6 +60,15 @@ void LineHighlighter::setMarkColor(const QColor& color)
     rehighlight();
 }
 
+void LineHighlighter::setMarkFill(const QColor& color)
+{
+    if (color == m_markFill)
+        return;
+    m_markFill = color;
+    emit markFillChanged();
+    rehighlight();
+}
+
 void LineHighlighter::setBasePixelSize(int size)
 {
     if (m_basePixelSize == size)
@@ -104,7 +113,7 @@ void LineHighlighter::highlightBlock(const QString& text)
         }
         setFormat(start, count, format);
     }
-    // The words searched for: their colour and weight over whatever the span is.
+    // The words searched for: their colour, fill and weight over whatever the span is.
     for (qsizetype i = 0; i + 1 < m_marks.size(); i += 2) {
         const int start = m_marks[i];
         const int end = std::min(start + m_marks[i + 1], length);
@@ -112,6 +121,8 @@ void LineHighlighter::highlightBlock(const QString& text)
             QTextCharFormat marked = format(at);
             if (m_markColor.isValid())
                 marked.setForeground(m_markColor);
+            if (m_markFill.isValid())
+                marked.setBackground(m_markFill);
             marked.setFontWeight(QFont::Bold);
             setFormat(at, 1, marked);
         }

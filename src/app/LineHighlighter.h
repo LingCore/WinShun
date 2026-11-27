@@ -12,7 +12,9 @@ namespace ws {
 // The colours of one row of the preview's text (GitHub #291): the spans the
 // scanner found for the line (core/SyntaxSpans) and the places of the words
 // searched for, drawn over a TextEdit's plain text, so positions in the row
-// stay those of the file (the mouse's pick, Ctrl+C).
+// stay those of the file (the mouse's pick, Ctrl+C). The words searched for
+// get a marker's fill under them as well (GitHub #482): among the colours of
+// code a colour of their own was one more colour.
 class LineHighlighter : public QSyntaxHighlighter {
     Q_OBJECT
     QML_ELEMENT
@@ -24,6 +26,7 @@ class LineHighlighter : public QSyntaxHighlighter {
     // By syntax::Kind; an invalid one leaves the text's own colour.
     Q_PROPERTY(QList<QColor> colors READ colors WRITE setColors NOTIFY colorsChanged FINAL)
     Q_PROPERTY(QColor markColor READ markColor WRITE setMarkColor NOTIFY markColorChanged FINAL)
+    Q_PROPERTY(QColor markFill READ markFill WRITE setMarkFill NOTIFY markFillChanged FINAL) // invalid: none
     Q_PROPERTY(int basePixelSize READ basePixelSize WRITE setBasePixelSize NOTIFY basePixelSizeChanged FINAL) // headings are larger
 
 public:
@@ -39,6 +42,8 @@ public:
     void setColors(const QList<QColor>& colors);
     QColor markColor() const { return m_markColor; }
     void setMarkColor(const QColor& color);
+    QColor markFill() const { return m_markFill; }
+    void setMarkFill(const QColor& color);
     int basePixelSize() const { return m_basePixelSize; }
     void setBasePixelSize(int size);
 
@@ -48,6 +53,7 @@ signals:
     void marksChanged();
     void colorsChanged();
     void markColorChanged();
+    void markFillChanged();
     void basePixelSizeChanged();
 
 protected:
@@ -59,6 +65,7 @@ private:
     QList<int> m_marks;
     QList<QColor> m_colors;
     QColor m_markColor;
+    QColor m_markFill;
     int m_basePixelSize = 0;
 };
 

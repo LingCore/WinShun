@@ -4589,6 +4589,25 @@ void Launcher::sortBy(int key)
         // Names and paths up (a to z); sizes and times down (the largest, the newest first).
         order = {sortKey, sortKey == SortKey::Size || sortKey == SortKey::Modified || sortKey == SortKey::Created};
     }
+    setPanelSort(order);
+}
+
+int Launcher::panelSortChoice() const
+{
+    for (int sort = BestMatch; sort < MostOpened; ++sort) {
+        if (columnOrder(static_cast<Sort>(sort)) == m_panelSort)
+            return sort;
+    }
+    return -1;
+}
+
+void Launcher::choosePanelSort(int sort)
+{
+    setPanelSort(columnOrder(static_cast<Sort>(std::clamp(sort, int(BestMatch), int(MostOpened)))));
+}
+
+void Launcher::setPanelSort(SortOrder order)
+{
     if (order == m_panelSort)
         return;
     m_panelSort = order;

@@ -171,6 +171,14 @@ Item {
             : ["#636C76", "#116329", "#953800", "#8250DF", "#0550AE", "#0550AE", "#8250DF",
                Theme.text, Theme.text, Theme.text, Theme.text, Theme.text, "#953800", "#0969DA", Theme.subtext, Theme.faint]
 
+        // The words searched for (GitHub #482): a marker's fill with the
+        // text's own colour on it, bold. A colour alone was one more among
+        // the colours of code (a blue word in a blue string). Both read
+        // on the fill at 4.5:1 or more; the line of the first of them,
+        // which is brought into sight, has a band across the card.
+        readonly property color markFill: Theme.dark ? "#7A5A00" : "#FFE08A"
+        readonly property color markText: Theme.dark ? "#FFFFFF" : "#1B1B1B"
+
         Connections {
             target: body.preview
             function onContentChanged() {
@@ -196,6 +204,12 @@ Item {
             readonly property int pickTo: !inPick ? 0 : index === lines.toRow ? lines.toPos : lineText.length
             width: lines.width
             height: lineText.height
+
+            Rectangle { // the line the list's match is on
+                anchors.fill: parent
+                visible: (body.preview.revision, line.index === body.preview.firstMarkRow)
+                color: Theme.hover
+            }
 
             function positionAt(x: real, y: real): int {
                 const p = lines.mapToItem(lineText, x, y)
@@ -239,7 +253,8 @@ Item {
                 spans: (body.preview.revision, body.preview.spansAt(line.index))
                 marks: (body.preview.revision, body.preview.marksAt(line.index))
                 colors: lines.syntaxColors
-                markColor: Theme.accent
+                markColor: lines.markText
+                markFill: lines.markFill
                 basePixelSize: lineFont.font.pixelSize
             }
         }

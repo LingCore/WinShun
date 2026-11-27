@@ -304,6 +304,10 @@ class Launcher : public QObject {
     // 3 size, 4 modified) and its direction (sortBy).
     Q_PROPERTY(int panelSortKey READ panelSortKey NOTIFY panelSortChanged FINAL)
     Q_PROPERTY(bool panelSortDescending READ panelSortDescending NOTIFY panelSortChanged FINAL)
+    // The same as one of the footer's sorts (Sort), which order the big
+    // pictures: they have no column headers (GitHub #483). -1: an order only
+    // a header gives (names from z to a, by when made).
+    Q_PROPERTY(int panelSortChoice READ panelSortChoice NOTIFY panelSortChanged FINAL)
     // How many files and folders the last name search found in all (the
     // panel's footer says so); 0 while not known.
     Q_PROPERTY(int totalMatches READ totalMatches NOTIFY statusChanged FINAL)
@@ -979,6 +983,9 @@ public:
     // A column's header clicked: by it (name and path up, size and time
     // down); clicked again, the other way round. 0: as ranked.
     Q_INVOKABLE void sortBy(int key);
+    int panelSortChoice() const;
+    // One of the footer's sorts for the panel (most opened: as ranked).
+    Q_INVOKABLE void choosePanelSort(int sort);
     int totalMatches() const { return static_cast<int>(std::min<qint64>(m_totalMatches, 1'000'000'000)); }
 
 signals:
@@ -1172,6 +1179,7 @@ private:
     QStringList quickConditions() const; // the queries of the quick filters on: by their chips (the panel), or named in the box
     QJsonObject pluginFilters() const;
     void sortShownPanel(const QString& currentPath = {});
+    void setPanelSort(SortOrder order);
     QString panelKey() const;
     bool showsStartList() const; // nothing typed, and a list for it
     bool byOpenCount() const; // 打开最多 in force: typed, not the panel nor a command

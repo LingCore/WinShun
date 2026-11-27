@@ -6024,6 +6024,49 @@ void checkFileGallery(Launcher& launcher, IndexService& index, SystemCatalog& pl
         check(longest >= 128, "large previews reused a small list thumbnail");
     } else check(false, "gallery thumbnail missing");
     check(saveGrab(window, output.filePath(u"files-large-icons.png"_s)), "could not render the gallery");
+    // The big pictures have no column headers: the footer's chips order
+    // the panel, and say what its order is (GitHub #483).
+    {
+        QQuickItem* order = visualNamed(window->contentItem(), u"footerOrder"_s);
+        const auto current = [&] { return order ? order->property("current").toInt() : -1; };
+        const auto lastLabel = [&] {
+            QVariant labels = order ? order->property("labels") : QVariant();
+            if (labels.canConvert<QJSValue>())
+                labels = labels.value<QJSValue>().toVariant();
+            return labels.toStringList().value(3);
+        };
+        check(order && order->isVisible() && current() == Launcher::BestMatch, "the big pictures have no order chips in the footer");
+        if (order) {
+            // The second chip, clicked: the newest first, as the 修改时间 header's first click.
+            const QPointF at = order->mapToScene({order->width() * 0.45, order->height() / 2});
+            QMouseEvent press(QEvent::MouseButtonPress, at, window->mapToGlobal(at), Qt::LeftButton, Qt::LeftButton, {});
+            QCoreApplication::sendEvent(window, &press);
+            QMouseEvent release(QEvent::MouseButtonRelease, at, window->mapToGlobal(at), Qt::LeftButton, {}, {});
+            QCoreApplication::sendEvent(window, &release);
+            pump(150);
+        }
+        check(launcher.panelSortKey() == int(SortKey::Modified) && launcher.panelSortDescending() && current() == Launcher::NewestFirst,
+            "a click on the footer's second chip did not put the newest pictures first");
+        settle(window);
+        check(saveGrab(window, output.filePath(u"files-large-icons-order.png"_s)), "could not render the gallery's order chips");
+        launcher.switchOrder(); // Ctrl+S: the chips follow
+        check(launcher.panelSortChoice() == Launcher::OldestFirst && current() == Launcher::OldestFirst, "Ctrl+S did not move the gallery's chip");
+        launcher.choosePanelSort(Launcher::LargestFirst);
+        check(launcher.panelSortKey() == int(SortKey::Size) && launcher.panelSortDescending() && current() == 3 && lastLabel() == u"大在前",
+            "the largest first, from the menu, is not named in the last chip");
+        launcher.sortBy(int(SortKey::Name));
+        launcher.sortBy(int(SortKey::Name)); // a header clicked twice in the list: z to a, which no chip has
+        check(launcher.panelSortChoice() == -1 && current() == 3 && lastLabel() == u"名称倒序", "a header's order no chip has is not named in the last chip");
+        launcher.setGallery(false);
+        settle(window);
+        check(order && !order->isVisible(), "the panel's list has the chips as well as its headers");
+        launcher.choosePanelSort(Launcher::BestMatch);
+        launcher.setGallery(true);
+        settle(window);
+        pump(300);
+        check(current() == Launcher::BestMatch && launcher.results()->count() == 18, "the gallery did not come back as ranked");
+        say(u"gallery order: the footer's chips set and show the panel's order"_s);
+    }
     if (grid) {
         const auto key = [&](int code, Qt::KeyboardModifiers modifiers = {}, const QString& text = {}) {
             QKeyEvent event(QEvent::KeyPress, code, modifiers, text);
@@ -6338,6 +6381,28 @@ void checkFileGallery(Launcher& launcher, IndexService& index, SystemCatalog& pl
                     "the first line with the word searched for was not brought into sight");
                 if (shown)
                     check(saveGrab(shown, output.filePath(u"preview-code.png"_s)), "could not save the code's picture");
+                // The words searched for have a marker's fill under them, and
+                // the first one's line a band across the card (GitHub #482).
+                const auto filled = [&](QQuickWindow* in) {
+                    const QImage grab = in ? in->grabWindow() : QImage();
+                    const QRgb fill = lines ? lines->property("markFill").value<QColor>().rgb() : 0;
+                    int count = 0;
+                    for (int y = 0; y < grab.height(); ++y) {
+                        for (int x = 0; x < grab.width(); ++x)
+                            count += (grab.pixel(x, y) & 0xFFFFFF) == (fill & 0xFFFFFF);
+                    }
+                    return count;
+                };
+                const auto band = [&](int row) {
+                    QQuickItem* item = nullptr;
+                    if (lines)
+                        QMetaObject::invokeMethod(lines, "itemAtIndex", Q_RETURN_ARG(QQuickItem*, item), Q_ARG(int, row));
+                    const QQuickItem* first = item ? item->childItems().value(0) : nullptr;
+                    return first && first->isVisible();
+                };
+                const int codeFill = filled(shown);
+                check(codeFill > 200, "the word searched for has no marker's fill in the code");
+                check(band(filePreview.firstMarkRow()) && !band(filePreview.firstMarkRow() - 1), "the first match's line has no band, or its neighbour has one");
                 const QByteArray markdown = QString::fromUtf8(
                     "# 使用说明\n\n这是一段**很重要**的话，也有 *轻一点* 的，还有 `inline code` 和 [链接](https://example.com)。\n\n"
                     "## 第二章 安装\n\n- 第一步：下载\n- [x] 第二步：安装\n1. 有序的一项\n\n> 引用的一句话\n\n"
@@ -6358,8 +6423,21 @@ void checkFileGallery(Launcher& launcher, IndexService& index, SystemCatalog& pl
                 shown = showText(u"sample.json"_s, QString::fromUtf8(json).toUtf8(), {});
                 check(kindsOf(1).contains(5) && kindsOf(2).contains(2) && kindsOf(4).contains(4), "JSON's keys, numbers and constants are not told");
                 check(filePreview.firstMarkRow() < 0, "words marked with none searched for");
+                check(filled(shown) == 0, "a marker's fill with no word searched for");
                 if (shown)
                     check(saveGrab(shown, output.filePath(u"preview-json.png"_s)), "could not save JSON's picture");
+                // The word inside a string of its own colour (GitHub #482).
+                const QByteArray settingsJson = "[\n  {\n    \"SchemaVersion\": 5,\n    \"Name\": \"openai-compatible\",\n"
+                                                "    \"UserConfigurationId\": \"magpie\",\n    \"IsApiKeyAvailable\": true,\n"
+                                                "    \"Models\": [\n      { \"Id\": \"magpie-flash\", \"MaxInputTokens\": 1024000 }\n    ]\n  }\n]\n";
+                shown = showText(u"models.json"_s, settingsJson, {u"magpie"_s});
+                lines = shown ? visualNamed(shown->contentItem(), u"previewTextLines"_s) : nullptr;
+                const int jsonFill = filled(shown);
+                check(filePreview.firstMarkRow() == 4 && jsonFill > 200 && band(4) && !band(7),
+                    "the word in a JSON string is not marked, or the band is not on the first match's line alone");
+                if (shown)
+                    check(saveGrab(shown, output.filePath(u"preview-json-match.png"_s)), "could not save the marked JSON's picture");
+                say(u"preview marks: %1 px of fill in the code, %2 in the JSON"_s.arg(codeFill).arg(jsonFill));
                 // A plain text file: no colours of its own, the words still marked.
                 shown = showText(u"plain.txt"_s, "int x = 1; // not code\nthe chapter here\n", {u"chapter"_s});
                 check(kindsOf(0).isEmpty() && filePreview.firstMarkRow() == 1, "a plain text file got colours, or lost its marks");
