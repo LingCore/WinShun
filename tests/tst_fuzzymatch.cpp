@@ -416,6 +416,104 @@ private slots:
         QVERIFY(learned.value(u"test.si"_s) > learned.value(u"test.rts"_s));
     }
 
+    // "tim" with fuzzy always on, System Informer a favorite: favorites that
+    // match come first, but one only guessed (s-y-s-T-e-m I-n-f-o-r-M-e-r)
+    // is not what was typed, whether it is an app, or a folder the index
+    // does not hold.
+    void favoriteOnlyGuessedIsNotPutFirst()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString folder = QDir::toNativeSeparators(dir.filePath(u"System Informer"_s));
+        QVERIFY(QDir().mkpath(folder));
+        IndexService::Options opts;
+        opts.content.enabled = false;
+        IndexService service(dir.filePath(u"index"_s), opts);
+
+        AppCatalog apps;
+        auto appList = std::make_shared<AppList>();
+        const auto add = [&appList](const QString& name, const QString& id) {
+            AppInfo app;
+            app.name = name;
+            app.id = id;
+            app.prepare();
+            appList->push_back(app);
+            return app.launchPath();
+        };
+        const QString informer = add(u"System Informer"_s, u"test.si"_s);
+        const QString tim = add(u"TIM"_s, u"test.tim"_s);
+        const QString timer = add(u"Timer"_s, u"test.timer"_s);
+        apps.setApps(appList);
+
+        SearchEngine engine(&service, &apps, nullptr);
+        QSignalSpy spy(&engine, &SearchEngine::resultsReady);
+        History history(dir.filePath(u"history.json"_s));
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        FavoriteList favorites {{Favorite::Kind::App, informer, u"System Informer"_s, {}}};
+        const auto run = [&](const QString& text, FuzzyMode mode, qint64 when) -> QStringList {
+            SearchEngine::Request req;
+            req.text = text;
+            req.fuzzyMode = mode;
+            req.limit = 50;
+            req.favorites = favorites;
+            req.history = history.ranked(text, when);
+            req.historyAffinity = history.affinities(text, when);
+            spy.clear();
+            engine.submit(std::move(req));
+            if (spy.isEmpty() && !spy.wait(5000))
+                return {};
+            QStringList rows;
+            for (const SearchResult& r : spy.first().at(1).value<SearchResults>())
+                rows.append(r.path + (r.favorite ? u"*"_s : QString()) + (r.fuzzy ? u"~"_s : QString()));
+            return rows;
+        };
+        const auto text = [](const QStringList& rows) { return qPrintable(rows.join(u", "_s)); };
+
+        // Named as typed, the favorite is first, in every mode.
+        for (const FuzzyMode mode : {FuzzyMode::Off, FuzzyMode::Fallback, FuzzyMode::On}) {
+            const QStringList rows = run(u"sys"_s, mode, now);
+            QVERIFY2(rows.value(0) == informer + u"*"_s, text(rows));
+        }
+        // Guessed, it stays where guesses are: listed, marked, below TIM.
+        {
+            const QStringList rows = run(u"tim"_s, FuzzyMode::On, now);
+            QVERIFY2(rows.value(0) == tim, text(rows));
+            QVERIFY2(rows.contains(informer + u"*~"_s), text(rows));
+        }
+        // The same of a favorite folder outside the index.
+        favorites = {{Favorite::Kind::Folder, folder, u"System Informer"_s, {}}};
+        {
+            const QStringList rows = run(u"tim"_s, FuzzyMode::On, now);
+            QVERIFY2(rows.value(0) == tim, text(rows));
+            QVERIFY2(run(u"informer"_s, FuzzyMode::On, now).value(0) == folder + u"*"_s, text(rows));
+        }
+        // Opened every day from "sys": use alone does not lift the guess
+        // either, with no favorites,
+        favorites.clear();
+        for (int i = 0; i < 30; ++i)
+            history.record(informer, u"sys"_s, now - i * 3'600'000LL);
+        {
+            const QStringList rows = run(u"tim"_s, FuzzyMode::On, now);
+            QVERIFY2(rows.value(0) == tim, text(rows));
+            QVERIFY2(rows.contains(informer + u"~"_s), text(rows));
+        }
+        // nor when another favorite is named as typed and put first.
+        favorites = {{Favorite::Kind::App, informer, u"System Informer"_s, {}}, {Favorite::Kind::App, timer, u"Timer"_s, {}}};
+        {
+            const QStringList rows = run(u"tim"_s, FuzzyMode::On, now);
+            QVERIFY2(rows.value(0) == timer + u"*"_s, text(rows));
+            QVERIFY2(rows.value(1) == tim, text(rows));
+            QVERIFY2(rows.contains(informer + u"*~"_s), text(rows));
+        }
+        // Chosen for "tim" itself, it is what "tim" means to this user.
+        for (int i = 0; i < 3; ++i)
+            history.record(informer, u"tim"_s, now + i);
+        {
+            const QStringList rows = run(u"tim"_s, FuzzyMode::On, now + 10);
+            QVERIFY2(rows.value(0) == informer + u"*~"_s, text(rows));
+        }
+    }
+
     void searchEngineEndToEndModes()
     {
         QTemporaryDir dir;
