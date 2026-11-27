@@ -202,6 +202,14 @@ winget install LingCore.WinShun
 
 ### 最近更新
 
+**0.51.0**
+
+- 📌 剪贴板可以设成**打开时就钉住**，连着粘贴好几条；💻 在文件夹里打 `cmd`、`wt` 这类终端，按 `Enter` 就**开在这个文件夹里**（#430）。
+- 🔍 **预览里搜的词垫上底色**，第一处所在的行整行衬出（#482）；🖼️ 面板**大图模式可以排序**（#483）；🔌 翻译、按意思找、云备份的卡片上有**“测试连接”**（#495）。
+- 🛠️ **改进** 模糊匹配打 `tim` 先出 TIM；截图打码点一行字更准（#499）；演示时黑板不再变白（#485）；便携版的 Total Commander 关着也能用。
+
+详见 [0.51.0 发布说明](docs/release-notes/v0.51.0.md)。
+
 **0.50.0**
 
 - 🧮 截图**公式识别**：框住公式按 `Shift+F`，转成 LaTeX，复制成 Word 公式、Markdown 或 Typst，模型在本机运行；⌨️ 鼠标手势可以**按住 Ctrl、Alt、Shift 画**出另外的手势（#472）。
@@ -614,6 +622,14 @@ Standard and portable packages install enhanced text recognition on demand. Open
 </details>
 
 ### What's new
+
+**0.51.0**
+
+- 📌 The clipboard can **open pinned**, for pasting several entries in a row; 💻 typing `cmd`, `wt` and the like in a folder, `Enter` **opens the terminal in that folder** (#430).
+- 🔍 **Searched words get a fill in the preview**, the first one's line a band (#482); 🖼️ the panel's **large icons can be ordered** (#483); 🔌 Translate, Search by meaning and Cloud backup have **Test connection** on their cards (#495).
+- 🛠️ **Improved** `tim` with fuzzy matching finds TIM first; a click to hide a line of text in a capture is surer (#499); the presenter's black board stays black (#485); a portable Total Commander works while closed.
+
+See the [0.51.0 release notes](docs/release-notes/v0.51.0.md).
 
 **0.50.0**
 

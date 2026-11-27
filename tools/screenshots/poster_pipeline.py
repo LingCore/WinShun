@@ -29,9 +29,13 @@ def capture_previews(
     only=None,
     scale: str = "2",
     known_warnings=(KNOWN_FRAME_WARNING,),
+    accepted_codes=(2,),
     timeout: int = 600,
 ) -> None:
-    """Run isolated WinShun preview/probe commands into a fresh work directory."""
+    """Run isolated WinShun preview/probe commands into a fresh work directory.
+
+    A non-zero exit passes only with a code in accepted_codes (2 = warnings; add 4 for a run whose
+    other checks fail on this screen) and every WARNING line in preview.log among known_warnings."""
     exe = exe.resolve(strict=True)
     work = work.resolve()
     if work.exists():
@@ -62,7 +66,7 @@ def capture_previews(
                 lines = log_path.read_text(encoding="utf-8").splitlines() if log_path.is_file() else []
                 warnings = [line for line in lines if line.startswith("WARNING:")]
                 if (
-                    result.returncode != 2
+                    result.returncode not in accepted_codes
                     or not warnings
                     or any(not any(k in line for k in known_warnings) for line in warnings)
                 ):
