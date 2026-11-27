@@ -1125,6 +1125,71 @@ private slots:
         QCOMPARE(reader.scans, 2);
     }
 
+    // GitHub #499: a click that slipped a few pixels still hides the line (it
+    // made a speck of a box, selected, that then took the next clicks), and
+    // a click on a hidden line with another style chosen changes its style.
+    void textLineClickThatSlippedAndAnotherStyle()
+    {
+        FakeReader reader;
+        AnnotationModel m;
+        m.setSmartHooks(reader.hooks());
+        const QImage base = noiseImage(QSize(400, 300), 3);
+        m.begin(base, 1.0, StyleMemory());
+        const QRect selection(30, 40, 200, 160);
+        m.setSelection(selection);
+        QTRY_COMPARE_WITH_TIMEOUT(reader.scans, 1, 1500);
+        reader.answer(phoneLines());
+        m.setTool(toolIndex(Kind::Redact));
+        const QPoint onFirst = selection.topLeft() + QPoint(60, 30);
+        const QPoint onSecond = selection.topLeft() + QPoint(60, 70);
+        m.pointerAt(onFirst);
+        const QRect firstBox = m.textTarget().toRect();
+        QVERIFY(!firstBox.isEmpty());
+        const auto slip = [&m](QPoint at, QPoint by) {
+            press(m, at);
+            m.move(at + by, {});
+            m.release(at + by);
+        };
+        slip(onFirst, QPoint(3, 2));
+        QCOMPARE(m.itemCount(), 1);
+        QCOMPARE(itemBox(m.document().items[0]), firstBox);
+        QCOMPARE(m.selectedCount(), 0);
+        QCOMPARE(m.document().items[0].style.redact, RedactMode::Mosaic);
+        // Another style: the next line gets it, the first one stays hidden as it was.
+        m.setPanel(QVariantMap {{u"mode"_s, u"blur"_s}});
+        QCOMPARE(m.document().items[0].style.redact, RedactMode::Mosaic);
+        slip(onSecond, QPoint(-2, 3));
+        QCOMPARE(m.itemCount(), 2);
+        const auto styleOn = [&m](const QRect& box) -> std::optional<RedactMode> {
+            for (const Item& item : m.document().items) {
+                if (itemBox(item) == box)
+                    return item.style.redact;
+            }
+            return std::nullopt;
+        };
+        QCOMPARE(styleOn(firstBox), std::optional(RedactMode::Mosaic));
+        const QImage both = m.composed();
+        QVERIFY(both.pixel(onFirst) != base.pixel(onFirst) || both.pixel(onFirst + QPoint(7, 3)) != base.pixel(onFirst + QPoint(7, 3)));
+        // A click on the first, hidden with the old style: it takes the new one; the next click shows it again.
+        m.pointerAt(onFirst);
+        QVERIFY(!m.textTargetHidden());
+        click(m, onFirst);
+        QCOMPARE(m.itemCount(), 2);
+        QCOMPARE(styleOn(firstBox), std::optional(RedactMode::Blur));
+        QVERIFY(m.textTargetHidden());
+        click(m, onFirst);
+        QCOMPARE(m.itemCount(), 1);
+        m.undo();
+        QCOMPARE(styleOn(firstBox), std::optional(RedactMode::Blur));
+        m.undo();
+        QCOMPARE(styleOn(firstBox), std::optional(RedactMode::Mosaic));
+        // Farther than a slip is the tool's own box, small as it is.
+        const int before = m.itemCount();
+        slip(onFirst, QPoint(9, 0));
+        QCOMPARE(m.itemCount(), before + 1);
+        QVERIFY(itemBox(m.document().items.last()) != firstBox || m.selectedCount() == 1);
+    }
+
     // The tool's remembered style is used (not a brush), and the editing window scans the crop.
     void smartRedactUsesTheToolsStyleAndTheEditorsCrop()
     {

@@ -1955,7 +1955,11 @@ void AnnotationModel::finishGesture()
         d->marqueeBox = QRect(); // the objects it touched stay selected
     // The redaction tool clicked, not dragged, on a line of the text that
     // was read: the line is hidden, or shown again (GitHub #129).
-    if (gesture == Gesture::Draw && command && shortDrag && d->before.kind == Kind::Redact) {
+    // A hand slips a few pixels in a click: on a line that is a click still,
+    // not a speck of a box that then takes the next clicks (GitHub #499).
+    const QPoint slipped = end - d->pressAt;
+    const bool lineClick = shortDrag || std::max(std::abs(slipped.x()), std::abs(slipped.y())) <= 2 * dragStart();
+    if (gesture == Gesture::Draw && command && lineClick && d->before.kind == Kind::Redact) {
         if (const std::optional<QRect> line = textLineAt(d->pressAt)) {
             if (applied)
                 touched(command->revert(m_document));
@@ -3272,22 +3276,38 @@ const annot::Item* AnnotationModel::textLineRedaction(const QRect& box) const
     return nullptr;
 }
 
+// What a click on the line in `box` hides it with: the tool's remembered
+// style, as a box (as 智能打码 puts them).
+annot::Style AnnotationModel::textLineStyle(const QRect& box) const
+{
+    annot::Style style = m_styles.forTool(Kind::Redact, dpr());
+    style.shape = annot::RedactShape::Box;
+    style.width = annot::Style {}.width;
+    style.cell = std::max(style.cell, int(std::lround(0.3 * box.height())));
+    return style;
+}
+
 void AnnotationModel::toggleTextLine(const QRect& box)
 {
     m_picked.clear();
+    const annot::Style style = textLineStyle(box);
     if (const annot::Item* there = textLineRedaction(box)) {
+        // Hidden with another style than the one chosen now: the click is for
+        // the new style, not to show the line again (GitHub #499).
+        if (there->style != style) {
+            auto restyle = std::make_unique<annot::Restyle>(m_document, QList<quint32> {there->id}, QList<annot::Style> {style});
+            restyle->merge = false;
+            push(std::move(restyle));
+            return;
+        }
         auto remove = std::make_unique<annot::RemoveItems>(QList<quint32> {there->id});
         remove->label = QCoreApplication::translate("Annotation", "取消打码");
         push(std::move(remove));
         return;
     }
-    // In the tool's remembered style, as a box (as 智能打码 puts them).
     annot::Item item;
     item.kind = Kind::Redact;
-    item.style = m_styles.forTool(Kind::Redact, dpr());
-    item.style.shape = annot::RedactShape::Box;
-    item.style.width = annot::Style {}.width;
-    item.style.cell = std::max(item.style.cell, int(std::lround(0.3 * box.height())));
+    item.style = style;
     item.seed = QRandomGenerator::global()->generate64();
     item.points = annot::boxPoints(box);
     auto add = std::make_unique<annot::AddItems>(QList<annot::Item> {item});
@@ -3308,7 +3328,11 @@ QRectF AnnotationModel::textTarget() const
 bool AnnotationModel::textTargetHidden() const
 {
     const QRectF target = textTarget();
-    return !target.isEmpty() && textLineRedaction(target.toRect());
+    if (target.isEmpty())
+        return false;
+    // Only when the next click shows it again (toggleTextLine()).
+    const annot::Item* there = textLineRedaction(target.toRect());
+    return there && there->style == textLineStyle(target.toRect());
 }
 
 } // namespace ws::capture

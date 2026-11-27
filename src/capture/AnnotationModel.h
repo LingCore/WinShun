@@ -493,6 +493,7 @@ private:
     const QList<RedactHit>& smartHits() const;
     std::optional<QRect> textLineAt(QPoint p) const;
     const annot::Item* textLineRedaction(const QRect& box) const;
+    annot::Style textLineStyle(const QRect& box) const;
     void toggleTextLine(const QRect& box);
     void reset();
     void sync();
