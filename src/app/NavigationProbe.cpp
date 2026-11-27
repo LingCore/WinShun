@@ -3225,6 +3225,26 @@ bool checkNavigationSettings(QQuickWindow* window, SettingsEditor* editor, const
     saved.load();
     check(saved.folderMenuFavoritesInline == 0 && saved.folderMenuRecentInline == 0 && saved.folderMenuWindowsInline == 20,
         u"submenu restores favorites and recent-folders submenus without changing open windows"_s);
+    // GitHub #493: the menu's rows go with its switch, as under every other
+    // switch, and a group's own rows with the group; none stays greyed out.
+    auto* filesSwitch = item(window->contentItem(), u"folderMenuFilesSwitch"_s);
+    check(filesSwitch && filesSwitch->isVisible() && favoritesMode->isVisible() && actions && actions->isVisible(),
+        u"the folder menu's rows show while it is on"_s);
+    editor->setProperty("folderMenuFavorites", false);
+    settle(window);
+    check(!favoritesMode->isVisible() && recentMode->isVisible() && windowsMode->isVisible()
+            && !item(window->contentItem(), u"folderMenuFavoriteKindChoices"_s)->isVisible(),
+        u"a group not listed takes its own rows with it, the other groups' stay"_s);
+    editor->setProperty("folderMenuFavorites", true);
+    editor->setProperty("folderMenu", false);
+    settle(window);
+    check(filesSwitch && !filesSwitch->isVisible() && !favoritesMode->isVisible() && !recentMode->isVisible()
+            && !windowsMode->isVisible() && actions && !actions->isVisible(),
+        u"the folder menu turned off, its rows are gone"_s);
+    check(window->grabWindow().save(output.filePath(u"folder-menu-off.png"_s)), u"capture the folder menu turned off"_s);
+    editor->setProperty("folderMenu", true);
+    settle(window);
+    check(filesSwitch && filesSwitch->isVisible() && favoritesMode->isVisible(), u"turned on again, they are back"_s);
     check(!window->isActive(), u"settings checks keep the native window inactive"_s);
     QFile file(output.filePath(u"navigation-settings.json"_s));
     if (!file.open(QIODevice::WriteOnly)) return false;

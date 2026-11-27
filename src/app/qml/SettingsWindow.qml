@@ -6526,7 +6526,14 @@ Window {
                     id: folderMenuRow
                     title: qsTr("在资源管理器或桌面弹出文件夹快捷菜单")
                     keywords: qsTr("双击;空白;空白处;收藏;收藏夹;最近;文件夹菜单;文件夹快捷菜单;资源管理器;桌面;Listary;double-click;folder menu").split(";")
-                    unlocks: [opusMenuRow]
+                    // Off: its rows go, as under every other switch (GitHub #493).
+                    unlocks: {
+                        const rows = [folderMenuHowRow, folderMenuWhereRow, folderMenuGroupsRow, folderMenuFilesRow,
+                                      folderMenuActionsRow, opusMenuRow]
+                        for (let i = 0; i < folderMenuGroupsRow.unlocks.length; ++i) // a list property: no concat
+                            rows.push(folderMenuGroupsRow.unlocks[i])
+                        return rows
+                    }
                     description: qsTr("在空白处双击或按中键弹出常用文件夹菜单，选中后直接在当前窗口打开")
                     tip: qsTr("Listary 正在运行时会自动交给 Listary 处理，避免弹出两个菜单")
 
@@ -6540,13 +6547,13 @@ Window {
                 SettingRow {
                     id: folderMenuHowRow
                     sub: true
+                    shown: window.editor.folderMenu
                     title: qsTr("触发方式")
                     description: qsTr("至少保留一项")
                     keywords: qsTr("双击;左键;中键;鼠标;滚轮;空白;文件夹菜单;Listary;double-click;middle").split(";")
 
                     ScopeTabs {
                         multiSelect: true
-                        disabled: window.editor.folderMenu ? [] : [0, 1]
                         labels: [qsTr("双击鼠标左键"), qsTr("鼠标中键")]
                         checkedIndices: {
                             const list = []
@@ -6564,13 +6571,13 @@ Window {
                 SettingRow {
                     id: folderMenuWhereRow
                     sub: true
+                    shown: window.editor.folderMenu
                     title: qsTr("触发位置")
                     description: qsTr("至少保留一项")
                     keywords: qsTr("空白;文件夹菜单;资源管理器;桌面;位置;Listary").split(";")
 
                     ScopeTabs {
                         multiSelect: true
-                        disabled: window.editor.folderMenu ? [] : [0, 1]
                         labels: [qsTr("资源管理器"), qsTr("桌面")]
                         checkedIndices: {
                             const list = []
@@ -6588,6 +6595,14 @@ Window {
                 SettingRow {
                     id: folderMenuGroupsRow
                     sub: true
+                    shown: window.editor.folderMenu
+                    // Each group's own rows show while the group is listed.
+                    unlocks: {
+                        const rows = [folderMenuFavoriteKindsRow]
+                        for (let i = 0; i < folderMenuInlineRows.count; ++i)
+                            rows.push(folderMenuInlineRows.itemAt(i))
+                        return rows
+                    }
                     title: qsTr("菜单里列出的内容")
                     description: qsTr("至少保留一项")
                     tip: qsTr("收藏夹中包含收藏的文件夹、文件、应用和自定义命令")
@@ -6595,7 +6610,6 @@ Window {
 
                     ScopeTabs {
                         multiSelect: true
-                        disabled: window.editor.folderMenu ? [] : [0, 1, 2]
                         labels: [qsTr("收藏夹"), qsTr("最近文件夹"), qsTr("其他窗口")]
                         checkedIndices: {
                             const list = []
@@ -6615,7 +6629,7 @@ Window {
                 SettingRow {
                     id: folderMenuFavoriteKindsRow
                     sub: true
-                    readonly property bool active: window.editor.folderMenu && window.editor.folderMenuFavorites
+                    shown: window.editor.folderMenu && window.editor.folderMenuFavorites
                     title: qsTr("收藏夹里显示的类型")
                     description: qsTr("至少保留一项；未勾选的类型不再出现，应用也可在菜单里直接展开或折叠")
                     keywords: qsTr("文件夹菜单;收藏夹;收藏;类型;隐藏;过滤;文件夹;文件;应用;系统设置;自定义命令;折叠;展开;favorites;apps;hide;fold;collapse").split(";")
@@ -6647,7 +6661,6 @@ Window {
                                 objectName: "folderMenuFavoriteKind" + index
                                 dpr: window.dpr
                                 multiSelect: true
-                                disabled: folderMenuFavoriteKindsRow.active ? [] : [0]
                                 labels: [modelData.title]
                                 checkedIndices: window.editor[modelData.setting] ? [0] : []
                                 onToggled: (index, on) => window.editor[modelData.setting] = on
@@ -6657,6 +6670,7 @@ Window {
                 }
 
                 Repeater { // the menu's order: favorites, recent, open
+                    id: folderMenuInlineRows
                     model: [
                         { title: qsTr("收藏夹显示方式"), words: qsTr("文件夹菜单;直接显示收藏夹;直接显示;收藏;收藏夹;一级;二级;平铺;全部;数量;更多;展开;折叠;Listary;inline;favorites"),
                           group: "folderMenuFavorites", setting: "folderMenuFavoritesInline" },
@@ -6669,10 +6683,10 @@ Window {
                         id: inlineFoldersRow
                         required property var modelData
                         readonly property int count: window.editor[modelData.setting]
-                        readonly property bool active: window.editor.folderMenu && window.editor[modelData.group]
                         property int lastLimit: count > 0 ? count : 5
                         onCountChanged: if (count > 0) lastLimit = count
                         sub: true
+                        shown: window.editor.folderMenu && window.editor[modelData.group]
                         title: modelData.title
                         description: count === 0
                                      ? qsTr("收进二级菜单，保持顶层菜单紧凑")
@@ -6684,7 +6698,6 @@ Window {
                             objectName: inlineFoldersRow.modelData.setting + "Mode"
                             anchors.verticalCenter: parent.verticalCenter
                             dpr: window.dpr
-                            disabled: inlineFoldersRow.active ? [] : [0, 1, 2]
                             labels: [qsTr("二级菜单"), qsTr("前几个"), qsTr("全部")]
                             current: inlineFoldersRow.count === 0 ? 0 : inlineFoldersRow.count < 0 ? 2 : 1
                             onActivated: (index) => {
@@ -6697,7 +6710,6 @@ Window {
                             objectName: inlineFoldersRow.modelData.setting
                             anchors.verticalCenter: parent.verticalCenter
                             visible: inlineFoldersRow.count > 0
-                            enabled: inlineFoldersRow.active
                             width: 56
                             dpr: window.dpr
                             horizontalAlignment: TextInput.AlignHCenter
@@ -6714,7 +6726,9 @@ Window {
                 }
 
                 SettingRow { // GitHub #384
+                    id: folderMenuFilesRow
                     sub: true
+                    shown: window.editor.folderMenu
                     title: qsTr("文件夹的子列也列出文件")
                     description: qsTr("文件夹在前、文件在后，点一下文件就打开；打开、保存对话框里仍只列文件夹")
                     keywords: qsTr("文件夹菜单;文件;子列;子菜单;列出文件;打开文件;Listary;files").split(";")
@@ -6722,7 +6736,6 @@ Window {
                     ToggleSwitch {
                         objectName: "folderMenuFilesSwitch"
                         dpr: window.dpr
-                        enabled: window.editor.folderMenu
                         checked: window.editor.folderMenuFiles
                         onToggled: (on) => window.editor.folderMenuFiles = on
                     }
@@ -6731,6 +6744,7 @@ Window {
                 SettingRow { // GitHub #200
                     id: folderMenuActionsRow
                     sub: true
+                    shown: window.editor.folderMenu
                     title: qsTr("菜单里的操作")
                     description: qsTr("菜单末尾的“在此搜索”“复制路径”“收藏这个文件夹”等；没勾选的不再出现")
                     keywords: qsTr("文件夹菜单;搜索;复制路径;复制地址;copy path;命令提示符;cmd;PowerShell;收藏;设置;隐藏;search;command prompt;favorites;settings").split(";")
@@ -6754,7 +6768,6 @@ Window {
                                 objectName: "folderMenuAction" + index
                                 dpr: window.dpr
                                 multiSelect: true
-                                disabled: window.editor.folderMenu ? [] : [0]
                                 labels: [modelData.title]
                                 checkedIndices: window.editor[modelData.setting] ? [0] : []
                                 onToggled: (index, on) => window.editor[modelData.setting] = on
@@ -7181,6 +7194,7 @@ Window {
 
                 SettingRow {
                     sub: true
+                    shown: window.editor.clipboard
                     title: qsTr("记录图片")
                     keywords: qsTr("截图;图片;照片;image").split(";")
                     description: window.editor.screenshotHistory
