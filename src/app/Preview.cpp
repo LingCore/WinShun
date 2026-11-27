@@ -1565,6 +1565,81 @@ bool previewLazyPages(QQuickWindow* window, const std::function<QQuickWindow*()>
     check(madePages(window) == QList<int> {0}, u"opened: page 0 only (made %1)"_s.arg(pagesText(madePages(window))));
     check(qobject_cast<QQuickItem*>(named(window, "flick"))->property("contentHeight").toDouble() > 300, u"opened: the first page is laid out"_s);
 
+    // What few controls ever show is made the first time it is wanted, not with
+    // every control (GitHub #500: ten pages were 46,000 objects, a third of them
+    // parts nobody saw): a row's flash and highlight, its tip's "i", a button's
+    // and a switch's focus ring, a switch's glow, the system font's part of an icon.
+    {
+        const int warned = g_warnings;
+        QList<QQuickItem*> rows, buttons, switches, icons;
+        const std::function<void(QQuickItem*)> collect = [&](QQuickItem* item) {
+            if (!item->isVisible())
+                return;
+            const QByteArray type = item->metaObject()->className();
+            if (type.startsWith("SettingRow_QMLTYPE_"))
+                rows.append(item);
+            else if (type.startsWith("FlatButton_QMLTYPE_"))
+                buttons.append(item);
+            else if (type.startsWith("ToggleSwitch_QMLTYPE_"))
+                switches.append(item);
+            else if (type.startsWith("Glyph_QMLTYPE_"))
+                icons.append(item);
+            for (QQuickItem* child : item->childItems())
+                collect(child);
+        };
+        collect(window->contentItem());
+        const auto part = [](const QQuickItem* of, const char* name) { return of->property(name).value<QQuickItem*>(); };
+        const auto none = [&](const QList<QQuickItem*>& of, const char* name) {
+            return std::ranges::none_of(of, [&](const QQuickItem* item) { return part(item, name) != nullptr; });
+        };
+        check(rows.size() > 3 && buttons.size() > 0 && switches.size() > 0 && icons.size() > 10,
+            u"on demand: the page on show has %1 rows, %2 buttons, %3 switches, %4 icons"_s.arg(rows.size()).arg(buttons.size())
+                .arg(switches.size()).arg(icons.size()));
+        check(none(rows, "marks") && none(buttons, "focusRing") && none(switches, "focusRing") && none(switches, "glow"),
+            u"on demand: no row has its marks, no button or switch its focus ring, no switch its glow"_s);
+        const auto tipped = [](const QQuickItem* row) { return !row->property("tip").toString().isEmpty(); };
+        check(std::ranges::all_of(rows, [&](const QQuickItem* row) { return (part(row, "tipBadge") != nullptr) == tipped(row); }),
+            u"on demand: a tip's badge on the rows with a tip only (%1 of them)"_s.arg(std::ranges::count_if(rows, tipped)));
+        if (!rows.isEmpty()) {
+            QMetaObject::invokeMethod(rows.constFirst(), "flash");
+            settle(window, 2);
+            const QQuickItem* marks = part(rows.constFirst(), "marks");
+            check(marks && marks->parentItem() == rows.constFirst() && none(rows.mid(1), "marks"), u"on demand: a row flashed has its marks, the others none"_s);
+        }
+        const auto focusShows = [&](QQuickItem* control) {
+            control->forceActiveFocus(Qt::TabFocusReason);
+            settle(window, 2);
+            const QQuickItem* ring = part(control, "focusRing");
+            const bool shown = control->hasActiveFocus() && ring && ring->isVisible() && ring->width() > 0;
+            QMetaObject::invokeMethod(window, "clearFocus");
+            settle(window, 2);
+            return shown && !control->hasActiveFocus() && !ring->isVisible();
+        };
+        const auto tabbable = [](const QList<QQuickItem*>& of) {
+            const auto found = std::ranges::find_if(of, [](const QQuickItem* item) { return item->isEnabled() && item->activeFocusOnTab(); });
+            return found == of.cend() ? nullptr : *found;
+        };
+        if (QQuickItem* button = tabbable(buttons))
+            check(focusShows(button), u"on demand: a button with the keyboard has its ring, and it goes with the focus"_s);
+        else
+            check(false, u"on demand: no button to give the keyboard to"_s);
+        if (QQuickItem* toggle = tabbable(switches)) {
+            check(focusShows(toggle), u"on demand: a switch with the keyboard has its ring, and it goes with the focus"_s);
+            QMetaObject::invokeMethod(toggle, "pulse");
+            settle(window, 2);
+            check(part(toggle, "glow") != nullptr, u"on demand: a switch asked for what it is has its glow"_s);
+        } else {
+            check(false, u"on demand: no switch to give the keyboard to"_s);
+        }
+        // An icon is one item; only the system font's glyphs (the caption buttons) have a part beside it.
+        const auto fontDrawn = [](const QQuickItem* icon) { return icon->property("fontDrawn").toBool(); };
+        check(std::ranges::all_of(icons, [&](const QQuickItem* icon) {
+                  return fontDrawn(icon) ? part(icon, "fontPart") != nullptr : icon->childItems().isEmpty() && icon->children().isEmpty();
+              }) && std::ranges::any_of(icons, fontDrawn),
+            u"on demand: an icon is one item, the %1 drawn by the system font with their part"_s.arg(std::ranges::count_if(icons, fontDrawn)));
+        check(g_warnings == warned, u"on demand: no warnings"_s);
+    }
+
     // The ways in from elsewhere, each on a window made anew. Called as App
     // calls them (before the window is shown), they make only their own page.
     const int clipboardPage = window->property("clipboardPage").toInt();
@@ -1926,6 +2001,53 @@ bool previewPageMemory(QQuickWindow* window, const QStringList& args, const QDir
     }
     if (traced == u"all")
         sitesOf[u"all"_s] = sites(&atWindow);
+    // Every page made: what they are made of. Each object counted once, by the
+    // file that declares it (a component's own objects, not those of the
+    // components it uses) and by its type; delegates and popups are reached
+    // through the items as well, they are not QObject children of their page.
+    QJsonObject madeOf;
+    {
+        QSet<QObject*> seen;
+        QList<QObject*> open;
+        for (int page = 0; page < pageCount; ++page) {
+            if (QObject* made = pageOf(page))
+                open.append(made);
+        }
+        QHash<QString, int> byFile;
+        QHash<QString, int> byType;
+        int items = 0;
+        while (!open.isEmpty()) {
+            QObject* object = open.takeLast();
+            if (seen.contains(object))
+                continue;
+            seen.insert(object);
+            QString type = QString::fromLatin1(object->metaObject()->className());
+            if (const qsizetype cut = type.indexOf(u"_QML"_s); cut > 0)
+                type.truncate(cut);
+            ++byType[type];
+            const QQmlContext* context = qmlContext(object);
+            ++byFile[context ? context->baseUrl().fileName() : u"(none)"_s];
+            open.append(object->children());
+            if (const auto* item = qobject_cast<QQuickItem*>(object)) {
+                ++items;
+                for (QQuickItem* child : item->childItems())
+                    open.append(child);
+            }
+        }
+        const auto sorted = [](const QHash<QString, int>& counts) {
+            QList<std::pair<int, QString>> most;
+            for (auto it = counts.cbegin(); it != counts.cend(); ++it)
+                most.append({it.value(), it.key()});
+            std::ranges::sort(most, std::greater<>());
+            QJsonArray list;
+            for (const auto& [count, name] : most)
+                list.append(QJsonObject {{u"name"_s, name}, {u"count"_s, count}});
+            return list;
+        };
+        madeOf = QJsonObject {{u"objects"_s, seen.size()}, {u"items"_s, items}, {u"by_file"_s, sorted(byFile)}, {u"by_type"_s, sorted(byType)}};
+        say(u"page memory: every page made: %1 objects (%2 items) in %3 types, declared in %4 files"_s.arg(seen.size()).arg(items)
+                .arg(byType.size()).arg(byFile.size()));
+    }
     // Left for half a minute (leftPages), all but the one on show go: what stays.
     window->setProperty("leftPagesMs", 50);
     QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, 0), Q_ARG(QVariant, 0));
@@ -1951,11 +2073,112 @@ bool previewPageMemory(QQuickWindow* window, const QStringList& args, const QDir
     const bool written = file.open(QIODevice::WriteOnly | QIODevice::Truncate)
         && file.write(QJsonDocument(QJsonObject {{u"scale"_s, window->devicePixelRatio()}, {u"traced"_s, traced}, {u"stages"_s, rows},
                                         {u"heap_mb"_s, mb(walked.heapBytes)}, {u"heap_committed_mb"_s, mb(walked.heapCommitted)}, {u"outside_heaps_mb"_s, mb(walked.privateOutsideHeaps)}, {u"first_heap_committed_mb"_s, mb(atFirst.heapCommitted)}, {u"first_outside_heaps_mb"_s, mb(atFirst.privateOutsideHeaps)}, {u"heap_blocks"_s, static_cast<qint64>(walked.heapBlocks)},
-                                        {u"heap_by_size"_s, buckets}, {u"large_private_mb"_s, large}, {u"sites"_s, sitesOf}})
+                                        {u"heap_by_size"_s, buckets}, {u"large_private_mb"_s, large}, {u"made_of"_s, madeOf}, {u"sites"_s, sitesOf}})
                           .toJson()) > 0;
     say(u"page memory: heap %1 MB in %2 blocks; %3"_s.arg(mb(walked.heapBytes)).arg(walked.heapBlocks)
             .arg(written ? u"written "_s + file.fileName() : u"NOT written"_s));
     return written;
+}
+
+// ---- --preview-settings --component-memory "FlatButton;ToggleSwitch;..." ----------------
+// What one of a control costs: 200 of each made beside the settings window
+// (not shown), the heap they hold by the allocation trace and how many
+// objects each is, the dearest first; then they go. With every property at
+// its default, so a button has no words and a row no controls: what the
+// control is before anyone uses it, which is what a page pays for each.
+// Written to component-memory.json.
+bool previewComponentMemory(QQmlEngine* engine, QQuickWindow* window, const QStringList& args, const QDir& out)
+{
+    namespace trace = memory::allocationTrace;
+    constexpr int kCount = 200;
+    const auto heldBytes = [](const trace::Totals& totals) {
+        trace::Sum sum;
+        for (const auto& [stack, held] : totals) {
+            sum.bytes += held.bytes;
+            sum.blocks += held.blocks;
+        }
+        return sum;
+    };
+    const auto objectsOf = [](QObject* root) {
+        QSet<QObject*> seen;
+        QList<QObject*> open {root};
+        while (!open.isEmpty()) {
+            QObject* object = open.takeLast();
+            if (seen.contains(object))
+                continue;
+            seen.insert(object);
+            open.append(object->children());
+            if (const auto* item = qobject_cast<QQuickItem*>(object)) {
+                for (QQuickItem* child : item->childItems())
+                    open.append(child);
+            }
+        }
+        return seen.size();
+    };
+    struct Row {
+        QString name;
+        double bytes = 0;
+        double blocks = 0;
+        qsizetype objects = 0;
+    };
+    QList<Row> rows;
+    bool ok = true;
+    auto* holder = new QQuickItem(window->contentItem());
+    holder->setVisible(false);
+    holder->setSize(QSizeF(600, 400));
+    QString wanted = valueAfter(args, u"--component-memory");
+    if (QFile list(wanted); wanted.endsWith(u".txt") && list.open(QIODevice::ReadOnly)) // one a line, in a file: sources have ; and quotes
+        wanted = QString::fromUtf8(list.readAll()).remove(u'\r');
+    const QChar between = wanted.contains(u'\n') ? u'\n' : u';';
+    for (const QString& name : wanted.split(between, Qt::SkipEmptyParts)) {
+        // "qml:<source>": that source's root instead of a type of the module (what a
+        // plain Item, a Text, one binding costs: the measure the controls are held against).
+        QQmlComponent component(engine);
+        if (name.startsWith(u"qml:"))
+            component.setData("import QtQuick\nimport WinShun\n" + name.mid(4).toUtf8(), QUrl(u"qrc:/qt/qml/WinShun/qml/Measured.qml"_s));
+        else
+            component.loadFromModule(u"WinShun"_s, name);
+        const auto make = [&]() -> QObject* {
+            QObject* made = component.create(qmlContext(window));
+            if (auto* item = qobject_cast<QQuickItem*>(made)) {
+                item->setParentItem(holder);
+                item->setParent(holder);
+            }
+            return made;
+        };
+        QObject* first = make(); // the type and what it brings, loaded once: not an instance's
+        if (!first) {
+            say(u"component memory: %1 could not be made: %2"_s.arg(name, component.errorString()));
+            ok = false;
+            continue;
+        }
+        pump(50);
+        const qsizetype objects = objectsOf(first);
+        delete first;
+        pump(50);
+        engine->collectGarbage();
+        const trace::Sum before = heldBytes(trace::held());
+        QList<QObject*> made;
+        for (int i = 0; i < kCount; ++i)
+            made.append(make());
+        pump(100); // what they do once made (a Hook's part, a positioner's layout)
+        const trace::Sum after = heldBytes(trace::held());
+        rows.append({name, double(after.bytes - before.bytes) / kCount, double(after.blocks - before.blocks) / kCount, objects});
+        qDeleteAll(made);
+        pump(50);
+        engine->collectGarbage();
+    }
+    delete holder;
+    std::ranges::sort(rows, [](const Row& a, const Row& b) { return a.bytes > b.bytes; });
+    QJsonArray list;
+    for (const Row& row : rows) {
+        say(u"component memory: %1: %2 KB in %3 blocks, %4 objects"_s.arg(row.name, -22).arg(row.bytes / 1024, 0, 'f', 1)
+                .arg(row.blocks, 0, 'f', 0).arg(row.objects));
+        list.append(QJsonObject {{u"name"_s, row.name}, {u"kb"_s, std::round(row.bytes / 102.4) / 10}, {u"blocks"_s, std::round(row.blocks)},
+            {u"objects"_s, row.objects}});
+    }
+    QFile file(out.filePath(u"component-memory.json"_s));
+    return file.open(QIODevice::WriteOnly | QIODevice::Truncate) && file.write(QJsonDocument(list).toJson()) > 0 && ok;
 }
 
 int runSettings(const QStringList& args)
@@ -1971,7 +2194,8 @@ int runSettings(const QStringList& args)
     QTranslator translator;
     if (args.contains(u"--english"_s) && translator.load(u":/i18n/winshun_en.qm"_s))
         QCoreApplication::installTranslator(&translator);
-    if (args.contains(u"--page-memory-trace"_s) && !memory::allocationTrace::start()) // before anything of the window is made
+    if ((args.contains(u"--page-memory-trace"_s) || args.contains(u"--component-memory"_s))
+        && !memory::allocationTrace::start()) // before anything of the window is made
         return 4;
     say(u"starting (dark %1, scale %2)"_s.arg(dark).arg(qEnvironmentVariable("QT_SCALE_FACTOR")));
     // Where Qt came from and what the text is set in: two runs of the same
@@ -2191,6 +2415,8 @@ int runSettings(const QStringList& args)
     }
     if (args.contains(u"--page-memory"_s))
         return finish(window, previewPageMemory(window, args, out));
+    if (args.contains(u"--component-memory"_s))
+        return finish(window, previewComponentMemory(&engine, window, args, out));
     QMetaObject::invokeMethod(window, "loadAllPages");
     settle(window);
 
@@ -2415,7 +2641,7 @@ int runSettings(const QStringList& args)
                 settle(window, 2);
             }
             auto* fieldFrame = picker->property("background").value<QQuickItem*>();
-            auto* field = fieldFrame ? fieldFrame->property("built").value<QQuickItem*>() : nullptr;
+            auto* field = fieldFrame ? fieldFrame->property("item").value<QQuickItem*>() : nullptr;
             auto* content = picker->property("contentItem").value<QQuickItem*>();
             const QVariant normalInk = content ? content->property("color") : QVariant{};
             auto* innerBackground = content ? content->property("background").value<QQuickItem*>() : nullptr;
@@ -2442,7 +2668,7 @@ int runSettings(const QStringList& args)
             check(field && field->property("focused").toBool(), name + u" retains its field focus while the menu is open"_s);
             auto* list = popup->property("contentItem").value<QQuickItem*>();
             auto* background = popup->property("background").value<QQuickItem*>();
-            auto* surface = background ? background->property("built").value<QQuickItem*>() : nullptr;
+            auto* surface = background ? background->property("item").value<QQuickItem*>() : nullptr;
             check(surface && (surface->property("radius").toReal() > 0) == (settings.corners == u"round"),
                 name + u" follows the corner setting"_s);
             if (list) {
@@ -12541,7 +12767,7 @@ bool checkStyleButtons(QQmlEngine* engine, const QDir& output)
     // A component's private ids are not in its caller's QQmlContext. Inspect
     // the actual visual Hook instead of evaluating "track" from that context.
     std::function<QObject*(QQuickItem*)> findHook = [&](QQuickItem* item) -> QObject* {
-        if (item->property("built").isValid() && item->property("names").isValid()) return item;
+        if (item->property("part").isValid() && item->property("hoveredIndex").isValid()) return item; // a Hook
         for (QQuickItem* child : item->childItems())
             if (QObject* found = findHook(child)) return found;
         return nullptr;
@@ -16013,8 +16239,10 @@ bool probeSettingsReopen(App& app, const QStringList& args, const QDir& out, QJs
         say(u"settings after the first frame: made %1, pointer on %2"_s.arg(
             js(w, u"[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].filter(i => pageItem(i) !== null).join(',')"_s).toString(),
             js(w, u"String(navHovered)"_s).toString()));
+        // (The page of a category the real pointer happens to rest on is made ahead, hoverNav: not "by itself".)
         if (!allFirst)
-            check(js(w, u"[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].filter(i => pageItem(i) !== null).join(',')"_s).toString() == madeFirst,
+            check(js(w, u"[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].filter(i => pageItem(i) !== null && i !== navHovered).join(',')"_s).toString()
+                    == js(w, u"'%1'.split(',').filter(i => Number(i) !== navHovered).join(',')"_s.arg(madeFirst)).toString(),
                 u"nothing_made_after_first_frame"_s);
         if (valueAfter(args, u"--settings-type-at").isEmpty())
             js(w, u"fillInBackground()"_s);
@@ -16330,10 +16558,11 @@ bool probeSettingsReopen(App& app, const QStringList& args, const QDir& out, QJs
         check(runningInWindow(window).isEmpty(), u"unload_leaves_nothing_running"_s);
         report.insert(u"unload_commit_mb"_s, QJsonObject {{u"with_pages"_s, std::round(withPages)}, {u"after"_s, std::round(after)}});
         say(u"settings pages put away: commit with all pages %1 MB, after %2 MB"_s.arg(std::round(withPages)).arg(std::round(after)));
-        // The ten pages' heap blocks (~700,000) go back to Windows with them,
-        // and what the window draws with: ~150 MB (the heap the manifest asks
-        // for; the default one kept what was freed, and ~38 MB went back).
-        check(withPages - after > 100, u"unload_gives_memory_back"_s);
+        // The ten pages' heap blocks (~480,000) go back to Windows with them,
+        // and what the window draws with: ~95 MB at 150% (the heap the manifest
+        // asks for; the default one kept what was freed, and ~38 MB went back).
+        // It was ~150 MB while the pages were half as heavy again (GitHub #500).
+        check(withPages - after > 60, u"unload_gives_memory_back"_s);
 
         window = open([&] { app.showSettings(); }, u"after pages were put away"_s);
         check(app.settingsOpening().reused && js(window, u"currentPage === 0 && pageItem(0) !== null"_s).toBool()

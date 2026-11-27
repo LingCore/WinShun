@@ -24,9 +24,9 @@ set_target_properties(WinShunCapture PROPERTIES AUTOMOC OFF MSVC_RUNTIME_LIBRARY
 # into this one, whose URI is WinShun too (another process, so no clash).
 set(app_dir ${PROJECT_SOURCE_DIR}/src/app)
 set(shared_qml
-    Theme.qml Hook.qml UiScale.qml WindowEdge.qml HoverTip.qml DropMenu.qml Glyph.qml TitleBar.qml ToggleSwitch.qml FlatButton.qml
+    Theme.qml Hook.qml UiScale.qml WindowEdge.qml HoverTip.qml DropMenu.qml Glyph.qml GlyphFont.qml TitleBar.qml ToggleSwitch.qml ToggleGlow.qml FlatButton.qml FocusRing.qml
     InputBox.qml Caret.qml CenteredNumber.qml KeyCap.qml HotkeyRecorder.qml ListScrollBar.qml ListWheelScroll.qml
-    ScrollPixelAlignment.qml SettingsSection.qml SettingRow.qml PageTabs.qml ScopeTabs.qml)
+    ScrollPixelAlignment.qml SettingsSection.qml SettingRow.qml SettingRowMarks.qml SettingRowTip.qml PageTabs.qml ScopeTabs.qml)
 set(capture_qml)
 foreach(name IN LISTS shared_qml)
     list(APPEND capture_qml "${app_dir}/qml/${name}")

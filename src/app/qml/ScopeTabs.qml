@@ -199,146 +199,159 @@ Rectangle {
                     }
                 }
 
-                // 文件 › 文件夹: a chevron, then the smaller tab.
-                Item {
+                // 文件 › 文件夹: a chevron, then the smaller tab. Made only in the tab
+                // that has one: the settings window's choices (some 270 tabs) have
+                // none, and each carried these twenty objects unseen.
+                Loader {
                     id: sub
 
-                    readonly property int fullWidth: chevron.width + subChip.width + 6
+                    readonly property int fullWidth: item ? item.fullWidth : 0
 
-                    visible: tab.hasSub
+                    active: tab.hasSub
                     x: tab.labelWidth - 8
-                    width: fullWidth
                     height: parent.height
-                    opacity: tab.open ? 1 : 0
-                    Behavior on opacity { enabled: tabs.animate; NumberAnimation { duration: 150 } }
 
-                    Glyph {
-                        id: chevron
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 14
-                        glyph: "\uE76C" // ChevronRight
-                        size: 12
-                        color: Theme.faint
-                    }
+                    sourceComponent: Item {
+                        readonly property int fullWidth: chevron.width + subChip.width + 6
 
-                    Rectangle {
-                        id: subChip
-                        anchors.left: chevron.right
-                        anchors.leftMargin: 2
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: Math.ceil(subText.implicitWidth) + 16
-                        height: tabs.tabHeight - 8
-                        radius: Theme.controlRadius
-                        color: tab.subCurrent ? Theme.accentFill : subArea.containsMouse ? Theme.chipHover : "transparent"
+                        width: fullWidth
+                        opacity: tab.open ? 1 : 0
+                        Behavior on opacity { enabled: tabs.animate; NumberAnimation { duration: 150 } }
 
-                        Text {
-                            id: subText
-                            x: tabs.onPixel((subChip.width - width) / 2)
-                            y: tabs.onPixel((subChip.height - height) / 2)
-                            text: tabs.subLabel
-                            color: tab.subCurrent ? Theme.accentText : subArea.containsMouse ? Theme.text : Theme.subtext
-                            font.pixelSize: tabs.captionSize
-                            font.weight: tab.subCurrent ? Theme.fontStrong : Font.Normal
+                        Glyph {
+                            id: chevron
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 14
+                            glyph: "\uE76C" // ChevronRight
+                            size: 12
+                            color: Theme.faint
                         }
 
-                        MouseArea {
-                            id: subArea
-                            anchors.fill: parent
-                            anchors.margins: -4 // easier to hit than the chip itself
-                            enabled: tab.open
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: tabs.activated(tab.subCurrent ? tab.index : tabs.subValue)
+                        Rectangle {
+                            id: subChip
+                            anchors.left: chevron.right
+                            anchors.leftMargin: 2
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: Math.ceil(subText.implicitWidth) + 16
+                            height: tabs.tabHeight - 8
+                            radius: Theme.controlRadius
+                            color: tab.subCurrent ? Theme.accentFill : subArea.containsMouse ? Theme.chipHover : "transparent"
+
+                            Text {
+                                id: subText
+                                x: tabs.onPixel((subChip.width - width) / 2)
+                                y: tabs.onPixel((subChip.height - height) / 2)
+                                text: tabs.subLabel
+                                color: tab.subCurrent ? Theme.accentText : subArea.containsMouse ? Theme.text : Theme.subtext
+                                font.pixelSize: tabs.captionSize
+                                font.weight: tab.subCurrent ? Theme.fontStrong : Font.Normal
+                            }
+
+                            MouseArea {
+                                id: subArea
+                                anchors.fill: parent
+                                anchors.margins: -4 // easier to hit than the chip itself
+                                enabled: tab.open
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: tabs.activated(tab.subCurrent ? tab.index : tabs.subValue)
+                            }
                         }
                     }
                 }
 
-                // 全部 › [icon] 结束进程: the plugin command whose keyword has the list.
-                Item {
+                // 全部 › [icon] 结束进程: the plugin command whose keyword has the list
+                // (made while there is one).
+                Loader {
                     id: pluginSub
 
-                    readonly property int fullWidth: pluginChevron.width + pluginChip.width + 6
+                    readonly property int fullWidth: item ? item.fullWidth : 0
 
-                    visible: tab.hasPlugin
+                    active: tab.hasPlugin
                     x: tab.labelWidth - 8
-                    width: fullWidth
                     height: parent.height
-                    opacity: tab.pluginOpen ? 1 : 0
-                    Behavior on opacity { enabled: tabs.animate; NumberAnimation { duration: 150 } }
 
-                    Glyph {
-                        id: pluginChevron
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 14
-                        glyph: "" // ChevronRight
-                        size: 12
-                        color: Theme.faint
-                    }
+                    sourceComponent: Item {
+                        readonly property int fullWidth: pluginChevron.width + pluginChip.width + 6
 
-                    Rectangle { // current as long as it shows: the accent, as the smaller tab when current
-                        id: pluginChip
-                        anchors.left: pluginChevron.right
-                        anchors.leftMargin: 2
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 8 + pluginIconSlot.width + 6 + Math.ceil(pluginText.implicitWidth) + 8
-                        height: tabs.tabHeight - 8
-                        radius: Theme.controlRadius
-                        color: Theme.accentFill
+                        width: fullWidth
+                        opacity: tab.pluginOpen ? 1 : 0
+                        Behavior on opacity { enabled: tabs.animate; NumberAnimation { duration: 150 } }
 
-                        Item {
-                            id: pluginIconSlot
-                            x: 8
+                        Glyph {
+                            id: pluginChevron
                             anchors.verticalCenter: parent.verticalCenter
-                            width: 16
-                            height: 16
-
-                            Image { // as a row's icon (ResultRow.qml): its own device pixels, unsmoothed
-                                id: pluginImage
-                                // A glyph is drawn grey for a row: on the accent fill it is white as the words are (a logo keeps its own).
-                                readonly property bool mono: tabs.pluginIcon.startsWith("image://fileicon/glyph/")
-                                readonly property real dpr: tabs.dpr
-                                readonly property int pixels: Math.round(pluginIconSlot.width * dpr)
-
-                                x: 1 / 64
-                                y: 1 / 64
-                                width: pixels / dpr
-                                height: pixels / dpr
-                                source: tabs.pluginIcon
-                                visible: !mono
-                                sourceSize.width: pixels / dpr
-                                sourceSize.height: pixels / dpr
-                                smooth: false
-                                asynchronous: true
-                                fillMode: Image.PreserveAspectFit
-                            }
-                            MultiEffect {
-                                visible: pluginImage.mono
-                                x: pluginImage.x
-                                y: pluginImage.y
-                                width: pluginImage.width
-                                height: pluginImage.height
-                                source: pluginImage
-                                brightness: 1 // all the way to white; the shape is the glyph's alpha
-                            }
+                            width: 14
+                            glyph: "" // ChevronRight
+                            size: 12
+                            color: Theme.faint
                         }
 
-                        Text {
-                            id: pluginText
-                            x: 8 + pluginIconSlot.width + 6
-                            y: tabs.onPixel((pluginChip.height - height) / 2)
-                            text: tabs.pluginLabel
-                            color: Theme.accentText
-                            font.pixelSize: tabs.captionSize
-                            font.weight: Theme.fontStrong
-                        }
+                        Rectangle { // current as long as it shows: the accent, as the smaller tab when current
+                            id: pluginChip
+                            anchors.left: pluginChevron.right
+                            anchors.leftMargin: 2
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 8 + pluginIconSlot.width + 6 + Math.ceil(pluginText.implicitWidth) + 8
+                            height: tabs.tabHeight - 8
+                            radius: Theme.controlRadius
+                            color: Theme.accentFill
 
-                        MouseArea {
-                            anchors.fill: parent
-                            anchors.margins: -4
-                            enabled: tab.pluginOpen
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: tabs.pluginClicked()
+                            Item {
+                                id: pluginIconSlot
+                                x: 8
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 16
+                                height: 16
+
+                                Image { // as a row's icon (ResultRow.qml): its own device pixels, unsmoothed
+                                    id: pluginImage
+                                    // A glyph is drawn grey for a row: on the accent fill it is white as the words are (a logo keeps its own).
+                                    readonly property bool mono: tabs.pluginIcon.startsWith("image://fileicon/glyph/")
+                                    readonly property real dpr: tabs.dpr
+                                    readonly property int pixels: Math.round(pluginIconSlot.width * dpr)
+
+                                    x: 1 / 64
+                                    y: 1 / 64
+                                    width: pixels / dpr
+                                    height: pixels / dpr
+                                    source: tabs.pluginIcon
+                                    visible: !mono
+                                    sourceSize.width: pixels / dpr
+                                    sourceSize.height: pixels / dpr
+                                    smooth: false
+                                    asynchronous: true
+                                    fillMode: Image.PreserveAspectFit
+                                }
+                                MultiEffect {
+                                    visible: pluginImage.mono
+                                    x: pluginImage.x
+                                    y: pluginImage.y
+                                    width: pluginImage.width
+                                    height: pluginImage.height
+                                    source: pluginImage
+                                    brightness: 1 // all the way to white; the shape is the glyph's alpha
+                                }
+                            }
+
+                            Text {
+                                id: pluginText
+                                x: 8 + pluginIconSlot.width + 6
+                                y: tabs.onPixel((pluginChip.height - height) / 2)
+                                text: tabs.pluginLabel
+                                color: Theme.accentText
+                                font.pixelSize: tabs.captionSize
+                                font.weight: Theme.fontStrong
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                anchors.margins: -4
+                                enabled: tab.pluginOpen
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: tabs.pluginClicked()
+                            }
                         }
                     }
                 }

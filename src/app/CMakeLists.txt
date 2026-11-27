@@ -242,6 +242,11 @@ set(qml_files
     qml/Footer.qml
     qml/KeyHint.qml
     qml/Glyph.qml
+    qml/GlyphFont.qml
+    qml/FocusRing.qml
+    qml/ToggleGlow.qml
+    qml/SettingRowMarks.qml
+    qml/SettingRowTip.qml
     qml/SettingsWindow.qml
     qml/OnboardingRail.qml
     qml/OnboardingWindow.qml

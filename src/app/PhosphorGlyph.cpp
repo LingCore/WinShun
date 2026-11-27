@@ -1,5 +1,7 @@
 #include "PhosphorGlyph.h"
 
+#include "Phosphor.h"
+
 #include <QFont>
 #include <QHash>
 #include <QImage>
@@ -9,6 +11,7 @@
 #include <QSGImageNode>
 
 #include <cmath>
+#include <optional>
 
 namespace ws {
 
@@ -59,30 +62,87 @@ QPainterPath drawnOutline(const QString& name)
 
 constexpr qreal kDrawnGrid = 256;
 
+// An icon's outline as it is painted: the same icon at the same size, on the
+// same fraction of a pixel, is one path for all the items that show it (a
+// QPainterPath shares its elements; a settings page has the same chevron,
+// check mark and caret hundreds of times). The GUI thread only.
+struct PathKey {
+    QString family;
+    QString text;
+    int em = 0; // device pixels, in 64ths
+    int left = 0; // the em's place in the image, in 64ths of a device pixel
+    int top = 0;
+    bool operator==(const PathKey&) const = default;
+};
+
+size_t qHash(const PathKey& key, size_t seed = 0)
+{
+    return qHashMulti(seed, key.family, key.text, key.em, key.left, key.top);
+}
+
+constexpr qsizetype kPathsKept = 2048; // a few hundred icons at a size or two each; emptied beyond that
+
 } // namespace
 
 PhosphorGlyph::PhosphorGlyph(QQuickItem* parent)
     : QQuickItem(parent)
 {
     setFlag(ItemHasContents);
+    setImplicitSize(m_em, m_em);
 }
 
-void PhosphorGlyph::setText(const QString& text)
+void PhosphorGlyph::setGlyph(const QString& glyph)
 {
-    if (m_text == text)
+    if (m_glyph == glyph)
         return;
-    m_text = text;
-    layout();
-    emit changed();
+    m_glyph = glyph;
+    resolve();
+    emit iconChanged();
 }
 
-void PhosphorGlyph::setFamily(const QString& family)
+void PhosphorGlyph::setIconName(const QString& name)
 {
-    if (m_family == family)
+    if (m_iconName == name)
         return;
-    m_family = family;
+    m_iconName = name;
+    resolve();
+    emit iconChanged();
+}
+
+void PhosphorGlyph::setFilled(bool filled)
+{
+    if (m_filled == filled)
+        return;
+    m_filled = filled;
+    resolve();
+    emit iconChanged();
+}
+
+void PhosphorGlyph::setCaption(bool caption)
+{
+    if (m_caption == caption)
+        return;
+    m_caption = caption;
+    resolve();
+    emit iconChanged();
+}
+
+void PhosphorGlyph::setOverlay(const QString& overlay)
+{
+    if (m_overlay == overlay)
+        return;
+    m_overlay = overlay;
+    emit iconChanged();
+}
+
+void PhosphorGlyph::setEm(qreal em)
+{
+    if (m_em == em)
+        return;
+    m_em = em;
+    setImplicitSize(em, em);
     layout();
-    emit changed();
+    emit sizeChanged();
 }
 
 void PhosphorGlyph::setColor(const QColor& color)
@@ -92,25 +152,7 @@ void PhosphorGlyph::setColor(const QColor& color)
     m_color = color;
     m_dirty = true;
     update();
-    emit changed();
-}
-
-void PhosphorGlyph::setEm(qreal em)
-{
-    if (m_em == em)
-        return;
-    m_em = em;
-    layout();
-    emit changed();
-}
-
-void PhosphorGlyph::setBox(const QSizeF& box)
-{
-    if (m_box == box)
-        return;
-    m_box = box;
-    layout();
-    emit changed();
+    emit colorChanged();
 }
 
 void PhosphorGlyph::setInkScale(qreal scale)
@@ -119,7 +161,56 @@ void PhosphorGlyph::setInkScale(qreal scale)
         return;
     m_inkScale = scale;
     layout();
-    emit changed();
+    emit inkScaleChanged();
+}
+
+// Which icon, and what draws it:
+//   one outlined here ("copyPath")               this item, kDrawnFamily
+//   a Phosphor name, or a Segoe code with one    this item, the Phosphor font
+//   a caption button, a Segoe code without one   the system icon font (fontDrawn)
+//   a Phosphor name that is not one              nothing: a "ph:..." spec must
+//     never reach the system font, as Phosphor and Segoe share the PUA
+void PhosphorGlyph::resolve()
+{
+    if (!isComponentComplete())
+        return; // once, when all of them are set
+    QString text;
+    QString family;
+    if (m_glyph == u"copyPath") {
+        text = m_glyph;
+        family = kDrawnFamily;
+    } else if (!m_caption && !(m_glyph.isEmpty() && m_iconName.isEmpty())) {
+        const QString spec = m_iconName.isEmpty() ? m_glyph
+                                                  : (m_filled ? QStringLiteral("ph-fill:") : QStringLiteral("ph:")) + m_iconName;
+        if (const std::optional<phosphor::Icon> icon = phosphor::resolve(spec)) {
+            text = icon->text;
+            family = icon->family;
+        }
+    }
+    const bool fontDrawn = text.isEmpty() && m_iconName.isEmpty() && !m_glyph.isEmpty();
+    if (text != m_text || family != m_family) {
+        m_text = text;
+        m_family = family;
+        layout();
+    }
+    if (fontDrawn != m_fontDrawn) {
+        m_fontDrawn = fontDrawn;
+        emit fontDrawnChanged();
+    }
+}
+
+void PhosphorGlyph::componentComplete()
+{
+    QQuickItem::componentComplete();
+    resolve();
+    layout();
+}
+
+void PhosphorGlyph::geometryChange(const QRectF& now, const QRectF& before)
+{
+    QQuickItem::geometryChange(now, before);
+    if (now.size() != before.size())
+        layout(); // the em is centred on the item
 }
 
 void PhosphorGlyph::itemChange(ItemChange change, const ItemChangeData& value)
@@ -131,12 +222,11 @@ void PhosphorGlyph::itemChange(ItemChange change, const ItemChangeData& value)
 
 void PhosphorGlyph::layout()
 {
+    if (!isComponentComplete())
+        return;
     m_dirty = true;
     update();
-    const bool drawn = m_family == kDrawnFamily;
-    const QPainterPath own = drawn ? drawnOutline(m_text) : QPainterPath();
-    const QRawFont& font = m_family.isEmpty() || drawn ? QRawFont() : outlines(m_family);
-    if (m_text.isEmpty() || m_em <= 0 || (drawn ? own.isEmpty() : !font.isValid()) || !window()) {
+    if (m_text.isEmpty() || m_em <= 0 || !window()) {
         m_path = {};
         m_pixels = 0;
         return;
@@ -154,25 +244,44 @@ void PhosphorGlyph::layout()
     // The full size's, also while pressed: the centre stays where it was.
     const qreal phase = qRound(full / 16) % 2 ? 0.5 : 0.0;
     const auto middle = [&](qreal box) { return std::round(box * dpr / 2 - phase) + phase; };
-    const QPointF top = QPointF(middle(m_box.width()), middle(m_box.height())) - QPointF(em, em) / 2;
+    const QPointF top = QPointF(middle(width()), middle(height())) - QPointF(em, em) / 2;
     const QPointF origin(std::floor(top.x() + 1e-6) - kSpare, std::floor(top.y() + 1e-6) - kSpare);
     m_pixels = int(std::ceil(top.x() + em - 1e-6)) + kSpare - int(origin.x()); // the same down: one phase
     // Nudged off the exact half pixel, where a box on one would make the
     // nearest sample a tie that can take a column twice (as ResultRow's icons).
-    setPosition(origin / dpr + QPointF(1.0 / 64, 1.0 / 64));
-    setSize(QSizeF(m_pixels, m_pixels) / dpr);
+    m_at = origin / dpr + QPointF(1.0 / 64, 1.0 / 64);
 
-    QPainterPath path = own; // the grid's top left at 0
-    if (!drawn) {
+    static QHash<PathKey, QPainterPath> paths;
+    const PathKey key {m_family, m_text, qRound(em * 64), qRound((top.x() - origin.x()) * 64), qRound((top.y() - origin.y()) * 64)};
+    if (const auto known = paths.constFind(key); known != paths.cend()) {
+        m_path = *known;
+        return;
+    }
+    QPainterPath path; // the grid's top left at 0
+    qreal scale = 0;
+    qreal baseline = 0;
+    if (m_family == kDrawnFamily) {
+        path = drawnOutline(m_text);
+        scale = em / kDrawnGrid;
+    } else if (const QRawFont& font = outlines(m_family); font.isValid()) {
         for (const quint32 index : font.glyphIndexesForString(m_text))
             path.addPath(font.pathForGlyph(index)); // the baseline at 0
+        scale = em / font.pixelSize();
+        baseline = font.ascent() * scale;
     }
-    const qreal scale = em / (drawn ? kDrawnGrid : font.pixelSize());
+    if (path.isEmpty()) {
+        m_path = {};
+        m_pixels = 0;
+        return;
+    }
     QTransform place;
-    place.translate(top.x() - origin.x(), top.y() - origin.y() + (drawn ? 0 : font.ascent() * scale));
+    place.translate(top.x() - origin.x(), top.y() - origin.y() + baseline);
     place.scale(scale, scale);
     m_path = place.map(path);
     m_path.setFillRule(Qt::WindingFill);
+    if (paths.size() >= kPathsKept)
+        paths.clear();
+    paths.insert(key, m_path);
 }
 
 QSGNode* PhosphorGlyph::updatePaintNode(QSGNode* old, UpdatePaintNodeData*)
@@ -197,7 +306,8 @@ QSGNode* PhosphorGlyph::updatePaintNode(QSGNode* old, UpdatePaintNodeData*)
         node->setFiltering(QSGTexture::Nearest); // texel for texel
         m_dirty = false;
     }
-    node->setRect(QRectF(0, 0, width(), height()));
+    const qreal side = m_pixels / window()->effectiveDevicePixelRatio();
+    node->setRect(QRectF(m_at, QSizeF(side, side)));
     return node;
 }
 

@@ -72,24 +72,31 @@ Rectangle {
             font.pixelSize: button.fontSize
             font.weight: surface.out("fontWeight", Font.Normal)
         }
-        Glyph {
-            inkScale: surface.out("contentScale", 1)
-            anchors.verticalCenter: parent.verticalCenter
-            visible: button.trailingGlyph.length > 0
-            glyph: button.trailingGlyph
-            size: 12
-            color: button.foreground
-        }
+        // (trailingGlyph: its icon comes here, trailingIcon)
     }
 
-    Rectangle { // keyboard focus
-        visible: button.activeFocus
-        anchors.fill: parent
-        anchors.margins: -3
-        radius: Theme.largeControlRadius
-        color: "transparent"
-        border.width: 2
-        border.color: Theme.text
+    // The icon after the words: made for the few buttons that have one (a
+    // drop-down's chevron), after the words in the Row.
+    property Item trailingIcon: null
+    onTrailingGlyphChanged: {
+        if (trailingGlyph.length === 0 || trailingIcon)
+            return
+        trailingIcon = Qt.createComponent("Glyph.qml").createObject(content, {
+            glyph: Qt.binding(() => button.trailingGlyph),
+            visible: Qt.binding(() => button.trailingGlyph.length > 0),
+            size: 12,
+            color: Qt.binding(() => button.foreground),
+            inkScale: Qt.binding(() => surface.out("contentScale", 1))
+        }) as Item
+        if (trailingIcon)
+            trailingIcon.anchors.verticalCenter = content.verticalCenter
+    }
+
+    // Keyboard focus: its ring, made the first time the button has it (FocusRing).
+    property Item focusRing: null
+    onActiveFocusChanged: {
+        if (activeFocus && !focusRing)
+            focusRing = Qt.createComponent("FocusRing.qml").createObject(button, { host: button }) as Item
     }
 
     MouseArea {
