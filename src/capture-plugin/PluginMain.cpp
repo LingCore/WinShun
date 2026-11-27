@@ -8,6 +8,7 @@
 #include "DiagnosticLog.h"
 #include "FontFile.h"
 #include "Phosphor.h"
+#include "QmlRuntime.h"
 #include "PluginShell.h"
 #include "Protocol.h"
 #include "RecordingWorker.h"
@@ -182,6 +183,7 @@ extern "C" __declspec(dllexport) int winshunCaptureMain(const wchar_t* appDirNam
     qputenv("QT_QPA_PLATFORM", software ? "windows:fontengine=gdi" : "windows:fontengine=freetype");
     qputenv("QT_D3D_NO_VBLANK_THREAD", "1");
     dontWaitForDwm();
+    ws::qmlruntime::prepare();
     QCoreApplication::setOrganizationName(u"WinShun"_s);
     QCoreApplication::setApplicationName(u"WinShun"_s);
     int argc = 1;

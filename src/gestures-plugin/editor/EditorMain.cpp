@@ -15,6 +15,7 @@
 #include "GestureEditor.h"
 #include "FontFile.h"
 #include "Phosphor.h"
+#include "QmlRuntime.h"
 #include "SystemTheme.h"
 #include "WindowFrame.h"
 #include "platform/WindowEffects.h"
@@ -233,6 +234,7 @@ extern "C" __declspec(dllexport) int winshunGesturesEditorMain(const wchar_t* ho
     } else {
         qputenv("QT_QPA_PLATFORM", software ? "windows:fontengine=gdi" : "windows:fontengine=freetype");
     }
+    ws::qmlruntime::prepare();
     QCoreApplication::setLibraryPaths({appDir});
     QCoreApplication::setOrganizationName(u"WinShun"_s);
     QCoreApplication::setApplicationName(u"WinShunGestures"_s);

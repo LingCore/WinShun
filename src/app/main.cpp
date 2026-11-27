@@ -12,6 +12,7 @@
 #include "Migration.h"
 #include "Phosphor.h"
 #include "Preview.h"
+#include "QmlRuntime.h"
 #include "RepeatFilter.h"
 #include "Settings.h"
 #include "StartupAccess.h"
@@ -290,6 +291,7 @@ int main(int argc, char* argv[])
     // Without the waitable object the same runs had no wait at all.
     if (!qEnvironmentVariableIsSet("QT_D3D_MAX_FRAME_LATENCY"))
         qputenv("QT_D3D_MAX_FRAME_LATENCY", "0");
+    ws::qmlruntime::prepare();
     if (preview || pieHelper || clipboardDisplay) {
         // A picture of a settings page, and nothing else: before the single
         // instance below, which would hand the arguments to the running copy.
@@ -469,8 +471,9 @@ int main(int argc, char* argv[])
         const QString crashFile = journal->folder() + u"/crash.txt"_s;
         if (const QJsonObject left = ws::crashrecord::takeLeft(crashFile); !left.isEmpty()) {
             ws::diagnostics::record(u"app-crash"_s, left);
+            // What and where too: "exception" alone said nothing (GitHub #490).
             qWarning().noquote() << "The last run ended at once:" << left.value(u"reason"_s).toString()
-                                 << left.value(u"activity"_s).toString();
+                                 << left.value(u"exception"_s).toString() << left.value(u"activity"_s).toString();
         }
         ws::crashrecord::install(crashFile);
     }

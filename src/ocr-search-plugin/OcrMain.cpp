@@ -3,6 +3,7 @@
 #include "../capture-plugin/Protocol.h"
 #include "FontFile.h"
 #include "Phosphor.h"
+#include "QmlRuntime.h"
 #include "SavedWindowSize.h"
 #include "SystemTheme.h"
 #include "WindowFrame.h"
@@ -106,6 +107,7 @@ extern "C" __declspec(dllexport) int winshunOcrSearchMain(const wchar_t* host, i
     const bool software
         = appearance.value(u"renderer"_s).toString() == u"software" || arguments.contains(u"--software"_s);
     qputenv("QT_QPA_PLATFORM", software ? "windows:fontengine=gdi" : "windows:fontengine=freetype");
+    ws::qmlruntime::prepare();
     QCoreApplication::setLibraryPaths({appDir});
     QCoreApplication::setApplicationName(u"WinShunOcrSearch"_s);
     int argc = 1;

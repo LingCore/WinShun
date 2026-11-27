@@ -7,6 +7,7 @@
 #include "../capture-plugin/Protocol.h"
 #include "FontFile.h"
 #include "Phosphor.h"
+#include "QmlRuntime.h"
 #include "SystemTheme.h"
 #include "WindowFrame.h"
 #include "platform/IdleTrim.h"
@@ -197,6 +198,7 @@ extern "C" __declspec(dllexport) int winshunDevToolsMain(const wchar_t* host, in
     const bool software
         = appearance.value(u"renderer"_s).toString() == u"software" || arguments.contains(u"--software"_s);
     qputenv("QT_QPA_PLATFORM", software ? "windows:fontengine=gdi" : "windows:fontengine=freetype");
+    ws::qmlruntime::prepare();
     QCoreApplication::setLibraryPaths({appDir});
     QCoreApplication::setApplicationName(u"WinShunDevTools"_s);
     int argc = 1;
