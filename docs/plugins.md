@@ -352,7 +352,7 @@ C++ SDK 的 `initialized()` 在回答完 `initialize` 后调一次：`eager` 插
   "match": "notepad 记事本",          // 零代码 items 用它筛选；别的插件自己筛
   "autocomplete": "kill notepad",    // Tab 填进输入框
   "open": {"path": "C:\\…", "args": "…", "cwd": "…"} 或 {"url": "https://…"},   // 声明式默认动作：Win顺 自己打开（普通权限），不往返；url 写 "winshun:settings" 则打开 Win顺 的设置、定位到这个插件的卡片（"还没有填密钥"这类行用），写 "winshun:settings/plugin/<另一个插件的 id>" 则定位到那个插件的卡片、没装时打开插件库里的它（0.49.0 起；`capabilities.settingsLinks` 为 true 时才发，旧版 Win顺 不认识）。没有 processes 权限的插件：path 只能是文件夹或非程序/脚本的文件、url 只能是 http/https/mailto，且不能带 args、cwd；否则不执行，底栏提示（见"权限"）
-  "copy": "1234",                    // Ctrl+C 复制什么；没有就 title
+  "copy": "1234",                    // Ctrl+C 复制什么；没有就 title。open 是一个文件（盘符或 \\服务器\共享 开头的 path，不带 args、cwd，也没有 "details": true）的行，就当那个文件本身：Ctrl+C 复制文件、Ctrl+Shift+C 复制完整路径、能拖出去，动作不到两个时 Ctrl+Enter 打开所在位置；copy 的字（和路径不同时）放进右键菜单的“复制文字”（#448）
   "preview": {"text": "…"},          // 悬停提示
   "actions": [{"id": "kill", "title": "结束", "key": "Enter"}],   // 覆盖命令级的
   "valid": true,                     // false：Enter 无效（提示行）

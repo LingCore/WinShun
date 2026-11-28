@@ -117,4 +117,29 @@ ForegroundFacts facts()
     return facts;
 }
 
+FrontTaker takerOf(HWND front, HWND target)
+{
+    if (!front)
+        return FrontTaker::None;
+    DWORD pid = 0;
+    if (!::GetWindowThreadProcessId(front, &pid))
+        return FrontTaker::None;
+    if (pid == ::GetCurrentProcessId())
+        return FrontTaker::Ours;
+    if (target) {
+        DWORD targetPid = 0;
+        const HWND root = ::GetAncestor(front, GA_ROOTOWNER);
+        if (root == target || front == target
+            || (::GetWindowThreadProcessId(target, &targetPid) && targetPid == pid))
+            return FrontTaker::Target;
+    }
+    if (isDesktop(front))
+        return FrontTaker::Shell;
+    wchar_t className[32] {};
+    ::GetClassNameW(front, className, static_cast<int>(std::size(className)));
+    if (::wcscmp(className, L"Shell_TrayWnd") == 0 || ::wcscmp(className, L"Shell_SecondaryTrayWnd") == 0)
+        return FrontTaker::Shell;
+    return FrontTaker::Other;
+}
+
 } // namespace ws::foreground

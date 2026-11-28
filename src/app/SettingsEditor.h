@@ -27,6 +27,7 @@ namespace ws {
 
 class CliSetup;
 class FavoritesSettings;
+class UserAppsSettings;
 class PluginSettings;
 class HealthMonitor;
 class OcrPackage;
@@ -38,6 +39,7 @@ class SystemCatalog;
 class SettingsEditor : public QObject {
     Q_OBJECT
     Q_MOC_INCLUDE("HealthMonitor.h")
+    Q_MOC_INCLUDE("UserAppsSettings.h")
     QML_ELEMENT
     QML_UNCREATABLE("Provided by the application")
     Q_PROPERTY(bool doubleCtrl READ doubleCtrl WRITE setDoubleCtrl NOTIFY changed FINAL)
@@ -452,6 +454,7 @@ class SettingsEditor : public QObject {
     // 收藏夹: the page's own view-model (FavoritesSettings), on the app's
     // favorites (not in the INI: 恢复默认设置 leaves them).
     Q_PROPERTY(ws::FavoritesSettings* favorites READ favorites CONSTANT FINAL)
+    Q_PROPERTY(ws::UserAppsSettings* userApps READ userApps CONSTANT FINAL) // 搜索范围 › 应用 (#505)
 
 public:
     SettingsEditor(const Settings& settings, const QString& runningRenderer, QObject* parent = nullptr);
@@ -1327,6 +1330,7 @@ public:
 
     // 收藏夹 page
     FavoritesSettings* favorites() const { return m_favorites; }
+    UserAppsSettings* userApps() const { return m_userApps; }
 
 signals:
     void screenshotPluginChanged();
@@ -1398,6 +1402,7 @@ signals:
 private:
     friend class PluginSettings; // edits m_settings' plugin sections and commits
     friend class FavoritesSettings; // reads the web shortcuts' keywords and the window
+    friend class UserAppsSettings; // edits m_settings' [Apps] and commits
     QTimer* m_incubationHurry = nullptr; // hurryIncubation's, made on its first use
     QPointer<QObject> m_incubationWindow;
     void commit();
@@ -1493,6 +1498,7 @@ private:
     PluginSettings* m_plugins = nullptr; // a child
     OcrPackage* m_ocrPackage = nullptr;
     FavoritesSettings* m_favorites = nullptr; // a child
+    UserAppsSettings* m_userApps = nullptr; // a child
     CliSetup* m_cli = nullptr; // a child
 };
 

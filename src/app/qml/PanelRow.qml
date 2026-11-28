@@ -28,6 +28,8 @@ Item {
     required property bool place
     required property bool web
     required property bool plugin
+    required property bool pluginFile // ... that stands for a file: dragged out as that file (GitHub #448)
+    readonly property bool draggable: (!isApp || pluginFile) && !offline && !missing
     required property string source
     required property bool selected
     required property string size // "1.2 MB"; empty for a folder, an app, or not known
@@ -241,7 +243,7 @@ Item {
             pressedAt = Qt.point(mouse.x, mouse.y)
             dragButton = mouse.button
             // The right button too: Explorer then asks what to do with the drop (#338).
-            preventStealing = (mouse.button & (Qt.LeftButton | Qt.RightButton)) !== 0 && !row.isApp && !row.offline && !row.missing
+            preventStealing = (mouse.button & (Qt.LeftButton | Qt.RightButton)) !== 0 && row.draggable
                               && mouse.source === Qt.MouseEventNotSynthesized
         }
         // The wheel hides the tip even where the list does not scroll (Windows' own tips do);

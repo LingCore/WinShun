@@ -8,7 +8,8 @@
 //   WinShunGestures.exe --editor --preview <png> [--page 0-4] [--scale 1.5] [--dark] [--locale en] [--style fluent]
 //       [--width W --height H] [--picker menu|keys|open|url|type] [--program photoshop.exe] [--buttons x1]
 //       --app-dir <a Win顺's folder, or one with Qt> [--font <ttf>]
-// renders the window offscreen with sample rules and writes the PNG.
+// renders the window offscreen with sample rules and writes the PNG. (Also --draw, --then, --key,
+// --click, --name, --hover: see below.)
 //   --selftest: the window is made without activating it, and the settings it is sent and what it
 //   changes are checked (lines to stderr; the saves go to stdout as in use).
 #include "EditorLink.h"
@@ -486,6 +487,21 @@ extern "C" __declspec(dllexport) int winshunGesturesEditorMain(const wchar_t* ho
                 settle(window, 2);
             } else {
                 say(u"no item named %1"_s.arg(click));
+            }
+        }
+        // --name <words> (after --click ruleActionButton): written in the picker's 提示文字, then Enter.
+        if (const QString name = option(u"--name"_s); !name.isEmpty()) {
+            if (QQuickItem* box = findItem(window->contentItem(), u"pickerNameInput"_s)) {
+                box->setProperty("text", name);
+                QMetaObject::invokeMethod(box, "takeFocus");
+                for (const QEvent::Type type : {QEvent::KeyPress, QEvent::KeyRelease}) {
+                    QKeyEvent enter(type, Qt::Key_Return, Qt::NoModifier);
+                    QCoreApplication::sendEvent(window, &enter);
+                }
+                settle(window, 2);
+                say(u"rules now: %1"_s.arg(QString::fromStdString(gestures::rulesJson(editor.rules()->saved()))));
+            } else {
+                say(u"no item named pickerNameInput"_s);
             }
         }
         // --hover <objectName>: the pointer over the first such item (for the hover-only parts).

@@ -75,6 +75,8 @@ Item {
     required property bool windowResult
     required property string source // ... the plugin's name
     required property bool pluginCopies // ... with its own text to copy, or Enter copies: its copy button
+    required property bool pluginFile // ... that stands for a file: copied and dragged out as that file (GitHub #448)
+    readonly property bool draggable: (!isApp || pluginFile) && !offline && !missing
     required property string folderAway // ... its second line while the keyboard is on another row; "": the folder line
     required property bool favorite // one of its user's favorites: tagged 收藏 (with its keyword)
     required property string favoriteKeyword
@@ -628,7 +630,7 @@ Item {
             pressedAt = Qt.point(mouse.x, mouse.y)
             dragButton = mouse.button
             // The right button too: Explorer then asks what to do with the drop (#338).
-            preventStealing = (mouse.button & (Qt.LeftButton | Qt.RightButton)) !== 0 && !row.isApp && !row.offline && !row.missing
+            preventStealing = (mouse.button & (Qt.LeftButton | Qt.RightButton)) !== 0 && row.draggable
                               && mouse.source === Qt.MouseEventNotSynthesized
         }
         // The wheel hides the tip even where the list does not scroll (Windows' own tips do);

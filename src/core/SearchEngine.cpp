@@ -432,15 +432,6 @@ std::shared_ptr<const PlaceList> placesOf(const SystemCatalog* catalog)
     return catalog ? catalog->places() : kNone;
 }
 
-const AppInfo* findApp(const AppList& apps, const QString& launchPath)
-{
-    const QString id = appIdOf(launchPath);
-    if (id.isEmpty())
-        return nullptr;
-    const auto it = std::find_if(apps.begin(), apps.end(), [&](const AppInfo& a) { return a.id == id; });
-    return it == apps.end() ? nullptr : &*it;
-}
-
 const PlaceInfo* findPlace(const PlaceList& places, const QString& path)
 {
     const QString key = placeKeyOf(path);
@@ -1646,8 +1637,11 @@ void SearchEngine::runNameSearch(const Job& job)
                 const QString& path = request.history[next++];
                 if (request.favoritesOnStart && indexOfFavorite(request.favorites, path) >= 0)
                     continue; // listed above them
-                if (isAppLaunchPath(path)) {
-                    const AppInfo* app = request.scope == Scope::All && request.apps ? findApp(*apps, path) : nullptr;
+                // A portable program (#505) is its path: its app's row while
+                // apps are listed, under the name the user gave it; else the
+                // file's, below.
+                const AppInfo* app = request.scope == Scope::All && request.apps ? findApp(*apps, path) : nullptr;
+                if (app || isAppLaunchPath(path)) {
                     if (app)
                         round.emplace_back(fromApp(*app, true));
                     continue;

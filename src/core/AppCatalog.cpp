@@ -13,9 +13,11 @@
 #include <QFile>
 #include <QHash>
 #include <QMetaObject>
+#include <QSet>
 #include <QStringTokenizer>
 
 #include <windows.h>
+#include <winver.h>
 // After windows.h; ole2.h first, as WIN32_LEAN_AND_MEAN keeps it out of windows.h.
 #include <ole2.h>
 
@@ -72,6 +74,16 @@ const QStringList& elevatableSuffixes()
 {
     static const QStringList kSuffixes {u"exe"_s, u"com"_s, u"bat"_s, u"cmd"_s, u"msc"_s};
     return kSuffixes;
+}
+
+void sortByName(AppList& apps)
+{
+    QCollator collator; // the user's locale: Chinese names in pinyin order on a Chinese system
+    collator.setNumericMode(true);
+    collator.setCaseSensitivity(Qt::CaseInsensitive);
+    std::stable_sort(apps.begin(), apps.end(), [&](const AppInfo& a, const AppInfo& b) {
+        return collator.compare(a.name, b.name) < 0;
+    });
 }
 
 bool isAsciiAlnum(char c) noexcept
@@ -231,7 +243,8 @@ bool sameApps(const AppList& a, const AppList& b)
 {
     return std::equal(a.begin(), a.end(), b.begin(), b.end(), [](const AppInfo& x, const AppInfo& y) {
         return x.name == y.name && x.id == y.id && x.target == y.target && x.arguments == y.arguments
-            && x.kind == y.kind && x.elevatable == y.elevatable && x.installedNames == y.installedNames;
+            && x.kind == y.kind && x.elevatable == y.elevatable && x.installedNames == y.installedNames
+            && x.portable == y.portable && x.ownName == y.ownName && x.aliases == y.aliases;
     });
 }
 
@@ -251,6 +264,9 @@ private:
 
 // A folder's write time changes when an entry in it is added, removed or
 // renamed, so the write times of a tree's folders reveal any such change.
+// Each folder's own: the time its parent lists (FindFirstFile's) is not kept
+// up to date by NTFS, so a shortcut put in a Start-menu folder already there
+// went unseen until kMaxAge.
 void addFolderTree(Fnv1a& hash, const std::wstring& dir, int depth)
 {
     WIN32_FIND_DATAW data;
@@ -263,10 +279,13 @@ void addFolderTree(Fnv1a& hash, const std::wstring& dir, int depth)
         if (!(data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) || (data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)
             || name == L"." || name == L"..")
             continue;
+        const std::wstring child = dir + L'\\' + std::wstring(name);
         hash.add(name.data(), name.size() * sizeof(wchar_t));
-        hash.add(&data.ftLastWriteTime, sizeof data.ftLastWriteTime);
+        WIN32_FILE_ATTRIBUTE_DATA own {};
+        if (::GetFileAttributesExW(child.c_str(), GetFileExInfoStandard, &own))
+            hash.add(&own.ftLastWriteTime, sizeof own.ftLastWriteTime);
         if (depth < 8)
-            addFolderTree(hash, dir + L'\\' + std::wstring(name), depth + 1);
+            addFolderTree(hash, child, depth + 1);
     } while (::FindNextFileW(find.get(), &data));
 }
 
@@ -476,9 +495,20 @@ void AppInfo::prepare()
     prepare(AppAliases::builtIn());
 }
 
-void AppInfo::prepare(const AppAliases& table)
+void AppInfo::prepareName()
 {
     nameUtf8 = wtf8::fromUtf16(wtf8::view(name));
+    initials.clear();
+    for (std::size_t i = 0; i < nameUtf8.size(); ++i) {
+        if (isAsciiAlnum(nameUtf8[i]) && text::isWordStart(nameUtf8, i))
+            initials += static_cast<char>(text::fold(nameUtf8[i]));
+    }
+    words = splitWords(nameUtf8);
+}
+
+void AppInfo::prepare(const AppAliases& table)
+{
+    prepareName();
     const QString file = target.mid(target.lastIndexOf(u'\\') + 1);
     const qsizetype dot = file.lastIndexOf(u'.');
     const QString suffix = dot > 0 ? file.mid(dot + 1).toLower() : QString();
@@ -507,23 +537,36 @@ void AppInfo::prepare(const AppAliases& table)
     for (const QString& other : std::as_const(otherNames))
         otherNamesUtf8.push_back(wtf8::fromUtf16(wtf8::view(other)));
 
-    initials.clear();
-    for (std::size_t i = 0; i < nameUtf8.size(); ++i) {
-        if (isAsciiAlnum(nameUtf8[i]) && text::isWordStart(nameUtf8, i))
-            initials += static_cast<char>(text::fold(nameUtf8[i]));
-    }
-
-    words = splitWords(nameUtf8);
-
     const bool uninstaller = name.contains(u"uninstall"_s, Qt::CaseInsensitive) || name.contains(u"卸载"_s)
         || file.startsWith(u"unins"_s, Qt::CaseInsensitive);
-    const bool document = !target.isEmpty() && !programSuffixes().contains(suffix);
+    // A shortcut among the portable programs is one of them, not a document.
+    const bool document = !portable && !target.isEmpty() && !programSuffixes().contains(suffix);
     auxiliary = kind == AppKind::Desktop && (uninstaller || document);
+}
+
+void AppInfo::giveName(const QString& given)
+{
+    if (given.isEmpty() || given == name)
+        return;
+    if (ownName.isEmpty())
+        ownName = name;
+    const std::string own = wtf8::fromUtf16(wtf8::view(ownName));
+    if (std::ranges::find(aliases, own) == aliases.end())
+        aliases.insert(aliases.begin(), own);
+    name = given;
+    prepareName();
+    // Not shown by another of its names when found by the one given.
+    for (qsizetype i = otherNames.size() - 1; i >= 0; --i) {
+        if (sameFolded(otherNames[i], given)) {
+            otherNames.removeAt(i);
+            otherNamesUtf8.erase(otherNamesUtf8.begin() + i);
+        }
+    }
 }
 
 QString AppInfo::launchPath() const
 {
-    return appLaunchPath(id);
+    return portable ? id : appLaunchPath(id);
 }
 
 QString appLaunchPath(const QString& id)
@@ -541,6 +584,33 @@ QString appIdOf(QStringView launchPath)
     return isAppLaunchPath(launchPath) ? launchPath.mid(kLaunchPrefix.size()).toString() : QString();
 }
 
+bool isListedProgram(QStringView path)
+{
+    static const QStringList kSuffixes {u"exe"_s, u"lnk"_s, u"bat"_s, u"cmd"_s, u"com"_s};
+    const qsizetype dot = path.lastIndexOf(u'.');
+    return dot > 0 && path.lastIndexOf(u'\\') < dot && kSuffixes.contains(path.mid(dot + 1), Qt::CaseInsensitive);
+}
+
+QString appKeyOf(QStringView launchPath)
+{
+    return isAppLaunchPath(launchPath) ? appIdOf(launchPath) : launchPath.toString();
+}
+
+const AppInfo* findApp(const AppList& apps, QStringView launchPath)
+{
+    if (launchPath.isEmpty())
+        return nullptr;
+    if (isAppLaunchPath(launchPath)) {
+        const QStringView id = launchPath.mid(kLaunchPrefix.size());
+        const auto it = std::ranges::find_if(apps, [&](const AppInfo& a) { return !a.portable && a.id == id; });
+        return it == apps.end() ? nullptr : &*it;
+    }
+    const auto it = std::ranges::find_if(apps, [&](const AppInfo& a) {
+        return a.portable && a.id.compare(launchPath, Qt::CaseInsensitive) == 0;
+    });
+    return it == apps.end() ? nullptr : &*it;
+}
+
 std::vector<AppHit> searchApps(
     const AppList& apps, const ParsedQuery& query, const NameMatcher& matcher, const QStringList& history,
     const History::Affinities& affinities, FuzzyMode fuzzyMode)
@@ -551,8 +621,10 @@ std::vector<AppHit> searchApps(
 
     QHash<QString, int> recent; // id -> position in the history, 0 = newest
     for (int i = 0; i < history.size(); ++i) {
-        if (isAppLaunchPath(history[i]))
-            recent.insert(appIdOf(history[i]), std::min(recent.value(appIdOf(history[i]), i), i));
+        if (!isAppLaunchPath(history[i]) && !isListedProgram(history[i]))
+            continue; // a file, a folder, a place
+        const QString id = appKeyOf(history[i]); // a portable program's is its path
+        recent.insert(id, std::min(recent.value(id, i), i));
     }
 
     // A lone plain term may be the initials of the name ("vsc" for Visual
@@ -832,7 +904,9 @@ std::vector<std::size_t> frequentApps(
     };
     std::vector<Ranked> own;
     for (const QString& path : history.items()) {
-        const auto it = byId.constFind(appIdOf(path).toCaseFolded());
+        if (!isAppLaunchPath(path) && !isListedProgram(path))
+            continue;
+        const auto it = byId.constFind(appKeyOf(path).toCaseFolded()); // a portable program's id is its path
         if (it == byId.cend())
             continue;
         const History::Use use = history.use(path);
@@ -899,6 +973,298 @@ AppList presentApps(const AppList& apps, const std::function<bool(const QString&
     return present;
 }
 
+QString cleanAppName(QStringView typed)
+{
+    QString out;
+    out.reserve(std::min(typed.size(), kMaxAppNameLength));
+    bool space = false;
+    for (const QChar c : typed) {
+        if (c.isSpace()) { // a line break, a tab: one space between words
+            space = !out.isEmpty();
+            continue;
+        }
+        if (c.category() == QChar::Other_Control || c.category() == QChar::Other_Format)
+            continue; // nothing to see: a zero-width space, a direction mark
+        if (space)
+            out += u' ';
+        space = false;
+        out += c;
+    }
+    if (out.size() > kMaxAppNameLength) {
+        qsizetype keep = kMaxAppNameLength;
+        if (out[keep - 1].isHighSurrogate())
+            --keep;
+        out.truncate(keep);
+        while (out.endsWith(u' '))
+            out.chop(1);
+    }
+    return out;
+}
+
+bool portableHelper(QStringView stem)
+{
+    static const QStringList kStarts {u"unins"_s, u"crashpad"_s, u"crashreport"_s, u"crash_report"_s, u"crashhandler"_s,
+        u"crash_handler"_s, u"bugreport"_s, u"vcredist"_s, u"vc_redist"_s};
+    static const QStringList kNames {u"update"_s, u"updater"_s, u"autoupdate"_s, u"autoupdater"_s, u"upgrade"_s,
+        u"elevate"_s, u"helper"_s, u"reporter"_s, u"crashreporter"_s, u"maintenanceservice"_s, u"elevation_service"_s,
+        u"notification_helper"_s};
+    static const QStringList kEnds {u"_helper"_s, u"-helper"_s, u".helper"_s, u"_updater"_s, u"-updater"_s, u"_update"_s,
+        u"-update"_s};
+    const auto any = [&](const QStringList& list, auto test) { return std::ranges::any_of(list, test); };
+    return any(kStarts, [&](const QString& s) { return stem.startsWith(s, Qt::CaseInsensitive); })
+        || any(kNames, [&](const QString& s) { return stem.compare(s, Qt::CaseInsensitive) == 0; })
+        || any(kEnds, [&](const QString& s) { return stem.endsWith(s, Qt::CaseInsensitive); });
+}
+
+namespace {
+
+// What a program says it is (its VERSIONINFO's FileDescription), read
+// without running it; empty without one.
+QString fileDescription(const QString& path)
+{
+    const auto* file = reinterpret_cast<LPCWSTR>(path.utf16());
+    DWORD ignored = 0;
+    const DWORD size = ::GetFileVersionInfoSizeExW(FILE_VER_GET_NEUTRAL, file, &ignored);
+    if (!size || size > 1024 * 1024)
+        return {};
+    QByteArray info(static_cast<qsizetype>(size), '\0');
+    if (!::GetFileVersionInfoExW(FILE_VER_GET_NEUTRAL, file, 0, size, info.data()))
+        return {};
+    struct Translation {
+        WORD language;
+        WORD codePage;
+    };
+    Translation* translations = nullptr;
+    UINT length = 0;
+    if (!::VerQueryValueW(info.data(), L"\\VarFileInfo\\Translation", reinterpret_cast<void**>(&translations), &length))
+        return {};
+    for (UINT i = 0; i < length / sizeof(Translation); ++i) {
+        wchar_t key[64];
+        ::swprintf_s(key, L"\\StringFileInfo\\%04x%04x\\FileDescription", translations[i].language,
+            translations[i].codePage);
+        wchar_t* text = nullptr;
+        UINT chars = 0;
+        if (::VerQueryValueW(info.data(), key, reinterpret_cast<void**>(&text), &chars) && text && chars > 1)
+            return QString::fromWCharArray(text, static_cast<qsizetype>(chars - 1)).trimmed();
+    }
+    return {};
+}
+
+struct Listing {
+    QStringList files;
+    QStringList folders;
+};
+
+// A folder's files and folders (not hidden or system ones, nor links to
+// other folders), sorted.
+Listing listFolder(const QString& folder)
+{
+    Listing out;
+    WIN32_FIND_DATAW data;
+    const win32::UniqueFind find(::FindFirstFileExW(reinterpret_cast<LPCWSTR>((folder + u"\\*").utf16()),
+        FindExInfoBasic, &data, FindExSearchNameMatch, nullptr, FIND_FIRST_EX_LARGE_FETCH));
+    if (!find.valid())
+        return out;
+    do {
+        const QString name = QString::fromWCharArray(data.cFileName);
+        if (name == u"." || name == u".." || (data.dwFileAttributes & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM)))
+            continue;
+        if (!(data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+            out.files.push_back(name);
+        else if (!(data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT))
+            out.folders.push_back(name);
+    } while (::FindNextFileW(find.get(), &data));
+    // NTFS lists them in order, FAT and exFAT as they were written.
+    const auto before = [](const QString& a, const QString& b) { return a.compare(b, Qt::CaseInsensitive) < 0; };
+    std::ranges::sort(out.files, before);
+    std::ranges::sort(out.folders, before);
+    return out;
+}
+
+// The programs portablePrograms takes of a folder's files: .exe and .lnk,
+// helpers aside; their file names.
+QStringList programsOf(const QStringList& files)
+{
+    QStringList out;
+    for (const QString& file : files) {
+        const qsizetype dot = file.lastIndexOf(u'.');
+        if (dot <= 0)
+            continue;
+        const QStringView suffix = QStringView(file).mid(dot + 1);
+        if ((suffix.compare(u"exe", Qt::CaseInsensitive) == 0 || suffix.compare(u"lnk", Qt::CaseInsensitive) == 0)
+            && !portableHelper(QStringView(file).left(dot)))
+            out.push_back(file);
+    }
+    return out;
+}
+
+// Whether a program is the one its folder is named after: "Everything.exe"
+// of Everything or Everything-1.4.1-x64, "PotPlayerMini64.exe" of PotPlayer.
+bool namedAfter(QStringView folder, QStringView file)
+{
+    const QStringView stem = file.left(file.lastIndexOf(u'.'));
+    if (stem.size() >= folder.size()) // the program's name goes on: PotPlayerMini64
+        return folder.size() >= 3 && stem.startsWith(folder, Qt::CaseInsensitive);
+    // The folder's goes on with a version, not with another word.
+    return stem.size() >= 3 && folder.startsWith(stem, Qt::CaseInsensitive) && !folder[stem.size()].isLetter();
+}
+
+// "D:\" and "D:\Tools\" as "D:" and "D:\Tools", to which "\name" is added.
+QString folderBase(const QString& folder)
+{
+    QString base = QDir::toNativeSeparators(folder);
+    while (base.endsWith(u'\\'))
+        base.chop(1);
+    return base;
+}
+
+} // namespace
+
+AppInfo programApp(const QString& path)
+{
+    const QString file = QDir::toNativeSeparators(path);
+    const qsizetype slash = file.lastIndexOf(u'\\');
+    const qsizetype dot = file.lastIndexOf(u'.');
+    if (slash < 0 || dot <= slash + 1 || !isListedProgram(file))
+        return {};
+    AppInfo app;
+    app.name = file.mid(slash + 1, dot - slash - 1);
+    app.id = file;
+    app.target = file;
+    app.kind = AppKind::Desktop;
+    app.portable = true;
+    app.elevatable = elevatableSuffixes().contains(file.mid(dot + 1), Qt::CaseInsensitive);
+    app.prepare();
+    // What it says it is ("微信防撤回补丁" for RevokeMsgPatcher.exe): typed for
+    // it as an alias is, never shown.
+    if (file.endsWith(u".exe", Qt::CaseInsensitive)) {
+        const QString description = cleanAppName(fileDescription(file));
+        std::string utf8 = wtf8::fromUtf16(wtf8::view(description));
+        if (!description.isEmpty() && !sameFolded(description, app.name)
+            && std::ranges::find(app.aliases, utf8) == app.aliases.end())
+            app.aliases.push_back(std::move(utf8));
+    }
+    return app;
+}
+
+AppList portablePrograms(const QStringList& folders, const std::stop_token& stop)
+{
+    AppList apps;
+    QSet<QString> seen; // a folder chosen twice, or one inside another
+    const auto add = [&](const QString& path) {
+        if (apps.size() >= kMaxPortablePrograms || stop.stop_requested())
+            return;
+        const QString key = path.toCaseFolded();
+        if (seen.contains(key))
+            return;
+        seen.insert(key);
+        if (AppInfo app = programApp(path); !app.name.isEmpty())
+            apps.push_back(std::move(app));
+    };
+    for (const QString& folder : folders) {
+        const QString base = folderBase(folder);
+        if (base.isEmpty())
+            continue;
+        const Listing top = listFolder(base);
+        for (const QString& file : programsOf(top.files))
+            add(base + u'\\' + file);
+        for (const QString& sub : top.folders) {
+            if (apps.size() >= kMaxPortablePrograms || stop.stop_requested())
+                return apps;
+            const QString dir = base + u'\\' + sub;
+            const QStringList programs = programsOf(listFolder(dir).files);
+            QStringList chosen;
+            for (const QString& file : programs) {
+                if (namedAfter(sub, file))
+                    chosen.push_back(file);
+            }
+            for (const QString& file : chosen.isEmpty() ? programs : chosen)
+                add(dir + u'\\' + file);
+        }
+    }
+    return apps;
+}
+
+AppList userPrograms(const UserApps& user, const std::stop_token& stop)
+{
+    AppList apps = portablePrograms(user.folders, stop);
+    for (const AppName& named : user.names) {
+        if (stop.stop_requested())
+            break;
+        if (isAppLaunchPath(named.path) || findApp(apps, named.path))
+            continue;
+        const DWORD attributes = ::GetFileAttributesW(reinterpret_cast<LPCWSTR>(named.path.utf16()));
+        if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_DIRECTORY))
+            continue; // gone: its name stays in the settings, to be removed there
+        if (AppInfo app = programApp(named.path); !app.name.isEmpty())
+            apps.push_back(std::move(app));
+    }
+    return apps;
+}
+
+quint64 portableFingerprint(const QStringList& folders)
+{
+    Fnv1a hash;
+    for (const QString& folder : folders) {
+        const QString base = folderBase(folder);
+        if (base.isEmpty())
+            continue;
+        hash.add(base.utf16(), static_cast<std::size_t>(base.size()) * sizeof(char16_t));
+        WIN32_FILE_ATTRIBUTE_DATA info {};
+        if (::GetFileAttributesExW(reinterpret_cast<LPCWSTR>((base + u'\\').utf16()), GetFileExInfoStandard, &info))
+            hash.add(&info.ftLastWriteTime, sizeof info.ftLastWriteTime);
+        addFolderTree(hash, base.toStdWString(), 8); // its folders, not theirs: as deep as portablePrograms looks
+    }
+    return hash.value();
+}
+
+AppList withUserApps(const AppList& shell, const AppList& programs, const UserApps& user)
+{
+    if (programs.empty() && user.names.isEmpty() && user.hidden.isEmpty())
+        return shell;
+    AppList apps;
+    apps.reserve(shell.size() + programs.size());
+    QSet<QString> listed; // the programs the Start menu has
+    for (const AppInfo& app : shell) {
+        apps.push_back(app);
+        if (app.kind == AppKind::Desktop && !app.target.isEmpty())
+            listed.insert(app.target.toCaseFolded());
+    }
+    for (const AppInfo& program : programs) {
+        const QString key = program.target.toCaseFolded();
+        if (listed.contains(key))
+            continue;
+        listed.insert(key);
+        apps.push_back(program);
+    }
+
+    QSet<QString> hidden;
+    for (const QString& path : user.hidden)
+        hidden.insert(path.toCaseFolded());
+    if (!hidden.isEmpty())
+        std::erase_if(apps, [&](const AppInfo& app) { return hidden.contains(app.launchPath().toCaseFolded()); });
+
+    QHash<QString, QString> names;
+    for (const AppName& named : user.names) {
+        if (!named.name.isEmpty())
+            names.insert(named.path.toCaseFolded(), named.name);
+    }
+    if (!names.isEmpty()) {
+        for (AppInfo& app : apps) {
+            auto it = names.constFind(app.launchPath().toCaseFolded());
+            // A program file named from its row (a file then) that the Start
+            // menu has: its app. Not cmd.exe's name for every prompt it hosts.
+            if (it == names.cend() && app.kind == AppKind::Desktop && !app.portable && !app.hosted
+                && !app.target.isEmpty())
+                it = names.constFind(app.target.toCaseFolded());
+            if (it != names.cend())
+                app.giveName(*it);
+        }
+    }
+    sortByName(apps);
+    return apps;
+}
+
 AppCatalog::AppCatalog(QObject* parent)
     : QObject(parent)
 {
@@ -930,6 +1296,12 @@ void AppCatalog::setApps(std::shared_ptr<const AppList> apps)
     m_apps = std::move(apps);
 }
 
+void AppCatalog::setPrograms(std::shared_ptr<const AppList> programs)
+{
+    std::lock_guard lock(m_mutex);
+    m_programs = std::move(programs);
+}
+
 bool programsCheckDue(std::optional<std::chrono::steady_clock::duration> sinceLast, bool reloaded, bool asked)
 {
     return reloaded || asked || !sinceLast || *sinceLast >= kProgramsCheckEvery;
@@ -945,6 +1317,23 @@ void AppCatalog::checkPrograms()
     start(false, true);
 }
 
+void AppCatalog::setUserApps(const UserApps& user)
+{
+    if (user == m_user)
+        return;
+    m_user = user;
+    m_userChanged = true;
+    if (m_busy || isLoaded()) // else the first refresh() makes the list, with them
+        start(false, false);
+}
+
+std::shared_ptr<const AppList> AppCatalog::programs() const
+{
+    static const auto kEmpty = std::make_shared<const AppList>();
+    std::lock_guard lock(m_mutex);
+    return m_programs ? m_programs : kEmpty;
+}
+
 void AppCatalog::start(bool force, bool check)
 {
     if (m_busy) {
@@ -958,7 +1347,14 @@ void AppCatalog::start(bool force, bool check)
     const auto sinceCheck = m_checkedAt ? std::optional(now - *m_checkedAt) : std::nullopt;
     if (m_worker.joinable())
         m_worker.join(); // the previous read; it has posted its outcome, so it is done
-    m_worker = std::jthread([this, force, check, sinceCheck, known = m_fingerprint, all = m_all](std::stop_token stop) {
+    std::shared_ptr<const AppList> programs;
+    {
+        std::lock_guard lock(m_mutex);
+        programs = m_programs;
+    }
+    m_worker = std::jthread([this, force, check, sinceCheck, known = m_fingerprint, all = m_all, user = m_user,
+                                userChanged = std::exchange(m_userChanged, false), programsKnown = m_programsFingerprint,
+                                programs](std::stop_token stop) {
         ::SetThreadPriority(::GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
         Outcome outcome;
         outcome.fingerprint = installedAppsFingerprint();
@@ -975,11 +1371,22 @@ void AppCatalog::start(bool force, bool check)
         // would keep waking a hard disk that went to sleep: after a read (so
         // a new list is never shown before it is looked at), when an app did
         // not open, and otherwise every few minutes. Until then the list as
-        // last looked at stays.
-        if (shell && !stop.stop_requested() && programsCheckDue(sinceCheck, outcome.reloaded, check)) {
+        // last looked at stays. The folders of portable programs (#505) are
+        // looked at as often, as they may well be on such a disk; and at once
+        // when the user changed them.
+        const bool due = programsCheckDue(sinceCheck, outcome.reloaded, check) || userChanged;
+        std::shared_ptr<const AppList> own = programs;
+        if (!stop.stop_requested() && (due || !own)) {
+            outcome.programsFingerprint = portableFingerprint(user.folders);
+            if (force || userChanged || !own || outcome.programsFingerprint != programsKnown)
+                own = outcome.programs = std::make_shared<const AppList>(userPrograms(user, stop));
+        }
+        if (shell && own && !stop.stop_requested() && due) {
             outcome.checked = true;
-            AppList present = presentApps(*shell);
-            outcome.apps = present.size() == shell->size() ? shell : std::make_shared<const AppList>(std::move(present));
+            AppList present = presentApps(withUserApps(*shell, *own, user));
+            outcome.apps = own->empty() && user.names.isEmpty() && user.hidden.isEmpty() && present.size() == shell->size()
+                ? shell
+                : std::make_shared<const AppList>(std::move(present));
         }
         if (!stop.stop_requested())
             QMetaObject::invokeMethod(this, [this, outcome] { publish(outcome); }, Qt::QueuedConnection);
@@ -996,6 +1403,11 @@ void AppCatalog::publish(const Outcome& outcome)
     }
     if (outcome.checked)
         m_checkedAt = std::chrono::steady_clock::now();
+    if (outcome.programs) {
+        m_programsFingerprint = outcome.programsFingerprint;
+        std::lock_guard lock(m_mutex);
+        m_programs = outcome.programs;
+    }
     if (outcome.apps) {
         bool same = false;
         {
@@ -1010,7 +1422,7 @@ void AppCatalog::publish(const Outcome& outcome)
     // A failed read keeps the old fingerprint, so the next refresh tries again.
     const bool again = std::exchange(m_again, false);
     const bool checkAgain = std::exchange(m_checkAgain, false);
-    if (again || checkAgain)
+    if (again || checkAgain || m_userChanged) // the user's apps changed while this list was made
         start(again, checkAgain);
 }
 
@@ -1251,13 +1663,7 @@ AppList loadInstalledApps(const std::stop_token& stop)
     // type for it ("7-Zip 25.01", "Microsoft Office") is often not what its
     // shortcut is called ("7-Zip File Manager", "Word").
     addInstalledNames(apps, installedNames());
-
-    QCollator collator; // the user's locale: Chinese names in pinyin order on a Chinese system
-    collator.setNumericMode(true);
-    collator.setCaseSensitivity(Qt::CaseInsensitive);
-    std::stable_sort(apps.begin(), apps.end(), [&](const AppInfo& a, const AppInfo& b) {
-        return collator.compare(a.name, b.name) < 0;
-    });
+    sortByName(apps);
     return apps;
 }
 

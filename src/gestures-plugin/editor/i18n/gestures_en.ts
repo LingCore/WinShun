@@ -75,6 +75,14 @@
         <source>要输入的文字</source>
         <translation>Words to type</translation>
     </message>
+    <message>
+        <source>提示文字</source>
+        <translation>Hint text</translation>
+    </message>
+    <message>
+        <source>提示里显示的字，不填就显示动作</source>
+        <translation>Shown in the hint; empty: the action</translation>
+    </message>
 </context>
 <context>
     <name>CornersPage</name>
@@ -527,6 +535,13 @@
     <message>
         <source>这个快捷键与其他操作冲突</source>
         <translation>This hotkey conflicts with another action</translation>
+    </message>
+</context>
+<context>
+    <name>InputBox</name>
+    <message>
+        <source>清空</source>
+        <translation>Clear</translation>
     </message>
 </context>
 <context>

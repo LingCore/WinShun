@@ -155,7 +155,7 @@ QHash<int, QByteArray> RulesModel::roleNames() const
         {TriggerButtonRole, "triggerButton"}, {TriggerButtonTitleRole, "triggerButtonTitle"}, {TriggerButtonDisabledRole, "triggerButtonDisabled"},
         {SelectionRole, "selection"}, {AppsRole, "apps"},
         {KindRole, "kind"}, {ActionTitleRole, "actionTitle"}, {ActionNoteRole, "actionNote"}, {ActionIconRole, "actionIcon"},
-        {ActionIdRole, "actionId"}, {ProvisionalRole, "provisional"},
+        {ActionIdRole, "actionId"}, {ProvisionalRole, "provisional"}, {NameRole, "name"},
     };
 }
 
@@ -215,6 +215,7 @@ QVariant RulesModel::data(const QModelIndex& index, int role) const
             : action.kind == gestures::Action::Kind::Type     ? qstr(action.target)
                                                               : qstr(action.text);
     case ProvisionalRole: return index.row() == m_provisional;
+    case NameRole: return qstr(rule.name);
     default: return {};
     }
 }
@@ -292,18 +293,34 @@ void RulesModel::changed(int row)
     emit dataChanged(index(row), index(row));
 }
 
-void RulesModel::setAction(int row, const gestures::Action& action)
+void RulesModel::setAction(int row, const gestures::Action& action, const std::optional<std::wstring>& name)
 {
     if (row < 0 || row >= static_cast<int>(m_rules.size()))
         return;
     gestures::Rule& rule = m_rules[static_cast<std::size_t>(row)];
     const bool wasProvisional = row == m_provisional;
-    if (!wasProvisional && rule.action == action)
+    std::wstring words = name ? gestures::cleanName(*name) : rule.name;
+    if (!wasProvisional && rule.action == action && rule.name == words)
         return;
     rule.action = action;
+    rule.name = std::move(words);
     m_provisional = wasProvisional ? -1 : m_provisional;
     changed(row);
     emit edited();
+}
+
+void RulesModel::setName(int row, const std::wstring& name)
+{
+    if (row < 0 || row >= static_cast<int>(m_rules.size()))
+        return;
+    gestures::Rule& rule = m_rules[static_cast<std::size_t>(row)];
+    std::wstring words = gestures::cleanName(name);
+    if (rule.name == words)
+        return;
+    rule.name = std::move(words);
+    changed(row);
+    if (row != m_provisional)
+        emit edited();
 }
 
 bool RulesModel::setWhere(int row, gestures::Zone zone)

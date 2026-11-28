@@ -105,6 +105,28 @@ private slots:
         QCOMPARE(parseAction(L"随便写的").kind, Action::Kind::Invalid);
     }
 
+    // GitHub #472: Ctrl+Up set for a gesture in WPS moved one cell. Sent in
+    // one go, Ctrl was up again before WPS read the key (it asks
+    // GetAsyncKeyState); now a shortcut's keys stay down over a pause, all
+    // down first and let go in reverse after it. A lone key goes in one go.
+    void shortcutKeysHeldOverAPause()
+    {
+        const KeyPresses ctrlUp = pressesOf(parseAction(L"Ctrl+Up").keys);
+        QVERIFY(ctrlUp.held);
+        QCOMPARE(ctrlUp.first, (std::vector<KeyStroke> {{VK_CONTROL, false}, {VK_UP, false}}));
+        QCOMPARE(ctrlUp.then, (std::vector<KeyStroke> {{VK_UP, true}, {VK_CONTROL, true}}));
+
+        const KeyPresses reopen = pressesOf(parseAction(L"Ctrl+Shift+T").keys);
+        QVERIFY(reopen.held);
+        QCOMPARE(reopen.first, (std::vector<KeyStroke> {{VK_CONTROL, false}, {VK_SHIFT, false}, {'T', false}}));
+        QCOMPARE(reopen.then, (std::vector<KeyStroke> {{'T', true}, {VK_SHIFT, true}, {VK_CONTROL, true}}));
+
+        const KeyPresses refresh = pressesOf(parseAction(L"F5").keys);
+        QVERIFY(!refresh.held);
+        QCOMPARE(refresh.first, (std::vector<KeyStroke> {{VK_F5, false}, {VK_F5, true}}));
+        QVERIFY(refresh.then.empty());
+    }
+
     void titles()
     {
         QCOMPARE(actionTitle(parseAction(L"close"), true), std::wstring(L"关闭窗口"));
@@ -113,6 +135,46 @@ private slots:
         QCOMPARE(actionTitle(parseAction(L"C:\\Tools\\x.exe"), true), std::wstring(L"打开 x.exe"));
         QCOMPARE(actionTitle(parseAction(L"https://a.b/c"), false), std::wstring(L"Open https://a.b/c"));
         QCOMPARE(actionTitle(parseAction(L""), true), std::wstring());
+    }
+
+    // GitHub #472: a rule's own words for the hint, in place of its action's.
+    void rulesNamedForTheHint()
+    {
+        QCOMPARE(cleanName(L"  上移段落 \t"), std::wstring(L"上移段落"));
+        QCOMPARE(cleanName(L"上移\r\n段落"), std::wstring(L"上移 段落")); // on one line
+        const std::wstring hidden = std::wstring(L"上") + wchar_t(0x200B) + wchar_t(0x202E) + wchar_t(0x07) + L"移";
+        QCOMPARE(cleanName(hidden), std::wstring(L"上移"));
+        QCOMPARE(cleanName(std::wstring(40, L'字')).size(), kMaxNameLength);
+        // Not half of a pair at the cut: 31 characters, then one written as two.
+        const std::wstring pair = std::wstring(31, L'a') + wchar_t(0xD83D) + wchar_t(0xDE00);
+        QCOMPARE(cleanName(pair), std::wstring(31, L'a'));
+        QCOMPARE(cleanName(L"   "), std::wstring());
+
+        Rule rule;
+        rule.on = "ctrl:U";
+        rule.action = keysAction(L"Ctrl+Up");
+        QCOMPARE(ruleTitle(rule, true), std::wstring(L"Ctrl+Up")); // no name: the action's
+        rule.name = L"上移段落";
+        QCOMPARE(ruleTitle(rule, true), std::wstring(L"上移段落"));
+        QCOMPARE(ruleTitle(rule, false), std::wstring(L"上移段落"));
+        Rule unknown = rule; // not understood: the hint says so, not the name
+        unknown.action = {.kind = Action::Kind::Invalid, .text = L"fly"};
+        QCOMPARE(ruleTitle(unknown, true), actionTitle(unknown.action, true));
+        Rule nothing = rule; // does nothing: no words
+        nothing.action = {};
+        QVERIFY(ruleTitle(nothing, true).empty());
+
+        // Kept with the rule, cleaned as it is read; none written when there is none.
+        const std::vector<Rule> rules {rule};
+        const std::string json = rulesJson(rules);
+        QVERIFY(json.find("\"name\"") != std::string::npos);
+        QVERIFY(parseRules(json).value() == rules);
+        QVERIFY(rulesJson(defaultRules()).find("\"name\"") == std::string::npos);
+        const auto read = parseRules(R"({"version":2,"rules":[{"on":"U","keys":"Ctrl+Up","name":"  上移\n段落 "},
+            {"on":"D","do":"copy","name":7}]})");
+        QVERIFY(read.has_value());
+        QCOMPARE((*read)[0].name, std::wstring(L"上移 段落"));
+        QVERIFY((*read)[1].name.empty());
     }
 
     void moreGestures()

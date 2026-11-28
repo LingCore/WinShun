@@ -173,9 +173,10 @@ DropPieHelper::~DropPieHelper()
 bool DropPieHelper::snapshot()
 {
     if (!m_profile.isValid() || !m_favorites) return false;
+    // Its chips' folders and places, and the files: 收藏 tells what is there already.
     FavoriteList folders;
     for (const Favorite& favorite : m_favorites->items())
-        if (favorite.kind == Favorite::Kind::Folder || favorite.kind == Favorite::Kind::Place)
+        if (favorite.isFileOrFolder() || favorite.kind == Favorite::Kind::Place)
             folders.push_back(favorite);
     DropPieText::setFolderCount(int(std::count_if(m_favorites->items().cbegin(), m_favorites->items().cend(),
         [](const Favorite& favorite) { return favorite.kind == Favorite::Kind::Folder; })));
@@ -268,6 +269,16 @@ void DropPieHelper::relayLog()
 void DropPieHelper::poll()
 {
     relayLog();
+    // 收藏 let go on in the helper's pie (GitHub #505): its files and folders,
+    // the favorites made here (nothing else comes in that way).
+    const QString requestPath = m_profile.filePath(u"favorite-request.json"_s);
+    if (const QByteArray request = read(requestPath); !request.isEmpty()) {
+        QFile::remove(requestPath);
+        if (m_favorites) {
+            const Favorites::Applied applied = m_favorites->apply(readFavoriteRequest(request));
+            qInfo("Drop pie helper: 收藏 added %d, removed %d", applied.added, applied.removed);
+        }
+    }
     const QString noticePath = m_profile.filePath(u"notice.json"_s);
     const auto notice = QJsonDocument::fromJson(read(noticePath)).object();
     if (!notice.isEmpty()) {
@@ -403,6 +414,10 @@ int runDropPieHelper(const QStringList& arguments)
     };
     const auto notify = [notice](const QString& title, const QString& text) { notice(title, text, {}); };
     DropPie pie(&favorites, &places, &operations, notify);
+    // 收藏: to Win顺, which writes the favorites (and its snapshot here, then).
+    pie.setFavoriteSink([profile](const FavoriteRequest& request) {
+        save(profile + u"/favorite-request.json"_s, writeFavoriteRequest(request));
+    });
     QQmlComponent component(&engine, u"WinShun"_s, u"DropPieWindow"_s);
     std::unique_ptr<QObject> object(component.createWithInitialProperties({{u"dropPie"_s, QVariant::fromValue(&pie)}}));
     auto* window = qobject_cast<QQuickWindow*>(object.get());

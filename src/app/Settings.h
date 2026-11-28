@@ -5,6 +5,7 @@
 #include "RowActions.h"
 #include "SearchTypes.h"
 #include "ShareIndexer.h"
+#include "UserApps.h"
 #include "WebShortcut.h"
 
 #include <QList>
@@ -505,6 +506,18 @@ struct Settings {
 
     // [Backup]
     QString backupFolder; // where the settings are backed up (see Backup); empty: not
+
+    // [Apps] (#505): PortableFolders=: folders whose programs are listed as
+    // apps (green software, unpacked and run where it lies); Hidden=: apps
+    // left out, by launch path; [AppNames]: what the user calls apps (Path=,
+    // Name=; a program file named so is listed as an app too).
+    QStringList portableFolders;
+    QStringList hiddenApps;
+    QList<AppName> appNames;
+    UserApps userApps() const { return {portableFolders, appNames, hiddenApps}; }
+    // The app of that launch path called `name` (cleanAppName), or by its own
+    // name again when empty. Whether that changed anything.
+    bool setAppName(const QString& path, const QString& name);
 
     // [Index]
     QStringList excludedPaths;

@@ -575,13 +575,8 @@ void FavoritesSettings::addPicked(const QStringList& paths)
         return;
     FavoriteList favorites;
     for (const QString& picked : paths) {
-        Favorite f;
-        f.path = QDir::toNativeSeparators(QFileInfo(picked).absoluteFilePath());
-        if (f.path.size() > 3 && f.path.endsWith(u'\\'))
-            f.path.chop(1);
-        f.kind = QFileInfo(f.path).isDir() ? Favorite::Kind::Folder : Favorite::Kind::File;
-        f.name = lastName(f.path);
-        favorites.append(f);
+        const QFileInfo info(picked);
+        favorites.append(favoriteForPath(info.absoluteFilePath(), info.isDir()));
     }
     const int added = m_store->addAll(favorites);
     const int there = static_cast<int>(favorites.size()) - added;

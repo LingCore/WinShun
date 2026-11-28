@@ -1062,6 +1062,40 @@ Modifiers Rule::modifiers() const
     return g ? g->modifiers : Modifiers {0};
 }
 
+std::wstring cleanName(std::wstring_view text)
+{
+    const auto invisible = [](wchar_t c) {
+        return c < 0x20 || (c >= 0x7F && c < 0xA0) || c == 0xAD || (c >= 0x200B && c <= 0x200F)
+            || (c >= 0x202A && c <= 0x202E) || (c >= 0x2060 && c <= 0x206F) || c == 0xFEFF;
+    };
+    std::wstring name;
+    for (const wchar_t c : text) {
+        const bool space = c == L' ' || c == L'\r' || c == L'\n' || c == L'\t' || c == 0x2028 || c == 0x2029;
+        if (space) {
+            if (!name.empty() && name.back() != L' ') // one between words
+                name += L' ';
+        } else if (!invisible(c)) {
+            name += c;
+        }
+    }
+    name = trimmed(name);
+    if (name.size() > kMaxNameLength) {
+        std::size_t cut = kMaxNameLength;
+        if (name[cut - 1] >= 0xD800 && name[cut - 1] <= 0xDBFF) // the first half of a pair
+            --cut;
+        name = trimmed(name.substr(0, cut));
+    }
+    return name;
+}
+
+std::wstring ruleTitle(const Rule& rule, bool chinese)
+{
+    const Action::Kind kind = rule.action.kind;
+    if (!rule.name.empty() && kind != Action::Kind::Nothing && kind != Action::Kind::Invalid)
+        return rule.name;
+    return actionTitle(rule.action, chinese);
+}
+
 bool Rule::sameCase(const Rule& other) const
 {
     return on == other.on && where == other.where && selection == other.selection && sameApps(apps, other.apps);
@@ -1204,6 +1238,8 @@ std::string rulesJson(const std::vector<Rule>& rules)
             o.set("do", winshun::utf8(r.action.text)); // kept as written, shown as not understood
             break;
         }
+        if (!r.name.empty())
+            o.set("name", winshun::utf8(r.name));
         list.push(o);
     }
     winshun::Json root = winshun::Json::Object {};
@@ -1257,6 +1293,8 @@ std::optional<std::vector<Rule>> parseRules(std::string_view json)
         } else if (o["type"].isString()) {
             r.action = typeAction(winshun::wide(o["type"].toString()));
         }
+        if (o["name"].isString())
+            r.name = cleanName(winshun::wide(o["name"].toString()));
         // The same case twice: the later one, as it would be saved.
         std::erase_if(rules, [&](const Rule& other) { return other.sameCase(r); });
         rules.push_back(std::move(r));
@@ -1517,6 +1555,18 @@ void RubWatch::reset()
     m_edge = -1;
     m_direction = 0;
     m_turns.clear();
+}
+
+KeyPresses pressesOf(const std::vector<std::uint16_t>& keys)
+{
+    KeyPresses presses;
+    presses.held = keys.size() > 1;
+    std::vector<KeyStroke>& ups = presses.held ? presses.then : presses.first;
+    for (const std::uint16_t vk : keys)
+        presses.first.push_back({vk, false});
+    for (auto it = keys.rbegin(); it != keys.rend(); ++it)
+        ups.push_back({*it, true});
+    return presses;
 }
 
 // ---- mouse button & chord state machine ----

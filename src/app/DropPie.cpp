@@ -45,6 +45,10 @@ constexpr double kStatusGap = 12;
 constexpr double kStatusPad = 10;
 constexpr double kStatusMin = 280;
 constexpr double kStatusMax = 400;
+// 收藏, past the line (GitHub #505): its gap from the line; how long the line
+// says what letting go there did before the pie goes.
+constexpr double kStarGap = 8;
+constexpr auto kStarShown = 900ms;
 // After a page is turned, how far the pointer goes (logical pixels) before a chip of the new page is chosen.
 constexpr double kTurnSlop = 4;
 // The columns (GitHub #463), timed as the folder menu's (FolderMenuWindow):
@@ -415,6 +419,9 @@ void DropPie::open(POINT pt)
     m_warped.invalidate();
     m_lastAt = pt;
     refreshBlocks();
+    m_starDone.clear();
+    m_starChanged = false;
+    refreshStar();
     m_spot = {};
     m_trace.clear();
     m_keys = {};
@@ -472,6 +479,9 @@ void DropPie::preview(POINT pt, int hovered)
     m_lastAt = pt;
     m_trace.clear();
     refreshBlocks();
+    m_starDone.clear();
+    m_starChanged = false;
+    refreshStar();
     m_keys = {};
     m_hovered = m_picked = hovered;
     m_spot = hovered >= 0 ? Spot {0, hovered, Part::Chip} : Spot {0, -1, Part::Middle};
@@ -538,9 +548,40 @@ DWORD DropPie::previewPointer(QPointF local, DWORD keys)
                            rect.top + static_cast<LONG>(std::lround(local.y() * m_dpr))});
 }
 
+void DropPie::previewItems(const QStringList& paths)
+{
+    std::vector<std::wstring> items;
+    for (const QString& path : paths)
+        items.push_back(QDir::toNativeSeparators(path).toStdWString());
+    setItems(std::move(items));
+    m_count = m_items.size();
+    m_plain = !m_items.empty();
+    m_itemsDrive = paths.isEmpty() ? QString() : driveOf(paths.front());
+    refreshBlocks();
+    refreshStar();
+    updateSectors();
+    updateTexts();
+    emit stateChanged();
+}
+
+// As a Drop: never the folder's own drop target or a file operation (there is
+// no data object), so only on 收藏 or nowhere.
+DWORD DropPie::previewDrop(QPointF local)
+{
+    if (!m_open || !takeDropSite())
+        return DROPEFFECT_NONE;
+    previewPointer(local, m_lastKeys);
+    if (!m_open)
+        return DROPEFFECT_NONE;
+    if (m_spot.part == Part::Star)
+        return dropOnStar();
+    hide("let go in a preview, not on 收藏");
+    return DROPEFFECT_NONE;
+}
+
 QRectF DropPie::drawnRect() const
 {
-    QRectF drawn = m_allBounds.translated(m_centre).united(m_statusRect);
+    QRectF drawn = m_allBounds.translated(m_centre).united(m_statusRect).united(m_starRect);
     for (const Column& c : m_columns)
         drawn = drawn.united(c.box.rect);
     constexpr double kShadow = 16; // the soft shadows round the chips and the boxes
@@ -554,25 +595,33 @@ QRect DropPie::place(QScreen* screen, POINT pt)
     const QPointF cursor = logicalOf(pt, screen);
     const QRectF chips = m_allBounds.adjusted(-8 * m_scale, -8 * m_scale, 8 * m_scale, 8 * m_scale);
     const QSizeF status = m_statusRect.size();
+    const QSizeF star(m_starWidth, m_metrics.chipHeight);
+    const double starGap = kStarGap * m_scale;
+    // The line and 收藏 past it: under the chips, or above them both.
     const QRectF below(-status.width() / 2, m_allBounds.bottom() + kStatusGap * m_scale, status.width(), status.height());
     const QRectF above = below.translated(0, m_allBounds.top() - kStatusGap * m_scale - status.height() - below.top());
+    const QRectF starBelow(-star.width() / 2, below.bottom() + starGap, star.width(), star.height());
+    const QRectF starAbove(-star.width() / 2, above.top() - starGap - star.height(), star.width(), star.height());
     const QRectF area(screen->availableGeometry());
     const double safe = m_metrics.dead - 4 * m_scale;
-    const pie::Placement low = pie::placeCentre(cursor, area, chips.united(below), safe);
-    const pie::Placement high = pie::placeCentre(cursor, area, chips.united(above), safe);
+    const pie::Placement low = pie::placeCentre(cursor, area, chips.united(below).united(starBelow), safe);
+    const pie::Placement high = pie::placeCentre(cursor, area, chips.united(above).united(starAbove), safe);
     const auto shift = [&](const pie::Placement& p) { return std::hypot(p.centre.x() - cursor.x(), p.centre.y() - cursor.y()); };
     const bool flipped = shift(high) + 0.5 < shift(low);
     const pie::Placement placement = flipped ? high : low;
     const QRectF statusBox = flipped ? above : below;
+    const QRectF starBox = flipped ? starAbove : starBelow;
     // The pointer inside the window, wherever the pie went: else the drag
     // never enters it. The whole work area too, for the columns to come in
     // without the window changing while it is seen (DropPie's class note).
     const QRectF pointer(cursor - placement.centre, QSizeF(1, 1));
     const QRectF work = area.translated(-placement.centre);
-    const QRect rect = pie::windowRect(placement.centre, m_layout.reach.united(statusBox).united(pointer).united(work),
-        wholeOf(screen), screen->devicePixelRatio());
+    const QRect rect = pie::windowRect(placement.centre,
+        m_layout.reach.united(statusBox).united(starBox).united(pointer).united(work), wholeOf(screen),
+        screen->devicePixelRatio());
     m_centre = placement.centre - rect.topLeft();
     m_statusRect = statusBox.translated(m_centre);
+    m_starRect = starBox.translated(m_centre);
     m_area = area.translated(-QPointF(rect.topLeft())).intersected(QRectF(QPointF(), QSizeF(rect.size())));
     m_warp = placement.warp;
     return rect;
@@ -601,6 +650,9 @@ void DropPie::hide(const char* why)
     m_trace.clear();
     m_aim.stop();
     m_awaitMove = m_keepUntilMove = false;
+    m_starDone.clear();
+    m_starChanged = false;
+    refreshStar(); // nothing dragged
     resetColumns();
     if (m_page != 0 || !m_leaving.isEmpty()) {
         m_page = m_pageNotified = 0; // it opens on the first again; its chips are made then
@@ -609,6 +661,8 @@ void DropPie::hide(const char* why)
     }
     setRevealed(false);
     syncPageKeys(); // Tab is the system's again
+    if (m_nextFolders)
+        applyFolders(std::move(*m_nextFolders));
     emit stateChanged();
     if (shown)
         qInfo() << "Drop pie: hidden," << why;
@@ -718,6 +772,7 @@ DWORD DropPie::dragEnter(IDataObject* data, DWORD keys, POINT pt, DWORD allowed)
     const bool oneDrive = drives.size() == 1 && m_items.size() == m_count && !drives.begin()->isEmpty();
     m_itemsDrive = oneDrive ? *drives.begin() : QString();
     refreshBlocks();
+    refreshStar();
     qInfo().noquote() << u"Drop pie: %1 %2 over it (read from %3) %4 ms after it was asked for"_s.arg(m_count)
                              .arg(m_plain ? u"files"_s : u"items that are not lasting files"_s)
                              .arg(items.fromIdList ? u"the ID list"_s : u"CF_HDROP"_s)
@@ -788,6 +843,8 @@ DWORD DropPie::drop(IDataObject* data, DWORD keys, POINT pt, DWORD /*allowed*/)
     m_aim.stop();
     if (!m_open)
         return DROPEFFECT_NONE;
+    if (m_spot.part == Part::Star)
+        return dropOnStar();
     const Folder* target = targetFolder();
     if (!target) {
         hide(m_spot.part == Part::Middle ? "let go in the middle: nothing done" : "let go off the folders");
@@ -877,6 +934,82 @@ DWORD DropPie::drop(IDataObject* data, DWORD keys, POINT pt, DWORD /*allowed*/)
     return effect;
 }
 
+// Let go on 收藏: the favorites changed (here, or by Win顺 for the helper),
+// and the line says so a moment. The source is told nothing was dropped: it
+// does nothing with its files.
+DWORD DropPie::dropOnStar()
+{
+    if (starDisabled() || m_starPaths.isEmpty()) {
+        hide("let go on 收藏, which cannot take these");
+        return DROPEFFECT_NONE;
+    }
+    m_dwell.stop();
+    m_scroll.stop();
+    const bool removing = m_star == Star::Remove;
+    FavoriteRequest request;
+    if (removing) {
+        request.remove = m_starPaths;
+    } else {
+        // A few local or just-dragged paths: quick to ask (the source has them).
+        for (const QString& path : std::as_const(m_starPaths)) {
+            const DWORD attributes = ::GetFileAttributesW(reinterpret_cast<const wchar_t*>(path.utf16()));
+            request.add.append(favoriteForPath(path,
+                attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY)));
+        }
+    }
+    bool done = true;
+    if (m_favoriteSink) {
+        m_favoriteSink(request);
+    } else if (m_favorites) {
+        const Favorites::Applied applied = m_favorites->apply(request);
+        done = applied.added + applied.removed > 0;
+    } else {
+        done = false;
+    }
+    m_starDone = done ? (removing ? tr("已取消收藏") : tr("已收藏")) : (removing ? tr("没能取消收藏") : tr("没能收藏"));
+    m_starChanged = done;
+    qInfo().noquote() << u"Drop pie: let go on 收藏, %1 %2 items%3"_s.arg(removing ? u"removing"_s : u"adding"_s)
+                             .arg(m_starPaths.size())
+                             .arg(m_favoriteSink ? u", asked of Win顺"_s : done ? QString() : u", nothing changed"_s);
+    m_confirming = true;
+    syncPageKeys();
+    m_releaseWait.stop();
+    updateTexts();
+    emit stateChanged();
+    m_confirmTimer.start(kStarShown);
+    return DROPEFFECT_NONE;
+}
+
+// Lasting files and folders, not too many: added unless every one of them is
+// a favorite already, then taken out.
+void DropPie::refreshStar()
+{
+    m_starPaths.clear();
+    m_starThere = 0;
+    if (!m_plain || m_items.empty() || m_items.size() != m_count) {
+        m_star = Star::NotFiles;
+        return;
+    }
+    if (m_items.size() > kMaxStarItems) {
+        m_star = Star::TooMany;
+        return;
+    }
+    QStringList fresh;
+    QStringList there;
+    for (const std::wstring& item : m_items) {
+        const QString path = favoriteForPath(QString::fromStdWString(item), false).path;
+        (m_favorites && m_favorites->contains(path) ? there : fresh).append(path);
+    }
+    m_star = fresh.isEmpty() ? Star::Remove : Star::Add;
+    m_starThere = fresh.isEmpty() ? 0 : static_cast<int>(there.size());
+    m_starPaths = fresh.isEmpty() ? there : fresh;
+}
+
+QString DropPie::starText() const
+{
+    return m_star == Star::Remove ? tr("取消收藏") : tr("收藏");
+}
+
 // From the window's own corner in physical pixels: Qt's rectangle times the
 // scale is off by a pixel at fractional scales.
 QPointF DropPie::localOf(POINT pt) const
@@ -910,6 +1043,11 @@ DropPie::Spot DropPie::spotAt(QPointF local) const
             return {level, -1, Part::Box};
         }
     }
+    // On 收藏 (or within half a chips' gap of it), wherever a chip's
+    // direction goes.
+    const double half = m_metrics.chipGap / 2;
+    if (m_starRect.adjusted(-half, -half, half, half).contains(local))
+        return {0, -1, Part::Star};
     const pie::Hit hit = pie::hitTest(local - m_centre, m_layout, m_metrics);
     if (hit.zone == pie::Zone::Dead)
         return {0, -1, Part::Middle};
@@ -930,6 +1068,11 @@ DropPie::Spot DropPie::spotAt(QPointF local) const
         if (pie::inHullOf(local, around(level - 1), around(level)))
             return {level, -1, Part::Box};
     }
+    // On the line under the chips, near 收藏, or on the way to them: still
+    // on the pie, nothing chosen.
+    const QRectF line = m_statusRect.united(m_starRect);
+    if (line.adjusted(-reach, -reach, reach, reach).contains(local) || pie::inHullOf(local, around(0), line))
+        return {0, -1, Part::Box};
     return {};
 }
 
@@ -1080,6 +1223,11 @@ DWORD DropPie::track(DWORD keys, POINT pt)
         updateTexts();
         emit stateChanged();
     }
+    // 收藏 makes a link of a sort: the pointer says so where the source allows it.
+    if (m_spot.part == Part::Star)
+        return starDisabled() ? DROPEFFECT_NONE
+            : (m_allowed & DROPEFFECT_LINK) ? DWORD(DROPEFFECT_LINK)
+                                            : m_allowed & DROPEFFECT_COPY;
     switch (modeOf(targetFolder())) {
     case pie::Mode::Move:
         return DROPEFFECT_MOVE & m_allowed;
@@ -1107,9 +1255,32 @@ void DropPie::updateTexts()
     m_statusVerb.clear();
     m_statusHint.clear();
     m_statusDetail.clear();
+    const QFontMetricsF fine(fontOf(std::max(12, m_labelPixelSize - 1)));
+    const double detailWidth = m_statusRect.width() - 2 * kStatusPad * m_scale;
+    if (m_spot.part == Part::Star) {
+        // 收藏: what letting go does (did) with what; the path, or why not.
+        if (starDisabled()) {
+            m_statusName = starText();
+            m_statusDetail = m_star == Star::TooMany ? tr("一次最多收藏 %n 项", "", int(kMaxStarItems))
+                                                     : tr("只能收藏磁盘上的文件和文件夹");
+            return;
+        }
+        const auto count = static_cast<int>(m_starPaths.size());
+        m_statusVerb = !m_starDone.isEmpty() ? m_starDone : starText();
+        m_statusName = count == 1 ? pielabels::lastName(m_starPaths.front()) : tr("%n 项", "", count);
+        QString folder = count == 1 ? m_starPaths.front() : parentOf(m_starPaths.front());
+        for (const QString& path : std::as_const(m_starPaths)) {
+            if (count > 1 && parentOf(path).compare(folder, Qt::CaseInsensitive) != 0)
+                folder.clear(); // from several folders: none to name
+        }
+        m_statusDetail = m_starThere > 0 && m_starDone.isEmpty()
+            ? tr("另有 %n 项已在收藏夹里", "", m_starThere)
+            : pielabels::elidePath(folder, fine, detailWidth);
+        return;
+    }
     if (m_folders.empty()) {
         m_statusName = tr("还没有收藏文件夹");
-        m_statusDetail = tr("在 设置 → 收藏夹 里添加");
+        m_statusDetail = tr("把文件夹拖到“收藏”上就加进来");
         return;
     }
     Block block = Block::None;
@@ -1137,9 +1308,8 @@ void DropPie::updateTexts()
         if (allowed().copy)
             m_statusHint = tr("按住 Ctrl 复制");
     }
-    const QFontMetricsF fine(fontOf(std::max(12, m_labelPixelSize - 1)));
     const double hintWidth = m_statusHint.isEmpty() ? 0 : fine.horizontalAdvance(m_statusHint) + 12 * m_scale;
-    m_statusDetail = pielabels::elidePath(folder->path, fine, m_statusRect.width() - 2 * kStatusPad * m_scale - hintWidth);
+    m_statusDetail = pielabels::elidePath(folder->path, fine, detailWidth - hintWidth);
 }
 
 // ---- the folders -------------------------------------------------------------
@@ -1176,13 +1346,23 @@ void DropPie::gatherFolders()
         }
         QMetaObject::invokeMethod(this, [this, folders = std::move(folders)]() mutable {
             DropPieText::setFolderCount(static_cast<int>(folders.size()));
+            if (m_open && m_confirming && !m_starDone.isEmpty()) {
+                m_nextFolders = std::move(folders); // 收藏's own change: once it has said so
+                return;
+            }
             if (m_open)
                 hide("the favorites changed");
-            m_folders = std::move(folders);
-            m_blocks.assign(m_folders.size(), Block::None);
-            updateSectors();
+            applyFolders(std::move(folders));
         }, Qt::QueuedConnection);
     });
+}
+
+void DropPie::applyFolders(std::vector<Folder> folders)
+{
+    m_nextFolders.reset();
+    m_folders = std::move(folders);
+    m_blocks.assign(m_folders.size(), Block::None);
+    updateSectors();
 }
 
 // Which local folders are gone, asked again every time the pie opens: a
@@ -1286,7 +1466,8 @@ void DropPie::updateSectors()
     const double nameWidth = DropPieText::nameWidth();
     // One chip's words, and how wide it is.
     const auto chipOf = [&](const QString& name, const QString& path, const QString& parent, Block block, double& width) {
-        const QString shown = pielabels::elideMiddle(name.simplified(), label, nameWidth);
+        // A favorite's name is cut to the width; the words of an empty pie are whole.
+        const QString shown = path.isEmpty() ? name : pielabels::elideMiddle(name.simplified(), label, nameWidth);
         const QString hint = parent.isEmpty() ? QString() : pielabels::elideMiddle(parent, hintFont, kHintWidth * m_scale);
         width = (kChipPadStart + kGlyph + kGlyphGap + kChipPadEnd) * m_scale + std::ceil(label.horizontalAdvance(shown));
         if (!hint.isEmpty())
@@ -1346,8 +1527,14 @@ void DropPie::updateSectors()
     m_allBounds = allBounds;
     m_layout.reach = allReach;
     const double statusWidth = std::clamp(m_allBounds.width(), kStatusMin * m_scale, kStatusMax * m_scale);
-    if (statusWidth != m_statusRect.width()) {
+    // 收藏 as wide as either of its words wants: it does not change size
+    // between one drag and the next.
+    const double starWords = std::max(label.horizontalAdvance(tr("收藏")), label.horizontalAdvance(tr("取消收藏")));
+    const double starWidth = std::max(kMinChip * m_scale,
+        (kChipPadStart + kGlyph + kGlyphGap + kChipPadEnd) * m_scale + std::ceil(starWords));
+    if (statusWidth != m_statusRect.width() || starWidth != m_starWidth) {
         m_statusRect.setWidth(statusWidth);
+        m_starWidth = starWidth;
         emit layoutChanged();
     }
     const bool itemsChanged = items != m_sectorItems;
@@ -1594,8 +1781,9 @@ void DropPie::layOutColumns()
             pie::ColumnMetrics first = metrics;
             first.gap = m_metrics.chipGap;
             column.box = pie::placeColumn(pieBox, chip.center().y(), side, column.width, rows, m_area, first);
-            if (column.box.rect.intersects(m_statusRect))
-                column.box = pie::placeColumn(pieBox.united(m_statusRect), chip.center().y(), side, column.width, rows,
+            const QRectF line = m_statusRect.united(m_starRect); // and 收藏 past it
+            if (column.box.rect.intersects(line))
+                column.box = pie::placeColumn(pieBox.united(line), chip.center().y(), side, column.width, rows,
                     m_area, first);
         } else {
             const Column& before = m_columns[i - 1];

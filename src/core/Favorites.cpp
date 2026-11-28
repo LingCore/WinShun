@@ -89,6 +89,50 @@ bool Favorite::pressesKeys() const noexcept
     return kind == Kind::Command && keychord::isCommand(command);
 }
 
+Favorite favoriteForPath(QStringView path, bool folder)
+{
+    Favorite f;
+    f.kind = folder ? Favorite::Kind::Folder : Favorite::Kind::File;
+    f.path = QDir::toNativeSeparators(path.toString());
+    if (f.path.size() > 3 && f.path.endsWith(u'\\'))
+        f.path.chop(1);
+    f.name = lastName(f.path);
+    return f;
+}
+
+QByteArray writeFavoriteRequest(const FavoriteRequest& request)
+{
+    QJsonArray add;
+    for (const Favorite& f : request.add) {
+        if (f.isFileOrFolder())
+            add.append(QJsonObject {{u"path"_s, f.path}, {u"folder"_s, f.kind == Favorite::Kind::Folder}});
+    }
+    return QJsonDocument(QJsonObject {{u"add"_s, add}, {u"remove"_s, QJsonArray::fromStringList(request.remove)}})
+        .toJson(QJsonDocument::Compact);
+}
+
+FavoriteRequest readFavoriteRequest(QByteArrayView json)
+{
+    FavoriteRequest request;
+    const QJsonObject object = QJsonDocument::fromJson(json.toByteArray()).object();
+    // A full path of the file system, and nothing a favorite of another kind has.
+    const auto usable = [](const QString& path) {
+        return path.size() <= 32767 && fits(Favorite::Kind::File, path) && QDir::isAbsolutePath(path);
+    };
+    for (const QJsonValue& value : object.value(u"add"_s).toArray()) {
+        const QJsonObject item = value.toObject();
+        const QString path = item.value(u"path"_s).toString();
+        if (request.add.size() < kMaxRequestItems && usable(path))
+            request.add.append(favoriteForPath(path, item.value(u"folder"_s).toBool()));
+    }
+    for (const QJsonValue& value : object.value(u"remove"_s).toArray()) {
+        const QString path = value.toString();
+        if (request.remove.size() < kMaxRequestItems && usable(path))
+            request.remove.append(QDir::toNativeSeparators(path));
+    }
+    return request;
+}
+
 std::optional<Favorite> favoriteOf(const SearchResult& row)
 {
     if (row.path.isEmpty() || row.isWeb() || row.isPlugin() || row.isWindow())
@@ -627,6 +671,25 @@ int Favorites::removeAll(const QStringList& paths)
         emit changed();
     }
     return static_cast<int>(removed);
+}
+
+Favorites::Applied Favorites::apply(const FavoriteRequest& request)
+{
+    Applied applied;
+    FavoriteList add;
+    for (const Favorite& f : request.add) {
+        if (f.isFileOrFolder())
+            add.append(f);
+    }
+    applied.added = addAll(add);
+    QStringList remove;
+    for (const QString& path : request.remove) {
+        const qsizetype i = indexOf(path);
+        if (i >= 0 && m_items[i].isFileOrFolder())
+            remove.append(m_items[i].path);
+    }
+    applied.removed = remove.isEmpty() ? 0 : removeAll(remove);
+    return applied;
 }
 
 bool Favorites::update(qsizetype index, const Favorite& favorite)

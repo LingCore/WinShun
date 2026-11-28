@@ -39,6 +39,7 @@ Win顺 在读取任何设置之前按以下优先级确定目录：
 | `[Appearance]` | 主题、界面风格（`fluent`/`brand`/`tactile`/`liquid`）、圆角、毛玻璃、语言、界面大小、托盘图标风格、自定义字体、最大行数 |
 | `[Proxy]` / `[Update]` / `[Backup]` | WinHTTP 代理；自动检查更新与匿名用户统计开关；配置备份目录 |
 | `[Index]` | 排除路径/名称/类型/模式、盘符与可移动盘、索引方式（`Access`）与范围（`Scope`/`Folders`）、自定义索引位置（`Folder`） |
+| `[Apps]` / `[AppNames]` | 便携软件文件夹与隐藏的程序；用户给应用起的别名（按启动路径） |
 | `[Content]` | 内容搜索与文档提取开关、纯文本扩展名、四类文件大小上限、内容索引开关 |
 | `[Clipboard]` | 历史开关、Win+V/自定义/纯文本粘贴热键、`PlainByDefault=false`（默认关：开后点击/双击/`Enter`/数字键/快速粘贴键粘贴文字去掉格式，`Shift` 反向，`Clipboard::pastesPlain` 唯一判定）、保留策略、图片/截图收录策略、排除应用、布局与交互 |
 | `[Taskbar]` | Win+S 接管、开始菜单打字、任务栏搜索框样式与位置、托盘左右/中键动作 |
@@ -93,9 +94,9 @@ Win顺 在读取任何设置之前按以下优先级确定目录：
 | `idle-trim` / `key-helper` | `IdleTrim` / `ServiceKeyListener` | 空闲内存交还（归还结束后一条：归还前 `private_mb`、保留热页 `keep_mb`（`HotPages`）、归还后仍驻留 `stayed_mb`、系统内存占用 `memory_load`，系统内存紧张（≥ 70%）时带 `short_of_memory: true`，这时 `keep_mb` 还含一次使用要用的页和文件名索引；中途被唤醒为 `stopped`）/`held: resumed`；UIAccess 按键助手状态 |
 | `double-tap-near-miss` / `double-tap-dropped` | `KeyListener` / `TapTeller` | 双击未成立原因与干扰类别、延迟/让位丢弃（合计 ≤30/h，不记具体键） |
 | `clipboard-picture-not-read` / `clipboard-key-routing-*` | `Clipboard` / `KeyRouter` | OCR 连崩跳图尺寸；剪贴板按键转发与未接管原因统计 |
-| `clipboard-hidden` | `App::hideClipboard` | 剪贴板面板每次隐藏的原因 `why`（`asked`/`inactive`/`clicked-away`/`routed-front-moved`/`lent-front-moved`/`display-lost-focus`/`front-refused`）、显示了多久 `shown_ms`、是否转发按键、打开时前台是否全屏/独占全屏、是否因此直接拿了焦点 `focus_taken`、目标窗口是否已最小化或消失；不记窗口标题与程序名 |
+| `clipboard-hidden` | `App::hideClipboard` | 剪贴板面板每次隐藏的原因 `why`（`asked`/`inactive`/`clicked-away`/`routed-front-moved`/`lent-front-moved`/`display-lost-focus`/`front-refused`）、显示了多久 `shown_ms`、是否转发按键、打开时前台是否全屏/独占全屏、是否因此直接拿了焦点 `focus_taken`、目标窗口是否已最小化或消失、此刻前台是哪一类窗口 `front_taker`（`none`/`ours`/`target`/`shell`/`other`：没有、Win顺 自己的、打开时那个程序的、桌面或任务栏、别的）；不记窗口标题与程序名 |
 | `clipboard-over-exclusive` | `App::showClipboard` | 在独占全屏的游戏上打开：面板不转发按键而直接拿焦点（Windows 10 上不拿焦点的窗口不会让游戏退出全屏，面板看不见，#452）；`front` 为是否拿到前台，拿不到随后有 `clipboard-hidden` `why=front-refused` |
-| `clipboard-kept` | `App::routedForeground` | 面板不抢焦点地盖住全屏窗口（未被识别为独占全屏）、对方因此退出全屏并最小化时面板不收起而接过焦点（#452）：`shown_ms`、是否独占全屏 `over_exclusive`、是否拿到前台 `front`（拿不到则照旧收起，随后有 `clipboard-hidden`） |
+| `clipboard-kept` | `App::routedForeground` / `App::takeClipboardFrontBack` | 面板没有因前台变化收起（#452）。不带 `from`：面板不抢焦点地盖住全屏窗口（未被识别为独占全屏）、对方因此退出全屏并最小化，面板接过焦点；`from=inactive`：在独占全屏游戏上拿了焦点后，游戏退出全屏时前台又被游戏自己、桌面或任务栏拿走，面板拿回前台，`taker` 为拿走前台的那一类（同 `front_taker`）。都记 `shown_ms`、是否独占全屏 `over_exclusive`、是否拿到前台 `front`（拿不到则照旧收起，随后有 `clipboard-hidden`） |
 
 ## 3. 检查更新、增量包与发布链路
 

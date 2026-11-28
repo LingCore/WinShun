@@ -369,6 +369,8 @@ public:
         BrowseFolder, // list a folder in Win顺, then keep typing to search there
         Rename, // 重命名: a file's or folder's row, in place (F2; Main.qml opens the box, see beginRename)
         RunAsUser, // 以普通权限运行: a row whose Enter runs as administrator (adminRemembered); Open from then on
+        CopyText, // 复制文字: a plugin's text (`copy`) for its row that stands for a file, whose Ctrl+C copies that (#448)
+        SetAlias, // 设置别名: an app's row (F2 too), or a program file's, named anew in Win顺 only (#505; Main.qml's box)
         PluginAction = 100,
         PluginFileAction = 200
     };
@@ -731,10 +733,12 @@ public:
     // m_serverWaitId its answer must still match.
     quint64 showServerWait(const QString& path, bool clientStarting);
     // For the preview's checks: the server checks started so far (one per
-    // files asked about while it is under way), and what copies files in
-    // place of shell::copyFiles (the clipboard left be).
+    // files asked about while it is under way), and what copies files or
+    // text in place of shell::copyFiles and shell::copyText (the clipboard,
+    // and the user's history in it, left be).
     quint64 serverChecksStarted() const { return m_serverChecksStarted; }
     void setFileCopier(std::function<void(const QStringList& files)> copier) { m_fileCopier = std::move(copier); }
+    void setTextCopier(std::function<void(const QString& text)> copier) { m_textCopier = std::move(copier); }
     void setFileRecycler(std::function<void(const QStringList& files, std::function<void(bool)> done)> recycler)
     {
         m_fileRecycler = std::move(recycler);
@@ -769,7 +773,8 @@ public:
     Q_INVOKABLE bool stepSwitch(int row, int steps);
     // The row's file or folder dragged out of the window (into a chat, a
     // folder); the selection when the row is in it. Returns when it was let
-    // go (see dragout::drag). Apps, places, web pages and plugins' rows stay.
+    // go (see dragout::drag). Apps, places, web pages and plugins' rows stay,
+    // but for the file a plugin's row stands for (plugin::fileOf, GitHub #448).
     Q_INVOKABLE void dragOut(int row);
     // Selecting several rows: Ctrl toggles one, Shift takes the rows from an
     // anchor to here (instead of the selection, or with Ctrl added to it).
@@ -799,11 +804,16 @@ public:
     // finishRename takes the name typed: false, with the reason flashed, when
     // it is none Windows takes or is taken already (the box stays), else the
     // shell is asked and the row follows.
-    Q_INVOKABLE bool beginRename(int row);
+    // `alias`, or an app's row (#505): the name Win顺 shows it by, and finds
+    // it by besides its own (appNameRequested; renameAlias says so); none
+    // typed, or its own name, and it has its own name again.
+    Q_INVOKABLE bool beginRename(int row, bool alias = false);
     Q_INVOKABLE bool finishRename(const QString& name);
     Q_INVOKABLE void cancelRename() { m_renaming.reset(); }
     Q_INVOKABLE QString renameName() const { return m_renaming ? m_renaming->name : QString(); }
     Q_INVOKABLE int renameStem() const;
+    Q_INVOKABLE bool renameAlias() const { return m_renaming && m_aliasing; }
+    Q_INVOKABLE int renameMaxLength() const; // characters the box takes
     Q_INVOKABLE void showSystemMenu(int row, const QVariant& globalPos = {});
     bool systemMenuOpen() const { return m_systemMenuOpen; }
     // Open, or asked for a moment ago: the context-menu event the Menu
@@ -1030,6 +1040,9 @@ signals:
     void webSettingsRequested(); // the settings window, on its 网页搜索 page
     void fileTypeSettingsRequested(); // ... on its 结果列表 page, at the file types
     void fileChipMoveRequested(int from, int to);
+    // The app of that launch path (or the program file) called `name` from
+    // now on (#505); its own name again when empty.
+    void appNameRequested(const QString& path, const QString& name);
     void fileTypeChanged();
     void galleryChanged();
     void queryErrorChanged();
@@ -1241,6 +1254,7 @@ private:
     // down), the same files join it, the answer going to the newest.
     void checkServersThen(const QStringList& paths, std::function<void(const ServerFound&)> then);
     void copyFiles(const QStringList& files); // m_fileCopier, else shell::copyFiles
+    void copyText(const QString& text); // m_textCopier, else shell::copyText
     void recycleFiles(const QStringList& files, std::function<void(bool)> done); // m_fileRecycler, else shell::recycle
     navigation::TabAction tabAction(int row) const;
     void browseFolder(const SearchResult& folder);
@@ -1284,6 +1298,7 @@ private:
     void forgetGone(const QStringList& paths, int attempt);
     bool forgetRecycled(const SearchResult& result); // forgetRow, unless it is still there (then false)
     void onRenamed(const SearchResult& was, const QString& newName, bool ok);
+    void finishAlias(const SearchResult& was, const QString& name); // #505: see beginRename
     void forgetRow(const SearchResult& result); // out of the list (its count) and the history
     void forgetMissing(const SearchResult& r, Action action); // an action's file not there: said so, out of the history
     std::function<void(bool)> reportFailure(const QString& name);
@@ -1442,6 +1457,7 @@ private:
     QHash<QString, ServerCheck> m_serverChecks;
     quint64 m_serverChecksStarted = 0;
     std::function<void(const QStringList& files)> m_fileCopier; // setFileCopier
+    std::function<void(const QString& text)> m_textCopier; // setTextCopier
     std::function<void(const QStringList& files, std::function<void(bool)> done)> m_fileRecycler; // setFileRecycler
     qint64 m_totalMatches = 0;
     qint64 m_elapsedUs = 0;
@@ -1688,6 +1704,7 @@ private:
     bool m_keysRouted = false;
     bool m_systemMenuOpen = false; // the shell's menu is up (its loop runs inside runSystemMenu)
     std::optional<SearchResult> m_renaming; // the row whose name is being typed (beginRename)
+    bool m_aliasing = false; // ... for Win顺 to call its app, not for the file (#505)
     bool m_systemCommand = false; // see systemCommandRunning
     int m_shellOpsInFlight = 0; // active IFileOperation (recycle / rename) calls keeping the launcher up for shell dialogs
     QElapsedTimer m_systemMenuAsked; // since showSystemMenu was last called

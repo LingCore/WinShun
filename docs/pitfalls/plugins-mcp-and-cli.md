@@ -82,5 +82,6 @@
 ### 鼠标手势（`winshun.gestures`）
 
 - **作业内跨进程 `IsWindow` 误报 FALSE**：在 Win顺 作业对象内对其他进程有效窗口调 `IsWindow` 返 `FALSE` → 跨进程判窗口有效改用 `GetAncestor(hwnd, GA_ROOT) != nullptr`。
+- **一次 `SendInput` 发完的组合键，`GetAsyncKeyState` 看不到修饰键（#472）**：修饰键按下、键按下、两个抬起放在同一次 `SendInput` 里时，原始输入线程在目标程序读到 `WM_KEYDOWN` 之前就把四个都过完了；靠消息队列状态（`GetKeyState`、加速键表）的程序照样认，靠 `GetAsyncKeyState` 的程序（WPS 里的 Ctrl+↑、Shift+↑）只收到 ↑（探针实测：一次发完时读到 Ctrl 已松开，按住 40 ms 时读到按下）→ 手势动作的组合键按 `pressesOf` 分两次发：先发全部按下，`Sleep(kKeysHoldMs)`（40 ms）再按反序发抬起；单个键照旧一次发完。粘贴的 Ctrl+V 和读选区的 Ctrl+C 没有这类报告，不加等待以免每次粘贴都慢。
 - **作业 UI 限制阻断 UIA 读选区**：只要作业存在任意 UI 限制，`GetFocusedElement` 约 16 ms 返 `UIA_E_TIMEOUT` → 读选区走宿主 `selected_text` 工具（权限 `selection:read`），不撤剪贴板限制。
 - **右键钩子共存、管理员窗口 UIPI 与虚拟机测试**：钩子吞按下后移动超 6 逻辑像素判手势，未动松开补发按下+抬起弹菜单，按住 350 ms 补发按下还右键拖动；补发带 `dwExtraInfo` 标记、见 `LLMHF_INJECTED` 放行；按住修饰键、触摸/笔（`0xFF5157`）或目标窗口完整性高于自身时直接放行；全局钩子测试在 Win10 虚拟机用 Hyper-V `Msvm_SyntheticMouse` 模拟真实硬件输入。

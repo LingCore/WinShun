@@ -623,6 +623,67 @@ private slots:
         QCOMPARE(changed.count(), 8); // load, 3 adds, move, update, addAll, remove
     }
 
+    // GitHub #505: the drop pie's 收藏. A path as a favorite; the helper's
+    // request, which carries files and folders only, each way; applied, a
+    // command or an app at a path asked to go stays.
+    void dropPieRequests()
+    {
+        const Favorite file = favoriteForPath(u"D:/报告/季度.docx"_s, false);
+        QCOMPARE(file.kind, Favorite::Kind::File);
+        QCOMPARE(file.path, u"D:\\报告\\季度.docx"_s);
+        QCOMPARE(file.name, u"季度.docx"_s);
+        const Favorite folder = favoriteForPath(u"D:\\报告\\"_s, true);
+        QCOMPARE(folder.kind, Favorite::Kind::Folder);
+        QCOMPARE(folder.path, u"D:\\报告"_s);
+        QCOMPARE(favoriteForPath(u"C:\\"_s, true).path, u"C:\\"_s); // a drive keeps its backslash
+
+        FavoriteRequest request;
+        request.add = {file, folder};
+        request.remove = {u"D:\\旧\\a.txt"_s};
+        const FavoriteRequest back = readFavoriteRequest(writeFavoriteRequest(request));
+        QCOMPARE(back.add, request.add);
+        QCOMPARE(back.remove, request.remove);
+
+        // Written by anyone: only full file-system paths, made favorites here.
+        const QByteArray crafted = R"({"add":[{"path":"D:\\x.exe","folder":false,"kind":"command","command":"cmd /c calc","runAsAdmin":true},
+            {"path":"shell:AppsFolder\\Some.App"},{"path":"relative\\y"},{"path":"winshun-command:1"},{"path":"\\\\host\\share\\z","folder":true}],
+            "remove":["shell:AppsFolder\\Other.App","winshun-place:x","E:\\gone.txt",7]})";
+        const FavoriteRequest read = readFavoriteRequest(crafted);
+        QCOMPARE(read.add.size(), 2);
+        QCOMPARE(read.add[0].kind, Favorite::Kind::File);
+        QVERIFY(read.add[0].command.isEmpty() && !read.add[0].runAsAdmin);
+        QCOMPARE(read.add[1].path, u"\\\\host\\share\\z"_s);
+        QCOMPARE(read.add[1].kind, Favorite::Kind::Folder);
+        QCOMPARE(read.remove, QStringList {u"E:\\gone.txt"_s});
+        QVERIFY(readFavoriteRequest("not json").isEmpty());
+        QByteArray lots = "{\"add\":[";
+        for (int i = 0; i < kMaxRequestItems + 20; ++i)
+            lots += (i ? ",{\"path\":\"D:\\\\f" : "{\"path\":\"D:\\\\f") + QByteArray::number(i) + "\"}";
+        QCOMPARE(readFavoriteRequest(lots + "]}").add.size(), kMaxRequestItems);
+
+        QTemporaryDir dir;
+        Favorites store(dir.filePath(u"favorites.json"_s));
+        Favorite command;
+        command.kind = Favorite::Kind::Command;
+        command.path = u"winshun-command:calc"_s;
+        command.name = u"计算器"_s;
+        command.command = u"calc.exe"_s;
+        QVERIFY(store.add(command));
+        QVERIFY(store.add(favoriteForPath(u"D:\\旧\\a.txt"_s, false)));
+        QSignalSpy changed(&store, &Favorites::changed);
+        const Favorites::Applied added = store.apply(request);
+        QCOMPARE(added.added, 2);
+        QCOMPARE(added.removed, 1);
+        QVERIFY(store.contains(u"d:\\报告\\季度.DOCX") && store.contains(u"D:\\报告") && !store.contains(u"D:\\旧\\a.txt"));
+        FavoriteRequest taking;
+        taking.remove = {u"winshun-command:calc"_s, u"D:\\报告"_s};
+        const Favorites::Applied removed = store.apply(taking);
+        QCOMPARE(removed.removed, 1);
+        QVERIFY(store.contains(u"winshun-command:calc") && !store.contains(u"D:\\报告"));
+        QCOMPARE(store.apply({}).added + store.apply({}).removed, 0);
+        QCOMPARE(changed.count(), 3); // added, removed; removed
+    }
+
     // GitHub #397: the column headers' orders. Names as Explorer ("2" before
     // "10", case aside); types folders, files by extension, apps, places,
     // commands; dates and sizes with those that have none last either way.

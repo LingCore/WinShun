@@ -2833,6 +2833,14 @@
         <translation>Favorites come first when nothing is typed. Type a keyword and press Enter to open it. Right-click a search result to add it, or drop files and folders here.</translation>
     </message>
     <message>
+        <source>在文件上按住左键（不用拖动），再按数字 1 左边那个键（一般是 `，中文输入法下是 ·）。朝文件夹的方向拖，松开就放进去：同一个盘里移动，到别的盘复制，按住 Ctrl 复制、按住 Shift 移动。拖到“收藏”上，就把它们加进收藏（都已收藏时是取消收藏）</source>
+        <translation>Hold the left button on files (no need to drag), then press the key left of 1 (usually `). Drag toward a folder and let go to drop the files there: within a drive they move, to another drive they are copied; hold Ctrl to copy, Shift to move. Drop them on Favorite to add them to your favorites (Unfavorite when they all are already)</translation>
+    </message>
+    <message>
+        <source>拖放;拖动;拖拽;圆盘;按键;移动;复制;收藏;drag;drop;pie;key;favorite</source>
+        <translation>drag;drop;drag and drop;pie;key;move;copy;favorite;favorites</translation>
+    </message>
+    <message>
         <source>文件夹快捷菜单中的收藏</source>
         <translation>Favorites in the folder menu</translation>
     </message>
@@ -2957,16 +2965,8 @@
         <translation>Right-click a search result → Add to favorites, click “Add folder”, or drop files and folders here</translation>
     </message>
     <message>
-        <source>在文件上按住左键（不用拖动），再按数字 1 左边那个键（一般是 `，中文输入法下是 ·）。朝文件夹的方向拖，松开就放进去：同一个盘里移动，到别的盘复制，按住 Ctrl 复制、按住 Shift 移动</source>
-        <translation>Hold the left button on files (no need to drag), then press the key left of 1 (usually `). Drag toward a folder and let go to drop the files there: within a drive they move, to another drive they are copied; hold Ctrl to copy, Shift to move</translation>
-    </message>
-    <message>
         <source>拖文件时按 ` 键，弹出收藏圆盘</source>
         <translation>Press ` while dragging files to bring up the favorites pie</translation>
-    </message>
-    <message>
-        <source>拖放;拖动;拖拽;圆盘;按键;移动;复制;drag;drop;pie;key</source>
-        <translation>drag;drop;drag and drop;pie;key;move;copy</translation>
     </message>
     <message>
         <source>%1。文件夹收藏每 8 个一页（现有 %2 个）：按 Tab 翻到下一页，Shift+Tab 翻回上一页</source>
@@ -3596,6 +3596,13 @@
     </message>
 </context>
 <context>
+    <name>InputBox</name>
+    <message>
+        <source>清空</source>
+        <translation>Clear</translation>
+    </message>
+</context>
+<context>
     <name>Main</name>
     <message>
         <source>没有找到应用</source>
@@ -3608,6 +3615,10 @@
     <message>
         <source>打开过的应用会出现在这里</source>
         <translation>Apps you have opened will show up here</translation>
+    </message>
+    <message>
+        <source>别名（不填就用原来的名字）</source>
+        <translation>Alias (leave it empty for the original name)</translation>
     </message>
     <message>
         <source>新名字</source>
@@ -3700,6 +3711,10 @@
     <message>
         <source>输入名称或拼音，搜索文件、应用和设置</source>
         <translation>Type a name to search files, apps and settings</translation>
+    </message>
+    <message>
+        <source>别名</source>
+        <translation>Alias</translation>
     </message>
     <message>
         <source>按 Ctrl+Tab 换个类型，Tab 切换范围</source>
@@ -4841,13 +4856,6 @@ Installing first renames it to %2, left beside the plugin; no file is deleted.</
     <message>
         <source>不感兴趣：不再显示在插件库里，以后可以找回</source>
         <translation>Not interested: leaves the library list; you can bring it back later</translation>
-    </message>
-</context>
-<context>
-    <name>InputBox</name>
-    <message>
-        <source>清空</source>
-        <translation>Clear</translation>
     </message>
 </context>
 <context>
@@ -7676,7 +7684,7 @@ Double-click grip: expand/collapse search panel</translation>
     </message>
     <message>
         <source>整个电脑：和搜索框一样，按匹配程度排。当前文件夹优先：先列出对话框所在文件夹及子文件夹里的结果，再列出其他位置的；收藏的仍在最前。只搜当前文件夹：只列那个文件夹及子文件夹里的</source>
-        <translation>Whole PC: as in the search box, best matches first. Current folder first: what lies in the dialog's folder and its subfolders comes first, then the rest; favorites stay on top. Current folder only: only that folder and its subfolders</translation>
+        <translation>Whole PC: as in the search box, best matches first. Current folder first: what lies in the dialog&apos;s folder and its subfolders comes first, then the rest; favorites stay on top. Current folder only: only that folder and its subfolders</translation>
     </message>
     <message>
         <source>当前文件夹优先</source>
@@ -9219,6 +9227,11 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>搜索框阴影</source>
         <translation>Search bar shadow</translation>
+    </message>
+    <message>
+        <source>应用</source>
+        <comment>settings tab</comment>
+        <translation>Apps</translation>
     </message>
     <message>
         <source>“浅”阴影更小更淡；“无”不显示阴影，搜索框随之变成直角</source>
@@ -11196,6 +11209,93 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>下载并安装</source>
         <translation>Download and install</translation>
+    </message>
+</context>
+<context>
+    <name>UserAppsSection</name>
+    <message>
+        <source>便携软件与别名</source>
+        <translation>Portable programs and aliases</translation>
+    </message>
+    <message>
+        <source>便携软件文件夹</source>
+        <translation>Portable program folders</translation>
+    </message>
+    <message>
+        <source>绿色软件;便携;免安装;解压;portable;green;目录;文件夹</source>
+        <translation>portable;green;no install;unzipped;directory;folder;绿色软件;便携;免安装</translation>
+    </message>
+    <message>
+        <source>里面的程序（.exe 和快捷方式）像开始菜单里的软件一样搜得到；每个软件一个文件夹时也看下一层，有和文件夹同名的程序就只取它</source>
+        <translation>Their programs (.exe files and shortcuts) are found like Start menu apps; with a folder per program, the folders inside are looked into too, taking only the program named after its folder where there is one</translation>
+    </message>
+    <message>
+        <source>添加文件夹</source>
+        <translation>Add folder</translation>
+    </message>
+    <message>
+        <source>还没有添加文件夹</source>
+        <translation>No folders added yet</translation>
+    </message>
+    <message>
+        <source>移除</source>
+        <translation>Remove</translation>
+    </message>
+    <message>
+        <source>软件和别名</source>
+        <translation>Programs and aliases</translation>
+    </message>
+    <message>
+        <source>别名;改名;名字;中文名;隐藏;不显示;alias;rename;hide</source>
+        <translation>alias;rename;name;display name;hide;don&apos;t show;别名;改名;隐藏</translation>
+    </message>
+    <message>
+        <source>给软件起个好记的名字，原来的名字照样搜得到；便携软件里不想看到的可以隐藏。在搜索结果里右键软件选“设置别名”（或按 F2）也一样</source>
+        <translation>Give a program a name that is easy to remember; its original name still finds it. Portable programs you do not want to see can be hidden. Set alias on an app&apos;s right-click menu in the results (or F2) does the same</translation>
+    </message>
+    <message>
+        <source>添加文件夹后，找到的软件列在这里；设置了别名的软件也在这里</source>
+        <translation>The programs found in the folders you add are listed here, and so are the apps you gave aliases</translation>
+    </message>
+    <message>
+        <source>找不到了</source>
+        <translation>Not found</translation>
+    </message>
+    <message>
+        <source>已隐藏</source>
+        <translation>Hidden</translation>
+    </message>
+    <message>
+        <source>原名 %1</source>
+        <translation>Originally %1</translation>
+    </message>
+    <message>
+        <source>不填就用原来的名字（%1）</source>
+        <translation>Leave it empty for the original name (%1)</translation>
+    </message>
+    <message>
+        <source>别名</source>
+        <translation>Alias</translation>
+    </message>
+    <message>
+        <source>还原</source>
+        <translation>Restore</translation>
+    </message>
+    <message>
+        <source>用回原来的名字</source>
+        <translation>Use the original name again</translation>
+    </message>
+    <message>
+        <source>改名</source>
+        <translation>Rename</translation>
+    </message>
+    <message>
+        <source>显示</source>
+        <translation>Show</translation>
+    </message>
+    <message>
+        <source>隐藏</source>
+        <translation>Hide</translation>
     </message>
 </context>
 <context>
@@ -13629,12 +13729,61 @@ Content index: %5</translation>
         <translation>This folder does not take these items.</translation>
     </message>
     <message>
+        <source>已取消收藏</source>
+        <translation>Removed from favorites</translation>
+    </message>
+    <message>
+        <source>已收藏</source>
+        <translation>Added to favorites</translation>
+    </message>
+    <message>
+        <source>没能取消收藏</source>
+        <translation>Couldn&apos;t remove from favorites</translation>
+    </message>
+    <message>
+        <source>没能收藏</source>
+        <translation>Couldn&apos;t add to favorites</translation>
+    </message>
+    <message>
+        <source>取消收藏</source>
+        <translation>Unfavorite</translation>
+    </message>
+    <message>
+        <source>收藏</source>
+        <translation>Favorite</translation>
+    </message>
+    <message numerus="yes">
+        <source>一次最多收藏 %n 项</source>
+        <translation>
+            <numerusform>At most %n item at a time</numerusform>
+            <numerusform>At most %n items at a time</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>只能收藏磁盘上的文件和文件夹</source>
+        <translation>Only files and folders on a disk can be favorites</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n 项</source>
+        <translation>
+            <numerusform>%n item</numerusform>
+            <numerusform>%n items</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>另有 %n 项已在收藏夹里</source>
+        <translation>
+            <numerusform>%n more is already a favorite</numerusform>
+            <numerusform>%n more are already favorites</numerusform>
+        </translation>
+    </message>
+    <message>
         <source>还没有收藏文件夹</source>
         <translation>No favorite folders yet</translation>
     </message>
     <message>
-        <source>在 设置 → 收藏夹 里添加</source>
-        <translation>Add some in Settings → Favorites</translation>
+        <source>把文件夹拖到“收藏”上就加进来</source>
+        <translation>Drop a folder on Favorite to add it here</translation>
     </message>
     <message>
         <source>朝文件夹拖，松开就放进去</source>
@@ -15195,6 +15344,14 @@ Content index: %5</translation>
         <translation>Searches and recent items cleared</translation>
     </message>
     <message>
+        <source>已改回“%1”</source>
+        <translation>Changed back to “%1”</translation>
+    </message>
+    <message>
+        <source>已设为“%1”，搜它就能找到</source>
+        <translation>Named “%1”: searching for it finds the app</translation>
+    </message>
+    <message>
         <source>复制并粘贴</source>
         <translation>Copy and paste</translation>
     </message>
@@ -15223,8 +15380,16 @@ Content index: %5</translation>
         <translation>Delete</translation>
     </message>
     <message>
+        <source>复制文字</source>
+        <translation>Copy text</translation>
+    </message>
+    <message>
         <source>复制链接</source>
         <translation>Copy link</translation>
+    </message>
+    <message>
+        <source>设置别名</source>
+        <translation>Set alias</translation>
     </message>
     <message>
         <source>在此文件夹中搜内容</source>
@@ -18193,7 +18358,7 @@ Content index: %5</translation>
     </message>
     <message>
         <source>合盖仍会睡眠：Windows 没让改合盖的动作</source>
-        <translation>Closing the lid still sleeps: Windows did not let the lid's action be changed</translation>
+        <translation>Closing the lid still sleeps: Windows did not let the lid&apos;s action be changed</translation>
     </message>
     <message>
         <source>没能保持唤醒：Windows 没有接受请求</source>
@@ -18422,6 +18587,25 @@ Content index: %5</translation>
     <message>
         <source>%1 还占着 Win顺 的文件。关掉它（关不掉就重启电脑）再试；现在仍是 %2，照常可用。</source>
         <translation>%1 still holds WinShun’s files. Close it (or restart the PC if it won’t close) and try again; it is still %2 and works as before.</translation>
+    </message>
+</context>
+<context>
+    <name>ws::UserAppsSettings</name>
+    <message>
+        <source>Microsoft Store 或 Windows 自带的应用</source>
+        <translation>A Microsoft Store or built-in Windows app</translation>
+    </message>
+    <message>
+        <source>开始菜单里的应用</source>
+        <translation>An app in the Start menu</translation>
+    </message>
+    <message>
+        <source>已卸载</source>
+        <translation>Uninstalled</translation>
+    </message>
+    <message>
+        <source>选择放便携软件的文件夹</source>
+        <translation>Choose a folder of portable programs</translation>
     </message>
 </context>
 <context>

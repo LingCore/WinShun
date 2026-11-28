@@ -35,6 +35,15 @@ inline bool asksDetails(const PluginRow& row)
     return row.item.value(QStringLiteral("details")).toBool();
 }
 
+// The file a plugin's row stands for (图片文字搜索's, 按意思搜索's): its
+// rowFile, unless it asks for details (it is no file). Such a row is that
+// file's for its picture, Ctrl+C, Ctrl+Shift+C and a drag out, as the file's
+// own row would be (GitHub #448). Empty for any other row.
+inline QString fileOf(const SearchResult& row)
+{
+    return row.isPlugin() && row.plugin && !asksDetails(*row.plugin) ? rowFile(*row.plugin) : QString();
+}
+
 // The most of a `details` answer's text that is shown (characters): about
 // 2 MB in memory, as much as clipboard_copy takes.
 inline constexpr qsizetype kMaxDetailsText = 1'000'000;

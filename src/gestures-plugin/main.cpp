@@ -400,7 +400,7 @@ private:
                 apps += (apps.empty() ? L"" : L", ") + app;
             add((zh ? L"在 " : L"in ") + apps + (zh ? L" 里" : L""));
         }
-        Item item("r" + std::to_string(n), winshun::utf8(title + L"  " + gestures::actionTitle(rule.action, zh)));
+        Item item("r" + std::to_string(n), winshun::utf8(title + L"  " + gestures::ruleTitle(rule, zh)));
         item.subtitle = winshun::utf8(when);
         if (rule.action.kind == gestures::Action::Kind::Invalid)
             item.subtitle = zh ? "这项设置看不懂，请在设置里重新选一个动作" : "This rule is not understood: choose its action again in the settings";

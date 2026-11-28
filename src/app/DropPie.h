@@ -31,6 +31,7 @@ namespace ws {
 
 class Favorites;
 class SystemCatalog;
+struct FavoriteRequest;
 
 // 拖放圆盘: while files are dragged (File Explorer, the desktop, any file
 // manager that drags with OLE), or a file only held, the key under Esc
@@ -66,6 +67,13 @@ class SystemCatalog;
 // folder; resting elsewhere closes the columns after it, as a menu's do. A
 // column too long for the screen scrolls while the pointer rests on the
 // strip at its top or bottom.
+//
+// Past the line under the chips is 收藏 (GitHub #505): let go there and
+// what is dragged is added to the favorites, or taken out of them when all
+// of it is there already. Only lasting files and folders, ten at most. A
+// pointer on its way there across the line is still on the pie, the chips'
+// directions as before within their reach: a drop meant for the chip below
+// the middle that goes a little far still goes into its folder.
 //
 // Its window is see-through but still takes the pointer where nothing is
 // drawn (a layered D3D11 window): it goes the moment the pointer leaves the
@@ -118,10 +126,23 @@ class DropPie : public QObject, private piedrop::Handler {
     Q_PROPERTY(QString statusName READ statusName NOTIFY stateChanged FINAL)
     Q_PROPERTY(QString statusDetail READ statusDetail NOTIFY stateChanged FINAL) // the path, shortened
     Q_PROPERTY(QString statusHint READ statusHint NOTIFY stateChanged FINAL)
+    // 收藏: where it is (in the window), its words, whether what is dragged
+    // is in the favorites (a filled star: letting go takes it out; once let
+    // go, as it is then), whether it cannot take these (the line says why),
+    // whether the pointer is on it.
+    Q_PROPERTY(QRectF starRect READ starRect NOTIFY layoutChanged FINAL)
+    Q_PROPERTY(QString starText READ starText NOTIFY stateChanged FINAL)
+    Q_PROPERTY(bool starFilled READ starFilled NOTIFY stateChanged FINAL)
+    Q_PROPERTY(bool starDisabled READ starDisabled NOTIFY stateChanged FINAL)
+    Q_PROPERTY(bool onStar READ onStar NOTIFY stateChanged FINAL)
 
 public:
     // A short notice to the user (the tray's), callable from any thread.
     using Notify = std::function<void(const QString& title, const QString& text)>;
+    // Where 收藏 hands its change: unset, the favorites given are changed
+    // here; the helper's goes to Win顺 (DropPieHelper).
+    using FavoriteSink = std::function<void(const FavoriteRequest& request)>;
+    static constexpr std::size_t kMaxStarItems = 10;
 
     // `operations` is the application's (it outlives the pie and waits for
     // copies under way when the application goes); `notify` tells the user
@@ -151,6 +172,11 @@ public:
     // ... the pointer at `local` (in the window, logical pixels) as a
     // DragOver brings it, with `keys` (MK_*) held: the effect it answers.
     DWORD previewPointer(QPointF local, DWORD keys = 0);
+    // ... dragging `paths` (lasting files and folders) instead of nothing;
+    // and let go with the pointer at `local`, as a Drop brings it.
+    void previewItems(const QStringList& paths);
+    DWORD previewDrop(QPointF local);
+    void setFavoriteSink(FavoriteSink sink) { m_favoriteSink = std::move(sink); }
     // What is drawn of it, in the window (logical pixels): the chips of
     // every page, the middle, the line under them, the columns, with room for
     // their shadows. The window covers the work area; a preview cuts this out.
@@ -200,6 +226,12 @@ public:
     QString statusName() const { return m_statusName; }
     QString statusDetail() const { return m_statusDetail; }
     QString statusHint() const { return m_statusHint; }
+    QRectF starRect() const noexcept { return m_starRect; }
+    QString starText() const;
+    bool starRemoves() const noexcept { return m_star == Star::Remove; }
+    bool starFilled() const noexcept { return starRemoves() != m_starChanged; }
+    bool starDisabled() const noexcept { return m_star == Star::NotFiles || m_star == Star::TooMany; }
+    bool onStar() const noexcept { return m_spot.part == Part::Star; }
 
     // `text` shortened in its middle with "…" to `width` logical pixels, in
     // the application's font at `pixelSize` (Bold if `bold`): the same
@@ -227,8 +259,13 @@ private:
     enum class Block { None, Missing, Source, Inside, Network };
     // Where the pointer is: the middle; a chip's direction (Chip, `index` the
     // sector, -1 when none is chosen yet); in column `level` (from 1) on a
-    // row (`index`), on a strip, elsewhere in it or near it (Box); outside all.
-    enum class Part { Outside, Middle, Chip, Row, Box, Up, Down };
+    // row (`index`), on a strip, elsewhere in it or near it (Box); on 收藏
+    // (Star), or on its way there (Box at level 0); outside all.
+    enum class Part { Outside, Middle, Chip, Row, Box, Up, Down, Star };
+    // What letting go on 收藏 does with what is dragged: adds those not
+    // there yet; takes them all out (all there); nothing, as they are not
+    // lasting files and folders, or are too many.
+    enum class Star { Add, Remove, NotFiles, TooMany };
     struct Spot {
         int level = 0; // 0 the pie, k the k-th column
         int index = -1;
@@ -287,6 +324,9 @@ private:
     const Folder* pointedFolder() const { return folderAt(m_spot); }
     const Folder* targetFolder() const;
     void refreshBlocks(); // the favorites' and the columns' rows' blocks, for this drag
+    void refreshStar(); // what 收藏 does with the items
+    DWORD dropOnStar();
+    void applyFolders(std::vector<Folder> folders); // the favorite folders gathered (gatherFolders)
     void resetColumns(); // all closed, nothing pending, the folders read forgotten (a new opening)
 
     // The columns: the pointer resting on a chip or a row opens its column, on
@@ -387,6 +427,18 @@ private:
     QString m_statusName;
     QString m_statusDetail;
     QString m_statusHint;
+    // 收藏
+    Star m_star = Star::NotFiles;
+    QStringList m_starPaths; // what letting go there adds (Add) or takes out (Remove)
+    int m_starThere = 0; // Add: how many of the items are favorites already
+    QString m_starDone; // let go there: what it did, said by the line until the pie goes
+    bool m_starChanged = false; // ... and the favorites changed
+    QRectF m_starRect; // in the window
+    double m_starWidth = 0; // as wide as its longer words want
+    FavoriteSink m_favoriteSink;
+    // The favorites changed while 收藏 shows what it did: its folders come
+    // once the pie has gone (the chips are not to move under it).
+    std::optional<std::vector<Folder>> m_nextFolders;
     POINT m_shownAt {};
     qreal m_dpr = 1; // the scale of the screen it is on (the window's may lag behind on its first showing there)
     bool m_warp = false; // placed off the pointer by a screen's edge: the pointer goes to the middle at DragEnter

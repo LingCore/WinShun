@@ -2180,8 +2180,8 @@ Window {
             onTriggered: (row, action) => {
                 if (action === Launcher.SystemMenu) // 更多选项: the system's menu where this one was
                     window.openSystemMenu(row, Qt.point(x, y))
-                else if (action === Launcher.Rename)
-                    window.startRename(row)
+                else if (action === Launcher.Rename || action === Launcher.SetAlias)
+                    window.startRename(row, action === Launcher.SetAlias)
                 else
                     window.launcher.trigger(row, action)
             }
@@ -2191,15 +2191,18 @@ Window {
     // A file's or folder's name typed anew over its row (GitHub #285): F2,
     // or 重命名 in its menu. Enter takes it, Esc or a click elsewhere leaves
     // the name as it was; the search box has the keyboard again afterwards.
+    // An app's name in Win顺 likewise (#505): F2 on its row, or 设置别名.
     InputBox {
         id: renameBox
         objectName: "renameBox"
+        property bool alias: false
         parent: window.contentItem
         visible: false
         z: 900
         dpr: window.dpr
         implicitHeight: 32
-        Accessible.name: qsTr("新名字")
+        placeholder: alias ? qsTr("别名（不填就用原来的名字）") : ""
+        Accessible.name: alias ? qsTr("别名") : qsTr("新名字")
         onAccepted: window.endRename(true)
         onInputFocusedChanged: { // the keyboard went elsewhere
             if (!inputFocused)
@@ -2207,8 +2210,8 @@ Window {
         }
         Keys.onEscapePressed: window.endRename(false)
     }
-    function startRename(index) {
-        if (index < 0 || index >= view.count || !window.launcher.beginRename(index))
+    function startRename(index, alias) {
+        if (index < 0 || index >= view.count || !window.launcher.beginRename(index, alias ?? false))
             return
         view.currentIndex = index
         view.positionViewAtIndex(index, ListView.Contain)
@@ -2234,6 +2237,8 @@ Window {
         renameBox.width = Math.round((item.nameRight === undefined ? right // a tile's or a panel row's width
             : Math.max(right, Math.min(at.x + 240, list.x + view.width - 12))) - at.x) // room to type in a narrow window
         renameBox.y = Math.round(below + renameBox.height <= list.y + view.height || above < list.y ? below : above)
+        renameBox.alias = window.launcher.renameAlias()
+        renameBox.maximumLength = window.launcher.renameMaxLength()
         renameBox.text = window.launcher.renameName()
         renameBox.visible = true
         renameBox.takeFocus()

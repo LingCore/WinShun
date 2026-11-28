@@ -513,6 +513,8 @@ QVariant ResultModel::data(const QModelIndex& index, int role) const
                 return FileIconProvider::appIconUrl(r->icon.mid(4), true, dark);
             if (r->isPlace())
                 return FileIconProvider::placeIconUrl(r->icon, dark);
+            if (!isAppLaunchPath(r->path)) // a portable program (#505): its file's
+                return FileIconProvider::iconUrl(r->path, false);
             return FileIconProvider::appIconUrl(appIdOf(r->path), r->isPackagedApp(), dark);
         }
         return FileIconProvider::iconUrl(r->path, r->isDir);
@@ -527,7 +529,7 @@ QVariant ResultModel::data(const QModelIndex& index, int role) const
         // picture, as its own row would show (GitHub #448). A mail asks
         // its plugin for what it shows; it keeps the plugin's icon.
         if (r->isPlugin() && !plugin::asksDetails(*r->plugin)) {
-            const QString file = plugin::rowFile(*r->plugin);
+            const QString file = plugin::fileOf(*r);
             return file.isEmpty() || r->missing ? QString() : ThumbnailProvider::url(file, r->modified);
         }
         if (r->isApp() || r->isDir || r->offline || r->missing)
@@ -559,9 +561,12 @@ QVariant ResultModel::data(const QModelIndex& index, int role) const
     case AdminRunRole:
         return r->runAsAdmin && !r->isCommand() && !r->missing && !r->offline; // a command's row keeps its keyword in view
     case RevealableRole:
+        // A plugin's file: Ctrl+Enter is the plugin's own second action when it has one.
+        if (r->isPlugin())
+            return r->plugin && r->plugin->actions.size() < 2 && !plugin::fileOf(*r).isEmpty();
         return !r->isApp() || (!r->isWindow() && !r->isPlace() && !r->target.isEmpty());
     case CopyableRole:
-        return !r->isApp() || r->hasCopyableTarget();
+        return !r->isApp() || r->hasCopyableTarget() || !plugin::fileOf(*r).isEmpty();
     case SettingsActionRole:
         return r->isSettings() || (r->isPlace() && (r->target == ws::kRestartElevatedCommand || ws::isPowerCommand(r->target)));
     case SelectedRole:
@@ -638,6 +643,8 @@ QVariant ResultModel::data(const QModelIndex& index, int role) const
         return !p.copy.isEmpty()
             || (p.valid && p.actions.isEmpty() && p.openKind == PluginRow::OpenKind::None && p.searchQuery.isEmpty() && p.setQuery.isEmpty());
     }
+    case PluginFileRole:
+        return !plugin::fileOf(*r).isEmpty();
     case FolderAwayRole:
         return r->isPlugin() && r->plugin ? r->plugin->subtitleAway : QString();
     default:
@@ -692,6 +699,7 @@ QHash<int, QByteArray> ResultModel::roleNames() const
         {FolderNameRole, "folderName"},
         {OfflineRole, "offline"},
         {PluginRole, "plugin"},
+        {PluginFileRole, "pluginFile"},
         {SourceRole, "source"},
         {WindowResultRole, "windowResult"},
         {FavoriteRole, "favorite"},

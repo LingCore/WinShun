@@ -29,6 +29,7 @@
 #include "DiagnosticLog.h"
 #include "DialogBar.h"
 #include "AppCatalog.h"
+#include "UserAppsSettings.h"
 #include "History.h"
 #include "IndexService.h"
 #include "Onboarding.h"
@@ -114,6 +115,7 @@
 #include <QQuickWindow>
 #include <stdexcept>
 #include <QScreen>
+#include <QSaveFile>
 #include <QScopeGuard>
 #include <QSettings>
 #include <QStyleHints>
@@ -2275,6 +2277,14 @@ int runSettings(const QStringList& args)
     if (args.contains(u"--clipboard-disabled"_s))
         settings.clipboard = false;
     settings.mcpExcludedPaths = {u"%USERPROFILE%\\Documents\\私人"_s};
+    // 搜索范围 › 应用 (#505): a folder of portable programs, one of them named
+    // and one hidden; an installed app named; a named one gone since.
+    const QString portable = uR"(D:\PortableApps)"_s;
+    settings.portableFolders = {portable};
+    settings.appNames = {{portable + uR"(\RevokeMsgPatcher\RevokeMsgPatcher.exe)"_s, u"微信防撤回"_s},
+        {u"shell:AppsFolder\\Microsoft.Office.WINWORD.EXE.15"_s, u"文档"_s},
+        {uR"(E:\Tools\OldTool.exe)"_s, u"旧工具"_s}};
+    settings.hiddenApps = {portable + uR"(\Everything\Everything-uninstall.exe)"_s};
     // The real view-model and its real neighbours, as App::showSettings makes
     // them; the renderer "running" is the one set, so that no restart is asked for.
     auto* editor = new SettingsEditor(settings, Settings::resolveRenderer(settings.renderer), &engine);
@@ -2287,6 +2297,21 @@ int runSettings(const QStringList& args)
     });
     auto* frame = new WindowFrame(true, editor);
     auto* updater = new Updater(editor); // never setAutomatic() or check(): no network
+    { // the apps the 应用 tab lists: made up, nothing read from this PC
+        auto* previewApps = new AppCatalog(editor);
+        AppList programs;
+        for (const QString& file : {uR"(RevokeMsgPatcher\RevokeMsgPatcher.exe)"_s, uR"(Everything\Everything.exe)"_s,
+                 uR"(Everything\Everything-uninstall.exe)"_s, uR"(Snipaste\Snipaste.exe)"_s, uR"(Sysinternals\procexp64.exe)"_s})
+            programs.push_back(programApp(portable + u'\\' + file));
+        AppInfo office;
+        office.name = u"Word"_s;
+        office.id = u"Microsoft.Office.WINWORD.EXE.15"_s;
+        office.target = uR"(C:\Program Files\Microsoft Office\root\Office16\WINWORD.EXE)"_s;
+        office.prepare();
+        previewApps->setPrograms(std::make_shared<const AppList>(programs));
+        previewApps->setApps(std::make_shared<const AppList>(withUserApps({office}, programs, settings.userApps())));
+        editor->userApps()->setCatalog(previewApps);
+    }
     editor->plugins()->setLocale(u"zh"_s);
     if (!args.contains(u"--plugin-gallery-settings"_s))
         editor->plugins()->loadPreview(); // a plugin::Host would start WinShunPluginHost.exe: made-up cards instead
@@ -5870,6 +5895,56 @@ bool checkShortcutPanels(QQmlEngine* engine, const QDir& output)
                     u"row buttons: back as they come, not in their usual order"_s);
             }
 
+            // GitHub #448: a plugin's row that stands for a file (图片文字搜索's)
+            // has the file's buttons: its folder, 复制 (the file) and 复制完整路径;
+            // a plugin's row of text keeps its one 复制 (its text, Ctrl+C).
+            {
+                const QString picturePath = QDir::toNativeSeparators(temporary.filePath(u"牛蛙.png"_s));
+                QImage picture(48, 32, QImage::Format_RGB32);
+                picture.fill(QColor(0x2f, 0x8f, 0x6f));
+                picture.save(picturePath);
+                const auto pluginRow = [](const QString& name, const QString& copy, const QString& file) {
+                    auto row = std::make_shared<PluginRow>();
+                    row->pluginId = u"test.ocr"_s;
+                    row->source = u"图片文字搜索"_s;
+                    row->subtitle = u"OCR · 图片 · 牛蛙 识别出的文字"_s;
+                    row->copy = copy;
+                    if (!file.isEmpty()) {
+                        row->openKind = PluginRow::OpenKind::Path;
+                        row->openTarget = file;
+                    }
+                    SearchResult result {.name = name, .path = u"winshun-plugin:test.ocr/q/"_s + name};
+                    result.app = AppKind::Plugin;
+                    result.plugin.row = std::move(row);
+                    return result;
+                };
+                const auto showOnly = [&](const SearchResult& result) {
+                    launcher.results()->assign({result}, {});
+                    launcher.setCurrentRow(-1); // the footer's hints are the new row's
+                    launcher.setCurrentRow(0);
+                    settle(window);
+                };
+                const auto ctrlEnter = [&] { return launcher.keyHints().value(u"second"_s).toString(); };
+                showOnly(pluginRow(u"牛蛙.png"_s, u"牛蛙 识别出的文字"_s, picturePath));
+                QQuickItem* row = visualNamed(window->contentItem(), u"resultRow-0"_s);
+                QQuickItem* copyPath = row ? visualNamed(row, u"copyPathAction"_s) : nullptr;
+                check(shown(u"copyPathAction"_s) && copyPath && copyPath->property("tip").toString() == u"复制完整路径"
+                        && copyPath->property("tipShortcut").toString() == u"Ctrl+Shift+C" && ctrlEnter() == u"打开位置",
+                    u"#448: a plugin's row of a file lacks the file's 复制完整路径 button or Ctrl+Enter 打开位置"_s);
+                check(row && row->property("draggable").toBool() && row->property("copyable").toBool()
+                        && row->property("revealable").toBool(),
+                    u"#448: a plugin's row of a file cannot be dragged out, copied or shown in its folder"_s);
+                saveGrab(window, output.filePath(u"plugin-file-row.png"_s));
+                showOnly(pluginRow(u"6 × 7 = 42"_s, u"42"_s, {}));
+                row = visualNamed(window->contentItem(), u"resultRow-0"_s);
+                copyPath = row ? visualNamed(row, u"copyPathAction"_s) : nullptr;
+                check(shown(u"copyPathAction"_s) && copyPath && copyPath->property("tip").toString() == u"复制"
+                        && copyPath->property("tipShortcut").toString() == u"Ctrl+C" && row && !row->property("draggable").toBool()
+                        && !row->property("copyable").toBool() && ctrlEnter().isEmpty(),
+                    u"#448: a plugin's row of text lost its one 复制 button, or took a file's"_s);
+                saveGrab(window, output.filePath(u"plugin-text-row.png"_s));
+            }
+
             // Cross-folder multi-select delete in quick context menu (#434):
             // supports files across distinct folders, prunes nested children, skips apps/drive roots,
             // keeps systemCommandRunning true while in flight, and removes deleted rows.
@@ -6117,6 +6192,160 @@ bool checkSearchCaret(QQmlEngine* engine, const QDir& output)
     QGuiApplication::styleHints()->setColorScheme(previousScheme);
     window->hide();
     say(u"search caret: %1"_s.arg(passed ? u"all checks passed"_s : u"FAILED"_s));
+    return passed;
+}
+
+// #505: an app's name in Win顺, typed over its row: 设置别名 in the menu of
+// an app's row and of a program file's (not of other files), F2 on an app's
+// row; the box takes 40 characters and says what an empty one does; Enter
+// asks for the name and the row shows it, Esc and the app's own name ask for
+// nothing.
+bool checkAppAlias(QQmlEngine* engine, const QDir& output)
+{
+    QTemporaryDir temporary;
+    const QString folder = QDir::toNativeSeparators(temporary.filePath(u"Portable"_s));
+    QDir().mkpath(folder);
+    const QString patcher = folder + uR"(\RevokeMsgPatcher.exe)"_s;
+    const QString tool = folder + uR"(\Tool.exe)"_s;
+    const QString notes = folder + uR"(\notes.txt)"_s;
+    for (const QString& path : {patcher, tool, notes}) {
+        QFile file(path);
+        if (!file.open(QIODevice::WriteOnly)) {
+            say(u"app alias: could not make %1"_s.arg(path));
+            return false;
+        }
+    }
+    IndexService index(temporary.path(), IndexService::Options{});
+    AppCatalog apps;
+    SystemCatalog places;
+    AppInfo word;
+    word.name = u"Word"_s;
+    word.id = u"Microsoft.Office.WINWORD.EXE.15"_s;
+    word.target = uR"(C:\Program Files\Microsoft Office\root\Office16\WINWORD.EXE)"_s;
+    word.prepare();
+    const AppList programs {programApp(patcher)};
+    apps.setPrograms(std::make_shared<const AppList>(programs));
+    apps.setApps(std::make_shared<const AppList>(withUserApps({word}, programs, {})));
+    places.setPlaces(std::make_shared<const PlaceList>());
+    History history(temporary.filePath(u"history.tsv"_s));
+    SearchEngine search(&index, &apps, &places);
+    Launcher launcher(&index, &apps, &places, &search, &history);
+    ClipStore store(temporary.filePath(u"clipboard"_s));
+    store.open(QDateTime::currentMSecsSinceEpoch());
+    ClipboardWatcher watcher({}, {});
+    Clipboard clipboard(&store, &watcher);
+    Placement placement(temporary.filePath(u"state.ini"_s), u"Launcher"_s);
+    WindowFrame frame(false);
+    QQmlComponent component(engine, u"WinShun"_s, u"Main"_s);
+    std::unique_ptr<QObject> object(component.createWithInitialProperties({
+        {u"launcher"_s, QVariant::fromValue(&launcher)}, {u"clipboard"_s, QVariant::fromValue(&clipboard)},
+        {u"frame"_s, QVariant::fromValue(&frame)}, {u"placement"_s, QVariant::fromValue(&placement)}}));
+    auto* window = qobject_cast<QQuickWindow*>(object.get());
+    if (!window) {
+        qWarning().noquote() << "app alias:" << component.errorString();
+        return false;
+    }
+    window->create();
+    launcher.setWindow(window);
+    frame.setWindow(window);
+    placement.setWindow(window);
+    placement.rememberWidth(760, 640);
+    showOffScreen(window);
+    placement.placeOn(window->screen());
+
+    QList<std::pair<QString, QString>> asked; // appNameRequested's
+    QObject::connect(&launcher, &Launcher::appNameRequested, [&](const QString& path, const QString& name) { asked.push_back({path, name}); });
+    bool passed = true;
+    const auto check = [&](bool okay, const QString& what) {
+        if (!okay)
+            say(u"app alias: %1 FAILED"_s.arg(what));
+        passed = okay && passed;
+    };
+    const AppInfo* portableApp = findApp(*apps.apps(), patcher);
+    const AppInfo* wordApp = findApp(*apps.apps(), word.launchPath());
+    if (!portableApp || !wordApp) {
+        say(u"app alias: the apps are not in the list FAILED"_s);
+        return false;
+    }
+    const SearchResult portableRow = appResult(*portableApp);
+    const SearchResult wordRow = appResult(*wordApp);
+    SearchResult toolRow {.name = u"Tool.exe"_s, .path = tool};
+    SearchResult notesRow {.name = u"notes.txt"_s, .path = notes};
+    check(portableRow.path == patcher && portableRow.app == AppKind::Desktop && wordRow.name == u"Word",
+        u"the portable program is an app by its path"_s);
+    launcher.results()->assign({portableRow, wordRow, toolRow, notesRow}, {});
+    settle(window);
+
+    const auto hasAlias = [&](int row) {
+        for (const QVariant& item : launcher.menuItems(row)) {
+            if (item.toMap().value(u"action"_s).toInt() == Launcher::SetAlias)
+                return true;
+        }
+        return false;
+    };
+    check(hasAlias(0) && hasAlias(1) && hasAlias(2), u"设置别名 in the menu of apps and of a program file"_s);
+    check(!hasAlias(3), u"no 设置别名 for a text file"_s);
+
+    auto* box = visualNamed(window->contentItem(), u"renameBox"_s);
+    auto* view = window->property("view").value<QObject*>();
+    auto* field = visualNamed(window->contentItem(), u"searchField"_s);
+    check(box && view && field, u"the rename box, the list and the search field"_s);
+    if (!box || !view || !field)
+        return false;
+    const auto press = [&](int code) {
+        QKeyEvent down(QEvent::KeyPress, code, Qt::NoModifier);
+        QCoreApplication::sendEvent(window, &down);
+        QKeyEvent up(QEvent::KeyRelease, code, Qt::NoModifier);
+        QCoreApplication::sendEvent(window, &up);
+        pump(60);
+    };
+    // 设置别名 on the portable program's row: its own name, all picked.
+    QMetaObject::invokeMethod(window, "startRename", Q_ARG(QVariant, 0), Q_ARG(QVariant, true));
+    settle(window);
+    check(box->isVisible() && box->property("alias").toBool() && box->property("text").toString() == u"RevokeMsgPatcher"
+            && box->property("maximumLength").toInt() == kMaxAppNameLength
+            && !box->property("placeholder").toString().isEmpty() && box->property("inputFocused").toBool(),
+        u"the box opens for the app's name"_s);
+    if (box->isVisible())
+        check(saveGrab(window, output.filePath(u"app-alias-box.png"_s)), u"the box's picture"_s);
+    box->setProperty("text", u"  微信防撤回  "_s);
+    press(Qt::Key_Return);
+    check(!box->isVisible() && asked.size() == 1 && asked.value(0) == std::pair {patcher, u"微信防撤回"_s},
+        u"Enter asks for the name, trimmed"_s);
+    check(launcher.results()->at(0) && launcher.results()->at(0)->name == u"微信防撤回", u"the row shows the name at once"_s);
+    check(launcher.statusText().contains(u"微信防撤回"), u"the footer says so"_s);
+    check(window->activeFocusItem() == field, u"the search box has the keyboard again"_s);
+
+    // F2 on an installed app's row: its name too; Esc asks for nothing.
+    view->setProperty("currentIndex", 1);
+    field->forceActiveFocus();
+    press(Qt::Key_F2);
+    check(box->isVisible() && box->property("alias").toBool() && box->property("text").toString() == u"Word",
+        u"F2 on an app's row opens the box for its name"_s);
+    press(Qt::Key_Escape);
+    check(!box->isVisible() && asked.size() == 1, u"Esc leaves it as it was"_s);
+    // Its own name typed: nothing to ask for (it has no other).
+    QMetaObject::invokeMethod(window, "startRename", Q_ARG(QVariant, 1), Q_ARG(QVariant, true));
+    settle(window);
+    press(Qt::Key_Return);
+    check(!box->isVisible() && asked.size() == 1, u"its own name again: nothing asked"_s);
+
+    // A program file's row: its name without the extension; F2 there renames the file.
+    QMetaObject::invokeMethod(window, "startRename", Q_ARG(QVariant, 2), Q_ARG(QVariant, true));
+    settle(window);
+    check(box->isVisible() && box->property("text").toString() == u"Tool", u"a program file's alias starts from its name"_s);
+    box->setProperty("text", u"小工具"_s);
+    press(Qt::Key_Return);
+    check(asked.size() == 2 && asked.value(1) == std::pair {tool, u"小工具"_s}, u"a program file is named by its path"_s);
+    QMetaObject::invokeMethod(window, "startRename", Q_ARG(QVariant, 2), Q_ARG(QVariant, false));
+    settle(window);
+    check(box->isVisible() && !box->property("alias").toBool() && box->property("text").toString() == u"Tool.exe"
+            && box->property("maximumLength").toInt() > kMaxAppNameLength,
+        u"rename on a program file is the file's own"_s);
+    press(Qt::Key_Escape);
+
+    window->hide();
+    say(u"app alias: %1"_s.arg(passed ? u"all checks passed"_s : u"FAILED"_s));
     return passed;
 }
 
@@ -7588,6 +7817,28 @@ void checkDropPieHelper(const QDir& output)
     const bool updatedAppearance = waitFor([](const QJsonObject& state) {
         return state.value(u"folders"_s).toInt() == 3 && state.value(u"theme"_s).toString() == u"dark";
     });
+    // 收藏 let go on in the helper's pie (GitHub #505): its request, as the
+    // helper writes it, becomes a favorite here, and the file favorite is in
+    // the helper's snapshot (to tell what is there already) though no chip.
+    const QString file = QDir::toNativeSeparators(profile.filePath(u"report.txt"_s));
+    {
+        FavoriteRequest request;
+        request.add = {favoriteForPath(file, false)};
+        QSaveFile asked(helper->profilePath() + u"/favorite-request.json"_s); // whole, as the helper's
+        if (asked.open(QIODevice::WriteOnly) && asked.write(writeFavoriteRequest(request)) > 0 && !asked.commit())
+            say(u"drop pie: the request not written"_s);
+    }
+    QElapsedTimer relaying;
+    relaying.start();
+    while (!favorites.contains(file) && relaying.elapsed() < 3000)
+        pump(20);
+    const auto snapshotted = [&]() -> std::optional<FavoritesFile> {
+        QFile snapshot(helper->profilePath() + u"/favorites.json"_s); // closed at once: the folder goes at the end
+        return snapshot.open(QIODevice::ReadOnly) ? readFavoritesFile(snapshot.readAll()) : std::nullopt;
+    }();
+    const bool relayedFavorite = favorites.contains(file) && snapshotted
+        && indexOfFavorite(snapshotted->favorites, file) >= 0
+        && waitFor(folders(3)) && !QFile::exists(helper->profilePath() + u"/favorite-request.json"_s);
     // Ended from outside (or crashed): started again by itself (GitHub #172).
     // Its two log lines (the exit, then running again) are expected here.
     const qint64 first = helper->state().value(u"pid"_s).toInteger();
@@ -7640,8 +7891,10 @@ void checkDropPieHelper(const QDir& output)
     state.insert(u"stop_ms"_s, stopping.elapsed());
     if (clickRetry)
         clickRetry(); // the helper gone: nothing (it once was a use after free)
-    passed = passed && updatedFavorites && updatedAppearance && restarted && toldOnce && stopped && relayedAll;
+    passed = passed && updatedFavorites && updatedAppearance && relayedFavorite && restarted && toldOnce && stopped
+        && relayedAll;
     state.insert(u"relayedAll"_s, relayedAll);
+    state.insert(u"relayedFavorite"_s, relayedFavorite);
     state.insert(u"updatedFavorites"_s, updatedFavorites);
     state.insert(u"updatedAppearance"_s, updatedAppearance);
     state.insert(u"restarted"_s, restarted);
@@ -7653,7 +7906,7 @@ void checkDropPieHelper(const QDir& output)
     QFile report(output.filePath(u"drop-pie-helper.json"_s));
     if (report.open(QIODevice::WriteOnly)) report.write(QJsonDocument(state).toJson());
     if (!passed) qWarning().noquote() << "Drop pie helper regression failed:" << notices << state;
-    else say(u"drop pie: real ordinary-user helper, OLE target registration, favorite and appearance refresh, restart after it ends, the notice after three failures (its retry harmless once the helper is gone), its log lines relayed and shutdown checked"_s);
+    else say(u"drop pie: real ordinary-user helper, OLE target registration, favorite and appearance refresh, restart after it ends, the notice after three failures (its retry harmless once the helper is gone), 收藏's request taken in, its log lines relayed and shutdown checked"_s);
 }
 
 // --scope-memory: the scope the user chose comes back at the next start
@@ -8336,6 +8589,79 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
         showRow(SearchResult {.name = u"说明.txt"_s, .path = QDir::toNativeSeparators(temporary.filePath(u"说明.txt"_s))});
         check(!offers(Launcher::PinPicture) && !offers(Launcher::EditPicture), "a text file's row offered the picture verbs");
         launcher.setPictureVerbs(false, false);
+
+        // GitHub #448: a plugin's row that stands for a file (图片文字搜索's in
+        // 内容) is copied as that file, Ctrl+Shift+C its path, its text from the
+        // menu's 复制文字; dragged out and shown in its folder as the file's
+        // row. A plugin's row of text (a sum) still copies its text. The
+        // clipboard, and the user's history in it, left alone.
+        QStringList filesCopied;
+        QStringList textsCopied;
+        launcher.setFileCopier([&](const QStringList& files) { filesCopied.append(files); });
+        launcher.setTextCopier([&](const QString& text) { textsCopied.append(text); });
+        const auto pluginRow = [](const QString& name, const QString& copy, const QString& file) {
+            auto row = std::make_shared<PluginRow>();
+            row->pluginId = u"test.ocr"_s;
+            row->commandId = u"q"_s;
+            row->itemId = name;
+            row->source = u"图片文字搜索"_s;
+            row->copy = copy;
+            if (!file.isEmpty()) {
+                row->openKind = PluginRow::OpenKind::Path;
+                row->openTarget = file;
+            }
+            SearchResult result {.name = name, .path = u"winshun-plugin:test.ocr/q/"_s + name};
+            result.app = AppKind::Plugin;
+            result.plugin.row = std::move(row);
+            return result;
+        };
+        const SearchResult ocrRow = pluginRow(u"图表.png"_s, u"牛蛙 识别出的文字"_s, picturePath);
+        showRow(ocrRow);
+        const QModelIndex at = launcher.results()->index(0, 0);
+        const auto role = [&](int r) { return launcher.results()->data(at, r).toBool(); };
+        check(role(ResultModel::PluginFileRole) && role(ResultModel::CopyableRole) && role(ResultModel::RevealableRole),
+            "#448: a plugin's row of a file is not marked as one (drag, copy button, 打开所在位置)");
+        check(offers(Launcher::CopyItem) && offers(Launcher::CopyPath) && offers(Launcher::CopyText) && offers(Launcher::Reveal),
+            "#448: the menu of a plugin's row of a file lacks 复制, 复制完整路径, 复制文字 or 打开所在位置");
+        launcher.trigger(0, Launcher::CopyItem);
+        const bool fileCopied = filesCopied == QStringList {picturePath} && textsCopied.isEmpty()
+            && launcher.statusText() == QCoreApplication::translate("ws::Launcher", "已复制，可在资源管理器中粘贴");
+        launcher.trigger(0, Launcher::CopyPath);
+        launcher.trigger(0, Launcher::CopyText);
+        const bool pathAndText = textsCopied == QStringList {picturePath, u"牛蛙 识别出的文字"_s};
+        check(fileCopied && pathAndText, "#448: Ctrl+C on a plugin's row of a file did not copy the file, or Ctrl+Shift+C / 复制文字 the path / text");
+        say(u"#448 plugin's row of a file: Ctrl+C copied %1, then %2 text(s) copied: %3"_s
+                .arg(filesCopied.join(u", "_s))
+                .arg(textsCopied.size())
+                .arg(textsCopied.join(u" | "_s)));
+
+        // Its own text (a sum): no file to copy, path or folder; Ctrl+C its text.
+        filesCopied.clear();
+        textsCopied.clear();
+        showRow(pluginRow(u"6 × 7 = 42"_s, u"42"_s, {}));
+        check(!role(ResultModel::PluginFileRole) && !role(ResultModel::CopyableRole) && !offers(Launcher::CopyText)
+                && !offers(Launcher::CopyPath) && !offers(Launcher::Reveal),
+            "#448: a plugin's row of text was taken for a file's");
+        launcher.trigger(0, Launcher::CopyItem);
+        check(filesCopied.isEmpty() && textsCopied == QStringList {u"42"_s}, "#448: Ctrl+C on a plugin's row of text did not copy its text");
+
+        // Selected with a file's own row: Ctrl+C copies both files, Ctrl+Shift+C both paths.
+        filesCopied.clear();
+        textsCopied.clear();
+        const QString notePath = QDir::toNativeSeparators(temporary.filePath(u"说明.txt"_s));
+        QFile note(notePath);
+        check(note.open(QIODevice::WriteOnly) && note.write("note") == 4, "the text file could not be written");
+        note.close();
+        launcher.results()->assign({ocrRow, SearchResult {.name = u"说明.txt"_s, .path = notePath}}, {});
+        launcher.setCurrentRow(0);
+        launcher.selectRange(0, 1, false);
+        launcher.triggerSelection(Launcher::CopyItem);
+        launcher.triggerSelection(Launcher::CopyPath);
+        check(filesCopied == QStringList {picturePath, notePath} && textsCopied == QStringList {picturePath + u'\n' + notePath},
+            "#448: a selection with a plugin's row of a file did not copy both files or both paths");
+        launcher.clearSelection();
+        launcher.setFileCopier({});
+        launcher.setTextCopier({});
     }
     const auto tabHint = [&] { return launcher.keyHints().value(u"tab"_s).toString(); };
     const QString folderHint = QCoreApplication::translate("ws::Launcher", "进入文件夹");
@@ -13546,6 +13872,193 @@ bool checkDropPieColumns(QQmlEngine* engine, const QDir& output)
     return passed;
 }
 
+// --drop-pie-favorite: 收藏 past the line under the chips (GitHub #505), as
+// DropPie and DropPieWindow.qml make it, off the screen, the pointer moved as
+// DragOver brings it: a file let go there becomes a favorite, then is taken
+// out again; a folder let go there is a chip the next time; more than ten,
+// or nothing at all, it cannot take. A drop meant for the chip below the
+// middle that goes a little far still goes into its folder; the line and on
+// the way to 收藏 the pie stays. By a screen's bottom it is above them all.
+// droppie-favorite-add, -done, -remove, -empty and -flipped.png.
+bool checkDropPieFavorite(QQmlEngine* engine, const QDir& output)
+{
+    bool passed = true;
+    const auto check = [&](bool condition, const QString& what) {
+        if (!condition)
+            say(u"drop pie favorite: %1 FAILED"_s.arg(what));
+        passed = passed && condition;
+    };
+    QTemporaryDir temporary;
+    const auto make = [&](const QString& path, bool folder) {
+        const QString full = temporary.filePath(path);
+        if (folder) {
+            QDir().mkpath(full);
+        } else {
+            QFile file(full);
+            if (!file.open(QIODevice::WriteOnly))
+                say(u"drop pie favorite: %1 not made"_s.arg(path));
+        }
+        return QDir::toNativeSeparators(full);
+    };
+    Favorites favorites(temporary.filePath(u"favorites.json"_s));
+    for (const QString& name : {u"年度报告"_s, u"项目资料"_s, u"照片"_s, u"下载"_s, u"客户合同"_s, u"设计素材"_s})
+        favorites.add({Favorite::Kind::Folder, make(name, true), name});
+    const QString report = make(u"下载/季度报告.docx"_s, false);
+    const QString travel = make(u"旅行计划"_s, true);
+
+    piedrop::FileOperations operations;
+    QQmlComponent component(engine, u"WinShun"_s, u"DropPieWindow"_s);
+    QScreen* primary = QGuiApplication::primaryScreen();
+    const qreal scale = primary->devicePixelRatio();
+    const auto physical = [&](QPoint logical) {
+        return POINT {LONG(std::lround(logical.x() * scale)), LONG(std::lround(logical.y() * scale))};
+    };
+    // A pie on `store`, opened at `at` (logical, on the primary screen) and shown off the screen.
+    struct Shown {
+        std::unique_ptr<DropPie> pie;
+        std::unique_ptr<QObject> window;
+    };
+    const auto show = [&](Favorites* store, int folders) -> Shown {
+        Shown shown;
+        shown.pie = std::make_unique<DropPie>(store, nullptr, &operations, DropPie::Notify {});
+        shown.window.reset(component.createWithInitialProperties({{u"dropPie"_s, QVariant::fromValue(shown.pie.get())}}));
+        auto* window = qobject_cast<QQuickWindow*>(shown.window.get());
+        check(window, component.errorString());
+        if (!window)
+            return shown;
+        shown.pie->setWindow(window);
+        QElapsedTimer waiting;
+        waiting.start();
+        while (shown.pie->folderCount() < folders && waiting.elapsed() < 5000)
+            pump(20);
+        pump(200); // none: gathered all the same (a pie up then would go)
+        check(shown.pie->folderCount() == folders, u"its %1 folders"_s.arg(folders));
+        return shown;
+    };
+    const auto open = [&](Shown& shown, QPoint at, const QStringList& items) {
+        auto* window = qobject_cast<QQuickWindow*>(shown.window.get());
+        shown.pie->preview(physical(at), -1);
+        const QSize size = window->size();
+        showOffScreen(window);
+        window->resize(size);
+        shown.pie->previewItems(items);
+        pump(300);
+    };
+    const auto shoot = [&](Shown& shown, const QString& name) {
+        auto* window = qobject_cast<QQuickWindow*>(shown.window.get());
+        settle(window);
+        pump(300);
+        settle(window, 2);
+        check(saveGrab(window, output.filePath(name + u".png"_s), shown.pie->drawnRect()), name);
+    };
+
+    Shown main = show(&favorites, 6);
+    if (!main.pie || !main.window)
+        return false;
+    DropPie& pie = *main.pie;
+    const QPoint middle = primary->availableGeometry().center();
+    open(main, middle, {report});
+    const QRectF star = pie.starRect();
+    const QRectF line = pie.statusRect();
+    check(!star.isEmpty() && star.top() >= line.bottom() && std::abs(star.center().x() - line.center().x()) < 1,
+        u"收藏 under the line, in its middle"_s);
+    check(pie.starText() == u"收藏" && !pie.starDisabled() && !pie.starRemoves(), u"a file not there yet: 收藏"_s);
+
+    // The chip below the middle (sector 3 of six), let go a little past it: still its folder.
+    const QVariantMap below = pie.sectors().value(3).toMap();
+    const QPointF chipBottom = pie.centre() + QPointF(below.value(u"x"_s).toReal() + below.value(u"width"_s).toReal() / 2,
+        below.value(u"y"_s).toReal() + pie.chipHeight());
+    pie.previewPointer(chipBottom + QPointF(0, 20));
+    check(pie.hovered() == 3 && pie.revealed(), u"a little past the chip below: its folder"_s);
+    // On the line, and between it and 收藏: on the pie, nothing chosen.
+    pie.previewPointer(QPointF(line.center().x(), line.bottom() - 4));
+    check(pie.revealed() && pie.hovered() == -1 && !pie.onStar(), u"on the line: nothing chosen, the pie stays"_s);
+    pie.previewPointer(QPointF(star.left() - 12, (line.bottom() + star.top()) / 2));
+    check(pie.revealed() && !pie.onStar(), u"beside the way to 收藏: the pie stays, nothing chosen"_s);
+    // On 收藏: the line says what letting go does.
+    const DWORD effect = pie.previewPointer(star.center());
+    check(pie.onStar() && effect == DROPEFFECT_COPY, u"on 收藏: chosen, a copy's pointer (no link allowed)"_s);
+    check(pie.statusVerb() == u"收藏" && pie.statusName() == u"季度报告.docx" && pie.statusDetail().contains(u"季度报告"),
+        u"on 收藏: the line names the file (%1 %2)"_s.arg(pie.statusVerb(), pie.statusName()));
+    shoot(main, u"droppie-favorite-add"_s);
+    pie.previewDrop(star.center());
+    check(favorites.contains(report) && favorites.items().constLast().kind == Favorite::Kind::File,
+        u"let go: the file is a favorite"_s);
+    check(pie.confirming() && pie.statusVerb() == u"已收藏" && pie.starFilled(), u"let go: the line says so, the star filled"_s);
+    // Grabbed at once: it goes in under a second.
+    settle(qobject_cast<QQuickWindow*>(main.window.get()));
+    check(saveGrab(qobject_cast<QQuickWindow*>(main.window.get()), output.filePath(u"droppie-favorite-done.png"_s),
+              pie.drawnRect()),
+        u"droppie-favorite-done"_s);
+    check(pie.revealed() && pie.folderCount() == 6, u"let go: the pie stays a moment, its chips as they were"_s);
+    QElapsedTimer waiting;
+    waiting.start();
+    while (pie.revealed() && waiting.elapsed() < 3000)
+        pump(50);
+    check(!pie.revealed(), u"let go: then it goes"_s);
+
+    // The same file again: taken out.
+    open(main, middle, {report});
+    check(pie.starText() == u"取消收藏" && pie.starRemoves(), u"a favorite file: 取消收藏"_s);
+    pie.previewPointer(star.center());
+    check(pie.statusVerb() == u"取消收藏", u"on 取消收藏: the line says so"_s);
+    shoot(main, u"droppie-favorite-remove"_s);
+    pie.previewDrop(star.center());
+    check(!favorites.contains(report) && pie.statusVerb() == u"已取消收藏" && !pie.starFilled(),
+        u"let go: it is a favorite no more, the star empty"_s);
+    waiting.restart();
+    while (pie.revealed() && waiting.elapsed() < 3000)
+        pump(50);
+
+    // A folder: a chip of the pie once it has gone.
+    open(main, middle, {travel});
+    pie.previewDrop(star.center());
+    check(favorites.contains(travel) && favorites.items().constLast().kind == Favorite::Kind::Folder,
+        u"a folder let go there: a folder favorite"_s);
+    pump(100);
+    check(pie.revealed() && pie.folderCount() == 6, u"... no chip moves while the line says so"_s);
+    waiting.restart();
+    while ((pie.revealed() || pie.folderCount() < 7) && waiting.elapsed() < 3000)
+        pump(50);
+    check(pie.folderCount() == 7, u"... and a chip once the pie has gone"_s);
+
+    // Eleven files, and items with no lasting path: nothing it can take.
+    QStringList many;
+    for (int i = 1; i <= 11; ++i)
+        many.append(make(u"下载/照片 %1.jpg"_s.arg(i), false));
+    open(main, middle, many);
+    check(pie.starDisabled() && pie.previewPointer(star.center()) == DROPEFFECT_NONE
+            && pie.statusDetail().contains(u"10"_s),
+        u"eleven: more than it takes (%1)"_s.arg(pie.statusDetail()));
+    open(main, middle, {});
+    check(pie.starDisabled(), u"nothing with a path: nothing it takes"_s);
+    qobject_cast<QQuickWindow*>(main.window.get())->hide();
+
+    // No favorites yet: 收藏 is how to have one.
+    Favorites none(temporary.filePath(u"none.json"_s));
+    Shown empty = show(&none, 0);
+    if (empty.pie) {
+        open(empty, middle, {travel});
+        check(empty.pie->statusDetail().contains(u"收藏"_s), u"none yet: the line says to drop on 收藏"_s);
+        shoot(empty, u"droppie-favorite-empty"_s);
+        qobject_cast<QQuickWindow*>(empty.window.get())->hide();
+    }
+
+    // By the screen's bottom: the line and 收藏 above the chips.
+    const QRect area = primary->availableGeometry();
+    open(main, QPoint(area.center().x(), area.bottom() - 20), {report});
+    const QRectF high = pie.starRect();
+    check(high.bottom() <= pie.statusRect().top() && pie.statusRect().bottom() <= pie.centre().y(),
+        u"by the bottom: 收藏 above the line, the line above the chips"_s);
+    pie.previewPointer(high.center());
+    check(pie.onStar(), u"by the bottom: 收藏 chosen"_s);
+    shoot(main, u"droppie-favorite-flipped"_s);
+    qobject_cast<QQuickWindow*>(main.window.get())->hide();
+
+    say(u"drop pie favorite: %1"_s.arg(passed ? u"passed"_s : u"FAILED"_s));
+    return passed;
+}
+
 // --style-windows: the small windows of every 界面风格 (themes/README.md),
 // each as the app makes it, off the screen: a menu dropped from a button and
 // a field with its caret (style-controls), the screenshot question
@@ -13842,6 +14355,8 @@ int runResults(const QStringList& args)
         return checkDropPiePages(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--drop-pie-columns"_s))
         return checkDropPieColumns(&engine, out) ? std::min(g_warnings, 100) : 4;
+    if (args.contains(u"--drop-pie-favorite"_s))
+        return checkDropPieFavorite(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-sizing"_s))
         return checkClipboardInteractions(&engine, out, {}, true) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-file"_s))
@@ -14060,6 +14575,8 @@ int runResults(const QStringList& args)
     }
     if (args.contains(u"--search-caret"_s))
         return finish(window, checkSearchCaret(&engine, out) && saved);
+    if (args.contains(u"--app-alias"_s))
+        return finish(window, checkAppAlias(&engine, out) && saved);
     if (args.contains(u"--style-windows"_s))
         return finish(window, checkStyleWindows(&engine, out) && saved);
     if (args.contains(u"--preview-hotkeys"_s) || args.contains(u"--search-navigation"_s)) {

@@ -375,6 +375,8 @@ void GestureEditor::useSample()
     add("x1:U", gestures::builtinAction(gestures::Builtin::NewTab));
     add("shift:L", gestures::builtinAction(gestures::Builtin::PrevTab));
     add("shift:R", gestures::builtinAction(gestures::Builtin::NextTab));
+    add("ctrl:U", gestures::keysAction(L"Ctrl+Up"));
+    rules.back().name = L"上移段落"; // its own words for the hint (GitHub #472)
     add("cw", gestures::builtinAction(gestures::Builtin::Shutdown), {}, gestures::Zone::BottomRight);
     add("corner:tl", gestures::builtinAction(gestures::Builtin::TaskView));
     add("corner:br", gestures::openAction(L"C:\\Windows\\System32\\notepad.exe"));
@@ -506,11 +508,31 @@ void GestureEditor::discardProvisional()
     rebuildPrograms();
 }
 
-void GestureEditor::setAction(int row, const QString& kind, const QString& value, const QString& app)
+namespace {
+
+std::optional<std::wstring> nameOf(const QVariant& name)
+{
+    return name.isValid() && !name.isNull() ? std::optional(wstr(name.toString())) : std::nullopt;
+}
+
+} // namespace
+
+void GestureEditor::setAction(int row, const QString& kind, const QString& value, const QString& app, const QVariant& name)
 {
     if (!app.isEmpty())
         row = m_rules.isolate(row, wstr(app));
-    m_rules.setAction(row, makeAction(kind, value));
+    m_rules.setAction(row, makeAction(kind, value), nameOf(name));
+}
+
+void GestureEditor::setName(int row, const QString& name, const QString& app)
+{
+    const auto& rules = m_rules.rules();
+    if (row < 0 || row >= static_cast<int>(rules.size())
+        || rules[static_cast<std::size_t>(row)].name == gestures::cleanName(wstr(name)))
+        return; // not a copy of its own for the program over nothing
+    if (!app.isEmpty())
+        row = m_rules.isolate(row, wstr(app));
+    m_rules.setName(row, wstr(name));
 }
 
 void GestureEditor::setWhere(int row, int zone, const QString& app)
@@ -614,14 +636,17 @@ QVariantMap GestureEditor::slot(const QString& on, const QString& app) const
 {
     const int row = slotRow(on, app);
     if (row < 0)
-        return {{u"has"_s, false}, {u"kind"_s, u"none"_s}, {u"title"_s, QString()}, {u"icon"_s, u"ph:plus"_s}, {u"note"_s, QString()}, {u"id"_s, QString()}};
+        return {{u"has"_s, false}, {u"kind"_s, u"none"_s}, {u"title"_s, QString()}, {u"icon"_s, u"ph:plus"_s}, {u"note"_s, QString()},
+            {u"id"_s, QString()}, {u"name"_s, QString()}};
     const QModelIndex index = m_rules.index(row);
     return {{u"has"_s, true}, {u"kind"_s, m_rules.data(index, RulesModel::KindRole)},
         {u"title"_s, m_rules.data(index, RulesModel::ActionTitleRole)}, {u"icon"_s, m_rules.data(index, RulesModel::ActionIconRole)},
-        {u"note"_s, m_rules.data(index, RulesModel::ActionNoteRole)}, {u"id"_s, m_rules.data(index, RulesModel::ActionIdRole)}};
+        {u"note"_s, m_rules.data(index, RulesModel::ActionNoteRole)}, {u"id"_s, m_rules.data(index, RulesModel::ActionIdRole)},
+        {u"name"_s, m_rules.data(index, RulesModel::NameRole)}};
 }
 
-void GestureEditor::setSlot(const QString& on, const QString& app, const QString& kind, const QString& value)
+void GestureEditor::setSlot(const QString& on, const QString& app, const QString& kind, const QString& value,
+    const QVariant& name)
 {
     const gestures::Action action = makeAction(kind, value);
     const bool wheel = gestures::triggerKind(on.toStdString()) == gestures::TriggerKind::Wheel;
@@ -635,7 +660,7 @@ void GestureEditor::setSlot(const QString& on, const QString& app, const QString
     if (row >= 0) {
         if (!app.isEmpty())
             row = m_rules.isolate(row, wstr(app));
-        m_rules.setAction(row, action);
+        m_rules.setAction(row, action, nameOf(name));
         return;
     }
     gestures::Rule rule;
@@ -643,7 +668,15 @@ void GestureEditor::setSlot(const QString& on, const QString& app, const QString
     if (!app.isEmpty())
         rule.apps = {wstr(app)};
     rule.action = action;
+    if (const auto words = nameOf(name))
+        rule.name = gestures::cleanName(*words);
     m_rules.add(std::move(rule), false);
+}
+
+void GestureEditor::setSlotName(const QString& on, const QString& app, const QString& name)
+{
+    if (const int row = slotRow(on, app); row >= 0)
+        setName(row, name, app);
 }
 
 void GestureEditor::clearSlot(const QString& on, const QString& app)

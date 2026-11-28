@@ -56,6 +56,7 @@ constexpr UINT_PTR kShortcutTimer = 4;
 constexpr UINT_PTR kHeldKeysTimer = 5;
 constexpr ULONGLONG kShortcutLetGoMs = 1000; // a shortcut's modifiers held longer: it acts all the same
 constexpr ULONGLONG kHeldKeysLetGoMs = 5000; // a gesture's keys held longer: it is dropped (it would press the wrong keys)
+constexpr DWORD kKeysHoldMs = 40; // a shortcut's keys held down this long before they are let go (sendKeys, #472)
 
 Engine* g_engine = nullptr;
 
@@ -1025,7 +1026,7 @@ Engine::Hint Engine::hintFor(const std::string& gesture) const
         hint.action = zh ? L"不做什么" : L"Does nothing";
         return hint;
     }
-    hint.action = actionTitle(a, zh);
+    hint.action = ruleTitle(*rule, zh); // its name, when it was given one (GitHub #472)
     if (a.kind == Action::Kind::Builtin && !m_selection.empty()
         && (takesSelection(a.builtin) || a.builtin == Builtin::Copy || a.builtin == Builtin::Cut))
         hint.words = L"「" + snippet(m_selection) + L"」";
@@ -1294,23 +1295,35 @@ void Engine::replayButton(MouseButton button, bool click)
     }
 }
 
+// A shortcut pressed as a hand would (pressesOf): with Ctrl, Alt, Shift or
+// Win, all down, let go a moment later (kKeysHoldMs). Sent in one go, they
+// were all up again before the program read the key, and one that asks
+// GetAsyncKeyState whether Ctrl is held (WPS's spreadsheet) saw the key alone:
+// Ctrl+Up moved one cell (GitHub #472). Waited for on the engine's window
+// thread; the mouse hook has its own.
 void Engine::sendKeys(const std::vector<std::uint16_t>& keys)
 {
-    std::vector<INPUT> in;
-    const auto key = [&](std::uint16_t vk, bool up) {
-        INPUT i {};
-        i.type = INPUT_KEYBOARD;
-        i.ki.wVk = vk;
-        i.ki.wScan = static_cast<WORD>(::MapVirtualKeyW(vk, MAPVK_VK_TO_VSC));
-        i.ki.dwFlags = (up ? KEYEVENTF_KEYUP : 0) | (extendedKey(vk) ? KEYEVENTF_EXTENDEDKEY : 0);
-        i.ki.dwExtraInfo = kOwnInput;
-        in.push_back(i);
+    const auto send = [](const std::vector<KeyStroke>& strokes) {
+        std::vector<INPUT> in;
+        in.reserve(strokes.size());
+        for (const KeyStroke& k : strokes) {
+            INPUT i {};
+            i.type = INPUT_KEYBOARD;
+            i.ki.wVk = k.vk;
+            i.ki.wScan = static_cast<WORD>(::MapVirtualKeyW(k.vk, MAPVK_VK_TO_VSC));
+            i.ki.dwFlags = (k.up ? KEYEVENTF_KEYUP : 0) | (extendedKey(k.vk) ? KEYEVENTF_EXTENDEDKEY : 0);
+            i.ki.dwExtraInfo = kOwnInput;
+            in.push_back(i);
+        }
+        if (!in.empty())
+            ::SendInput(static_cast<UINT>(in.size()), in.data(), sizeof(INPUT));
     };
-    for (const std::uint16_t vk : keys)
-        key(vk, false);
-    for (auto it = keys.rbegin(); it != keys.rend(); ++it)
-        key(*it, true);
-    ::SendInput(static_cast<UINT>(in.size()), in.data(), sizeof(INPUT));
+    const KeyPresses presses = pressesOf(keys);
+    send(presses.first);
+    if (presses.held) {
+        ::Sleep(kKeysHoldMs);
+        send(presses.then);
+    }
 }
 
 // Words typed where the caret is, character by character as an input
@@ -1533,7 +1546,7 @@ void Engine::triggered(std::string_view on, POINT at)
         return;
     const bool asks = rule->action.kind == Action::Kind::Builtin && asksFirst(rule->action.builtin);
     if (!asks)
-        note(at, triggerIcon(on), actionTitle(rule->action, s->look.chinese), triggerTitle(on, s->look.chinese) + L" · ");
+        note(at, triggerIcon(on), ruleTitle(*rule, s->look.chinese), triggerTitle(on, s->look.chinese) + L" · ");
     performWithWords(*rule, t);
 }
 

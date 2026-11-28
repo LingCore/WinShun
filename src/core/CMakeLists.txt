@@ -80,6 +80,7 @@ qt_add_library(wscore STATIC
     TextUtil.cpp TextUtil.h
     Unc.cpp Unc.h
     UsageReport.cpp UsageReport.h
+    UserApps.h
     VolumeProtocol.cpp VolumeProtocol.h
     WebDav.cpp WebDav.h
     WebShortcut.cpp WebShortcut.h
@@ -100,4 +101,4 @@ target_include_directories(wscore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories(wscore PRIVATE "${CMAKE_BINARY_DIR}/generated")
 target_link_libraries(wscore
     PUBLIC Qt6::Core Qt6::Sql winshun_options wsextract_api
-    PRIVATE miniz kernel32 advapi32 bcrypt cabinet cfgmgr32 mpr netapi32 ole32 powrprof shell32 shlwapi user32 ws2_32)
+    PRIVATE miniz kernel32 advapi32 bcrypt cabinet cfgmgr32 mpr netapi32 ole32 powrprof shell32 shlwapi user32 version ws2_32)
