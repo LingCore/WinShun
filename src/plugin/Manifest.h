@@ -183,6 +183,13 @@ struct Setting {
     // card and not found by the settings search (0.41.0): for a value the
     // plugin's own settings window edits. Older Win顺 show it as a row.
     bool hidden = false;
+    // Its row only while a choice setting holds one of these values (0.53.0,
+    // "showWhen": {"provider": ["deepl"]}): a service's key with that service
+    // chosen. Kept and told to the plugin as ever; the settings search still
+    // finds the card by its title. Older Win顺 show the row always.
+    QString showWhenKey;
+    QStringList showWhenValues;
+    bool shownWith(const QJsonObject& values) const;
     // A file's kinds (0.49.0), lower case without the dot: what the picker
     // lists first ("所有文件" too). Older Win顺 list every file.
     QStringList extensions;

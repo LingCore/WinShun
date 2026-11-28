@@ -470,6 +470,14 @@ manifest 的 `permissions` 是数组：`["processes", "clipboard:read", {"files:
 
 设置项写 `"hidden": true`（0.41.0 起，只用于 `text`、`number`、`bool`、`choice`）时，卡片上不画它，设置页的搜索也找不到它，其余照旧：值存在 `WinShun.ini` 的 `[Plugin.<id>] Setting.<key>=`，插件在 `initialize` 和 `settingsChanged` 的 `settings` 里照常收到，也可以用 `winshun/settings/update` 改它（规则不变，只是隐藏的 `text` 最多 65536 个字符，平常的是 4096）。适合只由插件自己的设置窗口编辑的值，比如一大段 JSON。一张卡片上的设置项都是 `hidden` 时，看起来和没有设置项的插件一样。更早的 Win顺 不认识 `hidden`，照旧把它画成一行，所以这样的插件要写 `"minWinShun": "0.41.0"`，或者接受老版本多出这一行。
 
+设置项写 `"showWhen": {"provider": ["deepl", "microsoft"]}`（0.53.0 起）时，只有名为 `provider` 的 `choice` 设置项选的是列出的值之一，卡片上才画这一行；换个选项，这一行马上消失或出现。只写一个设置项，它必须是同一插件的另一个 `choice`，列出的值必须是它的选项，否则清单校验不通过。值照旧保存，也照旧在 `initialize` 和 `settingsChanged` 里交给插件，所以插件要自己只读当前选项用得到的项，比如别的服务留下的接口地址不要拿来用。设置页的搜索照样能按这一行的标题找到卡片。适合“各服务各填各的”：
+
+```json
+{"key": "deeplKey", "type": "password", "title": "DeepL 密钥", "showWhen": {"provider": ["deepl"]}}
+```
+
+更早的 Win顺 不认识 `showWhen`，照旧画出全部设置项，插件不用为此写 `minWinShun`。
+
 `number` 可以再写 `min`、`max`、`step` 和 `unit`（0.33.0 起）：
 
 ```json

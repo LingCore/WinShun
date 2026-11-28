@@ -74,6 +74,11 @@ QString Setting::numberText(double value) const
     return QString::number(fit(value), 'f', QLocale::FloatingPointShortest);
 }
 
+bool Setting::shownWith(const QJsonObject& values) const
+{
+    return showWhenKey.isEmpty() || showWhenValues.contains(values.value(showWhenKey).toVariant().toString());
+}
+
 namespace {
 
 struct Named {
@@ -584,6 +589,19 @@ Setting readSetting(const QJsonValue& value, int index, Check& check)
             check.fail(where + u".hidden 只用于 text、number、bool、choice"_s);
         s.hidden = hidden.toBool();
     }
+    if (const QJsonValue when = o.value(u"showWhen"_s); !when.isUndefined()) {
+        // One choice setting and the values it shows the row with; that the
+        // setting is a choice and has them is checked once all are read.
+        const QJsonObject w = when.toObject();
+        if (!when.isObject() || w.size() != 1)
+            check.fail(where + u".showWhen 要是对象，只写一个设置项：{\"provider\": [\"deepl\"]}"_s);
+        else {
+            s.showWhenKey = w.begin().key();
+            s.showWhenValues = stringList(w.begin().value(), where + u".showWhen."_s + s.showWhenKey, check);
+            if (s.showWhenValues.isEmpty())
+                check.fail(where + u".showWhen."_s + s.showWhenKey + u" 至少写一个值"_s);
+        }
+    }
     if (o.contains(u"extensions"_s)) {
         if (s.type != u"file")
             check.fail(where + u".extensions 只用于 file"_s);
@@ -785,6 +803,24 @@ std::optional<Manifest> Manifest::parse(const QByteArray& json, QString* error)
         int i = 0;
         for (const QJsonValue& s : settings.toArray())
             m.settings.push_back(readSetting(s, i++, check));
+    }
+    // A showWhen names another setting, a choice, and values among its options.
+    for (int i = 0; i < m.settings.size(); ++i) {
+        const Setting& s = m.settings[i];
+        if (s.showWhenKey.isEmpty())
+            continue;
+        const QString where = u"settings[%1].showWhen.%2"_s.arg(QString::number(i), s.showWhenKey);
+        const auto choice = std::ranges::find_if(m.settings, [&](const Setting& o) { return o.key == s.showWhenKey; });
+        if (choice == m.settings.cend() || choice->type != u"choice"_s || choice->key == s.key) {
+            check.fail(where + u" 要指向另一个 choice 设置项"_s);
+            continue;
+        }
+        QStringList options;
+        for (const QJsonValue& option : choice->options)
+            options << (option.isObject() ? option.toObject().value(u"value"_s) : option).toVariant().toString();
+        for (const QString& value : s.showWhenValues)
+            if (!options.contains(value))
+                check.fail(where + u" 里的 "_s + value + u" 不是它的选项"_s);
     }
     // A files trigger's `if` names one of the settings, and a bool one: the
     // menu entry comes and goes with the switch on the card.

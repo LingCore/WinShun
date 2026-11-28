@@ -4741,6 +4741,47 @@ private slots:
         QCOMPARE(m->settings.front().hidden, hidden);
     }
 
+    // A row for some values of a choice (showWhen, 0.53.0): it names another
+    // setting, a choice, and values among its options.
+    void showWhenSetting_data()
+    {
+        QTest::addColumn<QString>("when");
+        QTest::addColumn<QString>("error");
+        QTest::newRow("one value") << uR"({"provider":["deepl"]})"_s << QString();
+        QTest::newRow("two values") << uR"({"provider":["deepl","microsoft"]})"_s << QString();
+        QTest::newRow("a string") << uR"({"provider":"deepl"})"_s << QString();
+        QTest::newRow("not an object") << uR"(["deepl"])"_s << u"settings[1].showWhen 要是对象"_s;
+        QTest::newRow("two settings") << uR"({"provider":["deepl"],"other":["x"]})"_s << u"settings[1].showWhen 要是对象"_s;
+        QTest::newRow("no values") << uR"({"provider":[]})"_s << u"settings[1].showWhen.provider 至少写一个值"_s;
+        QTest::newRow("no such setting") << uR"({"service":["deepl"]})"_s << u"settings[1].showWhen.service 要指向另一个 choice 设置项"_s;
+        QTest::newRow("not a choice") << uR"({"note":["deepl"]})"_s << u"settings[1].showWhen.note 要指向另一个 choice 设置项"_s;
+        QTest::newRow("itself") << uR"({"key":["deepl"]})"_s << u"settings[1].showWhen.key 要指向另一个 choice 设置项"_s;
+        QTest::newRow("no such option") << uR"({"provider":["deepl","google"]})"_s << u"settings[1].showWhen.provider 里的 google 不是它的选项"_s;
+    }
+    void showWhenSetting()
+    {
+        QFETCH(QString, when);
+        QFETCH(QString, error);
+        const QString json = uR"({"manifest":1,"id":"a.b","name":"X","version":"1","settings":[
+            {"key":"provider","type":"choice","title":"S","default":"none","options":["none",{"value":"deepl","title":"DeepL"},"microsoft"]},
+            {"key":"key","type":"choice","title":"K","options":["deepl"],"showWhen":%1},
+            {"key":"note","type":"text","title":"N"}],"commands":[{"id":"c","run":{"folder":"C:\\"}}]})"_s.arg(when);
+        QString failed;
+        const std::optional<Manifest> m = Manifest::parse(json.toUtf8(), &failed);
+        if (!error.isEmpty()) {
+            QVERIFY(!m);
+            QVERIFY2(failed.contains(error), qPrintable(failed));
+            return;
+        }
+        QVERIFY2(m, qPrintable(failed));
+        const Setting& key = m->settings[1];
+        QCOMPARE(key.showWhenKey, u"provider"_s);
+        QVERIFY(key.shownWith(QJsonObject {{u"provider"_s, u"deepl"_s}}));
+        QVERIFY(!key.shownWith(QJsonObject {{u"provider"_s, u"none"_s}}));
+        QVERIFY(!key.shownWith(QJsonObject {})); // nothing chosen: not one of its values
+        QVERIFY(m->settings[2].shownWith(QJsonObject {})); // no showWhen: always
+    }
+
     // Hidden is about the card alone: the value is kept, told to the plugin
     // and changed by the plugin (winshun/settings/update) as any other.
     void hiddenSettingIsKeptToldAndUpdated()

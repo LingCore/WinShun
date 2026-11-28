@@ -212,7 +212,7 @@ private slots:
 
         p = providerFrom(Json::Object {{"provider", "bailian"}}, true);
         QVERIFY(!p.configured()); // no key yet
-        p = providerFrom(Json::Object {{"provider", "bailian"}, {"apiKey", " sk-1 "}}, true);
+        p = providerFrom(Json::Object {{"provider", "bailian"}, {"bailianKey", " sk-1 "}}, true);
         QVERIFY(p.configured());
         QCOMPARE(p.key, std::string("sk-1"));
         QCOMPARE(p.batch, 10); // its limit
@@ -253,9 +253,42 @@ private slots:
         setModel(other, "bge-m3-q4_k_m");
         QVERIFY(other.queryPrefix.empty());
         QVERIFY(other.signature() != p.signature()); // another model: another index
-        // A model named in the settings is taken as said.
-        p = providerFrom(Json::Object {{"provider", "local"}, {"model", "my-model"}, {"endpoint", "http://127.0.0.1:40000/v1"}}, true);
-        QVERIFY(!p.modelFromService && p.configured());
+        // Nor the model field: the model is the one the plugin says it runs
+        // (a name left from another service would give the wrong prefixes).
+        p = providerFrom(Json::Object {{"provider", "local"}, {"model", "BAAI/bge-m3"}, {"apiKey", "sk-1"}}, true);
+        QVERIFY(p.modelFromService && !p.configured() && p.model.empty() && p.key.empty());
+    }
+
+    // Each service reads only the fields its card shows (showWhen): the
+    // endpoint and the model are shared, and one left from another service
+    // is not this one's; each cloud keeps its own key.
+    void providersReadTheirOwnFields()
+    {
+        using winshun::Json;
+        const auto with = [](const char* provider) {
+            return providerFrom(Json::Object {{"provider", provider}, {"endpoint", "http://127.0.0.1:8080/v1"},
+                {"model", "intfloat/multilingual-e5-small"}, {"siliconflowKey", "sk-sf"}, {"bailianKey", "sk-bl"}}, true);
+        };
+        // A cloud preset at its own address, with its own key.
+        Provider p = with("siliconflow");
+        QCOMPARE(p.endpoint, std::string("https://api.siliconflow.cn/v1"));
+        QCOMPARE(p.key, std::string("sk-sf"));
+        QCOMPARE(p.model, std::string("intfloat/multilingual-e5-small")); // the model is its to choose
+        QCOMPARE(with("bailian").key, std::string("sk-bl"));
+        QVERIFY(with("openai").key.empty()); // not another service's
+        QVERIFY(!with("openai").configured());
+        // A server on this computer at its port; another API at its address, and no key unless its own.
+        QCOMPARE(with("ollama").endpoint, std::string("http://127.0.0.1:8080/v1"));
+        QCOMPARE(with("lmstudio").endpoint, std::string("http://127.0.0.1:8080/v1"));
+        QVERIFY(with("ollama").key.empty());
+        p = with("custom");
+        QCOMPARE(p.endpoint, std::string("http://127.0.0.1:8080/v1"));
+        QVERIFY(p.key.empty() && p.local && p.configured());
+        // The shared key of 1.2.1 and earlier, for a service without its own.
+        p = providerFrom(Json::Object {{"provider", "openai"}, {"apiKey", "sk-old"}}, true);
+        QCOMPARE(p.key, std::string("sk-old"));
+        p = providerFrom(Json::Object {{"provider", "openai"}, {"apiKey", "sk-old"}, {"openaiKey", "sk-new"}}, true);
+        QCOMPARE(p.key, std::string("sk-new"));
     }
 
     void localModelIsAsked()

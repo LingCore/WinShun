@@ -862,6 +862,10 @@ PluginListModel::Card PluginSettings::cardFor(const QString& id) const
     for (const plugin::Setting& s : m.settings) {
         if (s.hidden) // the plugin's own window edits it: no row here, so nor in the settings search (searchTerms)
             continue;
+        if (!s.shownWith(values)) { // another service's key, say: its row comes with that choice
+            c.otherTerms << s.title.pick(m_locale);
+            continue;
+        }
         QVariantMap row {{u"key"_s, s.key}, {u"type"_s, s.type}, {u"title"_s, s.title.pick(m_locale).isEmpty() ? s.key : s.title.pick(m_locale)},
             {u"hint"_s, s.hint.pick(m_locale)}};
         const QJsonValue value = values.value(s.key);
@@ -979,6 +983,7 @@ QStringList PluginSettings::searchTerms(int row) const
     }
     for (const auto& value : card->settings)
         terms << value.toMap().value(u"title"_s).toString();
+    terms << card->otherTerms;
     if (card->aiExpose)
         terms << tr("给 AI 用");
     if (card->webSearch && m_editor) {

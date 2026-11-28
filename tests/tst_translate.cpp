@@ -414,13 +414,39 @@ private slots:
         QVERIFY(tr::needsKey(tr::settingsFrom(Json::Object {{"provider", "openai"}})));
         QVERIFY(tr::needsKey(tr::settingsFrom(Json::Object {{"provider", "deepl"}})));
         QVERIFY(!tr::chatService(tr::settingsFrom(Json::Object {{"provider", "microsoft"}})));
-        // The endpoint field is shared by every service: one left from 火山方舟
-        // sent the local model's requests there, keyless, and came back 401.
-        // The local model never reads it.
-        QCOMPARE(tr::settingsFrom(Json::Object {{"provider", "local"}, {"endpoint", "https://ark.cn-beijing.volces.com/api/v3"}}).endpoint,
-            std::string(tr::kLocalEndpoint));
-        QCOMPARE(tr::settingsFrom(Json::Object {{"provider", "local"}, {"endpoint", "http://127.0.0.1:11434/v1"}}).endpoint,
-            std::string(tr::kLocalEndpoint));
+    }
+
+    // A service reads only the fields its card shows (showWhen). The endpoint
+    // and the model are shared by several services: one left from 火山方舟
+    // sent the local model's requests there, keyless, back with 401.
+    void servicesReadTheirOwnFields()
+    {
+        const auto with = [](const char* provider) {
+            return tr::settingsFrom(Json::Object {{"provider", provider}, {"endpoint", "https://ark.cn-beijing.volces.com/api/v3"},
+                {"model", "doubao-seed-fixture"}, {"region", "eastasia"}, {"openaiKey", "sk-openai"}, {"apiKey", "sk-old"}});
+        };
+        tr::Settings s = with("local");
+        QCOMPARE(s.endpoint, std::string(tr::kLocalEndpoint));
+        QCOMPARE(s.model, std::string("local"));
+        QVERIFY(s.key.empty()); // nor any key: nothing to send to this computer
+        QVERIFY(tr::buildRequest(s, "hi", "zh").authorization.empty());
+        // The presets at their own addresses; the model is theirs to choose.
+        s = with("deepseek");
+        QCOMPARE(s.endpoint, std::string("https://api.deepseek.com"));
+        QCOMPARE(s.model, std::string("doubao-seed-fixture"));
+        QCOMPARE(s.key, std::string("sk-old")); // no key of its own: the shared one of 2.1.1
+        QCOMPARE(with("hunyuan").endpoint, std::string("https://api.hunyuan.cloud.tencent.com/v1"));
+        // Microsoft: its global address, its region; DeepL: no region.
+        s = with("microsoft");
+        QVERIFY(s.endpoint.empty() && s.model.empty());
+        QCOMPARE(tr::buildRequest(s, "hi", "zh").url.rfind("https://api.cognitive.microsofttranslator.com/", 0), std::size_t(0));
+        QCOMPARE(s.region, std::string("eastasia"));
+        QVERIFY(with("deepl").region.empty());
+        // OpenAI-compatible: the endpoint is its own, and so is its key.
+        s = with("openai");
+        QCOMPARE(s.endpoint, std::string("https://ark.cn-beijing.volces.com/api/v3"));
+        QCOMPARE(s.key, std::string("sk-openai"));
+        QCOMPARE(with("none").key, std::string());
     }
 
     void localRequest()
@@ -582,8 +608,8 @@ private slots:
         s = tr::settingsFrom(Json::Object {{"provider", "doubao"}, {"model", "ep-fixture"}});
         QCOMPARE(s.endpoint, std::string("https://ark.cn-beijing.volces.com/api/v3"));
         QCOMPARE(s.model, std::string("ep-fixture"));
-        s = tr::settingsFrom(Json::Object {{"provider", "hunyuan"}, {"endpoint", "https://custom.example/v1"}});
-        QCOMPARE(s.endpoint, std::string("https://custom.example/v1"));
+        s = tr::settingsFrom(Json::Object {{"provider", "hunyuan"}});
+        QCOMPARE(s.endpoint, std::string("https://api.hunyuan.cloud.tencent.com/v1"));
         QCOMPARE(s.model, std::string("hunyuan-turbos-latest"));
 
         s = tr::settingsFrom(Json::Object {{"provider", "microsoft"}, {"apiKey", "fixture"}, {"region", "eastasia"}});
@@ -743,9 +769,12 @@ private slots:
             parse("{\"provider\":\" DeepL \",\"apiKey\":\"  abc:fx \",\"endpoint\":\" https://x/v1/ \",\"model\":\"\",\"target\":\"EN\"}"));
         QCOMPARE(QString::fromStdString(s.provider), QString::fromUtf8("deepl"));
         QCOMPARE(QString::fromStdString(s.key), QString::fromUtf8("abc:fx"));
-        QCOMPARE(QString::fromStdString(s.endpoint), QString::fromUtf8("https://x/v1/"));
+        QVERIFY(s.endpoint.empty()); // DeepL's address follows from its key
         QVERIFY(s.model.empty());
         QCOMPARE(QString::fromStdString(s.target), QString::fromUtf8("en"));
+        const tr::Settings openai = tr::settingsFrom(parse("{\"provider\":\"openai\",\"endpoint\":\" https://x/v1/ \",\"model\":\" m \"}"));
+        QCOMPARE(QString::fromStdString(openai.endpoint), QString::fromUtf8("https://x/v1/"));
+        QCOMPARE(QString::fromStdString(openai.model), QString::fromUtf8("m"));
 
         const tr::Settings none = tr::settingsFrom(parse("{}"));
         QCOMPARE(QString::fromStdString(none.provider), QString::fromUtf8("none"));

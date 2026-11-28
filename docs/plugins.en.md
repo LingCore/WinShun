@@ -462,6 +462,14 @@ A `text` with `"multiline": true` takes several lines (since 0.41.0): a box as w
 
 A setting with `"hidden": true` (since 0.41.0, for `text`, `number`, `bool` and `choice` only) gets no row on the card and is not found by the settings search; everything else stays as it was: the value is kept in `WinShun.ini` as `[Plugin.<id>] Setting.<key>=`, the plugin gets it in the `settings` of `initialize` and `settingsChanged`, and it can change it with `winshun/settings/update` (the same rules, except that a hidden `text` may hold up to 65,536 characters instead of 4,096). It is for a value only the plugin's own settings window edits, such as a large piece of JSON. A card whose settings are all `hidden` looks like one of a plugin without settings. Older Win顺 do not know `hidden` and still draw a row for it, so such a plugin writes `"minWinShun": "0.41.0"`, or accepts the extra row on older versions.
 
+A setting with `"showWhen": {"provider": ["deepl", "microsoft"]}` (since 0.53.0) has its row on the card only while the `choice` setting named `provider` holds one of those values; pick another option and the row goes or comes at once. Name one setting, another `choice` of the same plugin, and values among its options, or the manifest is refused. The value is still kept and still given to the plugin in `initialize` and `settingsChanged`, so the plugin should read only the settings the current choice uses (an endpoint left from another service is not this one's). The settings search still finds the card by the row's title. Made for "each service its own fields":
+
+```json
+{"key": "deeplKey", "type": "password", "title": "DeepL key", "showWhen": {"provider": ["deepl"]}}
+```
+
+Older Win顺 do not know `showWhen` and draw every setting, so no `minWinShun` is needed for it.
+
 A `number` can also have `min`, `max`, `step` and `unit` (since 0.33.0):
 
 ```json

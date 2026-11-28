@@ -22,8 +22,8 @@ struct Provider {
     std::string docPrefix; // … and before a passage
     bool local = false; // runs on this computer: nothing leaves it, but it takes the CPU
     int batch = 10; // texts per request
-    // "local" with no model named in the settings: the model is the one the
-    // 本地模型 plugin runs, asked by localModel() (empty until then).
+    // "local": the model is the one the 本地模型 plugin runs, asked by
+    // localModel() (empty until then).
     bool modelFromService = false;
 
     bool configured() const { return id != "none" && !endpoint.empty() && !model.empty() && (local || !key.empty()); }

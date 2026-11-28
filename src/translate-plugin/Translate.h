@@ -13,8 +13,7 @@
 
 namespace tr {
 
-// The local models plugin's address (winshun.localmodel, port 39281 unless
-// its settings say otherwise).
+// The local models plugin's address (winshun.localmodel at its default port).
 inline constexpr const char* kLocalEndpoint = "http://127.0.0.1:39281/v1";
 
 struct Settings {
@@ -33,8 +32,11 @@ struct Settings {
 std::string keyField(const std::string& provider);
 
 // From the settings Win顺 hands over at initialize (the keys come from the
-// Credential Manager). Missing or blank values get their defaults; a service
-// without a key of its own uses the shared apiKey of 2.1.1 and earlier.
+// Credential Manager). A service reads only the fields its card shows: its
+// key, Microsoft's region, the model of a chat service but the local one,
+// the endpoint of OpenAI-compatible alone (the presets have their own).
+// Missing or blank values get their defaults; a service without a key of its
+// own uses the shared apiKey of 2.1.1 and earlier.
 Settings settingsFrom(const winshun::Json& json);
 
 // Whether a URL names this computer (127.0.0.1, localhost, [::1]): Win顺's

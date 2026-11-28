@@ -257,11 +257,17 @@ Provider providerFrom(const winshun::Json& settings, bool chinese)
     }
     if (p.name.empty())
         p.id = "none";
-    // The local models plugin at its own address, never the endpoint field:
-    // all services share it, and one left from another service is not where
-    // the model is. localEndpoint, not on the card, is for the tests' stand-in.
-    const std::string endpoint = winshun::trim(settings[p.id == "local" ? "localEndpoint" : "endpoint"].toString());
-    const std::string model = winshun::trim(settings["model"].toString());
+    // A service reads only the fields its card shows (showWhen in plugin.json):
+    // the endpoint and the model are shared by several services, and one left
+    // from another service is not this one's. The endpoint: a server on this
+    // computer (its port) or another API; the cloud presets and the local
+    // models plugin have their own (localEndpoint, not on the card, is the
+    // tests' stand-in). The model: any but the local models', which say theirs.
+    const auto field = [&](const std::string& name) { return winshun::trim(settings[name].toString()); };
+    const std::string endpoint = p.id == "local" ? field("localEndpoint")
+        : p.id == "ollama" || p.id == "lmstudio" || p.id == "custom" ? field("endpoint")
+                                                                      : std::string();
+    const std::string model = p.id == "local" ? std::string() : field("model");
     if (!endpoint.empty())
         p.endpoint = endpoint;
     if (!model.empty())
@@ -275,8 +281,15 @@ Provider providerFrom(const winshun::Json& settings, bool chinese)
         const std::string e = lower(p.endpoint);
         p.local = e.find("://127.0.0.1") != std::string::npos || e.find("://localhost") != std::string::npos;
     }
-    p.key = winshun::trim(settings["apiKey"].toString());
-    p.modelFromService = p.id == "local" && p.model.empty();
+    // A cloud service's own key, so that switching services never sends one
+    // service's key to another; apiKey is the one shared key of 1.2.1 and
+    // earlier, still used by a service without its own.
+    if (p.id == "siliconflow" || p.id == "bailian" || p.id == "openai" || p.id == "custom") {
+        p.key = field(p.id + "Key");
+        if (p.key.empty())
+            p.key = field("apiKey");
+    }
+    p.modelFromService = p.id == "local";
     prefixesFor(p);
     return p;
 }

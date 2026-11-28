@@ -445,7 +445,10 @@ int runPlugins(const QStringList& args)
                 {"key":"edge","type":"number","title":"最后一步短一些","min":5,"max":99,"step":10,"unit":{"zh":"个","en":"items"}},
                 {"key":"limit","type":"number","title":"最多列出几项","min":1,"unit":{"zh":"项","en":"items"}},
                 {"key":"lines","type":"text","multiline":true,"title":"缩写","hint":"每行一条：缩写 = 换成的文字","default":"cmd = command"},
-                {"key":"layout","type":"text","hidden":true,"title":"手势布局","default":"{}"}]})";
+                {"key":"layout","type":"text","hidden":true,"title":"手势布局","default":"{}"},
+                {"key":"service","type":"choice","title":"翻译服务","default":"local",
+                    "options":[{"value":"local","title":"本地模型"},{"value":"openai","title":"OpenAI 兼容"}]},
+                {"key":"endpoint","type":"text","title":"接口地址","showWhen":{"service":["openai"]}}]})";
         if (!manifest.open(QIODevice::WriteOnly) || manifest.write(json) < 0) {
             say(u"#359 sliders: the plugin could not be written"_s);
             return 3;
@@ -1155,6 +1158,33 @@ int runPlugins(const QStringList& args)
                     .arg(noRow).arg(searchable).arg(first).arg(kept)
                     .arg(noRow && !searchable && first == u"{}" && kept ? u"passed"_s : u"FAILED"_s));
             sliders = sliders && noRow && !searchable && first == u"{}" && kept;
+        }
+        // A row for one choice (showWhen, 0.53.0): 接口地址 only with OpenAI
+        // 兼容 chosen, its row coming and going with the choice; the card
+        // found by its title all the while.
+        {
+            PluginListModel* list = editor->plugins()->list();
+            const auto shown = [&] {
+                const PluginListModel::Card* card = list->card(rangesPlugin);
+                return card && std::ranges::any_of(card->settings, [](const QVariant& s) { return s.toMap().value(u"key"_s).toString() == u"endpoint"; })
+                    && visualNamed(window->contentItem(), u"pluginSetting-"_s + rangesPlugin + u"/endpoint"_s) != nullptr;
+            };
+            const auto found = [&] {
+                for (int row = 0; row < list->rowCount(); ++row)
+                    if (list->data(list->index(row, 0), PluginListModel::IdRole).toString() == rangesPlugin)
+                        return editor->plugins()->searchTerms(row).contains(u"接口地址"_s);
+                return false;
+            };
+            const bool before = !shown() && found();
+            editor->plugins()->setSettingValue(rangesPlugin, u"service"_s, u"openai"_s);
+            pump(150);
+            const bool with = shown() && found();
+            editor->plugins()->setSettingValue(rangesPlugin, u"service"_s, u"local"_s);
+            pump(150);
+            const bool after = !shown() && found();
+            say(u"showWhen: no 接口地址 row with 本地模型 %1, one with OpenAI 兼容 %2, none again %3 (found by the search each time): %4"_s
+                    .arg(before).arg(with).arg(after).arg(before && with && after ? u"passed"_s : u"FAILED"_s));
+            sliders = sliders && before && with && after;
         }
         // For the picture: the values a user would leave, nothing focused.
         type(u"pause"_s, u"400"_s);

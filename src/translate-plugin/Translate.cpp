@@ -145,42 +145,51 @@ Settings settingsFrom(const Json& json)
     const std::string provider = lower(winshun::trim(json["provider"].toString()));
     if (!provider.empty())
         s.provider = provider;
-    // Each service keeps its own key (#10), so switching services and back
-    // does not send one service's key to another. apiKey is the one shared
-    // key of 2.1.1 and earlier: still used by a service with none of its own.
-    s.key = winshun::trim(json[keyField(s.provider)].toString());
-    if (s.key.empty())
-        s.key = winshun::trim(json["apiKey"].toString());
-    s.endpoint = winshun::trim(json["endpoint"].toString());
-    s.model = winshun::trim(json["model"].toString());
-    s.region = winshun::trim(json["region"].toString());
-    if (s.provider == "deepseek") {
-        if (s.endpoint.empty())
-            s.endpoint = "https://api.deepseek.com";
-        if (s.model.empty())
-            s.model = "deepseek-flash";
-    } else if (s.provider == "doubao") {
-        if (s.endpoint.empty())
-            s.endpoint = "https://ark.cn-beijing.volces.com/api/v3";
-    } else if (s.provider == "hunyuan") {
-        if (s.endpoint.empty())
-            s.endpoint = "https://api.hunyuan.cloud.tencent.com/v1";
-        if (s.model.empty())
-            s.model = "hunyuan-turbos-latest";
+    if (const std::string target = lower(winshun::trim(json["target"].toString())); !target.empty())
+        s.target = target;
+    if (s.provider == "none")
+        return s;
+    const auto field = [&](const std::string& name) { return winshun::trim(json[name].toString()); };
+    // A service reads only the fields its card shows (showWhen in plugin.json).
+    // The endpoint and the model are shared by several services, and one left
+    // from another service is not this one's: a 火山方舟 address sent the local
+    // model's requests there, keyless, back with 401.
+    if (s.provider != "local") {
+        // Each service keeps its own key (#10), so switching services and back
+        // does not send one service's key to another. apiKey is the one shared
+        // key of 2.1.1 and earlier: still used by a service with none of its own.
+        s.key = field(keyField(s.provider));
+        if (s.key.empty())
+            s.key = field("apiKey");
+    }
+    if (s.provider == "deepl") {
+        // its address follows from the key (":fx", the free API)
+    } else if (s.provider == "microsoft") {
+        s.region = field("region");
     } else if (s.provider == "local") {
-        // The local models plugin, at its own address. Not the endpoint field:
-        // all services share it, and one left from another service (火山方舟)
-        // sent the requests there, keyless, back with 401. localEndpoint, not
-        // on the card, is for the tests' stand-in server.
-        s.endpoint = winshun::trim(json["localEndpoint"].toString());
+        // The local models plugin at its own address, running the one model
+        // its settings choose. localEndpoint, not on the card, is the tests'
+        // stand-in server.
+        s.endpoint = field("localEndpoint");
         if (s.endpoint.empty())
             s.endpoint = kLocalEndpoint;
-        if (s.model.empty())
-            s.model = "local"; // it runs the one model chosen in its own settings
+        s.model = "local";
+    } else {
+        s.model = field("model");
+        if (s.provider == "deepseek") {
+            s.endpoint = "https://api.deepseek.com";
+            if (s.model.empty())
+                s.model = "deepseek-flash";
+        } else if (s.provider == "doubao") {
+            s.endpoint = "https://ark.cn-beijing.volces.com/api/v3"; // the model: an enabled model or endpoint ID, required
+        } else if (s.provider == "hunyuan") {
+            s.endpoint = "https://api.hunyuan.cloud.tencent.com/v1";
+            if (s.model.empty())
+                s.model = "hunyuan-turbos-latest";
+        } else { // openai, and anything else spoken to the same way: its own endpoint
+            s.endpoint = field("endpoint");
+        }
     }
-    const std::string target = lower(winshun::trim(json["target"].toString()));
-    if (!target.empty())
-        s.target = target;
     return s;
 }
 
