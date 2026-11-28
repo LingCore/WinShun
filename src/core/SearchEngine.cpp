@@ -1238,6 +1238,14 @@ SearchResults favoriteRows(const QList<const Favorite*>& favorites, const AppLis
     return out;
 }
 
+// Whether the words are read as anywhere: nothing typed in a folder's window,
+// or typed in Win顺's own box beside one with its rows first (Request::ownBox).
+bool wordsAsAnywhere(const SearchEngine::Request& request)
+{
+    return request.currentFolder.isEmpty()
+        || (request.ownBox && !request.currentFolderOnly && !request.currentFolderLevel);
+}
+
 // Favorites among the matches: marked; one whose keyword is all that was
 // typed on top (below a web shortcut's typed keyword); with `promote`, the
 // first few that match (in their order) put first, those the index does not
@@ -1263,7 +1271,7 @@ void promoteFavorites(SearchResults& results, qint64& total, const SearchEngine:
     QList<const Favorite*> wanted;
     // Typed in a folder's window (GitHub #110), the words are looked for in
     // it, never a keyword: they need not end in a space there.
-    const bool keywords = request.currentFolder.isEmpty() && request.typeFolders.isEmpty();
+    const bool keywords = wordsAsAnywhere(request) && request.typeFolders.isEmpty();
     const qsizetype command = !request.commandPath.isEmpty() ? indexOfFavorite(favorites, request.commandPath)
         : keywords ? typedCommandKeyword(favorites, request.text) : -1;
     const qsizetype keyword = command >= 0 ? command : keywords ? typedFavoriteKeyword(favorites, request.text) : -1;
@@ -2204,9 +2212,10 @@ void SearchEngine::runNameSearch(const Job& job)
         }
 
         // Favorites first, but not before what a typed path leads to, nor
-        // among rows ranked by time (marked there only).
-        const bool promote = rankBy == RankBy::Match && typedPath.folder.isEmpty() && !listing
-            && relative().names.isEmpty();
+        // among rows ranked by time (marked there only). Typed in our own
+        // box beside a folder (ownBox): before its rows, as before any.
+        const bool anywhere = typedIn ? wordsAsAnywhere(request) : typedPath.folder.isEmpty();
+        const bool promote = rankBy == RankBy::Match && anywhere && !listing && relative().names.isEmpty();
         const bool learnedFirst = promote && request.order.key == SortKey::Rank && !filtered && !insideFirst;
         promoteFavorites(results, total, request, matcher, promote, learnedFirst, *apps, *places, *m_onDisk, m_index, types);
 
@@ -2215,9 +2224,9 @@ void SearchEngine::runNameSearch(const Job& job)
         // the same (年度报告 for 年度报高), listed under a heading that says
         // so (approximate). Only then: a query that finds anything costs
         // nothing more. Each reading (行: xing, hang) is a search of its own;
-        // an entry found by several keeps its best score.
-        if (results.isEmpty() && typedPath.folder.isEmpty() && relative().names.isEmpty()
-            && !isStale(job.id)) {
+        // an entry found by several keeps its best score. Typed in our own
+        // box beside a folder: what is in it first here too.
+        if (results.isEmpty() && anywhere && relative().names.isEmpty() && !isStale(job.id)) {
             phase = "names that sound the same";
             const auto alikeBegan = Clock::now();
             const auto alikeOnDisk = m_onDisk->waited(); // its recent items: counted with the others
@@ -2235,6 +2244,7 @@ void SearchEngine::runNameSearch(const Job& job)
                     .kindsApart = !request.browse || request.order.key == SortKey::Rank,
                     .filter = filter,
                     .typeFolders = typeFolders,
+                    .insideFirst = insideFirst ? insideFolder : kNoEntry,
                     .order = request.order,
                     .trustedUntil = trustedUntil(),
                     .preferred = preferred};
@@ -2254,7 +2264,9 @@ void SearchEngine::runNameSearch(const Job& job)
                 hits.reserve(best.size());
                 for (const auto& [id, hit] : best)
                     hits.push_back(hit);
-                std::ranges::sort(hits, [rankBy](const NameHit& a, const NameHit& b) {
+                std::ranges::sort(hits, [rankBy, insideFirst](const NameHit& a, const NameHit& b) {
+                    if (insideFirst && a.inside != b.inside)
+                        return a.inside;
                     if (rankBy != RankBy::Match && a.modified != b.modified) {
                         if (a.modified == 0 || b.modified == 0)
                             return b.modified == 0;
@@ -2273,11 +2285,13 @@ void SearchEngine::runNameSearch(const Job& job)
                     for (const NameHit& hit : hits) {
                         SearchResult r = fromIndex(*index, hit.id);
                         r.modified = knownTime(index->modified(hit.id));
+                        r.elsewhere = insideFirst && !hit.inside;
                         results.push_back(std::move(r));
                     }
                 }
                 total = static_cast<qint64>(best.size());
-                arrange(results, request, NameMatcher(withTypes(readings.front(), types, hidden)), rankBy, *m_onDisk, {});
+                arrange(results, request, NameMatcher(withTypes(readings.front(), types, hidden)), rankBy, *m_onDisk,
+                    typedPath.folder);
                 for (SearchResult& r : results)
                     r.approximate = true; // the recent ones arrange() puts first too
             }

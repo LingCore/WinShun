@@ -99,4 +99,24 @@ struct SuggestionList {
     return out;
 }
 
+// The rows a search found, as the bar lists them: the favorites first, then
+// what lies in the dialog's folder (the engine's rows not `elsewhere`, the
+// folder searched first), then the rest. In each part the files of the type
+// the Open dialog shows go before other files (`shownType`; none: any), and
+// where to save (`save`) the folders before the files.
+inline void arrangeFound(SearchResults& rows, const std::function<bool(const SearchResult&)>& shownType, bool save)
+{
+    const auto arrangePart = [&](SearchResults::iterator first, SearchResults::iterator last) {
+        if (shownType)
+            std::stable_partition(first, last, [&](const SearchResult& r) { return r.isDir || shownType(r); });
+        if (save)
+            std::stable_partition(first, last, [](const SearchResult& r) { return r.isDir; });
+    };
+    const auto favoritesEnd = std::stable_partition(rows.begin(), rows.end(), [](const SearchResult& r) { return r.favorite; });
+    const auto insideEnd = std::stable_partition(favoritesEnd, rows.end(), [](const SearchResult& r) { return !r.elsewhere; });
+    arrangePart(rows.begin(), favoritesEnd);
+    arrangePart(favoritesEnd, insideEnd);
+    arrangePart(insideEnd, rows.end());
+}
+
 } // namespace ws::dialogbar

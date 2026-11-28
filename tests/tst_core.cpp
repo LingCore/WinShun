@@ -10611,6 +10611,103 @@ private slots:
         QCOMPARE(changed.front().path, QString::fromStdWString(remapped) + u"\\report-remapped.txt"_s);
     }
 
+    // The dialog bar (QQ group 2026-11-28): "2.2" typed beside an Open dialog
+    // in Program Files found RevokeMsgPatcher.v2.2 nowhere in sight, under
+    // every file named 2.2 on the PC. Now the dialog's folder first, as
+    // typing in a folder's window; the box being ours (ownBox), a favorite's
+    // keyword, the favorites found and names that only sound alike stay as
+    // anywhere. Typed in the folder's window itself: as before.
+    void dialogBarSearchesTheDialogsFolderFirst()
+    {
+        QTemporaryDir disk; // real files: the folder's own level is read from the disk
+        QVERIFY(disk.isValid());
+        const QDir root(disk.path());
+        const QStringList folders {u"Program Files/RevokeMsgPatcher.v2.2"_s, u"Program Files/Telegram"_s, u"elsewhere/tools"_s,
+            u"fav/收藏2.2"_s};
+        for (const QString& folder : folders)
+            QVERIFY(root.mkpath(folder));
+        const QStringList files {u"Program Files/RevokeMsgPatcher.v2.2/RevokeMsgPatcher.exe"_s,
+            u"Program Files/Telegram/年度报告.txt"_s, u"elsewhere/python-2.2.txt"_s, u"elsewhere/lib2.2.dll"_s,
+            u"elsewhere/tools/setup-2.2.exe"_s, u"elsewhere/年度报告-旧.txt"_s};
+        for (const QString& file : files) {
+            QFile f(root.filePath(file));
+            QVERIFY(f.open(QIODevice::WriteOnly));
+        }
+        QTemporaryDir dir;
+        IndexService::Options options;
+        options.content.enabled = false;
+        IndexService service(dir.path() + u"/index"_s, options);
+        {
+            const auto index = service.index();
+            const auto lock = index->writeLock();
+            EntryId top = kNoEntry; // the temporary folder, as a drive's folders are indexed
+            for (const QString& part : QDir::toNativeSeparators(disk.path()).split(u'\\', Qt::SkipEmptyParts))
+                top = top == kNoEntry ? index->addRoot(part.toStdString()) : index->add(top, part.toUtf8().toStdString(), EntryFlag::Directory);
+            QHash<QString, EntryId> ids;
+            const auto add = [&](const QString& path, bool isDir) {
+                const qsizetype slash = path.lastIndexOf(u'/');
+                const EntryId parent = slash < 0 ? top : ids.value(path.left(slash), kNoEntry);
+                ids.insert(path, index->add(parent, path.mid(slash + 1).toUtf8().toStdString(), isDir ? EntryFlag::Directory : 0));
+            };
+            for (const QString& folder : folders) {
+                const QStringList parts = folder.split(u'/');
+                for (qsizetype i = 1; i <= parts.size(); ++i) {
+                    const QString path = parts.mid(0, i).join(u'/');
+                    if (!ids.contains(path))
+                        add(path, true);
+                }
+            }
+            for (const QString& file : files)
+                add(file, false);
+        }
+        SearchEngine engine(&service);
+        QSignalSpy spy(&engine, &SearchEngine::resultsReady);
+        const QString programFiles = QDir::toNativeSeparators(root.filePath(u"Program Files"_s));
+        const QString favorite = QDir::toNativeSeparators(root.filePath(u"fav/收藏2.2"_s));
+        const auto search = [&](const QString& text, bool ownBox, bool only = false) {
+            spy.clear();
+            SearchEngine::Request request; // as DialogBar::search asks, for an Open dialog
+            request.text = text;
+            request.currentFolder = programFiles;
+            request.currentFolderOnly = only;
+            request.ownBox = ownBox;
+            request.scope = Scope::Files;
+            request.kindOrder = KindOrder::FilesFirst;
+            request.favorites = {{Favorite::Kind::Folder, favorite, u"收藏2.2"_s, u"rmp"_s}};
+            engine.submit(std::move(request));
+            QStringList names; // "~" before a row found elsewhere, "*" before a favorite, "?" sounds alike
+            if (!spy.wait(5000))
+                return QStringList {u"(no results)"_s};
+            for (const SearchResult& r : spy.at(0).at(1).value<SearchResults>())
+                names.append((r.favorite ? u"*"_s : QString()) + (r.approximate ? u"?"_s : QString())
+                    + (r.elsewhere ? u"~"_s : QString()) + r.name);
+            return names;
+        };
+        // The favorite found first, then the dialog's folder (its own level
+        // from the disk), then the files elsewhere; the folder's files before
+        // its folders, as the Open dialog asks.
+        const QStringList found = search(u"2.2"_s, true);
+        QVERIFY2(found.size() == 5, qPrintable(found.join(u'|')));
+        QVERIFY2(found.at(0).startsWith(u'*') && found.at(1) == u"RevokeMsgPatcher.v2.2", qPrintable(found.join(u'|')));
+        QVERIFY2(std::all_of(found.cbegin() + 2, found.cend(), [](const QString& n) { return n.startsWith(u'~'); }),
+            qPrintable(found.join(u'|')));
+        // Only the folder: the favorite elsewhere is not there.
+        QCOMPARE(search(u"2.2"_s, true, true), QStringList {u"RevokeMsgPatcher.v2.2"_s});
+        // A favorite's keyword typed: that favorite on top.
+        const QStringList keyed = search(u"rmp"_s, true);
+        QVERIFY2(!keyed.isEmpty() && keyed.first() == u"*收藏2.2", qPrintable(keyed.join(u'|')));
+        // Nothing named so, a name that sounds alike: the folder's first here too.
+        const QStringList alike = search(u"年度报高"_s, true);
+        QVERIFY2(alike == (QStringList {u"?年度报告.txt"_s, u"?~年度报告-旧.txt"_s}), qPrintable(alike.join(u'|')));
+
+        // Typed in the folder's window (Explorer, Opus): no keywords, the
+        // favorites in their place, no names that sound alike (as ever).
+        const QStringList typedThere = search(u"2.2"_s, false);
+        QVERIFY2(!typedThere.isEmpty() && typedThere.first() == u"RevokeMsgPatcher.v2.2", qPrintable(typedThere.join(u'|')));
+        QVERIFY2(!search(u"rmp"_s, false).contains(u"*收藏2.2"_s), "a keyword typed in a folder's window");
+        QCOMPARE(search(u"年度报高"_s, false), QStringList {});
+    }
+
     // GitHub #110: typed in a folder's window, what is in that folder (at any
     // depth) comes first, then what is so named anywhere else, marked, as
     // Listary lists it; or that folder alone. One search of the index: each

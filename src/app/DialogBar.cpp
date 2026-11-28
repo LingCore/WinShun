@@ -723,7 +723,8 @@ QString DialogBar::scopeName() const
 // Where the dialog is now: it may have gone elsewhere since the last look.
 void DialogBar::refreshScope()
 {
-    const QString folder = m_folderOnly && m_dialog ? QString::fromStdWString(filedialog::currentFolder(m_dialog)) : QString();
+    m_dialogFolder = m_dialog ? QString::fromStdWString(filedialog::currentFolder(m_dialog)) : QString();
+    const QString folder = m_folderOnly ? m_dialogFolder : QString();
     if (folder == m_scopeFolder)
         return;
     m_scopeFolder = folder;
@@ -752,12 +753,12 @@ void DialogBar::search()
 {
     SearchEngine::Request request;
     request.text = m_query;
-    // Only where the dialog is (GitHub #286): as typing in a folder's window
-    // set to search only there.
-    if (!m_scopeFolder.isEmpty()) {
-        request.currentFolder = m_scopeFolder;
-        request.currentFolderOnly = true;
-    }
+    // Where the dialog is first, then everywhere else, as typing in a
+    // folder's window (当前文件夹优先), the box ours (favorites and their
+    // keywords as anywhere); or only there (GitHub #286).
+    request.currentFolder = m_dialogFolder;
+    request.currentFolderOnly = !m_scopeFolder.isEmpty();
+    request.ownBox = true;
     // A folder picker: folders alone (each its own best, not those of the
     // best matches of all); where to save: folders first.
     request.scope = foldersOnly() ? Scope::Folders : Scope::Files;
@@ -789,14 +790,14 @@ void DialogBar::onResults(quint64 id, const SearchResults& results)
         if (!r.isApp() && !r.missing && (r.isDir || !foldersOnly()))
             rows.append(r);
     }
-    // Files of the type the Open dialog shows first; where to save (a Save
-    // dialog): folders first, files after (to save over); the favorites
-    // before all (the engine puts the first few first; here all of them).
+    // The favorites before all (the engine puts the first few first; here
+    // all of them), then what is in the dialog's folder; files of the type
+    // the Open dialog shows first, where to save (a Save dialog) folders
+    // first, files after (to save over).
+    std::function<bool(const SearchResult&)> shownType;
     if (!m_extensions.isEmpty())
-        std::ranges::stable_partition(rows, [this](const SearchResult& r) { return r.isDir || ofFileType(r); });
-    if (m_kind == filedialog::Kind::Save)
-        std::ranges::stable_partition(rows, &SearchResult::isDir);
-    std::ranges::stable_partition(rows, &SearchResult::favorite);
+        shownType = [this](const SearchResult& r) { return ofFileType(r); };
+    dialogbar::arrangeFound(rows, shownType, m_kind == filedialog::Kind::Save);
     QStringList tags;
     for (const SearchResult& r : std::as_const(rows))
         tags.append(r.favorite ? favoriteTag(r.favoriteKeyword) : QString());
@@ -1140,7 +1141,7 @@ QVariantList DialogBar::menuItems(int row) const
                                 : entry(PinCurrent, tr("收藏“%1”").arg(nameOf(current)), {}, u"\uE734"_s));
         }
         if (m_folderOnly)
-            items.append(entry(ToggleFolderOnly, tr("搜索整个电脑"), u"Ctrl+Shift+D"_s, u"\uE721"_s)); // Search
+            items.append(entry(ToggleFolderOnly, tr("也搜其他位置"), u"Ctrl+Shift+D"_s, u"\uE721"_s)); // Search
         else if (!current.isEmpty())
             items.append(entry(ToggleFolderOnly, tr("只搜“%1”里面").arg(nameOf(current)), u"Ctrl+Shift+D"_s, u"\uE8B7"_s)); // Folder
         if (m_suggestSources.any()) {

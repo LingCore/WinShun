@@ -201,6 +201,12 @@ public:
         // With currentFolderOnly: not its subfolders either, only what lies
         // directly in it (GitHub #182). Set alone, it means both.
         bool currentFolderLevel = false;
+        // Typed in Win顺's own box beside a window that shows `currentFolder`
+        // (the dialog bar), not in that window: with the folder first and
+        // the rest after it, the words are read as with no folder (a
+        // favorite's keyword, the favorites found first, names that only
+        // sound alike). The folder alone (currentFolderOnly): no difference.
+        bool ownBox = false;
         // The panel's column order; Rank: rankBy.
         SortOrder order;
         // The panel: with nothing typed, every file and folder the filters

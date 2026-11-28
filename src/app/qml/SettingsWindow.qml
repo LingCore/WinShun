@@ -6962,7 +6962,7 @@ Window {
                     id: dialogBarRow
                     title: qsTr("对话框旁的搜索框")
                     keywords: qsTr("对话框;另存为;打开文件;保存").split(";")
-                    unlocks: [dialogBarPlaceRow, dialogBarSuggestionsRow, dialogBarSuggestionSourcesRow]
+                    unlocks: [dialogBarPlaceRow, dialogBarScopeRow, dialogBarSuggestionsRow, dialogBarSuggestionSourcesRow]
                     description: qsTr("在“打开”“另存为”旁搜文件夹和文件，选中后直接转过去")
 
                     ToggleSwitch {
@@ -6985,6 +6985,24 @@ Window {
                         labels: [qsTr("自动"), qsTr("下方"), qsTr("左边"), qsTr("右边")]
                         current: Math.max(0, window.dialogBarPlaces.indexOf(window.editor.dialogBarPlace))
                         onActivated: (index) => window.editor.dialogBarPlace = window.dialogBarPlaces[index]
+                    }
+                }
+
+                SettingRow { // GitHub #286; 当前文件夹优先 as typing in a folder's window
+                    id: dialogBarScopeRow
+                    sub: true
+                    shown: window.editor.dialogBar
+                    title: qsTr("搜索的范围")
+                    keywords: qsTr("范围;当前文件夹;优先;只搜;其他位置;子文件夹;Ctrl+Shift+D;current folder;scope").split(";")
+                    description: qsTr("搜索时可按 Ctrl+Shift+D 切换")
+                    tip: qsTr("当前文件夹优先：先列出对话框所在文件夹及子文件夹里的结果，再列出其他位置的；收藏的仍在最前。只搜当前文件夹：只列那个文件夹及子文件夹里的")
+
+                    ScopeTabs {
+                        objectName: "dialogBarScopeTabs"
+                        dpr: window.dpr
+                        labels: [qsTr("当前文件夹优先"), qsTr("只搜当前文件夹")]
+                        current: window.editor.dialogBarFolderOnly ? 1 : 0
+                        onActivated: (index) => window.editor.dialogBarFolderOnly = index === 1
                     }
                 }
 

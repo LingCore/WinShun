@@ -1522,6 +1522,14 @@ void SettingsEditor::setDialogBarPlace(const QString& place)
     commit();
 }
 
+void SettingsEditor::setDialogBarFolderOnly(bool on)
+{
+    if (m_settings.dialogBarFolderOnly == on)
+        return;
+    m_settings.dialogBarFolderOnly = on;
+    commit();
+}
+
 void SettingsEditor::setDialogBarSuggestions(bool on)
 {
     if (m_settings.dialogBarSuggestions == on)
