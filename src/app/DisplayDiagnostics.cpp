@@ -359,6 +359,12 @@ QJsonObject display(const QString& renderer, bool backdrop)
     out[u"font_smoothing"_s] = !smoothing ? u"off"_s
         : smoothingType == FE_FONTSMOOTHINGCLEARTYPE ? u"cleartype"_s : u"standard"_s;
     out[u"screens"_s] = screens();
+    // The scale Windows took at sign-in and the taskbar's own, which a screen
+    // changed since (a remote virtual screen: GitHub #506) parts from them.
+    out[u"system_dpi"_s] = static_cast<int>(::GetDpiForSystem());
+    if (const HWND taskbar = ::FindWindowW(L"Shell_TrayWnd", nullptr))
+        out[u"taskbar_dpi"_s] = static_cast<int>(::GetDpiForWindow(taskbar));
+    out[u"remote_session"_s] = ::GetSystemMetrics(SM_REMOTESESSION) != 0;
     out[u"adapters"_s] = adapters();
     out[u"adapter_drivers"_s] = adapterDrivers();
 

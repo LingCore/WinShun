@@ -1,0 +1,261 @@
+{
+    "checks": [
+        {
+            "name": "the dialog bar receives the real name search results",
+            "passed": true
+        },
+        {
+            "name": "production dialog field and result list",
+            "passed": true
+        },
+        {
+            "name": "the dialog search bar loads its inline program logo",
+            "passed": true
+        },
+        {
+            "name": "the program logo keeps the original input alignment and spacing",
+            "passed": true
+        },
+        {
+            "name": "render the dialog logo with the empty search field",
+            "passed": true
+        },
+        {
+            "name": "dense: production dialog text layout",
+            "passed": true
+        },
+        {
+            "name": "dense: dialog result spacing (inner 2, outer 16)",
+            "passed": true
+        },
+        {
+            "name": "dense: render dialog result spacing",
+            "passed": true
+        },
+        {
+            "name": "compact: production dialog text layout",
+            "passed": true
+        },
+        {
+            "name": "compact: dialog result spacing (inner 2, outer 16)",
+            "passed": true
+        },
+        {
+            "name": "compact: render dialog result spacing",
+            "passed": true
+        },
+        {
+            "name": "standard: production dialog text layout",
+            "passed": true
+        },
+        {
+            "name": "standard: dialog result spacing (inner 2, outer 20)",
+            "passed": true
+        },
+        {
+            "name": "standard: render dialog result spacing",
+            "passed": true
+        },
+        {
+            "name": "roomy: production dialog text layout",
+            "passed": true
+        },
+        {
+            "name": "roomy: dialog result spacing (inner 2, outer 24)",
+            "passed": true
+        },
+        {
+            "name": "roomy: render dialog result spacing",
+            "passed": true
+        },
+        {
+            "name": "dialog Ctrl+74 matches the existing navigation key",
+            "passed": true
+        },
+        {
+            "name": "dialog Ctrl+78 matches the existing navigation key",
+            "passed": true
+        },
+        {
+            "name": "dialog Ctrl+75 matches the existing navigation key",
+            "passed": true
+        },
+        {
+            "name": "dialog Ctrl+80 matches the existing navigation key",
+            "passed": true
+        },
+        {
+            "name": "dialog Ctrl+85 matches the existing navigation key",
+            "passed": true
+        },
+        {
+            "name": "dialog Ctrl+68 matches the existing navigation key",
+            "passed": true
+        },
+        {
+            "name": "dialog rows keep their number on the left",
+            "passed": true
+        },
+        {
+            "name": "dialog position label shows the visible range at the top",
+            "passed": true
+        },
+        {
+            "name": "dialog scroll bar is visible on an overflowing list and calm at rest",
+            "passed": true
+        },
+        {
+            "name": "dialog scroll bar wakes up while scrolling",
+            "passed": true
+        },
+        {
+            "name": "dialog shortcut numbers stay viewport-relative when scrolled",
+            "passed": true
+        },
+        {
+            "name": "dialog position label tracks the scrolled range",
+            "passed": true
+        },
+        {
+            "name": "render the scrolled dialog list with position label",
+            "passed": true
+        },
+        {
+            "name": "dialog scroll bar relaxes after scrolling stops",
+            "passed": true
+        },
+        {
+            "name": "shrinking a scrolled dialog list keeps shortcut 1 on row 0 despite originY",
+            "passed": true
+        },
+        {
+            "name": "re-querying after a scrolled shrink keeps row 0 numbered 1 and resets range",
+            "passed": true
+        },
+        {
+            "name": "dialog scroll bar hides when all rows fit",
+            "passed": true
+        },
+        {
+            "name": "dialog position label hides when all rows fit",
+            "passed": true
+        },
+        {
+            "name": "hovering a dialog shortcut number explains the Ctrl+1 shortcut",
+            "passed": true
+        },
+        {
+            "name": "hovering a taken dialog shortcut number explains the conflict",
+            "passed": true
+        },
+        {
+            "name": "dialog letters on the rows shown, the box read-only meanwhile",
+            "passed": true
+        },
+        {
+            "name": "dialog Shift+letter selects its row and leaves the letters",
+            "passed": true
+        },
+        {
+            "name": "dialog Esc only puts the numbers back",
+            "passed": true
+        },
+        {
+            "name": "dialog letter past the rows shown does nothing",
+            "passed": true
+        },
+        {
+            "name": "dialog delegate stays above ListView highlightItem",
+            "passed": true
+        },
+        {
+            "name": "dialog passive letter preview shows calm letters without arming the box",
+            "passed": true
+        },
+        {
+            "name": "arming dialog letter jump switches passive preview into accent keycaps",
+            "passed": true
+        },
+        {
+            "name": "Right opens the selected dialog result's menu",
+            "passed": true
+        },
+        {
+            "name": "render the production dialog menu",
+            "passed": true
+        },
+        {
+            "name": "holding the shortcut keeps the dialog menu open",
+            "passed": true
+        },
+        {
+            "name": "Left returns to the same dialog result and query",
+            "passed": true
+        },
+        {
+            "name": "Right within the dialog query edits its caret",
+            "passed": true
+        },
+        {
+            "name": "Right collapses a dialog text selection",
+            "passed": true
+        },
+        {
+            "name": "modified Right does not open a dialog menu",
+            "passed": true
+        },
+        {
+            "name": "Ctrl+O opens the dialog menu from within the query",
+            "passed": true
+        },
+        {
+            "name": "IME composition closes the dialog menu",
+            "passed": true
+        },
+        {
+            "name": "Right does not open a dialog menu while composing",
+            "passed": true
+        },
+        {
+            "name": "the dialog Ctrl+O fixture is composing",
+            "passed": true
+        },
+        {
+            "name": "Ctrl+O does not open a dialog menu while composing",
+            "passed": true
+        },
+        {
+            "name": "Escape returns without clearing the dialog query",
+            "passed": true
+        },
+        {
+            "name": "a hidden dialog list opens no result menu",
+            "passed": true
+        },
+        {
+            "name": "dialog favorite rows display their keyword tag",
+            "passed": true
+        },
+        {
+            "name": "#507: from the folder alone back to the whole PC, so labelled",
+            "passed": true
+        },
+        {
+            "name": "#507: with 当前文件夹优先 chosen, back to the folder first, so labelled",
+            "passed": true
+        },
+        {
+            "name": "#507: Ctrl+Shift+D back from the folder alone keeps 当前文件夹优先",
+            "passed": true
+        },
+        {
+            "name": "#507: the whole PC, no dialog folder: nothing to narrow to",
+            "passed": true
+        },
+        {
+            "name": "write the dialog regression report",
+            "passed": true
+        }
+    ],
+    "passed": true
+}
