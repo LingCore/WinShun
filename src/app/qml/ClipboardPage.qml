@@ -137,11 +137,11 @@ Item {
         list.positionViewAtIndex(row, ListView.Contain)
     }
     function windowHidden() {
+        numberHints.closed()
         findingGroup = false
         pictureViewOpen = false
         closePreview(clipboard.previewRestore) // kept for next time, if asked to (Settings::clipboardPreviewRestore)
         list.stopScrolling()
-        numberHints.reset()
         closeContextMenu()
         menuLoader.active = false
         tabs.stopNaming()
@@ -182,11 +182,13 @@ Item {
         id: numberHints
         objectName: "clipboardNumberHints"
         mode: page.clipboard.numberHints
+        startOnOpen: page.clipboard.letterJump && page.clipboard.letterJumpOnOpen
+                      && !page.findingGroup && page.editingId === 0
         key: page.numberKey
         // Over another app the existing KeyRouter delivers modifier keys too.
         listening: page.visible && (page.Window.active || page.clipboard.keysRouted) && !page.menuOpen
         // 字母直达 (GitHub #175); not while a group is looked for or an entry's words are changed.
-        jumpEnabled: page.clipboard.letterJump && !page.findingGroup && page.editingId === 0
+        jumpEnabled: page.clipboard.letterJump && !page.findingGroup && page.editingId === 0 && list.count > 0
         trigger: page.clipboard.letterJumpKey
         letters: page.clipboard.letterJumpKeys
     }
@@ -789,6 +791,7 @@ Item {
         target: page.clipboard
         enabled: page.controllerEventsEnabled
         function onShown() {
+            numberHints.opened()
             page.closePreview(page.clipboard.previewRestore)
             page.findingGroup = false
             input.text = ""

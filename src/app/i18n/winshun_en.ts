@@ -8866,6 +8866,42 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Letter jump</translation>
     </message>
     <message>
+        <source>启动器打开时默认进入字母直达</source>
+        <translation>Start the launcher in letter-jump mode</translation>
+    </message>
+    <message>
+        <source>打开启动器后，字母直接选择结果；轻按直达键切回输入模式</source>
+        <translation>When the launcher opens, letters select results; tap the jump key to return to text input</translation>
+    </message>
+    <message>
+        <source>启动器;字母直达;默认;打开</source>
+        <translation>launcher;letter jump;default;open</translation>
+    </message>
+    <message>
+        <source>Ctrl+G 面板打开时默认进入字母直达</source>
+        <translation>Start the Ctrl+G dialog search bar in letter-jump mode</translation>
+    </message>
+    <message>
+        <source>打开 Ctrl+G 对话框搜索框后，字母直接选择结果；轻按直达键切回输入模式</source>
+        <translation>When the Ctrl+G dialog search bar opens, letters select results; tap the jump key to return to text input</translation>
+    </message>
+    <message>
+        <source>Ctrl+G;对话框;字母直达;默认;打开</source>
+        <translation>Ctrl+G;dialog;letter jump;default;open</translation>
+    </message>
+    <message>
+        <source>剪贴板打开时默认进入字母直达</source>
+        <translation>Start the clipboard in letter-jump mode</translation>
+    </message>
+    <message>
+        <source>打开剪贴板后，字母直接粘贴对应条目；轻按直达键切回搜索模式</source>
+        <translation>When the clipboard opens, letters paste entries; tap the jump key to return to search</translation>
+    </message>
+    <message>
+        <source>剪贴板;粘贴;字母直达;默认;打开</source>
+        <translation>clipboard;paste;letter jump;default;open</translation>
+    </message>
+    <message>
         <source>快捷键;字母;单手;vim;vi;提示;跳转;直达;hint</source>
         <translation>shortcut;letter;one hand;vim;vi;hint;jump</translation>
     </message>

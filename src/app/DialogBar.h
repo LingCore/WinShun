@@ -113,6 +113,7 @@ class DialogBar : public QObject {
     // 字母直达 (GitHub #357: the same keys everywhere a list is).
     Q_PROPERTY(QString numberHints READ numberHints NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(bool letterJump READ letterJump NOTIFY resultOptionsChanged FINAL)
+    Q_PROPERTY(bool letterJumpOnOpen READ letterJumpOnOpen NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(QString letterJumpKey READ letterJumpKey NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(QString letterJumpKeys READ letterJumpKeys NOTIFY resultOptionsChanged FINAL)
 
@@ -206,6 +207,8 @@ public:
     void setNumberKeysLeft(unsigned digits);
     QString numberHints() const { return m_numberHints; }
     bool letterJump() const { return m_letterJump; }
+    bool letterJumpOnOpen() const { return m_letterJumpOnOpen; }
+    void setLetterJumpOnOpen(bool on);
     QString letterJumpKey() const { return m_letterJumpKey; }
     QString letterJumpKeys() const { return m_letterJumpKeys; }
     // Ctrl+n (or Alt+n): the nth row shown takes the dialog there
@@ -372,6 +375,7 @@ private:
     unsigned m_numberKeysLeft = 0;
     QString m_numberHints = QStringLiteral("always");
     bool m_letterJump = false;
+    bool m_letterJumpOnOpen = false;
     QString m_letterJumpKey = QStringLiteral("auto");
     QString m_letterJumpKeys = QStringLiteral("ASDFGHJKLQWERTYUIOPZXCVBNM");
     bool m_askAutoJump = false;

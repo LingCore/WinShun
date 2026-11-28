@@ -348,6 +348,10 @@ struct Settings {
     // every row in view of the search box and the clipboard; the letter
     // opens or pastes its row. Off: a tap of Ctrl or Alt means nothing.
     bool letterJump = false;
+    // Which panel starts in letter-jump mode; all off keeps existing installs unchanged.
+    bool letterJumpLauncherOnOpen = false;
+    bool letterJumpDialogBarOnOpen = false;
+    bool letterJumpClipboardOnOpen = false;
     // The key tapped for the letters (GitHub #357): auto (the number keys'
     // modifier, Ctrl when they are off) | ctrl | alt | shift.
     QString letterJumpKey = QStringLiteral("auto");

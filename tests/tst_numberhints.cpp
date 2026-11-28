@@ -427,6 +427,69 @@ private slots:
         QCOMPARE(letter(0), u"A"_s);
     }
 
+    void directModeOnOpen()
+    {
+        QQmlEngine engine;
+        QQmlComponent component(&engine);
+        component.setData(R"(
+            import QtQuick
+            import "../src/app/qml"
+            Item {
+                property alias hints: hints
+                NumberHints {
+                    id: hints
+                    listening: false
+                    jumpEnabled: true
+                    startOnOpen: true
+                }
+            }
+        )", QUrl::fromLocalFile(QStringLiteral(WINSHUN_TEST_SOURCE) + u"/hints-open.qml"_s));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto* hints = root->property("hints").value<QObject*>();
+        QVERIFY(hints);
+        const auto jumping = [&] { return hints->property("jumping").toBool(); };
+
+        QVERIFY(QMetaObject::invokeMethod(hints, "opened"));
+        QVERIFY(!jumping()); // wait until the panel can receive keys
+        hints->setProperty("listening", true);
+        QVERIFY(jumping());
+        hints->setProperty("listening", false);
+        QVERIFY(!jumping());
+        hints->setProperty("listening", true);
+        QVERIFY(!jumping()); // regaining focus does not repeat the open default
+
+        QVERIFY(QMetaObject::invokeMethod(hints, "closed"));
+        hints->setProperty("startOnOpen", false);
+        QVERIFY(QMetaObject::invokeMethod(hints, "opened"));
+        QVERIFY(!jumping());
+        QVERIFY(QMetaObject::invokeMethod(hints, "closed"));
+
+        hints->setProperty("startOnOpen", true);
+        hints->setProperty("jumpEnabled", false);
+        QVERIFY(QMetaObject::invokeMethod(hints, "opened"));
+        QVERIFY(!jumping()); // the existing master switch still controls availability
+        QVERIFY(QMetaObject::invokeMethod(hints, "closed"));
+
+        hints->setProperty("jumpEnabled", false);
+        hints->setProperty("startOnOpen", true);
+        QVERIFY(QMetaObject::invokeMethod(hints, "opened"));
+        QVERIFY(hints->property("openPending").toBool()); // wait for results
+        hints->setProperty("jumpEnabled", true);
+        QVERIFY(jumping()); // results arriving first honor the open preference
+        QVERIFY(QMetaObject::invokeMethod(hints, "closed"));
+
+        hints->setProperty("jumpEnabled", false);
+        QVERIFY(QMetaObject::invokeMethod(hints, "opened"));
+        QVERIFY(hints->property("openPending").toBool());
+        const QVariantMap typed {{u"key"_s, int(Qt::Key_A)}, {u"modifiers"_s, int(Qt::NoModifier)},
+            {u"isAutoRepeat"_s, false}};
+        QVERIFY(QMetaObject::invokeMethod(hints, "press", Q_ARG(QVariant, QVariant(typed))));
+        QVERIFY(!hints->property("openPending").toBool());
+        hints->setProperty("jumpEnabled", true);
+        QVERIFY(!jumping()); // arriving search results do not switch after typing started
+    }
+
     void letterJumpSetting()
     {
         QTemporaryDir profile;
@@ -435,11 +498,20 @@ private slots:
         ws::Settings settings;
         settings.load();
         QVERIFY(!settings.letterJump); // a tap of Ctrl means nothing until asked for
+        QVERIFY(!settings.letterJumpLauncherOnOpen);
+        QVERIFY(!settings.letterJumpDialogBarOnOpen);
+        QVERIFY(!settings.letterJumpClipboardOnOpen);
         settings.letterJump = true;
+        settings.letterJumpLauncherOnOpen = true;
+        settings.letterJumpDialogBarOnOpen = false;
+        settings.letterJumpClipboardOnOpen = true;
         settings.save();
         ws::Settings read;
         read.load();
         QVERIFY(read.letterJump);
+        QVERIFY(read.letterJumpLauncherOnOpen);
+        QVERIFY(!read.letterJumpDialogBarOnOpen);
+        QVERIFY(read.letterJumpClipboardOnOpen);
         QCOMPARE(read.numberHints, u"always"_s);
         QCOMPARE(read.letterJumpKey, u"auto"_s);
         QCOMPARE(read.letterJumpKeys, ws::Settings::defaultJumpKeys());
@@ -464,6 +536,18 @@ private slots:
         odd.load();
         QCOMPARE(odd.letterJumpKey, u"auto"_s);
         QCOMPARE(odd.letterJumpKeys, u"AB3"_s);
+        {
+            QSettings raw(ws::Settings::filePath(), QSettings::IniFormat);
+            raw.remove(u"Results/LetterJumpLauncherOnOpen"_s);
+            raw.remove(u"Results/LetterJumpDialogBarOnOpen"_s);
+            raw.remove(u"Results/LetterJumpClipboardOnOpen"_s);
+            raw.sync();
+        }
+        ws::Settings oldProfile;
+        oldProfile.load();
+        QVERIFY(!oldProfile.letterJumpLauncherOnOpen);
+        QVERIFY(!oldProfile.letterJumpDialogBarOnOpen);
+        QVERIFY(!oldProfile.letterJumpClipboardOnOpen);
     }
 
     void settings()

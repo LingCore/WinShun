@@ -2323,6 +2323,7 @@ void App::applySettings(bool initial)
     m_clipboard->setNumberKeys(m_settings.clipboardNumberKeys);
     m_launcher->setNumberHints(m_settings.numberHints);
     m_launcher->setLetterJump(m_settings.letterJump, m_settings.letterJumpKey, m_settings.letterJumpKeys);
+    m_launcher->setLetterJumpOnOpen(m_settings.letterJumpLauncherOnOpen);
     watchCopies();
     m_launcher->setRowActions(m_settings.rowActions);
     m_launcher->setScopeButton(m_settings.scopeButton);
@@ -2337,6 +2338,7 @@ void App::applySettings(bool initial)
     tellLauncherFolders();
     m_clipboard->setNumberHints(m_settings.numberHints);
     m_clipboard->setLetterJump(m_settings.letterJump, m_settings.letterJumpKey, m_settings.letterJumpKeys);
+    m_clipboard->setLetterJumpOnOpen(m_settings.letterJumpClipboardOnOpen);
     const QString clipboardSize = m_settings.clipboardUiSize == u"follow" ? m_settings.uiSize : m_settings.clipboardUiSize;
     const bool clipboardResized = clipboardSize != m_clipboard->uiSize();
     m_clipboard->setRowOptions(m_settings.clipboardClickToPaste, m_settings.clipboardPictureSize, clipboardSize);
@@ -5905,6 +5907,7 @@ void App::applyDialogs()
         m_dialogBar->setResultOptions(m_settings.showModified, m_settings.thumbnails, m_settings.numberKeys);
         m_dialogBar->setNumberHints(m_settings.numberHints);
         m_dialogBar->setLetterJump(m_settings.letterJump, m_settings.letterJumpKey, m_settings.letterJumpKeys);
+        m_dialogBar->setLetterJumpOnOpen(m_settings.letterJumpDialogBarOnOpen);
         m_dialogBar->results()->setShowModifiedTime(m_settings.showModifiedTime);
         m_dialogBar->setAskAutoJump(!m_settings.dialogAutoJump && !m_settings.dialogAutoJumpAsked);
         m_dialogBar->setCopyOnlyHint(copyOnlyHint(m_serviceNav ? m_serviceNav->reach() : ServiceDialogNav::Reach::NoService));

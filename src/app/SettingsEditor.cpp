@@ -603,6 +603,30 @@ void SettingsEditor::setLetterJump(bool on)
     commit();
 }
 
+void SettingsEditor::setLetterJumpLauncherOnOpen(bool on)
+{
+    if (m_settings.letterJumpLauncherOnOpen == on)
+        return;
+    m_settings.letterJumpLauncherOnOpen = on;
+    commit();
+}
+
+void SettingsEditor::setLetterJumpDialogBarOnOpen(bool on)
+{
+    if (m_settings.letterJumpDialogBarOnOpen == on)
+        return;
+    m_settings.letterJumpDialogBarOnOpen = on;
+    commit();
+}
+
+void SettingsEditor::setLetterJumpClipboardOnOpen(bool on)
+{
+    if (m_settings.letterJumpClipboardOnOpen == on)
+        return;
+    m_settings.letterJumpClipboardOnOpen = on;
+    commit();
+}
+
 void SettingsEditor::setLetterJumpKey(const QString& key)
 {
     if (m_settings.letterJumpKey == key || (key != u"auto" && key != u"ctrl" && key != u"alt" && key != u"shift"))

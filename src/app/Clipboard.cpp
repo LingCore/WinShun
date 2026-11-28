@@ -538,6 +538,14 @@ void Clipboard::setLetterJump(bool on, const QString& key, const QString& keys)
     emit numberKeysChanged();
 }
 
+void Clipboard::setLetterJumpOnOpen(bool on)
+{
+    if (on == m_letterJumpOnOpen)
+        return;
+    m_letterJumpOnOpen = on;
+    emit numberKeysChanged();
+}
+
 void Clipboard::setNumberHints(const QString& hints)
 {
     if (m_numberHints == hints)

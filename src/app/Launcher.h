@@ -154,6 +154,7 @@ class Launcher : public QObject {
     Q_PROPERTY(QString numberKeys READ numberKeys NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(QString numberHints READ numberHints NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(bool letterJump READ letterJump NOTIFY resultOptionsChanged FINAL) // Settings::letterJump
+    Q_PROPERTY(bool letterJumpOnOpen READ letterJumpOnOpen NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(QString letterJumpKey READ letterJumpKey NOTIFY resultOptionsChanged FINAL) // auto | ctrl | alt | shift
     Q_PROPERTY(QString letterJumpKeys READ letterJumpKeys NOTIFY resultOptionsChanged FINAL)
     // A row's buttons: which show, in which order (the settings, rowactions::kKnown).
@@ -635,6 +636,8 @@ public:
     Q_INVOKABLE bool isOpenKey(int key, int modifiers) const;
     void setNumberHints(const QString& hints);
     bool letterJump() const { return m_letterJump; }
+    bool letterJumpOnOpen() const { return m_letterJumpOnOpen; }
+    void setLetterJumpOnOpen(bool on);
     // Settings::letterJump, letterJumpKey, letterJumpKeys (GitHub #357).
     void setLetterJump(bool on, const QString& key, const QString& keys);
     QString letterJumpKey() const { return m_letterJumpKey; }
@@ -1644,6 +1647,7 @@ private:
     QString m_numberKeys = QStringLiteral("ctrl");
     QString m_numberHints = QStringLiteral("always");
     bool m_letterJump = false;
+    bool m_letterJumpOnOpen = false;
     QString m_letterJumpKey = QStringLiteral("auto");
     QString m_letterJumpKeys = QStringLiteral("ASDFGHJKLQWERTYUIOPZXCVBNM");
     QStringList m_rowActions = rowactions::defaults();

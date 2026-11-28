@@ -34,6 +34,8 @@ Item {
     readonly property string jumpKeyName: jumpKey === Qt.Key_Alt ? "Alt"
                                         : jumpKey === Qt.Key_Shift ? "Shift" : "Ctrl"
     property bool jumping: false
+    property bool startOnOpen: false
+    property bool openPending: false
     // Shift+letter in the search box (GitHub #357): the letters are on the
     // buttons of the row it picked (the current one), not on the rows.
     property bool picking: false
@@ -52,6 +54,25 @@ Item {
         delay.stop()
         held = false
         ready = false
+    }
+    function opened() {
+        reset()
+        leave()
+        openPending = startOnOpen
+        startIfListening()
+    }
+    function closed() {
+        openPending = false
+        reset()
+        leave()
+    }
+    function startIfListening() {
+        if (!openPending)
+            return
+        if (!listening || !jumpEnabled)
+            return
+        jumping = true
+        openPending = false
     }
     // The letter of the row that many rows after the first in view; "" for none.
     function letterOf(offset: int): string {
@@ -75,6 +96,8 @@ Item {
         return c.length > 0 ? letters.indexOf(c) : -1
     }
     function press(event) {
+        if (openPending && ![Qt.Key_Shift, Qt.Key_Control, Qt.Key_Alt, Qt.Key_Meta].includes(event.key))
+            openPending = false // typing before results arrive means the user chose input mode
         if (!event.isAutoRepeat) {
             const tapModifier = jumpKey === Qt.Key_Control ? Qt.ControlModifier
                               : jumpKey === Qt.Key_Shift ? Qt.ShiftModifier : Qt.AltModifier
@@ -122,12 +145,25 @@ Item {
         picking = true
     }
 
-    onListeningChanged: { reset(); leave() }
+    onListeningChanged: {
+        reset()
+        if (openPending && listening)
+            startIfListening()
+        else
+            leave()
+    }
+    onStartOnOpenChanged: if (!startOnOpen) openPending = false
     onModeChanged: reset()
     onKeyChanged: { reset(); leave() }
     onTriggerChanged: { reset(); leave() }
     onLettersChanged: leave()
-    onJumpEnabledChanged: { reset(); leave() }
+    onJumpEnabledChanged: {
+        reset()
+        if (openPending && listening)
+            startIfListening()
+        else
+            leave()
+    }
 
     Timer {
         id: delay
