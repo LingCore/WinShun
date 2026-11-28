@@ -4,7 +4,8 @@ import WinShun
 // Changing a favorite in the settings (收藏夹): its name and its keyword,
 // and its place in the list for the keyboard (上移, 下移; the mouse drags the
 // grip). FavoritesSettings checks and saves it, or says what is wrong. Enter
-// saves, Esc puts it away.
+// saves, Esc puts it away. A shortcut (a command that presses keys,
+// KeyChord.h) has its keys recorded instead of a command line.
 Item {
     id: form
     property real dpr: Screen.devicePixelRatio // the window's, passed by a host that has it (GitHub #111)
@@ -29,6 +30,10 @@ Item {
     property string previewCommand
     property string previewDirectory
     readonly property bool command: favorite.kind === "command"
+    readonly property bool pressesKeys: command && (favorite.pressesKeys ?? false)
+    readonly property bool runsCommand: command && !pressesKeys // a command line, its folder and options
+    // A shortcut's keys, as KeyChord writes them ("Ctrl+Shift+N").
+    property string keys
     // The drop pie (拖文件时按 ` 键) is on: a folder's form shows how the pie
     // will write its name when it gets shortened.
     property bool dropPie: false
@@ -38,13 +43,15 @@ Item {
     readonly property string pieLabel: pieName.length > 0 ? DropPieText.label(pieName) : ""
 
     signal finished()
-    signal edited(string name, string keyword, string commandLine, string directory, string icon, bool silent, bool administrator, bool searchFiles, bool fileMenu)
+    signal edited(string name, string keyword, string commandLine, string directory, string icon, bool silent, bool administrator, bool searchFiles, bool fileMenu, string keys)
     signal moveRequested(int to) // 上移 or 下移: the form goes with it
 
     function save() {
         if (form.iconLoading)
             return
-        form.error = form.command
+        form.error = form.pressesKeys
+            ? form.favorites.saveKeys(form.index, nameField.text, keywordField.text, form.keys, form.iconData)
+            : form.command
             ? form.favorites.saveCommand(form.index, nameField.text, keywordField.text, commandField.text, directoryField.text, form.iconData, form.silent, form.administrator, form.searchFiles, form.fileMenu)
             : form.favorites.save(form.index, nameField.text, keywordField.text)
         if (form.error.length === 0)
@@ -54,9 +61,10 @@ Item {
     function changed() {
         error = ""
         if (ready)
-            edited(nameField.text, keywordField.text, commandField.text, directoryField.text, form.iconData, form.silent, form.administrator, form.searchFiles, form.fileMenu)
+            edited(nameField.text, keywordField.text, commandField.text, directoryField.text, form.iconData, form.silent, form.administrator, form.searchFiles, form.fileMenu, form.keys)
     }
 
+    onKeysChanged: form.changed()
     onIconDataChanged: form.changed()
     onSilentChanged: form.changed()
     onAdministratorChanged: form.changed()
@@ -92,14 +100,15 @@ Item {
     Component.onCompleted: {
         nameField.text = form.draft ? form.draft.name : !form.command && form.favorite.name === form.favorite.ownName ? "" : form.favorite.name
         keywordField.text = form.draft ? form.draft.keyword : form.favorite.keyword
-        commandField.text = form.draft ? form.draft.commandLine ?? "" : form.favorite.command ?? ""
+        commandField.text = form.pressesKeys ? "" : form.draft ? form.draft.commandLine ?? "" : form.favorite.command ?? ""
         directoryField.text = form.draft ? form.draft.directory ?? "" : form.favorite.workingDirectory ?? ""
+        form.keys = form.draft ? form.draft.keys ?? "" : form.favorite.keys ?? ""
         form.iconData = form.draft ? form.draft.icon ?? "" : form.favorite.commandIcon ?? ""
         form.silent = form.draft ? form.draft.silent ?? false : form.favorite.silent ?? false
         form.administrator = form.draft ? form.draft.administrator ?? false : form.favorite.administrator ?? false
         form.searchFiles = form.draft ? form.draft.searchFiles ?? false : form.favorite.searchFiles ?? false
         form.fileMenu = form.draft ? form.draft.fileMenu ?? false : form.favorite.fileMenu ?? false
-        form.previewCommand = commandField.text
+        form.previewCommand = form.pressesKeys ? "winshun:keys/" : commandField.text // a shortcut's icon: the keyboard
         form.previewDirectory = directoryField.text
         form.ready = true
         nameField.takeFocus()
@@ -217,7 +226,8 @@ Item {
                 width: parent.width - keywordField.width - parent.spacing
                 label: qsTr("名称")
                 placeholder: form.favorite.ownName
-                hint: form.command ? qsTr("例如：用 VS Code 打开") : qsTr("不填就用它自己的名字")
+                hint: form.pressesKeys ? qsTr("例如：新建文件夹")
+                    : form.command ? qsTr("例如：用 VS Code 打开") : qsTr("不填就用它自己的名字")
                 onTextChanged: form.changed()
                 onAccepted: form.save()
             }
@@ -226,8 +236,9 @@ Item {
                 objectName: "favoriteKeyword"
                 width: 200
                 label: qsTr("关键词")
-                placeholder: form.command ? qsTr("例如 code") : qsTr("可选，例如 gz")
-                hint: form.command ? qsTr("输入它，再按 Enter 运行") : qsTr("只输入它，按 Enter 就打开")
+                placeholder: form.pressesKeys ? qsTr("例如 xj") : form.command ? qsTr("例如 code") : qsTr("可选，例如 gz")
+                hint: form.pressesKeys ? qsTr("只输入它，按 Enter 执行")
+                    : form.command ? qsTr("输入它，再按 Enter 运行") : qsTr("只输入它，按 Enter 就打开")
                 onTextChanged: form.changed()
                 onAccepted: form.save()
             }
@@ -244,8 +255,52 @@ Item {
             wrapMode: Text.Wrap
         }
 
+        Column {
+            visible: form.pressesKeys
+            width: parent.width
+            spacing: 6
+
+            Text {
+                text: qsTr("快捷键")
+                color: Theme.text
+                font.pixelSize: Theme.fontCaption
+            }
+            HotkeyRecorder {
+                id: keysRecorder
+                objectName: "favoriteKeysRecorder" // FavoritesSection.recordingKeys
+                keyMode: true
+                keyMinimumWidth: 220
+                hotkey: form.keys
+                placeholder: qsTr("点击录制快捷键")
+                Accessible.name: recording ? qsTr("正在录制快捷键") : form.keys.length > 0 ? form.keys : qsTr("快捷键")
+                onKeyPressed: (key, modifiers) => {
+                    const chord = Qt.ControlModifier | Qt.AltModifier | Qt.ShiftModifier | Qt.MetaModifier
+                    if (key === Qt.Key_Escape && (modifiers & chord) === 0) { // Esc alone cancels
+                        stop()
+                        return
+                    }
+                    const keys = form.favorites.keysOf(key, modifiers)
+                    if (keys.length === 0) {
+                        partial = qsTr("这个键不能用，换一个试试")
+                        partialIsHint = true
+                        return
+                    }
+                    form.keys = keys
+                    stop()
+                }
+            }
+            Text {
+                width: parent.width
+                text: qsTr("点一下框，再按下组合键，Esc 取消。快捷键会按在打开搜索框前正在用的窗口里；以管理员身份运行的窗口收不到")
+                color: Theme.subtext
+                font.pixelSize: Theme.fontCaption
+                wrapMode: Text.Wrap
+                lineHeight: 1.15
+            }
+        }
+
         Row {
-            visible: form.command
+            visible: form.runsCommand
             width: parent.width
             spacing: 8
             Field {
@@ -272,7 +327,7 @@ Item {
         }
         Field {
             id: directoryField
-            visible: form.command
+            visible: form.runsCommand
             width: parent.width
             label: qsTr("工作文件夹")
             // The path outside qsTr: lupdate reads "\\" in QML strings wrongly (docs/pitfalls.md).
@@ -284,7 +339,7 @@ Item {
 
         Option {
             objectName: "favoriteSearchFiles"
-            visible: form.command
+            visible: form.runsCommand
             enabled: commandField.text.indexOf("{query}") >= 0
             width: parent.width
             label: qsTr("关键词后面的字用来搜索文件")
@@ -295,7 +350,7 @@ Item {
         }
         Option {
             objectName: "favoriteFileMenu"
-            visible: form.command
+            visible: form.runsCommand
             enabled: commandField.text.indexOf("{query}") >= 0
             width: parent.width
             label: qsTr("显示在文件和文件夹的右键菜单里")
@@ -306,7 +361,7 @@ Item {
         }
         Option {
             objectName: "favoriteSilent"
-            visible: form.command
+            visible: form.runsCommand
             width: parent.width
             label: qsTr("静默执行")
             hint: qsTr("控制台程序、.bat、.cmd 和 .ps1 不弹出黑色窗口，输出不显示。自带窗口的程序照常显示")
@@ -315,7 +370,7 @@ Item {
         }
         Option {
             objectName: "favoriteAdministrator"
-            visible: form.command
+            visible: form.runsCommand
             width: parent.width
             label: qsTr("以管理员身份运行")
             hint: form.silent
@@ -403,6 +458,8 @@ Item {
                         width: parent.width
                         text: form.iconData.length > 0
                               ? qsTr("自定义图标已随收藏保存，移动或删除原文件也不受影响")
+                              : form.pressesKeys
+                              ? qsTr("自动使用键盘图标；也可选择 PNG、ICO、SVG，或从其他程序、快捷方式提取")
                               : qsTr("自动使用程序图标；也可选择 PNG、ICO、SVG，或从其他程序、快捷方式提取")
                         color: Theme.subtext
                         font.pixelSize: Theme.fontCaption

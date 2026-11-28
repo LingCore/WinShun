@@ -2,6 +2,7 @@
 
 #include "AppCatalog.h"
 #include "History.h"
+#include "KeyChord.h"
 #include "PathText.h"
 #include "SystemCatalog.h"
 #include "WebShortcut.h"
@@ -83,6 +84,11 @@ QString lastName(const QString& path)
 
 } // namespace
 
+bool Favorite::pressesKeys() const noexcept
+{
+    return kind == Kind::Command && keychord::isCommand(command);
+}
+
 std::optional<Favorite> favoriteOf(const SearchResult& row)
 {
     if (row.path.isEmpty() || row.isWeb() || row.isPlugin() || row.isWindow())
@@ -152,7 +158,7 @@ qsizetype typedCommandKeyword(const FavoriteList& favorites, QStringView text)
     for (qsizetype i = 0; i < favorites.size(); ++i) {
         const Favorite& f = favorites[i];
         const qsizetype n = f.keyword.size();
-        if (f.kind == Favorite::Kind::Command && n > 0 && typed.size() >= n
+        if (f.kind == Favorite::Kind::Command && !f.pressesKeys() && n > 0 && typed.size() >= n
             && typed.first(n).compare(f.keyword, Qt::CaseInsensitive) == 0
             && (typed.size() == n || typed[n].isSpace()))
             return i;
@@ -164,7 +170,7 @@ QString commandWords(const Favorite& favorite, QStringView text)
 {
     const QStringView typed = text.trimmed();
     const qsizetype n = favorite.keyword.size();
-    return n > 0 && typed.size() > n && typed[n].isSpace()
+    return n > 0 && !favorite.pressesKeys() && typed.size() > n && typed[n].isSpace()
             && typed.first(n).compare(favorite.keyword, Qt::CaseInsensitive) == 0
         ? typed.sliced(n).trimmed().toString() : QString();
 }
@@ -419,6 +425,10 @@ std::optional<FavoritesFile> readFavoritesFile(QByteArrayView json, bool* newer)
                 || f.command.contains(u'\r') || f.workingDirectory.contains(QChar::Null)) {
                 ++result.skipped;
                 continue;
+            }
+            if (f.pressesKeys()) { // a shortcut: no program to run, nothing to hand over
+                f.workingDirectory.clear();
+                f.silent = f.runAsAdmin = f.searchFiles = f.fileMenu = false;
             }
         }
         if (f.isFileOrFolder()) {

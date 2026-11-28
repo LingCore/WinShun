@@ -49,6 +49,14 @@ bool commandHotkeyChordFree();
 bool seedCommandHotkey(Settings& settings);
 bool checkCommandHotkey(App& app, const QStringList& args, const QDir& output);
 
+// --probe-runtime <folder> --favorite-keys-check: a favorite's shortcut
+// (收藏夹 › 添加快捷键) pressed by its keyword: Enter in the launcher opened
+// over a window of another process, which gets the keys. See the .cpp.
+inline constexpr auto kFavoriteKeysProbeChord = u"Ctrl+Alt+Shift+F17";
+bool favoriteKeysChordFree();
+bool seedFavoriteKeys(const QString& dataDir); // before the App starts: the one favorite, the shortcut
+bool checkFavoriteKeys(App& app, const QStringList& args, const QDir& output);
+
 // --probe-runtime <folder> --field-focus-check: the clipboard opened by its
 // own hotkey over a text box of another process (no focus taken, the keys
 // routed), its search field clicked for real: the window takes the focus,

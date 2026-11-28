@@ -4,6 +4,8 @@
 #include "ClipImage.h"
 #include "ClipStore.h"
 #include "Clipboard.h"
+#include "Favorites.h"
+#include "KeyChord.h"
 #include "Launcher.h"
 #include "Settings.h"
 
@@ -185,16 +187,16 @@ QString clipboardText(bool* rich)
     return text;
 }
 
-HWND findTarget(qint64 pid)
+HWND findTarget(qint64 pid, const wchar_t* named = kTargetTitle)
 {
-    struct Find { DWORD pid; HWND found; } find {static_cast<DWORD>(pid), nullptr};
+    struct Find { DWORD pid; const wchar_t* named; HWND found; } find {static_cast<DWORD>(pid), named, nullptr};
     ::EnumWindows([](HWND window, LPARAM data) -> BOOL {
         auto* f = reinterpret_cast<Find*>(data);
         DWORD pid = 0;
         ::GetWindowThreadProcessId(window, &pid);
         wchar_t title[64] {};
         ::GetWindowTextW(window, title, 64);
-        if (pid == f->pid && std::wcscmp(title, kTargetTitle) == 0) {
+        if (pid == f->pid && std::wcscmp(title, f->named) == 0) {
             f->found = window;
             return FALSE;
         }
@@ -1328,6 +1330,186 @@ bool checkFullScreenGame(App&, const QStringList& args, const QDir& output)
         report.insert(u"clipboard_restored"_s, restored);
         check(restored, "the clipboard as it was could not be put back");
     }
+    return finish();
+}
+
+namespace {
+constexpr UINT kFavoriteKey = VK_F17;
+constexpr wchar_t kKeysTargetTitle[] = L"WinShun favorite-keys target";
+const QString kKeysKeyword = u"wsfavkeys"_s;
+
+// Another process's window that writes down the keys it gets (KeyPreview:
+// whatever has its focus), as WinForms names them ("F17, Shift, Control,
+// Alt"). A moment after F17 it writes them down and closes; after 30 s it
+// closes all the same.
+constexpr char kKeysTargetScript[] = R"PS(param([string]$result)
+Add-Type -AssemblyName System.Windows.Forms
+$form = New-Object System.Windows.Forms.Form
+$form.Text = 'WinShun favorite-keys target'
+$form.TopMost = $true
+$form.StartPosition = 'CenterScreen'
+$form.Width = 460
+$form.Height = 200
+$form.KeyPreview = $true
+$box = New-Object System.Windows.Forms.TextBox
+$box.Dock = 'Fill'
+$box.Multiline = $true
+$form.Controls.Add($box)
+$script:keys = New-Object System.Collections.Generic.List[string]
+$script:after = -1
+$form.Add_KeyDown({ param($sender, $e)
+    $script:keys.Add($e.KeyData.ToString())
+    if ($e.KeyCode -eq [System.Windows.Forms.Keys]::F17 -and $script:after -lt 0) { $script:after = 0 }
+})
+$timer = New-Object System.Windows.Forms.Timer
+$timer.Interval = 250
+$script:waited = 0
+$timer.Add_Tick({
+    $script:waited += 250
+    if ($script:after -ge 0) { $script:after += 250 }
+    if ($script:after -ge 750 -or $script:waited -ge 30000) {
+        $timer.Stop()
+        $o = [ordered]@{ keys = @($script:keys); timedOut = ($script:after -lt 0) }
+        [IO.File]::WriteAllText($result, ($o | ConvertTo-Json -Compress), (New-Object Text.UTF8Encoding $false))
+        $form.Close()
+    }
+})
+$form.Add_Shown({ $form.Activate(); [void]$box.Focus(); $timer.Start() })
+[void]$form.ShowDialog()
+)PS";
+} // namespace
+
+bool favoriteKeysChordFree()
+{
+    return chordFree(kFavoriteKey);
+}
+
+bool seedFavoriteKeys(const QString& dataDir)
+{
+    Favorite keys;
+    keys.kind = Favorite::Kind::Command;
+    keys.path = u"winshun-command:favorite-keys-probe"_s;
+    keys.name = u"Favorite keys probe"_s;
+    keys.keyword = kKeysKeyword;
+    keys.command = keychord::command(*keychord::parse(kFavoriteKeysProbeChord));
+    QFile file(dataDir + u"/favorites.json"_s);
+    const QByteArray json = writeFavoritesFile({keys});
+    return QDir().mkpath(dataDir) && file.open(QIODevice::WriteOnly) && file.write(json) == json.size();
+}
+
+// --probe-runtime <folder> --favorite-keys-check
+// The production App beside the Win顺 that runs, with one favorite: the
+// shortcut Ctrl+Alt+Shift+F17 (free before the App started), keyword
+// "wsfavkeys" (seedFavoriteKeys). A window of another process that writes
+// down its keys is brought to the front, the launcher opened over it with
+// the keyword typed (as its hotkey opens it), and Enter pressed for real
+// (SendInput, only while the launcher is in front). Passed: the launcher
+// went, the window is in front again and got the chord, Enter did not
+// reach it, and no key is left down. Into favorite-keys.json.
+bool checkFavoriteKeys(App& app, const QStringList&, const QDir& output)
+{
+    QJsonObject report;
+    bool ok = true;
+    const auto check = [&](bool condition, const char* what) {
+        if (!condition) {
+            ok = false;
+            std::fprintf(stderr, "favorite keys: FAILED: %s\n", what);
+        }
+    };
+    const auto finish = [&] {
+        report.insert(u"passed"_s, ok);
+        QFile file(output.filePath(u"favorite-keys.json"_s));
+        const bool saved = file.open(QIODevice::WriteOnly) && file.write(QJsonDocument(report).toJson()) > 0;
+        std::fprintf(stderr, "favorite keys: %s\n", ok ? "passed" : "FAILED");
+        return ok && saved;
+    };
+    const auto waitFor = [](const auto& done, int ms) {
+        QElapsedTimer limit;
+        limit.start();
+        while (!done() && limit.elapsed() < ms)
+            pump(50);
+        return done();
+    };
+    QQuickWindow* launcher = CommandHotkeyProbe::window(app);
+    check(launcher && !launcher->isVisible(), "the launcher is up before any key");
+    pump(1500); // started, the favorites read
+    const QString resultPath = output.filePath(u"keys-target.json"_s);
+    const QString scriptPath = output.filePath(u"keys-target.ps1"_s);
+    QFile::remove(resultPath);
+    {
+        QFile script(scriptPath);
+        check(script.open(QIODevice::WriteOnly) && script.write(kKeysTargetScript) > 0, "the target's script not written");
+    }
+    qint64 pid = 0;
+    const bool started = ok && QProcess::startDetached(u"powershell.exe"_s,
+        {u"-NoProfile"_s, u"-STA"_s, u"-ExecutionPolicy"_s, u"Bypass"_s, u"-File"_s, QDir::toNativeSeparators(scriptPath),
+            QDir::toNativeSeparators(resultPath)}, {}, &pid);
+    check(started, "the target did not start");
+    HWND target = nullptr;
+    waitFor([&] { return started && (target = findTarget(pid, kKeysTargetTitle)) != nullptr; }, 20'000);
+    check(target, "the target's window never came");
+    if (ok) {
+        waitForQuietInput();
+        bringToFront(target);
+        pump(600);
+        report.insert(u"target_in_front"_s, inFront(target));
+        check(inFront(target), "the target could not be brought to the front");
+    }
+    const auto launcherWindow = launcher ? reinterpret_cast<HWND>(launcher->winId()) : nullptr;
+    if (ok) {
+        app.showLauncher(kKeysKeyword); // over the window in front, as its hotkey opens it
+        const bool up = waitFor([&] { return launcher->isVisible() && ::GetForegroundWindow() == launcherWindow; }, 5000);
+        pump(800); // the keyword's row first
+        report.insert(u"launcher_in_front"_s, up);
+        report.insert(u"typed"_s, CommandHotkeyProbe::typed(app));
+        check(up, "the launcher did not come to the front");
+        check(CommandHotkeyProbe::typed(app) == kKeysKeyword, "the keyword is not what is typed");
+        if (ok)
+            launcher->grabWindow().save(output.filePath(u"favorite-keys-launcher.png"_s)); // its row, the Enter hint
+    }
+    QElapsedTimer pressed;
+    if (ok && ::GetForegroundWindow() == launcherWindow) { // checked again just before the key: only into our own window
+        pressKey(VK_RETURN);
+        pressed.start();
+    }
+    const bool gone = ok && waitFor([&] { return !launcher->isVisible(); }, 3000);
+    const bool back = ok && waitFor([&] { return inFront(target); }, 3000);
+    waitFor([&] { return QFile::exists(resultPath); }, ok ? 5000 : 0);
+    pump(300);
+    QFile result(resultPath);
+    const QJsonObject got = result.open(QIODevice::ReadOnly) ? QJsonDocument::fromJson(result.readAll()).object() : QJsonObject();
+    QStringList keys;
+    for (const QJsonValue& key : got.value(u"keys"_s).isArray() ? got.value(u"keys"_s).toArray() : QJsonArray {got.value(u"keys"_s)})
+        if (!key.toString().isEmpty())
+            keys.append(key.toString());
+    const bool chord = keys.contains(u"F17, Shift, Control, Alt"_s);
+    const bool enter = std::ranges::any_of(keys, [](const QString& key) { return key.startsWith(u"Return"_s); });
+    bool stuck = false;
+    for (const int vk : {VK_CONTROL, VK_MENU, VK_SHIFT, VK_LWIN, VK_F17, VK_RETURN})
+        stuck = stuck || (::GetAsyncKeyState(vk) & 0x8000) != 0;
+    report.insert(u"launcher_hidden"_s, gone);
+    report.insert(u"target_back_in_front"_s, back);
+    report.insert(u"target_keys"_s, QJsonArray::fromStringList(keys));
+    report.insert(u"pressed_ms"_s, pressed.isValid() ? static_cast<double>(pressed.elapsed()) : -1.0);
+    report.insert(u"key_left_down"_s, stuck);
+    if (ok) {
+        check(gone, "the launcher stayed after Enter");
+        check(back, "the target did not get the front back");
+        check(chord, "the target never got Ctrl+Alt+Shift+F17");
+        check(!enter, "Enter reached the target");
+        check(!stuck, "a key is left down");
+    }
+    std::fprintf(stderr, "favorite keys: target got [%s]\n", qPrintable(keys.join(u" | ")));
+    if (pid > 0) {
+        if (const HANDLE process = ::OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, static_cast<DWORD>(pid))) {
+            if (::WaitForSingleObject(process, 3000) == WAIT_TIMEOUT)
+                ::TerminateProcess(process, 1);
+            ::CloseHandle(process);
+        }
+    }
+    if (launcher && launcher->isVisible())
+        app.hideLauncher();
+    QFile::remove(scriptPath);
     return finish();
 }
 

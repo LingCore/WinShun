@@ -75,6 +75,7 @@ class FilePreview;
 class DropPie;
 class DropPieHelper;
 class FolderMenu;
+class KeyPresser;
 class SystemCatalog;
 class History;
 class IndexService;
@@ -558,6 +559,9 @@ private:
     // and one of its commands run with the path chosen.
     void applyMenuCommands();
     void runMenuCommand(const QString& id, const QString& path);
+    // A favorite shortcut ("winshun:keys/…", Favorite::pressesKeys) chosen in
+    // the launcher or the folder menu: pressed in `target` (KeyPresser).
+    void pressFavoriteKeys(const QString& command, const QString& name, HWND target);
     void pinText(const QString& text); // copied words on the screen, by the screenshot plugin (GitHub #388)
     void showPluginSettings(const QString& pluginId); // ... on that plugin's card ("winshun:settings")
     void applyHotkey();
@@ -1128,8 +1132,9 @@ private:
     qint64 m_entryHotkeyPending = 0; // 设置快捷键 asked for it: listed with no keys yet
     QString m_winSState; // likewise for Win+S
     // In front when the launcher last opened: where a screenshot of the
-    // history (jt, Enter) is pasted.
+    // history (jt, Enter) is pasted, and a favorite shortcut pressed.
     HWND m_launcherTarget = nullptr;
+    std::unique_ptr<KeyPresser> m_keyPresser; // made the first time one is
     QPointer<QQuickWindow> m_window;
     QPointer<QQuickWindow> m_clipWindow; // the clipboard's; created a moment after the start
     // Created on its first opening, then hidden when closed and shown again

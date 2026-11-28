@@ -1,0 +1,16 @@
+{
+    "key_left_down": false,
+    "launcher_hidden": true,
+    "launcher_in_front": true,
+    "passed": true,
+    "pressed_ms": 1052,
+    "target_back_in_front": true,
+    "target_in_front": true,
+    "target_keys": [
+        "ControlKey, Control",
+        "Menu, Control, Alt",
+        "ShiftKey, Shift, Control, Alt",
+        "F17, Shift, Control, Alt"
+    ],
+    "typed": "wsfavkeys"
+}

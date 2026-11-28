@@ -69,7 +69,7 @@
 | 📋 | [剪贴板历史](docs/使用说明.md#剪贴板历史) ¹ | 代替 `Win+V`，保存文字、图片和文件，支持分组查找、悬停预览和单条快捷键 |
 | 📂 | [“打开”“另存为”对话框](docs/使用说明.md#打开另存为对话框) ² | 对话框旁多一个搜索框；`Ctrl+G` 转到文件管理器正开着的文件夹 |
 | 🖱️ | [在资源管理器里](docs/使用说明.md#在资源管理器里) ² | 双击空白处弹出常用文件夹，可一层层走进子文件夹；在文件列表里直接打字就搜 |
-| ⭐ | [收藏夹](docs/使用说明.md#收藏夹) | 给常用的文件、文件夹、应用起个关键词，一打就开；点列头按名称、日期、类型、大小排好；还能自定义命令，也可放进文件的右键菜单 |
+| ⭐ | [收藏夹](docs/使用说明.md#收藏夹) | 给常用的文件、文件夹、应用起个关键词，一打就开；点列头按名称、日期、类型、大小排好；还能自定义命令（也可放进文件的右键菜单）、收藏快捷键 |
 | 🔎 | [任务栏搜索框](docs/使用说明.md#任务栏搜索框) ² | 在 Windows 11 任务栏上放一个 Win顺 的搜索框 |
 | 🤖 | [AI 助手和命令行](docs/使用说明.md#给-ai-助手用mcp) ² | 让 Claude、Cursor 等 AI 搜你的文件（默认只读）；终端里用 `ws` 命令搜 |
 | 🎨 | [外观和备份](docs/使用说明.md#外观设置和备份) | 四种界面风格（含液态玻璃），自选字体与界面大小；设置自动备份，换电脑一键迁移，也可以用云备份插件传到 WebDAV 或 GitHub 私有仓库 |
@@ -498,7 +498,7 @@ No installer, or Scoop and WinGet? See [Download and install](#download-and-inst
 | 📋 | [Clipboard history](docs/features.en.md#clipboard-history) ¹ | Replaces `Win+V` with text, pictures and files, group search, hover previews and per-entry shortcuts |
 | 📂 | [Open / Save dialogs](docs/features.en.md#open-and-save-dialogs) ² | A search bar beside the dialog; `Ctrl+G` jumps to the folder open in your file manager |
 | 🖱️ | [In File Explorer](docs/features.en.md#in-file-explorer) ² | Double-click empty space for your folders and the folders inside them; type in a file list to search |
-| ⭐ | [Favorites](docs/features.en.md#favorites) | Give files, folders and apps a keyword to open them; sort them by name, date, type or size with a click; your own commands too, also in the right-click menu of files |
+| ⭐ | [Favorites](docs/features.en.md#favorites) | Give files, folders and apps a keyword to open them; sort them by name, date, type or size with a click; your own commands too, also in the right-click menu of files, and key combinations pressed by a keyword |
 | 🔎 | [Taskbar search box](docs/features.en.md#taskbar-search-box) ² | A WinShun search box on the Windows 11 taskbar |
 | 🤖 | [AI assistants and the command line](docs/features.en.md#ai-assistants-mcp) ² | Let Claude, Cursor and others search your files (read-only by default); `ws` searches from a terminal |
 | 🎨 | [Looks and backup](docs/features.en.md#looks-and-settings) | Four interface styles (including Liquid Glass), your font and interface size; settings backups and migration, to WebDAV or a private GitHub repository with the Cloud Backup plugin |

@@ -31,7 +31,10 @@ struct Favorite {
     // it to. Also what it is shown as once it is gone (an app uninstalled).
     QString name;
     QString keyword; // one word, matched ignoring case; empty: none
-    QString command; // Command only: executable and arguments; {query} is one quoted argument
+    // Command only: executable and arguments; {query} is one quoted argument.
+    // Or a shortcut to press, "winshun:keys/Ctrl+Shift+T" (KeyChord.h): only
+    // its keyword alone finds it, and none of the options below apply to it.
+    QString command;
     QString workingDirectory; // Command only, optional
     QString icon; // Command only: a normalized PNG data URL; empty: the program's icon
     // Command only (GitHub #112): no console window for a console program, a
@@ -47,6 +50,7 @@ struct Favorite {
     bool fileMenu = false;
 
     bool isFileOrFolder() const noexcept { return kind == Kind::Folder || kind == Kind::File; }
+    bool pressesKeys() const noexcept; // a command that is a shortcut to press
     friend bool operator==(const Favorite&, const Favorite&) = default;
 };
 
@@ -66,7 +70,8 @@ bool scopeShows(Scope scope, Favorite::Kind kind) noexcept;
 qsizetype typedFavoriteKeyword(const FavoriteList& favorites, QStringView text);
 
 // A command's keyword may be followed by words. Other favorites still match
-// only the complete keyword. The words are passed as one Windows argument.
+// only the complete keyword, and so does a shortcut's (pressesKeys). The
+// words are passed as one Windows argument.
 qsizetype typedCommandKeyword(const FavoriteList& favorites, QStringView text);
 QString commandWords(const Favorite& favorite, QStringView text);
 QString commandArguments(QStringView arguments, QStringView words);

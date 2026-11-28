@@ -394,6 +394,7 @@ qt_add_qml_module(WinShun
         FavoritesSettings.cpp FavoritesSettings.h
         FileDropTarget.cpp FileDropTarget.h
         FileFacts.cpp FileFacts.h
+        KeyPresser.cpp KeyPresser.h
         FilePreview.cpp FilePreview.h
         VideoView.cpp VideoView.h # a video in the preview, by Windows' media engine
         LineHighlighter.cpp LineHighlighter.h

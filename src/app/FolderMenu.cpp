@@ -5,6 +5,7 @@
 #include "FileIconProvider.h"
 #include "Favorites.h"
 #include "History.h"
+#include "KeyChord.h"
 #include "RecentFolders.h"
 #include "SystemCatalog.h"
 #include "platform/FileDialog.h"
@@ -824,8 +825,8 @@ void FolderMenu::populate(const QString& folder, const QStringList& recent, cons
                 icon = FileIconProvider::iconUrl(f.path, f.kind == Favorite::Kind::Folder);
                 break;
             case Favorite::Kind::Command:
-                glyph = u"\uE756"_s;
-                tooltip = f.command;
+                glyph = f.pressesKeys() ? u"\uE765"_s : u"\uE756"_s; // Keyboard : CommandPrompt
+                tooltip = f.pressesKeys() ? f.command.mid(keychord::kCommandPrefix.size()) : f.command;
                 icon = FileIconProvider::commandIconUrl(f.command, f.workingDirectory.isEmpty() ? folder : f.workingDirectory,
                     f.icon, dark);
                 break;
@@ -1079,6 +1080,10 @@ void FolderMenu::trigger(int index)
             break;
         }
         case Favorite::Kind::Command:
+            if (favorite.pressesKeys()) { // in the window under the menu, which kept the front
+                emit keysRequested(favorite.command, favorite.name, reinterpret_cast<quintptr>(m_hit.root));
+                break;
+            }
             shell::runCustom(favorite.command, favorite.workingDirectory.isEmpty() ? m_folder : favorite.workingDirectory,
                 m_folder, done, {favorite.silent, favorite.runAsAdmin});
             break;

@@ -40,6 +40,8 @@
 #include "TranslateText.h"
 #include "IndexFolder.h"
 #include "IndexService.h"
+#include "KeyChord.h"
+#include "KeyPresser.h"
 #include "Launcher.h"
 #include "McpServer.h"
 #include "McpTools.h"
@@ -949,6 +951,9 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
             integrity::processElevated()
                 ? tr("找不到资源管理器，没法用普通权限打开它。请稍后再试，或按 Ctrl+Shift+Enter 以管理员身份运行。")
                 : tr("Windows 没能打开它。请稍后再试，或按 Ctrl+Shift+Enter 以管理员身份运行。"));
+    });
+    connect(m_launcher.get(), &Launcher::keysRequested, this, [this](const QString& command, const QString& name) {
+        pressFavoriteKeys(command, name, m_launcherTarget); // asked for before the launcher goes: it has the front to give
     });
     connect(m_launcher.get(), &Launcher::namesShown, this, [this] {
         if ((m_typedRows == TypedRows::FirstFrame || m_typedRows == TypedRows::Awaited) && !m_launcher->typingAwaited())
@@ -2663,6 +2668,20 @@ void App::runMenuCommand(const QString& id, const QString& path)
             }, Qt::QueuedConnection);
         },
         {found->silent, found->runAsAdmin});
+}
+
+void App::pressFavoriteKeys(const QString& command, const QString& name, HWND target)
+{
+    if (!m_keyPresser) {
+        m_keyPresser = std::make_unique<KeyPresser>();
+        connect(m_keyPresser.get(), &KeyPresser::failed, this, [this](const QString& title, const QString& why) {
+            m_messages->showNotification(title, why);
+        });
+    }
+    if (const std::optional<keychord::Chord> chord = keychord::ofCommand(command))
+        m_keyPresser->press(*chord, target, name);
+    else // written by a newer Win顺, or by hand
+        m_messages->showNotification(tr("没有按下“%1”").arg(name), tr("这个快捷键读不了，请在“设置 › 收藏夹”里重新录制。"));
 }
 
 QString App::picturePlugin(const QString& verb) const
@@ -5771,6 +5790,9 @@ void App::applyFolderMenu()
         connect(menu.get(), &FolderMenu::pluginSettingsRequested, this, &App::showPluginSettings);
         connect(menu.get(), &FolderMenu::notice, this, [this](const QString& text) {
             m_messages->showNotification(tr("文件夹菜单"), text);
+        });
+        connect(menu.get(), &FolderMenu::keysRequested, this, [this](const QString& command, const QString& name, quintptr window) {
+            pressFavoriteKeys(command, name, reinterpret_cast<HWND>(window));
         });
         connect(menu.get(), &FolderMenu::appsExpandedRequested, this, [this](bool expanded) {
             if (std::exchange(m_settings.folderMenuAppsExpanded, expanded) == expanded)

@@ -24,7 +24,8 @@ class FavoritesSettings : public QObject {
     QML_ELEMENT
     QML_UNCREATABLE("Provided by the settings editor")
     // {path, name, keyword, kind ("folder", "file", "app", "place", "command"), icon,
-    // shownPath, missing, modifiedText, sizeText}, in their order.
+    // shownPath, missing, modifiedText, sizeText; a command's command, …, and
+    // pressesKeys with its keys ("Ctrl+Shift+T") for a shortcut}, in their order.
     Q_PROPERTY(QVariantList items READ items NOTIFY itemsChanged FINAL)
     Q_PROPERTY(QString message READ message NOTIFY messageChanged FINAL) // what came of the last add, import or export
     // GitHub #397: the column they are sorted by ("name", "modified", "type",
@@ -59,6 +60,13 @@ public:
     Q_INVOKABLE QString saveCommand(int index, const QString& name, const QString& keyword,
         const QString& command, const QString& directory, const QString& icon = {}, bool silent = false,
         bool administrator = false, bool searchFiles = false, bool fileMenu = false);
+    // A shortcut to press (添加快捷键, Favorite::pressesKeys): its keys as
+    // keysOf() wrote them. Index -1 adds one.
+    Q_INVOKABLE QString saveKeys(int index, const QString& name, const QString& keyword, const QString& keys,
+        const QString& icon = {});
+    // A key pressed in the recorder (HotkeyRecorder, keyMode): as a shortcut
+    // keeps it ("Win+Shift+S"), or empty for one that cannot be pressed.
+    Q_INVOKABLE QString keysOf(int key, int modifiers) const;
     Q_INVOKABLE QString pickCommand();
     Q_INVOKABLE QString commandIconUrl(const QString& command, const QString& directory, const QString& icon, bool dark) const;
     Q_INVOKABLE int pickCommandIcon(); // 0: cancelled; otherwise commandIconReady carries this request

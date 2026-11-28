@@ -22,6 +22,10 @@ SettingsSection {
     // kept while the form is made again (moved, the list redone).
     property var draft: null
     property bool addingCommand: false
+    property bool addingKeys: false // a shortcut: keys pressed by its keyword
+    // A shortcut's keys being recorded (FavoriteForm): the settings window
+    // takes the keyboard's keys, Win+… too (SettingsEditor.recordingHotkey).
+    readonly property bool recordingKeys: Window.activeFocusItem?.objectName === "favoriteKeysRecorder"
     // While a row is dragged by its grip: from where, to where it would go.
     property int dragFrom: -1
     property int dragTo: -1
@@ -96,7 +100,7 @@ SettingsSection {
 
     note: qsTr("什么都不输入时，收藏排在最前；只输入关键词再按 Enter 就打开。在搜索结果上右键可以加入收藏，也可以把文件或文件夹拖到这里。")
 
-    onVisibleChanged: if (!visible) { editing = -1; addingCommand = false; draft = null; favorites.clearMessage() }
+    onVisibleChanged: if (!visible) { editing = -1; addingCommand = false; addingKeys = false; draft = null; favorites.clearMessage() }
 
     // The drop pie (DropPie): the key under Esc, with files held or dragged,
     // brings up the folders here round the pointer, eight to a page.
@@ -164,7 +168,7 @@ SettingsSection {
         id: listRow
 
         title: qsTr("收藏")
-        keywords: qsTr("收藏;常用;书签;固定;关键词;自定义命令;命令;参数;命令图标;自定义图标;command;favorites;bookmark;pin;icon").split(";")
+        keywords: qsTr("收藏;常用;书签;固定;关键词;自定义命令;命令;参数;命令图标;自定义图标;快捷键;组合键;按键;command;favorites;bookmark;pin;icon;shortcut;keys").split(";")
         values: {
             const words = []
             for (const f of section.favorites.items)
@@ -212,19 +216,35 @@ SettingsSection {
                 onClicked: {
                     section.editing = -1
                     section.draft = null
+                    section.addingKeys = false
                     section.addingCommand = !section.addingCommand
                 }
             }
+            FlatButton {
+                dpr: section.dpr
+                objectName: "addFavoriteKeys"
+                text: qsTr("添加快捷键")
+                glyph: "\uE765" // Keyboard
+                onClicked: {
+                    section.editing = -1
+                    section.draft = null
+                    section.addingCommand = false
+                    section.addingKeys = !section.addingKeys
+                }
+            }
         }, Loader {
-            active: section.addingCommand
+            active: section.addingCommand || section.addingKeys
             visible: active
             width: parent.width
             sourceComponent: FavoriteForm {
                 favorites: section.favorites
                 index: -1
                 count: section.favorites.items.length
-                favorite: ({kind: "command", name: "", keyword: "", ownName: "", shownPath: ""})
-                onFinished: section.addingCommand = false
+                favorite: ({kind: "command", pressesKeys: section.addingKeys, name: "", keyword: "", ownName: "", shownPath: ""})
+                onFinished: {
+                    section.addingCommand = false
+                    section.addingKeys = false
+                }
             }
         }, Text {
             visible: section.favorites.message.length > 0
@@ -524,7 +544,7 @@ SettingsSection {
                             }
                             FlatButton {
                                 dpr: section.dpr
-                                visible: !favRow.modelData.missing
+                                visible: !favRow.modelData.missing && !favRow.modelData.pressesKeys // keys pressed here would go to this window
                                 implicitHeight: 32
                                 flat: true
                                 text: qsTr("打开")
@@ -537,6 +557,7 @@ SettingsSection {
                                 text: qsTr("编辑")
                                 onClicked: {
                                     section.addingCommand = false
+                                    section.addingKeys = false
                                     section.draft = null
                                     section.editing = favRow.index
                                 }
@@ -572,10 +593,11 @@ SettingsSection {
                                     section.draft = null
                                     section.editing = -1
                                 }
-                                onEdited: (name, keyword, commandLine, directory, icon, silent, administrator, searchFiles, fileMenu) => section.draft = {
+                                onEdited: (name, keyword, commandLine, directory, icon, silent, administrator, searchFiles, fileMenu, keys) => section.draft = {
                                     path: favRow.modelData.path, name: name, keyword: keyword,
                                     commandLine: commandLine, directory: directory, icon: icon,
-                                    silent: silent, administrator: administrator, searchFiles: searchFiles, fileMenu: fileMenu
+                                    silent: silent, administrator: administrator, searchFiles: searchFiles, fileMenu: fileMenu,
+                                    keys: keys
                                 }
                                 onMoveRequested: (to) => {
                                     const from = favRow.index

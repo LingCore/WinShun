@@ -3,6 +3,7 @@
 #include "AppLogo.h"
 #include "Favorites.h"
 #include "Items.h"
+#include "KeyChord.h"
 #include "Manifest.h"
 #include "Phosphor.h"
 #include "SiteIconImage.h"
@@ -421,7 +422,10 @@ QImage commandImage(const QStringList& parts, int px)
         if (const QImage custom = siteicon::decode(png); !custom.isNull())
             return siteicon::drawn(custom, px, dark);
     }
-    const QString line = QString::fromStdWString(win32::expandEnvironment(decode(parts.value(0)).toStdWString())).trimmed();
+    const QString command = decode(parts.value(0));
+    if (keychord::isCommand(command)) // a shortcut to press (Favorite::pressesKeys): the keyboard
+        return glyphIcon(u"U+E765"_s, px, dark);
+    const QString line = QString::fromStdWString(win32::expandEnvironment(command.toStdWString())).trimmed();
     if (!localIconPath(line.startsWith(u'"') ? line.mid(1) : line))
         return glyphIcon(u"U+E756"_s, px, dark);
     const auto [program, arguments] = splitCommand(line);
