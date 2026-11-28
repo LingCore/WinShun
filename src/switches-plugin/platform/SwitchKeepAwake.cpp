@@ -51,12 +51,12 @@ struct SwitchKeepAwake::Request {
     }
 };
 
-SwitchKeepAwake::SwitchKeepAwake(Clock now)
-    : m_now(std::move(now))
+SwitchKeepAwake::SwitchKeepAwake(Clock now, std::unique_ptr<LidOverride> lid)
+    : m_now(std::move(now)), m_lid(std::move(lid))
 {
 }
 
-SwitchKeepAwake::~SwitchKeepAwake() = default; // the request and the timer go with it
+SwitchKeepAwake::~SwitchKeepAwake() = default; // the request, the lid and the timer go with it
 
 QStringList SwitchKeepAwake::ids() const
 {
@@ -76,9 +76,23 @@ bool SwitchKeepAwake::endedLocked(const QDateTime& now)
 {
     if (!m_request || !m_until.isValid() || now < m_until)
         return false;
+    letGoLocked();
+    return true;
+}
+
+void SwitchKeepAwake::letGoLocked()
+{
+    if (m_lid)
+        m_lid->release();
+    m_lidOutcome.reset();
     m_request.reset();
     m_until = {};
-    return true;
+}
+
+void SwitchKeepAwake::holdLidLocked()
+{
+    if (m_lid && m_lidWanted && m_request)
+        m_lidOutcome = m_lid->hold();
 }
 
 SwitchState SwitchKeepAwake::stateLocked(const QDateTime& now) const
@@ -87,7 +101,18 @@ SwitchState SwitchKeepAwake::stateLocked(const QDateTime& now) const
     state.availability = SwitchState::Availability::Ready;
     state.on = m_request ? SwitchState::Value::On : SwitchState::Value::Off;
     state.until = m_until;
-    state.note = m_request ? noteOf(m_until, now) : tr("电脑不睡眠、屏幕不关；合盖仍会睡眠");
+    if (m_request)
+        state.note = noteOf(m_until, now);
+    else if (m_lid && !m_lid->lidPresent())
+        state.note = tr("电脑不睡眠、屏幕不关");
+    else
+        state.note = m_lid && m_lidWanted ? tr("电脑不睡眠、屏幕不关，合盖也不睡眠")
+                                          : tr("电脑不睡眠、屏幕不关；合盖仍会睡眠");
+    // Kept awake, but the lid could not be held: said in red on the row.
+    if (m_request && m_lidOutcome == LidOverride::Outcome::ByPolicy)
+        state.error = tr("合盖仍会睡眠：合盖的动作由管理员统一设定");
+    else if (m_request && m_lidOutcome == LidOverride::Outcome::Failed)
+        state.error = tr("合盖仍会睡眠：Windows 没让改合盖的动作");
     return state;
 }
 
@@ -96,6 +121,8 @@ SwitchState SwitchKeepAwake::read(const QString&)
     const QDateTime now = m_now();
     std::lock_guard lock(m_mutex);
     endedLocked(now); // the computer slept past the end time, or the timer is late
+    if (m_request && m_lid && m_lid->held())
+        m_lidOutcome = m_lid->follow(); // another power plan chosen (Service tells Switches)
     return stateLocked(now);
 }
 
@@ -113,8 +140,7 @@ SwitchWrite SwitchKeepAwake::write(const QString&, const SwitchIntent& intent)
     case Kind::Off:
         result.ok = true;
         if (m_request) {
-            m_request.reset();
-            m_until = {};
+            letGoLocked();
             result.wrote = true;
         }
         result.after = stateLocked(now);
@@ -140,6 +166,8 @@ SwitchWrite SwitchKeepAwake::write(const QString&, const SwitchIntent& intent)
         m_request = std::move(request);
         result.wrote = true;
     }
+    if (m_lid && !m_lid->held())
+        holdLidLocked(); // new, or once more after it failed
     if (m_until != until) {
         m_until = until;
         result.wrote = true;
@@ -187,11 +215,28 @@ void SwitchKeepAwake::checkEnd()
     arm(); // early (a timer that fired before the wall clock got there): once more
 }
 
+void SwitchKeepAwake::configure(const QJsonObject& settings)
+{
+    const bool wanted = settings.value(kLidSetting).toBool(false);
+    {
+        std::lock_guard lock(m_mutex);
+        if (wanted == std::exchange(m_lidWanted, wanted))
+            return;
+        if (!wanted) {
+            if (m_lid)
+                m_lid->release();
+            m_lidOutcome.reset();
+        } else
+            holdLidLocked();
+    }
+    if (m_changed)
+        m_changed(kId.toString()); // the note says what the lid does
+}
+
 void SwitchKeepAwake::close()
 {
     std::lock_guard lock(m_mutex);
-    m_request.reset(); // Win顺 is exiting: the computer may sleep again
-    m_until = {};
+    letGoLocked(); // Win顺 is exiting: the computer may sleep again, and the lid does what it did
 }
 
 bool SwitchKeepAwake::held() const
@@ -203,6 +248,12 @@ bool SwitchKeepAwake::held() const
 bool SwitchKeepAwake::timerActive() const
 {
     return m_timer && m_timer->isActive();
+}
+
+bool SwitchKeepAwake::lidHeld() const
+{
+    std::lock_guard lock(m_mutex);
+    return m_lid && m_lid->held();
 }
 
 } // namespace ws

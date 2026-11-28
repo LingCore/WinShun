@@ -18061,6 +18061,22 @@ Content index: %5</translation>
         <translation>The PC stays awake and the screen stays on; closing the lid still sleeps</translation>
     </message>
     <message>
+        <source>电脑不睡眠、屏幕不关</source>
+        <translation>The PC stays awake and the screen stays on</translation>
+    </message>
+    <message>
+        <source>电脑不睡眠、屏幕不关，合盖也不睡眠</source>
+        <translation>The PC stays awake and the screen stays on, with the lid closed too</translation>
+    </message>
+    <message>
+        <source>合盖仍会睡眠：合盖的动作由管理员统一设定</source>
+        <translation>Closing the lid still sleeps: an administrator sets what the lid does</translation>
+    </message>
+    <message>
+        <source>合盖仍会睡眠：Windows 没让改合盖的动作</source>
+        <translation>Closing the lid still sleeps: Windows did not let the lid's action be changed</translation>
+    </message>
+    <message>
         <source>没能保持唤醒：Windows 没有接受请求</source>
         <translation>Couldn&apos;t keep awake: Windows refused the request</translation>
     </message>

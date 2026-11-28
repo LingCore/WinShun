@@ -85,11 +85,24 @@ public:
         std::lock_guard lock(m_mutex);
         return m_writes;
     }
+    void configure(const QJsonObject& settings) override
+    {
+        std::lock_guard lock(m_mutex);
+        m_settings = settings;
+        ++m_configured;
+    }
+    QJsonObject settings()
+    {
+        std::lock_guard lock(m_mutex);
+        return QJsonObject {{u"settings"_s, m_settings}, {u"times"_s, m_configured}};
+    }
 private:
     QHash<QString, SwitchState> m_states;
     Notify m_notify;
     std::mutex m_mutex;
     int m_writes = 0;
+    QJsonObject m_settings;
+    int m_configured = 0;
 };
 
 int serve(QCoreApplication& app)
@@ -111,6 +124,8 @@ int serve(QCoreApplication& app)
                 channel->respond(id, QJsonObject {});
             } else if (method == u"test/writes")
                 channel->respond(id, hardware->writes());
+            else if (method == u"test/settings")
+                channel->respond(id, hardware->settings());
             else if (method == u"test/badRead") {
                 badRead = params.value(u"enabled"_s).toBool();
                 channel->respond(id, QJsonObject {});
@@ -123,6 +138,7 @@ int serve(QCoreApplication& app)
     SwitchBackends backends;
     backends.push_back(std::move(fake));
     switchplugin::Service provider(std::move(backends), protocol);
+    provider.configure(first->value(u"params"_s).toObject().value(u"settings"_s).toObject()); // as PluginMain
     service = &provider;
     protocol.respond(first->value(u"id"_s), QJsonObject {{u"protocolVersion"_s, u"1"_s}});
     return app.exec();
@@ -389,6 +405,27 @@ private slots:
         QVERIFY(!SwitchPlugin::powerCommands(*f.host));
         f.host->setEnabled(kId, true);
         QVERIFY(SwitchPlugin::powerCommands(*f.host));
+    }
+
+    // The card's settings reach the backends on the switch thread: those of
+    // initialize, then each change (keep awake with the lid closed, #503).
+    void settingsReachTheBackends()
+    {
+        Fixture f;
+        QVERIFY(f.install());
+        QVERIFY(f.running());
+        const auto told = [&f] {
+            const std::optional<QJsonValue> reply = f.ask(u"test/settings"_s);
+            return reply ? reply->toObject() : QJsonObject {};
+        };
+        QTRY_COMPARE(told().value(u"times"_s).toInt(), 1);
+        QJsonObject settings = told().value(u"settings"_s).toObject();
+        QCOMPARE(settings.value(u"keepAwakeLidClosed"_s), QJsonValue(false)); // the manifest's default
+        QCOMPARE(settings.value(u"powerCommands"_s), QJsonValue(true));
+        f.host->setPluginSettings(kId, {{u"keepAwakeLidClosed"_s, true}});
+        QTRY_COMPARE(told().value(u"times"_s).toInt(), 2);
+        settings = told().value(u"settings"_s).toObject();
+        QCOMPARE(settings.value(u"keepAwakeLidClosed"_s), QJsonValue(true));
     }
 
     void lateReplyAfterCacheDestroyed()

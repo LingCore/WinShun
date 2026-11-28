@@ -1480,7 +1480,8 @@ target_link_libraries(tst_dragout PRIVATE winshun_options Qt6::Gui Qt6::Test)
 # real switch thread. Nothing of the system is read or changed.
 qt_add_executable(tst_switches tst_switches.cpp ${PROJECT_SOURCE_DIR}/src/app/Switches.cpp
     ${PROJECT_SOURCE_DIR}/src/app/Switches.h ${PROJECT_SOURCE_DIR}/src/app/platform/ComWorker.cpp
-    ${PROJECT_SOURCE_DIR}/src/switches-plugin/platform/SwitchKeepAwake.cpp) # keep awake is built in, over a fake clock
+    ${PROJECT_SOURCE_DIR}/src/switches-plugin/platform/SwitchKeepAwake.cpp # keep awake is built in, over a fake clock
+    ${PROJECT_SOURCE_DIR}/src/switches-plugin/platform/LidOverride.cpp) # and fake power plans
 target_include_directories(tst_switches PRIVATE ${PROJECT_SOURCE_DIR}/src/app ${PROJECT_SOURCE_DIR}/src/app/platform ${PROJECT_SOURCE_DIR}/src/switches-plugin)
 target_link_libraries(tst_switches PRIVATE wscore Qt6::Test ole32 powrprof)
 set_target_properties(tst_switches PROPERTIES WIN32_EXECUTABLE FALSE)

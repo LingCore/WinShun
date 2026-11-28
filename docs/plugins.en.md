@@ -396,7 +396,7 @@ The content details pane of the Content panel (Summary, Hits, Text, Preview, Rep
 
 ### System switch providers
 
-The bundled `winshun.switches` is an optional native C++ resident plugin, off for fresh profiles. An existing profile migrates its system-search preference once. Device listeners, the COM worker and the power request live only in the plugin process; disabling or crashing ends keep-awake, and restart never restores it. Without a provider, system search still opens Windows Settings pages.
+The bundled `winshun.switches` is an optional native C++ resident plugin, off for fresh profiles. An existing profile migrates its system-search preference once. Device listeners, the COM worker and the power request live only in the plugin process; disabling or crashing ends keep-awake, and restart never restores it. The lid action changed by "Keep awake with the lid closed too" is put back when the plugin is disabled, and after a crash at its next start, from a record in its data folder. Without a provider, system search still opens Windows Settings pages.
 
 Declare `"systemSwitches": true`, resident mode with `start: "eager"`, `idleExitSec: 0`, and both `ui` and `system:settings` permissions. The host prefers enabled `winshun.switches`, then the first enabled alternative. Known IDs are `theme`, `hidden-files`, `file-extensions`, `bluetooth`, `wlan`, `volume` and `keep-awake`.
 

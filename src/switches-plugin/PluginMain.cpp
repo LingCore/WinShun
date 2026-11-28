@@ -48,7 +48,9 @@ int serve(HANDLE in, HANDLE out, HANDLE err)
             } else if (service)
                 service->request(id, method, params);
         }, [&] { app.quit(); });
-    ws::switchplugin::Service provider(ws::systemSwitchBackends(), protocol);
+    const QJsonObject params = first->value(u"params"_s).toObject();
+    ws::switchplugin::Service provider(ws::systemSwitchBackends(params.value(u"dataDir"_s).toString()), protocol);
+    provider.configure(params.value(u"settings"_s).toObject());
     service = &provider;
     protocol.respond(first->value(u"id"_s), QJsonObject {{u"protocolVersion"_s, u"1"_s}, {u"name"_s, u"winshun.switches"_s}});
     const int code = app.exec();

@@ -2,6 +2,7 @@
 
 #include "SwitchBackend.h"
 #include "KeepAwakeText.h"
+#include "LidOverride.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -12,6 +13,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 
 class QTimer;
 
@@ -22,6 +24,8 @@ namespace ws {
 // display required: the computer does not sleep and the screen stays on,
 // until the user ends it, the end time asked for comes, or Win顺 exits (the
 // request goes with the process; it is not remembered across a restart).
+// With the plugin's setting kLidSetting on, closing a laptop's lid does
+// nothing for as long (LidOverride, GitHub #503).
 //
 // The state is Win顺's own, so nothing is read from the system: read() says
 // what is held here. Written on the switch thread (a request is made and
@@ -33,10 +37,13 @@ namespace ws {
 class SwitchKeepAwake final : public SwitchBackend {
 public:
     static constexpr QStringView kId = u"keep-awake";
+    static constexpr QStringView kLidSetting = u"keepAwakeLidClosed"; // plugin.json
     static constexpr int kMaxMinutes = 99 * 60; // "保持唤醒 99小时": the longest
     using Clock = std::function<QDateTime()>; // local time; tests put in their own
 
-    explicit SwitchKeepAwake(Clock now = [] { return QDateTime::currentDateTime(); });
+    // `lid` null: the lid is left alone, whatever the setting says.
+    explicit SwitchKeepAwake(Clock now = [] { return QDateTime::currentDateTime(); },
+        std::unique_ptr<LidOverride> lid = nullptr);
     ~SwitchKeepAwake() override;
 
     QStringList ids() const override;
@@ -44,6 +51,7 @@ public:
     SwitchState read(const QString& id) override;
     SwitchWrite write(const QString& id, const SwitchIntent& intent) override;
     void written(const QString& id) override;
+    void configure(const QJsonObject& settings) override;
     void close() override;
 
     // GUI thread: ends it if its time has come, and tells Switches; otherwise
@@ -54,6 +62,8 @@ public:
     [[nodiscard]] bool held() const;
     // Whether the end timer is armed (tests).
     [[nodiscard]] bool timerActive() const;
+    // Whether closing the lid does nothing now, by Win顺's doing (tests).
+    [[nodiscard]] bool lidHeld() const;
 
     // When `intent` ends keep awake, counted from `now`: AwakeFor in minutes
     // (within 1 to kMaxMinutes), AwakeUntil at that time of day, tomorrow's if
@@ -95,12 +105,17 @@ private:
     }
     [[nodiscard]] SwitchState stateLocked(const QDateTime& now) const; // m_mutex held
     bool endedLocked(const QDateTime& now); // m_mutex held: let go of it if its time has come
+    void letGoLocked(); // m_mutex held: the request, its end time and the lid
+    void holdLidLocked(); // m_mutex held: the lid too, if the setting says so
     void arm(); // GUI thread
 
     Clock m_now;
     mutable std::mutex m_mutex; // the switch thread and the GUI thread (checkEnd)
     std::unique_ptr<Request> m_request; // null: not held
     QDateTime m_until; // invalid: no end time
+    std::unique_ptr<LidOverride> m_lid; // null: left alone
+    bool m_lidWanted = false; // the setting
+    std::optional<LidOverride::Outcome> m_lidOutcome; // while held with the setting on
     std::unique_ptr<QTimer> m_timer; // GUI thread; made in watch()
     Notify m_changed;
 };
