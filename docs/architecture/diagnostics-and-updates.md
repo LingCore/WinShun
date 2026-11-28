@@ -93,9 +93,9 @@ Win顺 在读取任何设置之前按以下优先级确定目录：
 | `idle-trim` / `key-helper` | `IdleTrim` / `ServiceKeyListener` | 空闲内存交还（归还结束后一条：归还前 `private_mb`、保留热页 `keep_mb`（`HotPages`）、归还后仍驻留 `stayed_mb`、系统内存占用 `memory_load`，系统内存紧张（≥ 70%）时带 `short_of_memory: true`，这时 `keep_mb` 还含一次使用要用的页和文件名索引；中途被唤醒为 `stopped`）/`held: resumed`；UIAccess 按键助手状态 |
 | `double-tap-near-miss` / `double-tap-dropped` | `KeyListener` / `TapTeller` | 双击未成立原因与干扰类别、延迟/让位丢弃（合计 ≤30/h，不记具体键） |
 | `clipboard-picture-not-read` / `clipboard-key-routing-*` | `Clipboard` / `KeyRouter` | OCR 连崩跳图尺寸；剪贴板按键转发与未接管原因统计 |
-| `clipboard-hidden` | `App::hideClipboard` | 剪贴板面板每次隐藏的原因 `why`（`asked`/`inactive`/`clicked-away`/`routed-front-moved`/`lent-front-moved`/`display-lost-focus`/`front-refused`）、显示了多久 `shown_ms`、是否转发按键、打开时前台是否全屏/独占全屏、是否因此直接拿了焦点 `focus_taken`、目标窗口是否已最小化或消失；不记窗口标题与程序名 |
+| `clipboard-hidden` | `App::hideClipboard` | 剪贴板面板每次隐藏的原因 `why`（`asked`/`inactive`/`clicked-away`/`routed-front-moved`/`lent-front-moved`/`display-lost-focus`/`front-refused`）、显示了多久 `shown_ms`、是否转发按键、打开时前台是否全屏/独占全屏、是否因此直接拿了焦点 `focus_taken`、目标窗口是否已最小化或消失、此刻前台是哪一类窗口 `front_taker`（`none`/`ours`/`target`/`shell`/`other`：没有、Win顺 自己的、打开时那个程序的、桌面或任务栏、别的）；不记窗口标题与程序名 |
 | `clipboard-over-exclusive` | `App::showClipboard` | 在独占全屏的游戏上打开：面板不转发按键而直接拿焦点（Windows 10 上不拿焦点的窗口不会让游戏退出全屏，面板看不见，#452）；`front` 为是否拿到前台，拿不到随后有 `clipboard-hidden` `why=front-refused` |
-| `clipboard-kept` | `App::routedForeground` | 面板不抢焦点地盖住全屏窗口（未被识别为独占全屏）、对方因此退出全屏并最小化时面板不收起而接过焦点（#452）：`shown_ms`、是否独占全屏 `over_exclusive`、是否拿到前台 `front`（拿不到则照旧收起，随后有 `clipboard-hidden`） |
+| `clipboard-kept` | `App::routedForeground` / `App::takeClipboardFrontBack` | 面板没有因前台变化收起（#452）。不带 `from`：面板不抢焦点地盖住全屏窗口（未被识别为独占全屏）、对方因此退出全屏并最小化，面板接过焦点；`from=inactive`：在独占全屏游戏上拿了焦点后，游戏退出全屏时前台又被游戏自己、桌面或任务栏拿走，面板拿回前台，`taker` 为拿走前台的那一类（同 `front_taker`）。都记 `shown_ms`、是否独占全屏 `over_exclusive`、是否拿到前台 `front`（拿不到则照旧收起，随后有 `clipboard-hidden`） |
 
 ## 3. 检查更新、增量包与发布链路
 

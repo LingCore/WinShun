@@ -134,4 +134,52 @@ constexpr bool leftFullScreenForPanel(const PanelFrontMove& move) noexcept
     return move.overFullScreen && move.targetMinimized && !move.keyPressed && move.shownMs <= kFullScreenExitMs;
 }
 
+// Where the panel took the focus over a game in exclusive full screen
+// (panelTakesFocus), the game leaves full screen and minimizes itself; on
+// Windows 10 the front then moves once more, a moment later (GitHub #452:
+// gone 220-650 ms after it opened, as the display mode came back), to the
+// game itself, minimized, or to what was behind it. Nobody chose that: the
+// panel takes the front back, twice at most in one opening (a game that
+// takes it again each time would make it a tug of war). Another program,
+// the Start menu, Alt+Tab's, or a mouse button, Alt or the Windows key held
+// as the front moved are its user's choice: it goes.
+enum class FrontTaker : std::uint8_t {
+    None, // no window in front
+    Ours, // another window of Win顺's
+    Target, // the window it opened over (the game), or another of that program's
+    Shell, // the desktop or the taskbar
+    Other,
+};
+
+struct PanelFocusLoss {
+    bool focusTaken = false; // it opened with the focus over a game in exclusive full screen
+    bool targetMinimized = false; // the game, now
+    FrontTaker taker = FrontTaker::Other;
+    bool inputHeld = false; // a mouse button, Alt or the Windows key held: its user went elsewhere
+    std::uint64_t shownMs = 0; // since it opened
+    int takenBack = 0; // times it took the front back in this opening
+};
+
+inline constexpr int kMostFrontTakenBack = 2;
+
+constexpr bool panelTakesFrontBack(const PanelFocusLoss& loss) noexcept
+{
+    return loss.focusTaken && loss.targetMinimized && !loss.inputHeld && loss.shownMs <= kFullScreenExitMs
+        && loss.takenBack < kMostFrontTakenBack
+        && (loss.taker == FrontTaker::None || loss.taker == FrontTaker::Target || loss.taker == FrontTaker::Shell);
+}
+
+// For the diagnostics ("clipboard-hidden", "clipboard-kept"): no program's name.
+constexpr const char* frontTakerName(FrontTaker taker) noexcept
+{
+    switch (taker) {
+    case FrontTaker::None: return "none";
+    case FrontTaker::Ours: return "ours";
+    case FrontTaker::Target: return "target";
+    case FrontTaker::Shell: return "shell";
+    case FrontTaker::Other: break;
+    }
+    return "other";
+}
+
 } // namespace ws

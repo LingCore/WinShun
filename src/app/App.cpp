@@ -1737,6 +1737,8 @@ bool App::createClipWindow()
                         win::bringToFront(m_clipWindow);
                     return;
                 }
+                if (takeClipboardFrontBack())
+                    return;
                 hideClipboard(true, "inactive");
             }, Qt::QueuedConnection);
     });
@@ -7091,6 +7093,34 @@ void App::showClipboard()
         hideClipboard(true, "front-refused");
 }
 
+bool App::takeClipboardFrontBack()
+{
+    // Gone already: Esc or a paste brought the game back (Clipboard::dismiss).
+    if (!m_clipWindow || !m_clipWindow->isVisible() || m_clipPrewarming.load())
+        return false;
+    const HWND target = m_clipboard->target();
+    const auto held = [](int vk) { return (::GetAsyncKeyState(vk) & 0x8000) != 0; };
+    const PanelFocusLoss loss {.focusTaken = m_clipOver.focusTaken,
+        .targetMinimized = target && ::IsIconic(target),
+        .taker = foreground::takerOf(::GetForegroundWindow(), target),
+        .inputHeld = held(VK_LBUTTON) || held(VK_RBUTTON) || held(VK_MBUTTON) || held(VK_MENU) || held(VK_LWIN)
+            || held(VK_RWIN),
+        .shownMs = ::GetTickCount64() - m_clipOver.at,
+        .takenBack = m_clipOver.takenBack};
+    if (!panelTakesFrontBack(loss))
+        return false;
+    ++m_clipOver.takenBack;
+    const bool front = toFront(m_clipWindow) != win::Front::Refused;
+    diagnostics::record(u"clipboard-kept"_s,
+        {{u"from"_s, u"inactive"_s}, {u"taker"_s, QString::fromLatin1(frontTakerName(loss.taker))},
+            {u"shown_ms"_s, static_cast<qint64>(loss.shownMs)}, {u"over_exclusive"_s, m_clipOver.exclusive},
+            {u"front"_s, front}});
+    if (!front)
+        return false; // refused: up where nobody sees it, with no keys
+    m_clipWindow->requestActivate();
+    return true;
+}
+
 bool App::clipboardInCharge() const
 {
     return m_clipWindow && m_clipWindow->isVisible() && !m_clipPrewarming.load()
@@ -7865,7 +7895,10 @@ void App::hideClipboard(bool launcherToo, const char* why)
             {u"over_exclusive"_s, m_clipOver.exclusive},
             {u"focus_taken"_s, m_clipOver.focusTaken},
             {u"target_minimized"_s, targetMinimized},
-            {u"target_gone"_s, target && !::IsWindow(target)}});
+            {u"target_gone"_s, target && !::IsWindow(target)},
+            // What kind of window has the front now: the game's, the shell's
+            // (see FrontTaker).
+            {u"front_taker"_s, QString::fromLatin1(frontTakerName(foreground::takerOf(::GetForegroundWindow(), target)))}});
     if (m_clipDisplay) m_clipDisplay->hide();
     m_clipDisplayWanted = false;
     // Out as the launcher goes (弹出动画): a picture of it fades where it was

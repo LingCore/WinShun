@@ -23,4 +23,9 @@ bool isShellFlyout(QStringView program);
 // own windows and the desktop.
 ForegroundFacts facts();
 
+// What kind of window `front` is for a panel opened over `target` (see
+// GameGuard's FrontTaker): none, Win顺's, the target's program, the desktop
+// or the taskbar, another.
+FrontTaker takerOf(HWND front, HWND target);
+
 } // namespace ws::foreground

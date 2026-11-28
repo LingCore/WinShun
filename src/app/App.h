@@ -346,8 +346,12 @@ private:
         bool fullScreen = false; // a window covering its monitor in front
         bool exclusive = false; // Direct3D's own full screen
         bool focusTaken = false; // so it opened with the focus, the game out of full screen for it
+        int takenBack = 0; // the front taken back since (takeClipboardFrontBack)
     };
     ClipOver m_clipOver;
+    // It lost the front over a game that left full screen for it, not by its
+    // user's doing (panelTakesFrontBack): takes it back. GitHub #452.
+    bool takeClipboardFrontBack();
     bool clipboardUnderLauncher() const; // opened from the launcher's search box
     bool clipboardInCharge() const; // shown, the keys its own or through KeyRouter
     // Over another program the clipboard leaves it the focus, its keys come

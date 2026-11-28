@@ -18648,6 +18648,48 @@ private slots:
         QVERIFY(!panelTakesFocus({}));
     }
 
+    // GitHub #452 again (Windows 10 22H2): opened with the focus over the
+    // game, gone some 470 ms later, the game minimized, nobody at the keys.
+    void panelTakesFrontBackAfterGame()
+    {
+        const PanelFocusLoss lost {.focusTaken = true, .targetMinimized = true, .taker = FrontTaker::Target,
+            .inputHeld = false, .shownMs = 470, .takenBack = 0};
+        QVERIFY(panelTakesFrontBack(lost)); // the game, minimized, took it back
+        for (const FrontTaker taker : {FrontTaker::None, FrontTaker::Shell}) { // what was behind the game
+            PanelFocusLoss behind = lost;
+            behind.taker = taker;
+            QVERIFY(panelTakesFrontBack(behind));
+        }
+        static_assert(panelTakesFrontBack({.focusTaken = true, .targetMinimized = true, .taker = FrontTaker::Target,
+            .shownMs = kFullScreenExitMs, .takenBack = kMostFrontTakenBack - 1}));
+
+        for (const FrontTaker taker : {FrontTaker::Other, FrontTaker::Ours}) { // another program, the Start menu
+            PanelFocusLoss elsewhere = lost;
+            elsewhere.taker = taker;
+            QVERIFY(!panelTakesFrontBack(elsewhere));
+        }
+        PanelFocusLoss unfocused = lost; // opened without the focus: routedForeground's (leftFullScreenForPanel)
+        unfocused.focusTaken = false;
+        QVERIFY(!panelTakesFrontBack(unfocused));
+        PanelFocusLoss restored = lost; // its user brought the game back (taskbar, Alt+Tab)
+        restored.targetMinimized = false;
+        QVERIFY(!panelTakesFrontBack(restored));
+        PanelFocusLoss clicked = lost; // clicked the desktop or the taskbar, Alt held
+        clicked.taker = FrontTaker::Shell;
+        clicked.inputHeld = true;
+        QVERIFY(!panelTakesFrontBack(clicked));
+        PanelFocusLoss later = lost;
+        later.shownMs = kFullScreenExitMs + 1;
+        QVERIFY(!panelTakesFrontBack(later));
+        PanelFocusLoss tugOfWar = lost; // the game took it each time
+        tugOfWar.takenBack = kMostFrontTakenBack;
+        QVERIFY(!panelTakesFrontBack(tugOfWar));
+
+        QCOMPARE(QLatin1StringView(frontTakerName(FrontTaker::Target)), "target"_L1);
+        QCOMPARE(QLatin1StringView(frontTakerName(FrontTaker::Shell)), "shell"_L1);
+        QCOMPARE(QLatin1StringView(frontTakerName(FrontTaker::Other)), "other"_L1);
+    }
+
     void hiddenForTypingRule()
     {
         // A key (not a modifier) went down to this window shortly before the hide.
