@@ -455,7 +455,8 @@ private slots:
             "QtObject { id: model; property bool letterJump: true; property bool letterJumpOnOpen: true;"
             " property QtObject window: QtObject { property QtObject launcher: model; property QtObject bar: model;"
             " property int gridColumns: 1; property bool panel: false }"
-            " property QtObject page: QtObject { property QtObject clipboard: model } }", QUrl());
+            " property QtObject page: QtObject { property QtObject clipboard: model;"
+            " property bool findingGroup: false; property int editingId: 0 } }", QUrl());
         std::unique_ptr<QObject> model(component.create());
         QVERIFY2(model, qPrintable(component.errorString()));
         QQmlExpression expression(engine.rootContext(), model.get(), match.captured(1));
