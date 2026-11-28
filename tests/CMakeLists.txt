@@ -143,6 +143,12 @@ add_test(NAME tst_contentpane COMMAND $<TARGET_FILE:WinShun>
     --preview-results "${CMAKE_CURRENT_BINARY_DIR}/content-pane" --content-pane --renderer d3d11)
 set_tests_properties(tst_contentpane PROPERTIES RUN_SERIAL TRUE TIMEOUT 120
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+# 内容 for real files in the real window: kinds of file (#447), and where a
+# match is (第 1 行) on the current row beside its buttons.
+add_test(NAME tst_contentkinds COMMAND $<TARGET_FILE:WinShun>
+    --preview-results "${CMAKE_CURRENT_BINARY_DIR}/content-kinds" --content-kinds --renderer d3d11)
+set_tests_properties(tst_contentkinds PROPERTIES RUN_SERIAL TRUE TIMEOUT 120
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
 # The file types and the quick filters: the editor's checks, the rows in the real window.
 add_test(NAME tst_settingsfilters COMMAND $<TARGET_FILE:WinShun>
@@ -257,6 +263,18 @@ add_test(NAME tst_settingsreopen COMMAND $<TARGET_FILE:WinShun>
     --probe-runtime "${CMAKE_CURRENT_BINARY_DIR}/settings-reopen" --settings-reopen-check --settle-ms 1500
     --renderer d3d11)
 set_tests_properties(tst_settingsreopen PROPERTIES RUN_SERIAL TRUE TIMEOUT 120
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
+# What the settings window leaves behind once it was closed a while (GitHub
+# #500): every page made, closed, then its pages, what it draws with and the
+# heap's freed blocks have gone back. No more than 170 MB over an App that
+# never opened it (242 MB before, with the graphics card's memory kept too;
+# ~110 MB now), none of the card's memory, and opened again it draws what it
+# drew. The real App, isolated, shown without activation.
+add_test(NAME tst_settingsmemory COMMAND $<TARGET_FILE:WinShun>
+    --probe-runtime "${CMAKE_CURRENT_BINARY_DIR}/settings-memory" --settings-memory-check --settings-memory-left 170
+    --settle-ms 1500 --renderer d3d11)
+set_tests_properties(tst_settingsmemory PROPERTIES RUN_SERIAL TRUE TIMEOUT 120
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
 # ws plugin (GitHub #251), end to end: the real ws.exe against the real App,
@@ -383,6 +401,12 @@ add_test(NAME tst_searchlogo COMMAND $<TARGET_FILE:WinShun>
     --preview-results "${CMAKE_CURRENT_BINARY_DIR}/search-logo" --search-logo --renderer d3d11)
 set_tests_properties(tst_searchlogo PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+# GitHub #501: the search box's caret in every 界面风格, empty and after words,
+# at 125 % (where 品牌色彩 and 轻拟物质感 lost it), and a click putting it there.
+add_test(NAME tst_searchcaret COMMAND $<TARGET_FILE:WinShun>
+    --preview-results "${CMAKE_CURRENT_BINARY_DIR}/search-caret" --search-caret --scale 1.25 --renderer d3d11)
+set_tests_properties(tst_searchcaret PROPERTIES RUN_SERIAL TRUE TIMEOUT 120
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
 # 文件's type chips with how many of what is typed each lists: the tag, its room, switched off.
 add_test(NAME tst_typestripcounts COMMAND $<TARGET_FILE:WinShun>
@@ -399,6 +423,15 @@ set_tests_properties(tst_shortcutpanel PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
 add_test(NAME tst_searchnavigation COMMAND $<TARGET_FILE:WinShun>
     --preview-results "${CMAKE_CURRENT_BINARY_DIR}/search-navigation" --search-navigation --renderer d3d11)
 set_tests_properties(tst_searchnavigation PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
+# The launcher's controller on a temporary index: scopes and kinds of file,
+# Tab into folders and back, what Enter does and says for a row typed in a
+# folder's window (a terminal opens there, GitHub #430). Nothing is opened in
+# the shell.
+add_test(NAME tst_launcherfilters COMMAND $<TARGET_FILE:WinShun>
+    --preview-results "${CMAKE_CURRENT_BINARY_DIR}/launcher-filters" --file-type-folder --renderer d3d11)
+set_tests_properties(tst_launcherfilters PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
 add_test(NAME tst_foregroundmemory COMMAND $<TARGET_FILE:WinShun>
@@ -1449,7 +1482,8 @@ target_link_libraries(tst_dragout PRIVATE winshun_options Qt6::Gui Qt6::Test)
 # real switch thread. Nothing of the system is read or changed.
 qt_add_executable(tst_switches tst_switches.cpp ${PROJECT_SOURCE_DIR}/src/app/Switches.cpp
     ${PROJECT_SOURCE_DIR}/src/app/Switches.h ${PROJECT_SOURCE_DIR}/src/app/platform/ComWorker.cpp
-    ${PROJECT_SOURCE_DIR}/src/switches-plugin/platform/SwitchKeepAwake.cpp) # keep awake is built in, over a fake clock
+    ${PROJECT_SOURCE_DIR}/src/switches-plugin/platform/SwitchKeepAwake.cpp # keep awake is built in, over a fake clock
+    ${PROJECT_SOURCE_DIR}/src/switches-plugin/platform/LidOverride.cpp) # and fake power plans
 target_include_directories(tst_switches PRIVATE ${PROJECT_SOURCE_DIR}/src/app ${PROJECT_SOURCE_DIR}/src/app/platform ${PROJECT_SOURCE_DIR}/src/switches-plugin)
 target_link_libraries(tst_switches PRIVATE wscore Qt6::Test ole32 powrprof)
 set_target_properties(tst_switches PROPERTIES WIN32_EXECUTABLE FALSE)

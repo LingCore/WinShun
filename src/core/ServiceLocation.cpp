@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -28,6 +29,9 @@ constexpr DWORD kAncestorWrite = FILE_DELETE_CHILD | DELETE | WRITE_DAC | WRITE_
 // program's folder for its DLLs before System32, so a file a non-admin may
 // put there is code a SYSTEM service would run.
 constexpr DWORD kParentWrite = kAncestorWrite | FILE_ADD_FILE | FILE_ADD_SUBDIRECTORY | GENERIC_WRITE;
+// A drive's root above it: an ancestor's, less DELETE (a root is neither
+// renamed nor deleted).
+constexpr DWORD kRootWrite = kAncestorWrite & ~DWORD {DELETE};
 
 // The folder created for a portable copy's service: Administrators own it,
 // Administrators and SYSTEM have full control (inherited by the exe inside),
@@ -105,7 +109,30 @@ std::wstring sidText(PSID sid)
 
 DWORD watchedRights(Role role) noexcept
 {
-    return role == Role::Object ? kObjectWrite : role == Role::Parent ? kParentWrite : kAncestorWrite;
+    switch (role) {
+    case Role::Object:
+        return kObjectWrite;
+    case Role::Parent:
+        return kParentWrite;
+    case Role::Ancestor:
+        return kAncestorWrite;
+    case Role::Root:
+        return kRootWrite;
+    }
+    return kObjectWrite;
+}
+
+// "C:\": a drive's root, the only directory that cannot be renamed or deleted.
+bool isDriveRoot(const std::wstring& dir) noexcept
+{
+    return dir.size() == 3 && dir[1] == L':' && dir[2] == L'\\';
+}
+
+// How a directory above the executable or folder is judged: a drive's root
+// as an ancestor is Root.
+Role roleAt(const std::wstring& dir, Role role) noexcept
+{
+    return role == Role::Ancestor && isDriveRoot(dir) ? Role::Root : role;
 }
 
 // The first thing wrong with this owner and DACL: what, whose, and the rights
@@ -154,6 +181,58 @@ Weakness named(const Finding& found, const std::wstring& path)
     return weak;
 }
 
+// All find() would find: the owner, a missing DACL, then each account at
+// fault once, with every entry it has (Weakness::grants), in the order of
+// its first entry at fault.
+std::vector<Weakness> findAll(PSID owner, PACL dacl, Role role)
+{
+    using Kind = Weakness::Kind;
+    std::vector<Weakness> found;
+    if (!isAdministrativeSid(owner))
+        found.push_back(named({Kind::Owner, owner, 0}, {}));
+    if (!dacl) {
+        found.push_back(named({Kind::NoAcl, nullptr, 0}, {}));
+        return found;
+    }
+    const DWORD watched = watchedRights(role);
+    std::vector<std::pair<Weakness, WORD>> accounts; // each with where its first entry at fault is
+    for (WORD i = 0; i < dacl->AceCount; ++i) {
+        void* raw = nullptr;
+        if (!::GetAce(dacl, i, &raw)) {
+            found.push_back(named({Kind::Unreadable, nullptr, 0}, {}));
+            return found;
+        }
+        const auto* header = static_cast<const ACE_HEADER*>(raw);
+        if (header->AceType != ACCESS_ALLOWED_ACE_TYPE && header->AceType != ACCESS_ALLOWED_CALLBACK_ACE_TYPE)
+            continue;
+        auto* ace = static_cast<ACCESS_ALLOWED_ACE*>(raw);
+        PSID sid = &ace->SidStart;
+        if (isAdministrativeSid(sid))
+            continue;
+        const bool atFault = !(header->AceFlags & INHERIT_ONLY_ACE) && (ace->Mask & watched);
+        const std::wstring text = sidText(sid);
+        auto account = std::ranges::find_if(accounts, [&](const auto& a) { return a.first.sid == text; });
+        if (account == accounts.end()) {
+            Weakness weak;
+            weak.kind = Kind::Rights;
+            weak.sid = text;
+            accounts.emplace_back(std::move(weak), WORD {0xFFFF});
+            account = std::prev(accounts.end());
+        }
+        account->first.grants.push_back({header->AceFlags, ace->Mask, atFault});
+        if (atFault && account->second == 0xFFFF) {
+            account->first.mask = ace->Mask;
+            account->second = i;
+        }
+    }
+    std::ranges::stable_sort(accounts, {}, &std::pair<Weakness, WORD>::second);
+    for (auto& [weak, at] : accounts) {
+        if (at != 0xFFFF)
+            found.push_back(std::move(weak));
+    }
+    return found;
+}
+
 // For the log: "C:\ can be changed by a non-administrator (owner S-1-5-21-...)".
 std::wstring describe(const Weakness& weak, const wchar_t* verb)
 {
@@ -200,7 +279,7 @@ Weakness chainWeakness(const std::wstring& path, Role parentRole)
         return weak;
     Role role = parentRole;
     for (std::wstring dir = parentOf(full); !dir.empty(); dir = parentOf(dir)) {
-        if (Weakness weak = weaknessOf(dir, role))
+        if (Weakness weak = weaknessOf(dir, roleAt(dir, role)))
             return weak;
         role = Role::Ancestor;
     }
@@ -218,10 +297,30 @@ Weakness ancestorWeakness(const std::wstring& path)
     if (dir.empty())
         return unreadable(full, ERROR_PATH_NOT_FOUND);
     for (; !dir.empty(); dir = parentOf(dir)) {
-        if (Weakness weak = weaknessOf(dir, Role::Ancestor))
+        if (Weakness weak = weaknessOf(dir, roleAt(dir, Role::Ancestor)))
             return weak;
     }
     return {};
+}
+
+// All that is wrong with `dir` (as `role`, unless absent) and every directory
+// above it as an Ancestor, from the drive's root down: the order to put them
+// right in.
+std::vector<Weakness> chainWeaknesses(const std::wstring& dir, Role role, bool absent)
+{
+    std::vector<Weakness> all;
+    if (dir.empty())
+        return {unreadable(L"(empty path)", ERROR_INVALID_PARAMETER)};
+    std::wstring at = fullPath(dir);
+    if (absent)
+        at = parentOf(at);
+    if (at.empty())
+        return {unreadable(fullPath(dir), ERROR_PATH_NOT_FOUND)};
+    for (; !at.empty(); at = parentOf(at), role = Role::Ancestor) {
+        std::vector<Weakness> here = weaknessesOf(at, roleAt(at, absent ? Role::Ancestor : role));
+        all.insert(all.begin(), std::make_move_iterator(here.begin()), std::make_move_iterator(here.end()));
+    }
+    return all;
 }
 
 bool report(const Weakness& weak, std::wstring* why)
@@ -245,12 +344,18 @@ bool writableByNonAdmin(PSID owner, PACL dacl, Role role) noexcept
     return find(owner, dacl, role).kind != Weakness::Kind::None;
 }
 
-Weakness weakness(PSID owner, PACL dacl, Role role)
+std::vector<Weakness> weaknesses(PSID owner, PACL dacl, Role role)
 {
-    return named(find(owner, dacl, role), {});
+    return findAll(owner, dacl, role);
 }
 
-Weakness weaknessOf(const std::wstring& path, Role role)
+Weakness weakness(PSID owner, PACL dacl, Role role)
+{
+    std::vector<Weakness> all = findAll(owner, dacl, role);
+    return all.empty() ? Weakness {} : std::move(all.front());
+}
+
+std::vector<Weakness> weaknessesOf(const std::wstring& path, Role role)
 {
     PSECURITY_DESCRIPTOR descriptor = nullptr;
     PSID owner = nullptr;
@@ -258,10 +363,18 @@ Weakness weaknessOf(const std::wstring& path, Role role)
     const DWORD error = ::GetNamedSecurityInfoW(path.c_str(), SE_FILE_OBJECT,
         OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION, &owner, nullptr, &dacl, nullptr, &descriptor);
     if (error != ERROR_SUCCESS)
-        return unreadable(path, error); // unknown is treated as unsafe
-    Weakness weak = named(find(owner, dacl, role), path);
+        return {unreadable(path, error)}; // unknown is treated as unsafe
+    std::vector<Weakness> all = findAll(owner, dacl, role);
     ::LocalFree(descriptor);
-    return weak;
+    for (Weakness& weak : all)
+        weak.path = path;
+    return all;
+}
+
+Weakness weaknessOf(const std::wstring& path, Role role)
+{
+    std::vector<Weakness> all = weaknessesOf(path, role);
+    return all.empty() ? Weakness {} : std::move(all.front());
 }
 
 std::wstring accountName(const std::wstring& sid)
@@ -279,22 +392,118 @@ std::wstring accountName(const std::wstring& sid)
     return found ? std::wstring(name) : sid; // a deleted account, or a domain's with no controller in reach
 }
 
-std::vector<std::wstring> repairCommands(const Weakness& weak)
+namespace {
+
+// An entry as icacls writes it: "(OI)(CI)(IO)(M)", "(AD)", "(RD,WA)".
+std::wstring grantText(BYTE flags, DWORD mask)
+{
+    std::wstring text;
+    if (flags & OBJECT_INHERIT_ACE)
+        text += L"(OI)";
+    if (flags & CONTAINER_INHERIT_ACE)
+        text += L"(CI)";
+    if (flags & INHERIT_ONLY_ACE)
+        text += L"(IO)";
+    if (flags & NO_PROPAGATE_INHERIT_ACE)
+        text += L"(NP)";
+    switch (mask) {
+    case FILE_ALL_ACCESS:
+        return text + L"(F)";
+    case 0x1301BF: // FILE_GENERIC_READ | FILE_GENERIC_WRITE | FILE_GENERIC_EXECUTE | DELETE
+        return text + L"(M)";
+    case 0x1200A9: // FILE_GENERIC_READ | FILE_GENERIC_EXECUTE
+        return text + L"(RX)";
+    case FILE_GENERIC_READ:
+        return text + L"(R)";
+    default:
+        break;
+    }
+    static constexpr std::pair<DWORD, const wchar_t*> kRights[] = {{DELETE, L"DE"}, {READ_CONTROL, L"RC"},
+        {WRITE_DAC, L"WDAC"}, {WRITE_OWNER, L"WO"}, {SYNCHRONIZE, L"S"}, {ACCESS_SYSTEM_SECURITY, L"AS"},
+        {MAXIMUM_ALLOWED, L"MA"}, {GENERIC_READ, L"GR"}, {GENERIC_WRITE, L"GW"}, {GENERIC_EXECUTE, L"GE"},
+        {GENERIC_ALL, L"GA"}, {FILE_READ_DATA, L"RD"}, {FILE_WRITE_DATA, L"WD"}, {FILE_APPEND_DATA, L"AD"},
+        {FILE_READ_EA, L"REA"}, {FILE_WRITE_EA, L"WEA"}, {FILE_EXECUTE, L"X"}, {FILE_DELETE_CHILD, L"DC"},
+        {FILE_READ_ATTRIBUTES, L"RA"}, {FILE_WRITE_ATTRIBUTES, L"WA"}};
+    std::wstring rights;
+    for (const auto& [bit, name] : kRights) {
+        if (mask & bit)
+            rights += (rights.empty() ? L"" : L",") + std::wstring(name);
+    }
+    return text + L"(" + rights + L")";
+}
+
+// An entry at fault that comes from above: the folder's inherited entries
+// have to be made its own first (the same rights, now editable).
+bool faultInherited(const Weakness& weak)
+{
+    return weak.kind == Weakness::Kind::Rights && std::ranges::any_of(weak.grants, [](const Weakness::Grant& g) {
+        return g.atFault && (g.flags & INHERITED_ACE);
+    });
+}
+
+// `madeOwn`: the folder's inherited entries made its own just before (for
+// this account or another one there).
+std::vector<std::wstring> repair(const Weakness& weak, bool madeOwn)
 {
     const std::wstring target = commandArgument(weak.path);
     switch (weak.kind) {
     case Weakness::Kind::Owner:
         return {L"takeown /f " + target + L" /a"};
-    case Weakness::Kind::Rights:
-        // Its inherited entries made its own (the same rights, now editable),
-        // then that account's replaced by read and run.
-        return {L"icacls " + target + L" /inheritance:d", L"icacls " + target + L" /grant:r *" + weak.sid + L":(OI)(CI)(RX)"};
+    case Weakness::Kind::Rights: {
+        std::vector<std::wstring> commands;
+        if (madeOwn)
+            commands.push_back(L"icacls " + target + L" /inheritance:d");
+        // All of its own entries away (/grant:r would replace only the one
+        // with the same inheritance), then back: as they were, those at fault
+        // as read and run; an inherited one stays where it is unless just
+        // made the folder's own.
+        commands.push_back(L"icacls " + target + L" /remove:g *" + weak.sid);
+        std::vector<std::wstring> back;
+        for (const Weakness::Grant& grant : weak.grants) {
+            if ((grant.flags & INHERITED_ACE) && !madeOwn)
+                continue;
+            const std::wstring text = L"*" + weak.sid + L":"
+                + grantText(static_cast<BYTE>(grant.flags & ~INHERITED_ACE), grant.atFault ? DWORD {0x1200A9} : grant.mask);
+            if (std::ranges::find(back, text) == back.end())
+                back.push_back(text);
+        }
+        if (weak.grants.empty()) // made by hand, no entries known: read and run, for whatever is in it
+            back.push_back(L"*" + weak.sid + L":(OI)(CI)(RX)");
+        if (!back.empty()) {
+            std::wstring grant = L"icacls " + target + L" /grant";
+            for (const std::wstring& text : back)
+                grant += L" " + text;
+            commands.push_back(std::move(grant));
+        }
+        return commands;
+    }
     case Weakness::Kind::NoAcl:
     case Weakness::Kind::Unreadable:
     case Weakness::Kind::None:
         break;
     }
     return {};
+}
+
+} // namespace
+
+std::vector<std::wstring> repairCommands(const Weakness& weak)
+{
+    return repair(weak, faultInherited(weak));
+}
+
+std::vector<std::wstring> repairCommands(const std::vector<Weakness>& weak)
+{
+    std::vector<std::wstring> commands;
+    for (const Weakness& each : weak) {
+        const bool madeOwn = std::ranges::any_of(
+            weak, [&](const Weakness& other) { return other.path == each.path && faultInherited(other); });
+        for (std::wstring& command : repair(each, madeOwn)) {
+            if (std::ranges::find(commands, command) == commands.end())
+                commands.push_back(std::move(command));
+        }
+    }
+    return commands;
 }
 
 namespace {
@@ -382,6 +591,21 @@ bool anyProtectedDirUsable(const std::vector<std::wstring>& candidates, Weakness
     if (firstWeak)
         *firstWeak = std::move(first);
     return false;
+}
+
+std::vector<Weakness> protectedDirWeaknesses(const std::vector<std::wstring>& candidates)
+{
+    if (anyProtectedDirUsable(candidates))
+        return {};
+    const auto first = std::ranges::find_if(candidates, [](const std::wstring& dir) { return !dir.empty(); });
+    if (first == candidates.end())
+        return {unreadable(L"(no protected folder)", ERROR_PATH_NOT_FOUND)};
+    const DWORD attributes = ::GetFileAttributesW(first->c_str());
+    const bool absent = attributes == INVALID_FILE_ATTRIBUTES;
+    std::vector<Weakness> all = chainWeaknesses(*first, Role::Ancestor, absent);
+    if (all.empty() && !absent && !(attributes & FILE_ATTRIBUTE_DIRECTORY))
+        all.push_back(unreadable(*first, ERROR_DIRECTORY)); // a file where the folder would be
+    return all;
 }
 
 bool ensureProtectedDir(const std::wstring& dir, std::wstring* error)

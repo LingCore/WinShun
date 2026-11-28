@@ -28,21 +28,37 @@ namespace ws {
 // instead of ~2.3 ms without that).
 // Nothing is freed or rebuilt, so nothing has to load again.
 //
-// Not while Windows itself is short of memory (kShortOfMemoryLoad): what goes
-// to the standby list then is taken by the other programs within minutes, and
-// the next opening and search read it back from the disk one page at a time,
-// while the disk is busy for the others too: a name search 4.4 s instead of
-// tens of ms (GitHub #471, 86 % in use). Windows trims every program alike by
-// itself when it needs the memory, the pages unused longest first; given back
-// on our own, Win顺's went first. Given back again once there is room.
+// While Windows itself is short of memory (kShortOfMemoryLoad) more stays:
+// what goes to the standby list then is taken by the other programs within
+// minutes, and the next opening and search read it back from the disk one
+// page at a time, while the disk is busy for the others too: a name search
+// 4.4 s instead of tens of ms (GitHub #471, 86 % in use). So `keep` is asked
+// for what the next use needs however short the memory is (the app: all the
+// windows' hot pages and what a name search reads of the file index), and
+// only the rest goes. Everything was held back then at first (0.50.0), and
+// with a large program open (memory 90 % in use for hours) Win顺 sat on
+// 700 MB of settings pages and its screenshot plugin on 420 MB of pictures
+// put away, for as long as that program ran (GitHub #500): the one time the
+// memory was wanted back.
 class IdleTrim : public QObject {
 public:
     // Short of memory: this much of it in use (Task Manager's "内存" figure,
-    // MEMORYSTATUSEX::dwMemoryLoad) or more. The C++ plugins' own giving back
-    // holds at the same mark (src/plugins-common/IdleTrim.h).
-    static constexpr int kShortOfMemoryLoad = 80;
+    // MEMORYSTATUSEX::dwMemoryLoad) or more, and until it is kRoomAgain below
+    // that again, so that a load at the mark does not go to and fro between
+    // the two ways. 70: searches read from the disk for seconds at 77 and
+    // 79 % too (GitHub #471's follow-up), and what stays for it is a few
+    // dozen MB. The C++ plugins' own giving back takes the same mark
+    // (src/plugins-common/IdleTrim.h).
+    static constexpr int kShortOfMemoryLoad = 70;
+    static constexpr int kRoomAgain = 5;
     // Windows' memory in use now, in percent; -1 when it cannot tell.
     static int memoryLoad() noexcept;
+
+    // What `keep` is asked for: what stays so that the next use is as quick
+    // as one a moment after the last (Lean, as little as that takes), or what
+    // it needs when the pages given back will not be in memory any more
+    // (ShortOfMemory: more, see above).
+    enum class Keep : std::uint8_t { Lean, ShortOfMemory };
 
     // `busy` names work under way that would touch the pages again at once
     // (the index loading or being built, files being read for content), or
@@ -51,7 +67,7 @@ public:
     // pinned launcher), so not idle (GitHub #111: emptied 1.7 s after the
     // clipboard came, while it was in use). `keep`: the pages that stay;
     // without it, or while it has none to name, everything goes.
-    explicit IdleTrim(std::function<const char*()> busy, std::function<bool()> up, std::function<PageSet()> keep = {},
+    explicit IdleTrim(std::function<const char*()> busy, std::function<bool()> up, std::function<PageSet(Keep)> keep = {},
         QObject* parent = nullptr);
     ~IdleTrim() override;
 
@@ -88,9 +104,12 @@ public:
     LastTrim lastTrim() const noexcept { return {m_lastTrimAtMs.load(), m_lastTrimMb.load()}; }
     // Why the memory is, or is not, going back right now, for the diagnostics
     // package: what holds it (held after a resume, work under way, a window
-    // up without the focus, Windows short of memory), the last time and what
-    // stayed then. GUI thread.
+    // up without the focus), whether Windows is short of memory (more stays
+    // then), the last time and what stayed then. GUI thread.
     QJsonObject status() const;
+    // Windows is short of memory as IdleTrim reads it (with kRoomAgain): more
+    // stays when the memory is given back. GUI thread.
+    bool shortOfMemory() const;
     // An emptying done by someone else (the settings' button): remembered as the last.
     void noteTrim(qint64 megabytes) noexcept;
     // How long after the last use the memory goes back; 20 s. Shorter for a
@@ -103,6 +122,7 @@ public:
 private:
     void check();
     void trim(); // now, unless one is under way or little is above what a trim leaves
+    bool shortAt(int load) const noexcept; // by the mark, and kRoomAgain once short
     void gaveBack(qint64 megabytes) noexcept; // just now: remembered as the last time
     bool inUse() const; // a window of Win顺's has the focus, or is up and in use (m_up)
     void startAfter(int ms);
@@ -115,9 +135,12 @@ private:
     // and often searches again within seconds; emptied in between, every open
     // would take the pages back.
     int m_afterUseMs = 20'000;
-    std::function<PageSet()> m_keep;
+    std::function<PageSet(Keep)> m_keep;
     std::function<int()> m_memoryLoad = &IdleTrim::memoryLoad;
-    int m_heldShortAt = -1; // held because Windows was short of memory: the load then; -1: not held
+    // Windows was short of memory the last time the memory was given back:
+    // more stayed. With room again the floor below no longer holds, and what
+    // stayed for that goes too.
+    bool m_short = false;
     // What stayed after the last time, private bytes: given back again once
     // kTrimAbove more has come on top (0: all went, or not yet).
     std::atomic<std::size_t> m_floor {0};

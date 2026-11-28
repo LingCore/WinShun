@@ -35,7 +35,8 @@ class SearchEngine;
 // The search bar under an Open or Save dialog of another program, as in
 // Listary: the folder shown in the file manager (File Explorer, Total
 // Commander, Directory Opus), to go to with a click (or Ctrl+G), and a box
-// to search folders and files by name; picking one takes
+// to search folders and files by name, what lies in the dialog's folder
+// first (or only that: setFolderOnly); picking one takes
 // the dialog there (a file: to its folder, its name in the file name box,
 // so Enter opens it; Ctrl+Enter in an Open dialog opens it at once). A path
 // typed (or pasted) lists what that folder holds, as a shell completes it:
@@ -89,8 +90,8 @@ class DialogBar : public QObject {
     Q_PROPERTY(bool nothingFound READ nothingFound NOTIFY resultsReplaced FINAL)
     // Searching only the folder the dialog shows and what lies in it (GitHub
     // #286, Settings::dialogBarFolderOnly): that folder's name; empty while
-    // the whole index is searched (turned off, or the dialog is nowhere on a
-    // disk: This PC, a library).
+    // everything is searched, what lies in that folder first (当前文件夹优先;
+    // the dialog nowhere on a disk, This PC, a library: just everything).
     Q_PROPERTY(QString scopeName READ scopeName NOTIFY scopeChanged FINAL)
     // The folder whose contents are listed for a path typed; empty while searching.
     Q_PROPERTY(QString browsedFolder READ browsedFolder NOTIFY browsedFolderChanged FINAL)
@@ -359,7 +360,8 @@ private:
     QTimer m_moveTimeout; // should it not get there (or not be restored)
     Place m_place = Place::Auto;
     bool m_folderOnly = false;
-    QString m_scopeFolder; // the dialog's folder as last read, while m_folderOnly; see refreshScope()
+    QString m_dialogFolder; // the dialog's folder as last read (empty: This PC, a library); see refreshScope()
+    QString m_scopeFolder; // ... while m_folderOnly
     void refreshScope();
     Place m_side = Place::Below; // where the bar is: not Auto
     bool m_overTaskbar = false; // below the work area: topmost, over the taskbar (#362)

@@ -21,7 +21,8 @@ namespace {
 // Windows' memory as these tests read it: with room to spare, whatever the
 // machine running them has (short of it, nothing is given back).
 constexpr int kRoomToSpare = 50;
-constexpr int kShort = ws::IdleTrim::kShortOfMemoryLoad + 6; // 86 %, GitHub #471's
+constexpr int kShort = 86; // GitHub #471's
+static_assert(kRoomToSpare < ws::IdleTrim::kShortOfMemoryLoad - ws::IdleTrim::kRoomAgain && kShort >= ws::IdleTrim::kShortOfMemoryLoad);
 
 // Allocate and dirty enough private memory to exceed IdleTrim's 32 MB threshold.
 struct DirtyMemory {
@@ -77,7 +78,7 @@ private slots:
         std::atomic<bool> inUse {false};
         {
             ws::IdleTrim trim([]() -> const char* { return nullptr; }, [&] { return inUse.load(); },
-                [&] { return keepSet; });
+                [&](ws::IdleTrim::Keep) { return keepSet; });
             trim.setMemoryLoad([] { return kRoomToSpare; });
             trim.setAfterUse(30);
             trim.used(); // arm the timer with the shortened 30 ms interval
@@ -92,7 +93,7 @@ private slots:
         {
             const DirtyMemory more(40);
             ws::IdleTrim trim([]() -> const char* { return nullptr; }, [] { return false; },
-                [&] { return keepSet; });
+                [&](ws::IdleTrim::Keep) { return keepSet; });
             trim.setMemoryLoad([] { return kRoomToSpare; });
             trim.setAfterUse(10);
             trim.used();
@@ -162,7 +163,7 @@ private slots:
             const DirtyMemory memory(40);
             const DirtyMemory kept(1);
             const ws::PageSet keepSet({{reinterpret_cast<std::uintptr_t>(kept.data), kept.bytes}});
-            ws::IdleTrim trim([]() -> const char* { return nullptr; }, [] { return false; }, [&] { return keepSet; });
+            ws::IdleTrim trim([]() -> const char* { return nullptr; }, [] { return false; }, [&](ws::IdleTrim::Keep) { return keepSet; });
             trim.setMemoryLoad([] { return kRoomToSpare; });
             trim.setAfterUse(30);
             trim.used();
@@ -179,40 +180,84 @@ private slots:
         ws::diagnostics::initialize({});
     }
 
-    // Windows short of memory (GitHub #471, 86 % in use): nothing is given
-    // back, idle or freed, and the journal and the diagnostics say why. What
-    // went to the standby list then was taken by the other programs, and the
-    // next search read it back from the disk: 4.4 s. Given back again once
-    // there is room.
-    void heldWhileWindowsIsShortOfMemory()
+    // Windows short of memory (GitHub #471, 86 % in use): what the next use
+    // needs stays as well, since what goes to the standby list then is taken
+    // by the other programs and read back from the disk (a search of 4.4 s);
+    // the rest is given back all the same. Held back altogether (0.50.0),
+    // 700 MB of settings pages and 420 MB of pictures put away stayed for as
+    // long as a large program was open (GitHub #500). With room again, by
+    // more than the mark, that goes too.
+    void moreStaysWhileWindowsIsShortOfMemory()
     {
         QTemporaryDir temp;
         QVERIFY(temp.isValid());
         ws::diagnostics::initialize(temp.path());
         {
-            const DirtyMemory memory(40);
-            QVERIFY(memory.data != nullptr);
+            const DirtyMemory putAway(40); // the settings' pages, pictures: nobody's next use
+            const DirtyMemory lean(1); // stays at all times
+            const DirtyMemory nextUse(40); // stays only while the memory is short: the file index's names
+            QVERIFY(putAway.data && lean.data && nextUse.data);
+            const auto pagesOf = [](const DirtyMemory& block) {
+                return ws::PageSet({{reinterpret_cast<std::uintptr_t>(block.data), block.bytes}});
+            };
+            const auto inMemory = [&](const DirtyMemory& block) {
+                return ws::PageSet::resident().intersected(pagesOf(block)).bytes();
+            };
             std::atomic<int> load {kShort};
-            ws::IdleTrim trim([]() -> const char* { return nullptr; }, [] { return false; });
+            ws::IdleTrim trim([]() -> const char* { return nullptr; }, [] { return false; }, [&](ws::IdleTrim::Keep keep) {
+                return keep == ws::IdleTrim::Keep::ShortOfMemory ? pagesOf(lean).united(pagesOf(nextUse)) : pagesOf(lean);
+            });
             trim.setMemoryLoad([&] { return load.load(); });
             trim.setAfterUse(20);
             trim.used();
-            QTRY_VERIFY_WITH_TIMEOUT(trim.status().value(u"held_short_of_memory"_s).toBool(), 2000);
-            trim.freed(); // the settings' pages put away: held all the same
-            QTest::qWait(150);
-            QVERIFY(!trim.trimmed());
-            QCOMPARE(trim.lastTrim().atMs, qint64 {0});
-            const QJsonObject held = lastJournalled(u"idle-trim");
-            QCOMPARE(held.value(u"held"_s).toString(), u"short of memory"_s);
-            QCOMPARE(held.value(u"memory_load"_s).toInteger(-1), qint64 {kShort});
-            QCOMPARE(trim.status().value(u"memory_load"_s).toInt(-1), kShort);
-
-            load = ws::IdleTrim::kShortOfMemoryLoad - 1; // room again
-            trim.freed();
-            QTRY_VERIFY_WITH_TIMEOUT(trim.lastTrim().atMs > 0, 2000);
+            QTRY_VERIFY_WITH_TIMEOUT(lastJournalled(u"idle-trim").contains(u"stayed_mb"_s), 3000);
+            QJsonObject entry = lastJournalled(u"idle-trim");
+            QCOMPARE(entry.value(u"short_of_memory"_s).toBool(), true);
+            QCOMPARE(entry.value(u"memory_load"_s).toInteger(-1), qint64 {kShort});
+            QCOMPARE(entry.value(u"keep_mb"_s).toInteger(-1), qint64 {41});
             QVERIFY(trim.trimmed());
+            QVERIFY(trim.lastTrim().megabytes >= 39); // what was put away went
+            QCOMPARE(inMemory(nextUse), nextUse.bytes);
+            QCOMPARE(inMemory(lean), lean.bytes);
+            QVERIFY(inMemory(putAway) < putAway.bytes / 8);
+            QCOMPARE(trim.status().value(u"short_of_memory"_s).toBool(), true);
+            QCOMPARE(trim.status().value(u"memory_load"_s).toInt(-1), kShort);
+            QVERIFY(trim.shortOfMemory());
+
+            // Just under the mark is not room yet: a load at the mark does
+            // not go to and fro between the two ways.
+            const qint64 firstAt = trim.lastTrim().atMs;
+            load = ws::IdleTrim::kShortOfMemoryLoad - 1;
+            trim.freed();
+            QTest::qWait(150);
+            QCOMPARE(trim.lastTrim().atMs, firstAt);
+            QVERIFY(trim.shortOfMemory());
+            QCOMPARE(inMemory(nextUse), nextUse.bytes);
+
+            load = ws::IdleTrim::kShortOfMemoryLoad - ws::IdleTrim::kRoomAgain - 1; // room again
+            QVERIFY(!trim.shortOfMemory());
+            QTest::qWait(5); // a later time than the first, to the millisecond
+            trim.freed();
+            QTRY_VERIFY_WITH_TIMEOUT(trim.lastTrim().atMs > firstAt, 3000);
+            QVERIFY(trim.lastTrim().megabytes >= 39); // what stayed for a memory that was short
+            QVERIFY(inMemory(nextUse) < nextUse.bytes / 8);
+            QCOMPARE(inMemory(lean), lean.bytes);
+            QTRY_VERIFY_WITH_TIMEOUT(lastJournalled(u"idle-trim").value(u"memory_load"_s).toInteger(-1) == load.load(), 2000);
+            entry = lastJournalled(u"idle-trim");
+            QVERIFY(!entry.contains(u"short_of_memory"_s));
+            QCOMPARE(entry.value(u"keep_mb"_s).toInteger(-1), qint64 {1});
+            QCOMPARE(trim.status().value(u"short_of_memory"_s).toBool(), false);
+        }
+        // Nothing named to stay: everything goes, short of memory or not.
+        {
+            const DirtyMemory memory(40);
+            QVERIFY(memory.data != nullptr);
+            ws::IdleTrim trim([]() -> const char* { return nullptr; }, [] { return false; });
+            trim.setMemoryLoad([] { return kShort; });
+            trim.setAfterUse(20);
+            trim.used();
+            QTRY_VERIFY_WITH_TIMEOUT(trim.lastTrim().atMs > 0, 2000);
             QVERIFY(trim.lastTrim().megabytes >= 30);
-            QCOMPARE(trim.status().value(u"held_short_of_memory"_s).toBool(), false);
         }
         ws::diagnostics::initialize({});
     }

@@ -202,6 +202,14 @@ winget install LingCore.WinShun
 
 ### 最近更新
 
+**0.52.0**
+
+- 📂 “打开”“另存为”旁的搜索框**先列出对话框所在文件夹里的**，再列其他位置；💤 保持唤醒可以设成**合上盖子也不睡眠**（#503）。
+- 🧠 **设置窗口少占内存**，关掉后内存真的还回去；Windows 内存紧张时闲着的 Win顺 也让出内存（#500）。
+- 🛠️ **改进** 索引服务装不上时给的修复命令改对了（#504）；品牌色彩、轻拟物质感在 125% 下光标不见了（#501）；模糊匹配时猜中的收藏不再排最前；在文件夹里搜到 `pwsh.exe` 按 `Enter` 也开在这个文件夹（#430）。
+
+详见 [0.52.0 发布说明](docs/release-notes/v0.52.0.md)。
+
 **0.51.0**
 
 - 📌 剪贴板可以设成**打开时就钉住**，连着粘贴好几条；💻 在文件夹里打 `cmd`、`wt` 这类终端，按 `Enter` 就**开在这个文件夹里**（#430）。
@@ -397,7 +405,7 @@ Listary、PowerToys 的“查找鼠标”默认也用双击 Ctrl，关掉其中�
 <details>
 <summary><b>占多少内存？索引能不放 C 盘吗？</b></summary>
 
-- **内存**：用着的时候主要是文件索引，每 100 万个文件约 30 MB；三百万个文件的电脑上，搜索时整个程序约 150～230 MB。关掉搜索框约 20 秒后，Win顺 把用不着的内存还给系统，任务管理器里降到几 MB；系统内存已用到 80% 以上时先不还（还回去马上被别的程序占走，下次搜索要从硬盘一点点读回来，会卡几秒），内存宽裕了再还。想看内存花在哪，打开 **设置 › 运行状况**。
+- **内存**：用着的时候主要是文件索引，每 100 万个文件约 30 MB；三百万个文件的电脑上，搜索时整个程序约 150～230 MB。关掉搜索框约 20 秒后，Win顺 把用不着的内存还给系统，任务管理器里降到几 MB；系统内存已用到 70% 以上时，下次呼出和搜索要用的那部分先留着（还回去马上被别的程序占走，下次搜索要从硬盘一点点读回来，会卡几秒），其余照常归还。想看内存花在哪，打开 **设置 › 运行状况**。
 - **索引位置**：在 **设置 › 常规 › 索引位置** 里，可以移到其他内置硬盘。
 
 </details>
@@ -623,6 +631,14 @@ Standard and portable packages install enhanced text recognition on demand. Open
 
 ### What's new
 
+**0.52.0**
+
+- 📂 The bar beside Open and Save As **lists the dialog's folder first**, then everywhere else; 💤 keep awake can **ignore a closed lid** (#503).
+- 🧠 **The settings window takes less memory** and really gives it back when closed; an idle WinShun gives memory back while Windows is short of it (#500).
+- 🛠️ **Improved** the commands offered when the index service cannot be installed now fix it (#504); the caret shows again in Brand colours and Soft tactile at 125 % (#501); a favorite only guessed by fuzzy matching is not put first; `Enter` on `pwsh.exe` found while typing in a folder opens it there (#430).
+
+See the [0.52.0 release notes](docs/release-notes/v0.52.0.md).
+
 **0.51.0**
 
 - 📌 The clipboard can **open pinned**, for pasting several entries in a row; 💻 typing `cmd`, `wt` and the like in a folder, `Enter` **opens the terminal in that folder** (#430).
@@ -818,7 +834,7 @@ With “Direct (administrator)” chosen, WinShun runs as administrator, and Win
 <details>
 <summary><b>How much memory? Can the index leave drive C?</b></summary>
 
-- **Memory**: mostly the file index while in use, about 30 MB per million files; on a PC with three million files the whole app uses about 150–230 MB while searching. About 20 seconds after the search box closes, WinShun gives what it no longer needs back to Windows, and Task Manager shows a few MB; while 80 % or more of the PC's memory is in use it holds on instead (given back then, other programs take it at once and the next search reads it back from the disk for seconds), and gives it back once there is room. **Settings › Health** shows where it goes.
+- **Memory**: mostly the file index while in use, about 30 MB per million files; on a PC with three million files the whole app uses about 150–230 MB while searching. About 20 seconds after the search box closes, WinShun gives what it no longer needs back to Windows, and Task Manager shows a few MB; while 70 % or more of the PC's memory is in use, what the next opening and search need stays (given back then, other programs take it at once and the next search reads it back from the disk for seconds), and the rest goes back as usual. **Settings › Health** shows where it goes.
 - **Index location**: the index can move to another built-in drive under **Settings › General › Index location**.
 
 </details>

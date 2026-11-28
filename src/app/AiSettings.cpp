@@ -441,6 +441,12 @@ std::vector<Entry> buildCatalog()
         e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "搜索框的位置");
     }
     {
+        Entry& e = add(boolean({"Launcher/DialogBarFolderOnly", QT_TRANSLATE_NOOP("AiSettings", "对话框旁的搜索框只搜当前文件夹"), "files_and_dialogs", 3,
+                                   "The dialog search bar searches only the folder the dialog shows and its subfolders. Off: that folder's results first, then everywhere else (favorites stay on top). Ctrl+Shift+D in the bar switches it and keeps the choice."},
+            &Settings::dialogBarFolderOnly));
+        e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "搜索的范围");
+    }
+    {
         Entry& e = add(boolean({"Launcher/DialogBarSuggestions", QT_TRANSLATE_NOOP("AiSettings", "点进对话框旁的搜索框就列出常用位置"), "files_and_dialogs", 3,
                                    "Clicked into with nothing typed, the dialog search bar lists the enabled suggestion sources. Off: nothing until typing (or the Down key)."},
             &Settings::dialogBarSuggestions));

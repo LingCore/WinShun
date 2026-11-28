@@ -10,6 +10,12 @@
   <application xmlns="urn:schemas-microsoft-com:asm.v3">
     <windowsSettings>
       <longPathAware xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">true</longPathAware>
+      <!-- Windows' newer heap (Windows 10 2004 and later; older ones ignore
+           this). The default one kept what was freed: the settings window's
+           pages are some 700,000 blocks, and once they were gone ~200 MB of
+           the heap stayed committed for as long as Win顺 ran, free and never
+           given back (GitHub #500). This one gives it back. -->
+      <heapType xmlns="http://schemas.microsoft.com/SMI/2020/WindowsSettings">SegmentHeap</heapType>
     </windowsSettings>
   </application>
   <dependency>

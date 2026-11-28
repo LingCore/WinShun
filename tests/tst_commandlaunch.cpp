@@ -70,6 +70,11 @@ private slots:
         QCOMPARE(terminalOfApp(u"shell:AppsFolder\\x"_s, uR"(D:\tools\mycmd.exe)"_s), QString());
         QCOMPARE(terminalOfApp(uR"(shell:AppsFolder\Microsoft.WindowsNotepad_8wekyb3d8bbwe!App)"_s, QString()), QString());
         QCOMPARE(terminalOfApp(QString(), QString()), QString());
+        // The program found as a file: its path, no launch path.
+        QCOMPARE(terminalOfApp(QString(), uR"(C:\Windows\System32\cmd.exe)"_s), u"cmd"_s);
+        QCOMPARE(terminalOfApp(QString(), uR"(D:\PortableGit\git-bash.exe)"_s), u"gitbash"_s);
+        QCOMPARE(terminalOfApp(QString(), uR"(C:\Program Files\WindowsApps\Microsoft.WindowsTerminal_1.21_x64__8wekyb3d8bbwe\WindowsTerminal.exe)"_s), u"wt"_s);
+        QCOMPARE(terminalOfApp(QString(), uR"(D:\docs\cmd.exe.txt)"_s), QString());
     }
 
     // 在终端中打开 (GitHub #386): each terminal is told the folder its own way,

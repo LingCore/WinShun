@@ -391,15 +391,18 @@ Window {
                 return
             }
         }
-        if (leftPagesGone) { // their memory back now, not when the window is next left (App, IdleTrim.freed)
+        // Their memory back now, not when the window is next left; closed, what
+        // the window draws with too, whether a page went or not (App::settingsPagesWentAway).
+        if (leftPagesGone || !shown) {
             leftPagesGone = false
-            editor.pagesPutAway()
+            editor.pagesPutAway(shown)
         }
         if (keysSlot.item === null) { // 按键一览's sections went with their page: made again as on a first opening
             shortcutsWanted = false
             shortcutModel.clear()
         }
-        gc() // the pages' JavaScript side
+        // Their JavaScript side: collected by the App once the objects are
+        // gone (destroy() is a deleteLater; nothing of them could go from here).
     }
 
     // The page if it has been made; null if not (or no such page).
@@ -4407,8 +4410,13 @@ Window {
                     // A portable copy has no installer to register the service:
                     // done from here, as administrator (UAC asks once).
                     // An account that cannot install it (not an administrator's,
-                    // GitHub #52) gets the reason instead of the buttons.
-                    shown: window.editor.isPortable
+                    // GitHub #52) gets the reason instead of the buttons. An
+                    // installed copy's comes with the installer; where it is not
+                    // there after all (no folder safe enough for it, GitHub
+                    // #504), in an unsafe place or older, the row is here too.
+                    shown: window.editor.isPortable || window.editor.indexServiceShipped
+                           && (!window.editor.indexServiceInstalled || window.editor.indexServiceUnsafeLocation
+                               || window.editor.indexServiceUpdatable)
                     title: qsTr("索引服务")
                     keywords: qsTr("便携;安装服务;更新服务;卸载服务;索引服务;没有管理员权限;装不了;portable;service").split(";")
                     description: window.editor.indexServiceInstalled && window.editor.indexServiceUnsafeLocation
@@ -4449,8 +4457,9 @@ Window {
                     }
                     FlatButton {
                         dpr: window.dpr
-                        visible: window.editor.indexServiceInstallable && window.editor.indexServiceInstalled
-                                 && !window.editor.indexServiceUnsafeLocation
+                        // An installed copy's goes with it, when it is uninstalled.
+                        visible: window.editor.isPortable && window.editor.indexServiceInstallable
+                                 && window.editor.indexServiceInstalled && !window.editor.indexServiceUnsafeLocation
                         text: qsTr("卸载索引服务")
                         enabled: !window.editor.indexServiceBusy
                         onClicked: window.editor.uninstallIndexService()
@@ -6309,7 +6318,7 @@ Window {
                 SettingRow {
                     shown: window.editor.fileManagers.length > 1
                     title: qsTr("用哪个文件管理器打开文件夹")
-                    keywords: qsTr("文件管理器;资源管理器;打开文件夹;打开所在位置;Total Commander;Directory Opus;TC;Opus;XYplorer;Pulse;OneCommander;自定义;其他;Tessoa;custom").split(";")
+                    keywords: qsTr("文件管理器;资源管理器;文件浏览器;默认文件管理器;打开文件夹;打开所在位置;Total Commander;Directory Opus;TC;Opus;XYplorer;Pulse;OneCommander;Q-Dir;QDir;自定义;其他;Tessoa;custom").split(";")
                     description: qsTr("打开文件夹、打开文件所在位置时用它；没装的不列")
                     unlocks: [customManagerRow]
 
@@ -7010,7 +7019,7 @@ Window {
                     id: dialogBarRow
                     title: qsTr("对话框旁的搜索框")
                     keywords: qsTr("对话框;另存为;打开文件;保存").split(";")
-                    unlocks: [dialogBarPlaceRow, dialogBarSuggestionsRow, dialogBarSuggestionSourcesRow]
+                    unlocks: [dialogBarPlaceRow, dialogBarScopeRow, dialogBarSuggestionsRow, dialogBarSuggestionSourcesRow]
                     description: qsTr("在“打开”“另存为”旁搜文件夹和文件，选中后直接转过去")
 
                     ToggleSwitch {
@@ -7033,6 +7042,24 @@ Window {
                         labels: [qsTr("自动"), qsTr("下方"), qsTr("左边"), qsTr("右边")]
                         current: Math.max(0, window.dialogBarPlaces.indexOf(window.editor.dialogBarPlace))
                         onActivated: (index) => window.editor.dialogBarPlace = window.dialogBarPlaces[index]
+                    }
+                }
+
+                SettingRow { // GitHub #286; 当前文件夹优先 as typing in a folder's window
+                    id: dialogBarScopeRow
+                    sub: true
+                    shown: window.editor.dialogBar
+                    title: qsTr("搜索的范围")
+                    keywords: qsTr("范围;当前文件夹;优先;只搜;其他位置;子文件夹;Ctrl+Shift+D;current folder;scope").split(";")
+                    description: qsTr("搜索时可按 Ctrl+Shift+D 切换")
+                    tip: qsTr("当前文件夹优先：先列出对话框所在文件夹及子文件夹里的结果，再列出其他位置的；收藏的仍在最前。只搜当前文件夹：只列那个文件夹及子文件夹里的")
+
+                    ScopeTabs {
+                        objectName: "dialogBarScopeTabs"
+                        dpr: window.dpr
+                        labels: [qsTr("当前文件夹优先"), qsTr("只搜当前文件夹")]
+                        current: window.editor.dialogBarFolderOnly ? 1 : 0
+                        onActivated: (index) => window.editor.dialogBarFolderOnly = index === 1
                     }
                 }
 

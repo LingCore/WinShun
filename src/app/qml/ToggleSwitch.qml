@@ -32,9 +32,29 @@ Item {
         toggleHook.call("settle", [], null)
         dimmed = false
     }
-    // Asked for what it already is: the track lights up for 160 ms.
+    // Asked for what it already is: the track lights up for 160 ms (ToggleGlow,
+    // made the first time).
+    property Item glow: null
     function pulse() {
-        glow.restart()
+        if (!glow) {
+            glow = Qt.createComponent("ToggleGlow.qml").createObject(track, {
+                lit: Qt.binding(() => track.lit),
+                radius: Qt.binding(() => track.radius)
+            }) as Item
+        }
+        if (glow)
+            glow.restart()
+    }
+    // Keyboard focus: its ring around the track, made the first time the
+    // switch has it (FocusRing), concentric with the track.
+    property Item focusRing: null
+    onActiveFocusChanged: {
+        if (activeFocus && !focusRing) {
+            focusRing = Qt.createComponent("FocusRing.qml").createObject(track, {
+                host: toggle,
+                corner: Qt.binding(() => track.radius > 0 ? track.radius + 3 : 0)
+            }) as Item
+        }
     }
 
     implicitWidth: row.implicitWidth
@@ -71,15 +91,16 @@ Item {
         Text { // as wide as the longest word, so the switch stays put ("On" / "Off")
             visible: toggle.word // hidden: no width, no spacing in the Row
             anchors.verticalCenter: parent.verticalCenter
-            width: Math.ceil(Math.max(onWord.advanceWidth, offWord.advanceWidth, toggle.mixable ? mixedWord.advanceWidth : 0))
+            // Measured by SystemTheme, not by three TextMetrics in every switch.
+            readonly property string onWord: qsTr("开")
+            readonly property string offWord: qsTr("关")
+            readonly property string mixedWord: qsTr("自定义")
+            width: Math.ceil(Math.max(SystemTheme.textAdvance(onWord, Theme.fontBody), SystemTheme.textAdvance(offWord, Theme.fontBody),
+                                      toggle.mixable ? SystemTheme.textAdvance(mixedWord, Theme.fontBody) : 0))
             horizontalAlignment: toggle.wordAlign
-            text: toggle.unknown ? "" : toggle.mixed ? mixedWord.text : toggle.checked ? onWord.text : offWord.text
+            text: toggle.unknown ? "" : toggle.mixed ? mixedWord : toggle.checked ? onWord : offWord
             color: Theme.text
             font.pixelSize: Theme.fontBody
-
-            TextMetrics { id: onWord; text: qsTr("开"); font.pixelSize: Theme.fontBody }
-            TextMetrics { id: offWord; text: qsTr("关"); font.pixelSize: Theme.fontBody }
-            TextMetrics { id: mixedWord; text: qsTr("自定义"); font.pixelSize: Theme.fontBody }
         }
 
         Item {
@@ -103,29 +124,6 @@ Item {
                 dpr: toggle.pixelRatio
             }
 
-            Rectangle { // asked for what it already is: a light that comes and goes
-                id: light
-                anchors.fill: parent
-                radius: parent.radius
-                color: track.lit ? Theme.accentText : Theme.text
-                opacity: 0
-
-                SequentialAnimation {
-                    id: glow
-                    NumberAnimation { target: light; property: "opacity"; to: 0.3; duration: 80 }
-                    NumberAnimation { target: light; property: "opacity"; to: 0; duration: 80 }
-                }
-            }
-
-            Rectangle { // keyboard focus
-                visible: toggle.activeFocus
-                anchors.fill: parent
-                anchors.margins: -3
-                radius: track.radius > 0 ? track.radius + 3 : 0 // concentric with the track
-                color: "transparent"
-                border.width: 2
-                border.color: Theme.text
-            }
         }
     }
 

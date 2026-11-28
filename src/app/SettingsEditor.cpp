@@ -1252,6 +1252,40 @@ QString SettingsEditor::serviceBlockedMessage(const svcloc::Weakness& weak)
     return tr("无法安装索引服务：不能确认 %1 只有管理员能改，服务放进去不安全。请恢复它的默认权限后再试。").arg(folder);
 }
 
+QString SettingsEditor::serviceBlockedMessage(const std::vector<svcloc::Weakness>& weak)
+{
+    if (weak.size() == 1)
+        return serviceBlockedMessage(weak.front());
+    QStringList lines {tr("无法安装索引服务：下面几处普通程序也能改动（正常只有管理员能改），服务放进去不安全：")};
+    bool commands = false;
+    bool restore = false;
+    for (const svcloc::Weakness& each : weak) {
+        const QString folder = QString::fromStdWString(each.path);
+        const QString account = QString::fromStdWString(svcloc::accountName(each.sid));
+        switch (each.kind) {
+        case svcloc::Weakness::Kind::Owner:
+            lines.append(tr("· %1 的所有者是“%2”，不是管理员").arg(folder, account));
+            commands = true;
+            break;
+        case svcloc::Weakness::Kind::Rights:
+            lines.append(tr("· “%2”可以修改 %1").arg(folder, account));
+            commands = true;
+            break;
+        case svcloc::Weakness::Kind::NoAcl:
+        case svcloc::Weakness::Kind::Unreadable:
+        case svcloc::Weakness::Kind::None:
+            lines.append(tr("· 不能确认 %1 只有管理员能改").arg(folder));
+            restore = true;
+            break;
+        }
+    }
+    if (commands)
+        lines.append(tr("复制下面的命令，在“命令提示符（管理员）”里一次运行完，再点一次安装；原来能读取和运行的，仍然可以。"));
+    if (restore)
+        lines.append(tr("不能确认的那几处，请恢复它们的默认权限后再试。"));
+    return lines.join(u'\n');
+}
+
 void SettingsEditor::setIndexAccessState(const IndexAccessState& state)
 {
     emit drivesChanged();
@@ -1543,6 +1577,14 @@ void SettingsEditor::setDialogBarPlace(const QString& place)
     if (m_settings.dialogBarPlace == place)
         return;
     m_settings.dialogBarPlace = place;
+    commit();
+}
+
+void SettingsEditor::setDialogBarFolderOnly(bool on)
+{
+    if (m_settings.dialogBarFolderOnly == on)
+        return;
+    m_settings.dialogBarFolderOnly = on;
     commit();
 }
 

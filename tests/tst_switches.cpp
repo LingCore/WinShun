@@ -5,7 +5,9 @@
 // SwitchExplorer::onFor, SwitchRadios::stateOf, SwitchAudio's targetOf,
 // levelOf and stateOf). Keep awake is the exception: SwitchKeepAwake is built
 // in, over a clock the test moves; it holds a real power request for the
-// moment a test needs it (made, looked at, cleared) and nothing else.
+// moment a test needs it (made, looked at, cleared) and nothing else. What it
+// does to the lid goes to power plans in memory; Windows' own are written
+// only on a copy of the active plan made for the test and deleted after it.
 
 #include "Switches.h"
 #include "platform/SwitchAudio.h"
@@ -14,7 +16,11 @@
 #include "platform/SwitchRadios.h"
 #include "platform/SwitchTheme.h"
 
+#include <QFile>
+#include <QFileInfo>
+#include <QScopeGuard>
 #include <QSignalSpy>
+#include <QTemporaryDir>
 #include <QTest>
 
 #include <windows.h>
@@ -42,6 +48,11 @@ namespace ws {
 inline char* toString(const SwitchIntent& intent)
 {
     return QTest::toString(u"Kind %1, %2"_s.arg(static_cast<int>(intent.kind)).arg(intent.value));
+}
+
+inline char* toString(const LidActions& lid)
+{
+    return QTest::toString(u"ac %1, dc %2"_s.arg(lid.ac).arg(lid.dc));
 }
 
 namespace {
@@ -339,6 +350,50 @@ QDateTime at(int day, int hour, int minute, int second = 0, int msec = 0)
     return QDateTime(QDate(2026, 10, day), QTime(hour, minute, second, msec));
 }
 
+// Power plans in memory: the schemes' lid actions, the active one, and what
+// a write does. Shared, as LidOverride owns its PowerPlans.
+struct FakePlans final : PowerPlans {
+    struct Data {
+        std::map<QUuid, LidActions> schemes;
+        QUuid active;
+        bool lid = true;
+        bool policy = false;
+        bool refuse = false; // every write fails
+        bool halfOnce = false; // the next write sets ac, then fails
+        int writes = 0;
+        int applied = 0; // the active scheme made active again
+    };
+    explicit FakePlans(std::shared_ptr<Data> data) : d(std::move(data)) { }
+    bool lidPresent() override { return d->lid; }
+    bool lidByPolicy() override { return d->policy; }
+    QUuid active() override { return d->active; }
+    std::optional<LidActions> lid(const QUuid& scheme) override
+    {
+        const auto it = d->schemes.find(scheme);
+        return it == d->schemes.end() ? std::nullopt : std::optional(it->second);
+    }
+    bool setLid(const QUuid& scheme, const LidActions& actions) override
+    {
+        if (d->refuse || !d->schemes.contains(scheme))
+            return false;
+        if (std::exchange(d->halfOnce, false)) {
+            d->schemes[scheme].ac = actions.ac;
+            return false;
+        }
+        ++d->writes;
+        d->schemes[scheme] = actions;
+        if (scheme == d->active)
+            ++d->applied;
+        return true;
+    }
+    std::shared_ptr<Data> d;
+};
+
+std::unique_ptr<LidOverride> lidOver(const std::shared_ptr<FakePlans::Data>& data, const QString& record)
+{
+    return std::make_unique<LidOverride>(std::make_unique<FakePlans>(data), record);
+}
+
 // What Windows says is keeping the computer awake: ES_SYSTEM_REQUIRED (1) and
 // ES_DISPLAY_REQUIRED (2), whoever holds them.
 ULONG executionState()
@@ -390,6 +445,10 @@ private slots:
     void keepAwakeEndsByTheClock();
     void keepAwakeTimer();
     void keepAwakeThroughSwitches();
+    void lidHeldAndPutBack();
+    void lidAfterACrash();
+    void keepAwakeHoldsTheLid();
+    void lidOnWindowsPlans();
 };
 
 void SwitchesTest::readsAtStart()
@@ -1359,6 +1418,283 @@ void SwitchesTest::keepAwakeThroughSwitches()
     awake->checkEnd();
     QTRY_COMPARE(switches.state(kAwake).on, Value::Off);
     QVERIFY(!changed.isEmpty());
+}
+
+// #503: closing the lid does nothing while held; what it did comes back,
+// where it still does nothing.
+void SwitchesTest::lidHeldAndPutBack()
+{
+    using Lid = LidOverride::Outcome;
+    QTemporaryDir dir;
+    const QString record = dir.filePath(u"lid-close.json"_s);
+    const QUuid balanced = QUuid::createUuid();
+    const QUuid saver = QUuid::createUuid();
+    auto plans = std::make_shared<FakePlans::Data>();
+    plans->schemes = {{balanced, {1, 1}}, {saver, {2, 1}}};
+    plans->active = balanced;
+    {
+        const std::unique_ptr<LidOverride> lid = lidOver(plans, record);
+        QVERIFY(lid->lidPresent());
+        QVERIFY(!lid->held());
+        QCOMPARE(lid->hold(), Lid::Held);
+        QVERIFY(lid->held());
+        QCOMPARE(plans->schemes[balanced], (LidActions {0, 0}));
+        QCOMPARE(plans->applied, 1); // counts at once
+        QVERIFY(QFileInfo::exists(record)); // written before it was changed
+        QCOMPARE(lid->hold(), Lid::Held); // already: nothing written
+        QCOMPARE(plans->writes, 1);
+        lid->release();
+        QVERIFY(!lid->held());
+        QCOMPARE(plans->schemes[balanced], (LidActions {1, 1}));
+        QVERIFY(!QFileInfo::exists(record));
+        lid->release(); // nothing more
+        QCOMPARE(plans->writes, 2);
+
+        // Changed by the user meanwhile: theirs stays.
+        QCOMPARE(lid->hold(), Lid::Held);
+        plans->schemes[balanced].dc = 2;
+        lid->release();
+        QCOMPARE(plans->schemes[balanced], (LidActions {1, 2}));
+
+        // Another plan made active: the old one gets its actions back, the
+        // new one is held; again, nothing happens.
+        QCOMPARE(lid->hold(), Lid::Held);
+        plans->active = saver;
+        QCOMPARE(lid->follow(), Lid::Held);
+        QCOMPARE(plans->schemes[balanced], (LidActions {1, 2}));
+        QCOMPARE(plans->schemes[saver], (LidActions {0, 0}));
+        const int writes = plans->writes;
+        QCOMPARE(lid->follow(), Lid::Held);
+        QCOMPARE(plans->writes, writes);
+        lid->release();
+        QCOMPARE(plans->schemes[saver], (LidActions {2, 1}));
+
+        // Doing nothing already when plugged in: only the battery's changes.
+        plans->schemes[saver] = {0, 1};
+        QCOMPARE(lid->hold(), Lid::Held);
+        QCOMPARE(plans->schemes[saver], (LidActions {0, 0}));
+        lid->release();
+        QCOMPARE(plans->schemes[saver], (LidActions {0, 1}));
+        // Nothing to change: held all the same, nothing written or recorded.
+        plans->schemes[saver] = {0, 0};
+        const int before = plans->writes;
+        QCOMPARE(lid->hold(), Lid::Held);
+        QVERIFY(lid->held());
+        QVERIFY(!QFileInfo::exists(record));
+        lid->release();
+        QCOMPARE(plans->writes, before);
+
+        // Refused, or half written: nothing is left changed.
+        plans->schemes[saver] = {1, 1};
+        plans->refuse = true;
+        QCOMPARE(lid->hold(), Lid::Failed);
+        QVERIFY(!lid->held());
+        plans->refuse = false;
+        plans->halfOnce = true;
+        QCOMPARE(lid->hold(), Lid::Failed);
+        QVERIFY(!lid->held());
+        QCOMPARE(plans->schemes[saver], (LidActions {1, 1}));
+        QVERIFY(!QFileInfo::exists(record));
+        // Set by a group policy: left alone.
+        plans->policy = true;
+        QCOMPARE(lid->hold(), Lid::ByPolicy);
+        QVERIFY(!lid->held());
+        plans->policy = false;
+        // Held as it goes: let go.
+        QCOMPARE(lid->hold(), Lid::Held);
+        QCOMPARE(plans->schemes[saver], (LidActions {0, 0}));
+    }
+    QCOMPARE(plans->schemes[saver], (LidActions {1, 1}));
+    QVERIFY(!QFileInfo::exists(record));
+
+    // No lid (a desktop): nothing to hold.
+    plans->lid = false;
+    const std::unique_ptr<LidOverride> lid = lidOver(plans, record);
+    QVERIFY(!lid->lidPresent());
+    QCOMPARE(lid->hold(), Lid::NoLid);
+    QVERIFY(!lid->held());
+    QCOMPARE(plans->schemes[saver], (LidActions {1, 1}));
+}
+
+// Win顺 ended while it held the lid (a crash, the power cut): the next start
+// puts it back from the record.
+void SwitchesTest::lidAfterACrash()
+{
+    QTemporaryDir dir;
+    const QString record = dir.filePath(u"plugin-data/lid-close.json"_s); // made when first needed
+    const QString left = dir.filePath(u"left.json"_s);
+    const QUuid scheme = QUuid::createUuid();
+    auto plans = std::make_shared<FakePlans::Data>();
+    plans->schemes = {{scheme, {1, 3}}};
+    plans->active = scheme;
+    // What a crash leaves: the actions set to nothing, and the record.
+    const auto crash = [&] {
+        const std::unique_ptr<LidOverride> lid = lidOver(plans, record);
+        QCOMPARE(lid->hold(), LidOverride::Outcome::Held);
+        QVERIFY(QFile::copy(record, left));
+        lid->release();
+        plans->schemes[scheme] = {0, 0};
+        QVERIFY(QFile::rename(left, record));
+    };
+
+    crash();
+    plans->active = QUuid::createUuid(); // another plan chosen since: put back all the same
+    lidOver(plans, record);
+    QCOMPARE(plans->schemes[scheme], (LidActions {1, 3}));
+    QVERIFY(!QFileInfo::exists(record));
+
+    // Changed by the user before the next start: theirs stays.
+    plans->active = scheme;
+    crash();
+    plans->schemes[scheme].ac = 2;
+    lidOver(plans, record);
+    QCOMPARE(plans->schemes[scheme], (LidActions {2, 3}));
+    QVERIFY(!QFileInfo::exists(record));
+
+    // Not written yet: the record stays, for the start after.
+    plans->schemes[scheme] = {1, 3};
+    crash();
+    plans->refuse = true;
+    lidOver(plans, record);
+    QVERIFY(QFileInfo::exists(record));
+    plans->refuse = false;
+    lidOver(plans, record);
+    QCOMPARE(plans->schemes[scheme], (LidActions {1, 3}));
+    QVERIFY(!QFileInfo::exists(record));
+
+    // A record Win顺 did not write (or not whole) is dropped; nothing changes.
+    const QString id = scheme.toString(QUuid::WithoutBraces);
+    for (const QString& bad : {u"{\"scheme\": \"x\", \"ac\": 1}"_s, u"not json"_s,
+             u"{\"scheme\": \"%1\", \"ac\": 7}"_s.arg(id), u"{\"scheme\": \"%1\"}"_s.arg(id)}) {
+        plans->schemes[scheme] = {0, 0};
+        QFile file(record);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write(bad.toUtf8());
+        file.close();
+        lidOver(plans, record);
+        QCOMPARE(plans->schemes[scheme], (LidActions {0, 0}));
+        QVERIFY(!QFileInfo::exists(record));
+    }
+}
+
+// Keep awake with the plugin's setting: the lid held with it, let go with it.
+void SwitchesTest::keepAwakeHoldsTheLid()
+{
+    const QJsonObject lidOn {{SwitchKeepAwake::kLidSetting.toString(), true}};
+    const QJsonObject lidOff {{SwitchKeepAwake::kLidSetting.toString(), false}};
+    FakeClock clock;
+    QTemporaryDir dir;
+    const QUuid balanced = QUuid::createUuid();
+    const QUuid saver = QUuid::createUuid();
+    auto plans = std::make_shared<FakePlans::Data>();
+    plans->schemes = {{balanced, {1, 1}}, {saver, {2, 2}}};
+    plans->active = balanced;
+    SwitchKeepAwake awake(clock.clock(), lidOver(plans, dir.filePath(u"lid-close.json"_s)));
+    std::vector<QString> told;
+    awake.watch([&told](const QString& id) { told.push_back(id); });
+    QCOMPARE(awake.read(kAwake).note, u"电脑不睡眠、屏幕不关；合盖仍会睡眠"_s);
+
+    // Setting off: the lid is left alone.
+    QVERIFY(awake.write(kAwake, intent(Kind::On)).wrote);
+    QVERIFY(!awake.lidHeld());
+    QCOMPARE(plans->schemes[balanced], (LidActions {1, 1}));
+    // Turned on while kept awake: held at once, and Switches is told.
+    awake.configure(lidOn);
+    QVERIFY(awake.lidHeld());
+    QCOMPARE(plans->schemes[balanced], (LidActions {0, 0}));
+    QCOMPARE(told, (std::vector<QString> {kAwake}));
+    awake.configure(lidOn); // the same again: nothing
+    QCOMPARE(told.size(), std::size_t {1});
+    // Ended: both let go.
+    QVERIFY(awake.write(kAwake, intent(Kind::Off)).wrote);
+    QVERIFY(!awake.lidHeld());
+    QCOMPARE(plans->schemes[balanced], (LidActions {1, 1}));
+    QCOMPARE(awake.read(kAwake).note, u"电脑不睡眠、屏幕不关，合盖也不睡眠"_s);
+
+    // Kept awake for a while: held with it, let go when its time comes.
+    SwitchWrite w = awake.write(kAwake, intent(Kind::AwakeFor, 5));
+    QVERIFY(w.ok);
+    QVERIFY(w.after.error.isEmpty());
+    QVERIFY(awake.lidHeld());
+    clock.advance(5);
+    QCOMPARE(awake.read(kAwake).on, Value::Off);
+    QVERIFY(!awake.lidHeld());
+    QCOMPARE(plans->schemes[balanced], (LidActions {1, 1}));
+
+    // Another plan made active while held: the next read follows it.
+    QVERIFY(awake.write(kAwake, intent(Kind::On)).wrote);
+    plans->active = saver;
+    QCOMPARE(awake.read(kAwake).on, Value::On);
+    QCOMPARE(plans->schemes[balanced], (LidActions {1, 1}));
+    QCOMPARE(plans->schemes[saver], (LidActions {0, 0}));
+    // Turned off while kept awake: let go at once; kept awake all the same.
+    awake.configure(lidOff);
+    QVERIFY(!awake.lidHeld());
+    QVERIFY(awake.held());
+    QCOMPARE(plans->schemes[saver], (LidActions {2, 2}));
+    QCOMPARE(told.size(), std::size_t {2});
+
+    // Set by a group policy, or refused: kept awake, and the row says why
+    // the lid still sleeps (in red); asked again once it may, held.
+    plans->policy = true;
+    awake.configure(lidOn);
+    SwitchState state = awake.read(kAwake);
+    QCOMPARE(state.on, Value::On);
+    QCOMPARE(state.error, u"合盖仍会睡眠：合盖的动作由管理员统一设定"_s);
+    plans->policy = false;
+    plans->refuse = true;
+    w = awake.write(kAwake, intent(Kind::AwakeFor, 30));
+    QVERIFY(w.ok);
+    QCOMPARE(w.after.error, u"合盖仍会睡眠：Windows 没让改合盖的动作"_s);
+    plans->refuse = false;
+    w = awake.write(kAwake, intent(Kind::On));
+    QVERIFY(w.after.error.isEmpty());
+    QVERIFY(awake.lidHeld());
+    QCOMPARE(plans->schemes[saver], (LidActions {0, 0}));
+
+    // Win顺 exits: both let go.
+    awake.close();
+    QVERIFY(!awake.held());
+    QVERIFY(!awake.lidHeld());
+    QCOMPARE(plans->schemes[saver], (LidActions {2, 2}));
+
+    // No lid: the note does not speak of one, and nothing is held.
+    plans->lid = false;
+    SwitchKeepAwake desktop(clock.clock(), lidOver(plans, {}));
+    desktop.configure(lidOn);
+    QCOMPARE(desktop.read(kAwake).note, u"电脑不睡眠、屏幕不关"_s);
+    w = desktop.write(kAwake, intent(Kind::On));
+    QVERIFY(w.ok);
+    QVERIFY(w.after.error.isEmpty());
+    QVERIFY(!desktop.lidHeld());
+    desktop.close();
+}
+
+// Windows' own power plans: read and written on a copy of the active plan,
+// made for the test and deleted after it; the active plan is only read.
+void SwitchesTest::lidOnWindowsPlans()
+{
+    const std::unique_ptr<PowerPlans> plans = PowerPlans::system();
+    const QUuid active = plans->active();
+    QVERIFY(!active.isNull());
+    const std::optional<LidActions> was = plans->lid(active);
+    QVERIFY(was);
+    const GUID source = active;
+    GUID* made = nullptr;
+    QCOMPARE(::PowerDuplicateScheme(nullptr, &source, &made), DWORD(ERROR_SUCCESS));
+    const QUuid copy(*made);
+    ::LocalFree(made);
+    const auto remove = qScopeGuard([&copy] {
+        const GUID id = copy;
+        ::PowerDeleteScheme(nullptr, &id);
+    });
+    QCOMPARE(*plans->lid(copy), *was);
+    const LidActions other {was->ac == 2 ? 3u : 2u, was->dc == 3 ? 2u : 3u};
+    QVERIFY(plans->setLid(copy, other));
+    QCOMPARE(*plans->lid(copy), other);
+    QCOMPARE(plans->active(), active); // not made active
+    QCOMPARE(*plans->lid(active), *was);
+    QVERIFY(!plans->lid(QUuid::createUuid())); // no such plan
 }
 
 } // namespace ws

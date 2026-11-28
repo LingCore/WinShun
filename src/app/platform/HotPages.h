@@ -103,6 +103,11 @@ public:
     // limits above allow; never given back, that was Win顺's memory at rest
     // (GitHub #459).
     static constexpr std::size_t kKeptBytes = std::size_t {64} << 20;
+    // The same while Windows is short of memory (IdleTrim::Keep::ShortOfMemory):
+    // the long runs given back then do not wait in memory for their few large
+    // reads, other programs take them, and the reads are from a disk that is
+    // busy for those.
+    static constexpr std::size_t kKeptBytesShort = 2 * kKeptBytes;
 
     // What stays while the memory is given back: these windows' pages
     // together, and of more than kKeptBytes the scattered ones, which cost a

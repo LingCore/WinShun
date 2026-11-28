@@ -19,6 +19,9 @@ public:
     Service(SwitchBackends backends, Protocol& protocol);
     ~Service() override;
     void request(const QJsonValue& id, const QString& method, const QJsonObject& params);
+    // The plugin's settings, from initialize and each settingsChanged: handed
+    // to every backend on the switch thread (SwitchBackend::configure).
+    void configure(const QJsonObject& settings);
     void shutdown();
 
 private:
@@ -30,6 +33,7 @@ private:
     QSet<QString> m_changed;
     QTimer m_notify;
     HWND m_window = nullptr;
+    HPOWERNOTIFY m_schemeNotify = nullptr; // another power plan made active
     bool m_accepting = true;
     std::unique_ptr<ComWorker> m_worker;
 };

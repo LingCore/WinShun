@@ -10,7 +10,7 @@ target_link_options(WinShunDevTools PRIVATE /ENTRY:wmainCRTStartup)
 set_target_properties(WinShunDevTools PROPERTIES AUTOMOC OFF MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 set(devtools_qml)
-foreach(name IN ITEMS Theme Hook UiScale WindowEdge HoverTip DropMenu Glyph TitleBar FlatButton Caret
+foreach(name IN ITEMS Theme Hook UiScale WindowEdge HoverTip DropMenu Glyph GlyphFont TitleBar FlatButton FocusRing Caret
     ListScrollBar ListWheelScroll ScrollPixelAlignment)
     list(APPEND devtools_qml "${app_dir}/qml/${name}.qml")
 endforeach()

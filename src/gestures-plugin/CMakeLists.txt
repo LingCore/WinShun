@@ -38,9 +38,9 @@ set(editor_dir ${CMAKE_CURRENT_SOURCE_DIR}/editor)
 # The common controls of Win顺's own module (src/app/qml), as the capture's
 # window has them (src/capture-plugin/CMakeLists.txt), and the window's own.
 set(editor_shared_qml
-    Theme.qml Hook.qml UiScale.qml WindowEdge.qml HoverTip.qml DropMenu.qml Glyph.qml TitleBar.qml ToggleSwitch.qml FlatButton.qml
+    Theme.qml Hook.qml UiScale.qml WindowEdge.qml HoverTip.qml DropMenu.qml Glyph.qml GlyphFont.qml TitleBar.qml ToggleSwitch.qml ToggleGlow.qml FlatButton.qml FocusRing.qml
     InputBox.qml Caret.qml CenteredNumber.qml KeyCap.qml HotkeyRecorder.qml ListScrollBar.qml ListWheelScroll.qml
-    ScrollPixelAlignment.qml SettingsSection.qml SettingRow.qml PageTabs.qml ScopeTabs.qml Chip.qml SettingTextArea.qml)
+    ScrollPixelAlignment.qml SettingsSection.qml SettingRow.qml SettingRowMarks.qml SettingRowTip.qml PageTabs.qml ScopeTabs.qml Chip.qml SettingTextArea.qml)
 set(editor_qml)
 foreach(name IN LISTS editor_shared_qml)
     list(APPEND editor_qml "${app_dir}/qml/${name}")

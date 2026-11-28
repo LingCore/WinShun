@@ -224,6 +224,9 @@ struct SearchResult {
     // plugin's rows (0–100, the same scale) can take their place among them.
     int score = 0;
     bool elevatable = false; // can run as administrator
+    // An app that runs something else through its program (AppInfo::hosted:
+    // a developer prompt is cmd /k vcvars64.bat, not the Command Prompt).
+    bool hosted = false;
     // The program it starts, or a packaged app's install folder; may be
     // empty. A place's command ("ms-settings:display").
     QString target;

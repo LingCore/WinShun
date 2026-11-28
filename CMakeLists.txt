@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(WinShun
-    VERSION 0.51.0
+    VERSION 0.52.0
     DESCRIPTION "Fast file, folder and text-content search launcher for Windows"
     LANGUAGES C CXX) # C: miniz
 
@@ -232,7 +232,8 @@ qt_add_executable(wsbench tools/wsbench.cpp src/app/Settings.cpp
     src/app/SiteIconImage.cpp src/app/SvgIcon.cpp src/app/platform/Http.cpp src/app/platform/SiteIcons.cpp # --site-icon, --suggest
     src/app/platform/RegistryWatch.cpp src/app/platform/SettingBroadcast.cpp src/switches-plugin/platform/SwitchAudio.cpp
     src/switches-plugin/platform/SwitchExplorer.cpp src/switches-plugin/platform/SwitchKeepAwake.cpp src/switches-plugin/platform/SwitchRadios.cpp
-    src/switches-plugin/platform/SwitchTheme.cpp src/switches-plugin/platform/SystemSwitches.cpp # --switches
+    src/switches-plugin/platform/SwitchTheme.cpp src/switches-plugin/platform/SystemSwitches.cpp
+    src/switches-plugin/platform/LidOverride.cpp # --switches
     src/app/platform/PaddleOcr.cpp src/app/platform/OcrTable.cpp src/app/platform/OcrFiles.cpp) # --ocr
 target_include_directories(wsbench PRIVATE src/app src/app/platform ${PROJECT_SOURCE_DIR}/src/switches-plugin) # Settings: the user's crawl rules for --sync
 target_link_libraries(wsbench PRIVATE wscore wsextract wsmcp wsplugin wscapture Qt6::Gui Qt6::Svg psapi winhttp advapi32 wsonnx

@@ -127,6 +127,7 @@ qt_add_executable(WinShun WIN32
     BackgroundStatus.cpp BackgroundStatus.h
     HealthMonitor.cpp HealthMonitor.h
     platform/AllocationTrace.cpp platform/AllocationTrace.h
+    platform/MemoryCensus.cpp platform/MemoryCensus.h
     platform/ProcessUsage.cpp platform/ProcessUsage.h
     platform/InputMode.cpp platform/InputMode.h
     platform/Integrity.cpp platform/Integrity.h
@@ -246,6 +247,11 @@ set(qml_files
     qml/Footer.qml
     qml/KeyHint.qml
     qml/Glyph.qml
+    qml/GlyphFont.qml
+    qml/FocusRing.qml
+    qml/ToggleGlow.qml
+    qml/SettingRowMarks.qml
+    qml/SettingRowTip.qml
     qml/SettingsWindow.qml
     qml/OnboardingRail.qml
     qml/OnboardingWindow.qml

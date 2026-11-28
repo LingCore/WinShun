@@ -3,7 +3,7 @@
 set(app_dir "${PROJECT_SOURCE_DIR}/src/app")
 set(core_dir "${PROJECT_SOURCE_DIR}/src/core")
 set(native_sources)
-foreach(name IN ITEMS SwitchAudio SwitchExplorer SwitchKeepAwake SwitchRadios SwitchTheme SystemSwitches)
+foreach(name IN ITEMS LidOverride SwitchAudio SwitchExplorer SwitchKeepAwake SwitchRadios SwitchTheme SystemSwitches)
     list(APPEND native_sources "platform/${name}.cpp" "platform/${name}.h")
 endforeach()
 qt_add_library(wsswitch_native STATIC ${native_sources}

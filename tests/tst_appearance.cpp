@@ -53,6 +53,15 @@ QUrl qmlFolder()
     return folder;
 }
 
+// What the system icon font draws of a Glyph (GlyphFont.qml, made by the
+// Glyph where PhosphorGlyph.fontDrawn); empty when there is no such part, or
+// the font has no such glyph.
+QString fontShown(const QObject* glyph)
+{
+    const auto* part = glyph->property("fontPart").value<QQuickItem*>();
+    return part ? part->property("shown").toString() : QString();
+}
+
 // CIE76 ΔE between two colours (sRGB, D65): ~2 is just seen side by side,
 // ~10 is a step anyone sees across a room on a poor screen.
 double deltaE(const QColor& a, const QColor& b)
@@ -971,10 +980,12 @@ private slots:
         QVERIFY(!phosphor::forSegoe(minimize));
         std::unique_ptr<QObject> shown(glyph.createWithInitialProperties({{u"glyph"_s, minimize}}));
         QVERIFY2(shown, qPrintable(glyph.errorString()));
-        QCOMPARE(shown->property("shown").toString(), minimize);
+        QVERIFY(shown->property("fontDrawn").toBool()); // the system font's part, made for this icon
+        QCOMPARE(fontShown(shown.get()), minimize);
         std::unique_ptr<QObject> lacking(glyph.createWithInitialProperties({{u"glyph"_s, QString(QChar(0xE000))}, {u"size"_s, 20}}));
         QVERIFY2(lacking, qPrintable(glyph.errorString()));
-        QCOMPARE(lacking->property("shown").toString(), QString());
+        QVERIFY(lacking->property("fontDrawn").toBool());
+        QCOMPARE(fontShown(lacking.get()), QString());
         QCOMPARE(lacking->property("implicitWidth").toReal(), 20.0);
         QCOMPARE(lacking->property("implicitHeight").toReal(), 20.0);
     }
@@ -1022,25 +1033,24 @@ private slots:
         const QString view(QChar(0xE890));
         std::unique_ptr<QObject> eye(glyph.createWithInitialProperties({{u"glyph"_s, view}, {u"size"_s, 20}, {u"overlay"_s, QString(QChar(0xE718))}}));
         QVERIFY2(eye, qPrintable(glyph.errorString()));
-        QCOMPARE(eye->property("shown").toString(), phosphor::forSegoe(view)->text);
         QCOMPARE(eye->property("implicitWidth").toReal(), 20.0);
         QCOMPARE(eye->property("implicitHeight").toReal(), 20.0);
-        int drawn = 0;
-        for (const QQuickItem* item : eye->findChildren<QQuickItem*>()) {
-            if (!item->isVisible() || item->property("text").toString().isEmpty())
-                continue;
-            ++drawn;
-            const auto* outline = qobject_cast<const PhosphorGlyph*>(item); // not text: see PhosphorGlyph.h
-            QVERIFY2(outline, item->metaObject()->className());
-            QCOMPARE(outline->family(), regular.familyName());
-            QCOMPARE(outline->em(), 20.0); // the container is the em, whatever the font DPI
-        }
-        QCOMPARE(drawn, 1);
+        // The icon is the item itself, an outline (not text: see PhosphorGlyph.h),
+        // with nothing made beside it: no Text, no Loader, no part for the system font.
+        const auto* eyeItem = qobject_cast<const PhosphorGlyph*>(eye.get());
+        QVERIFY2(eyeItem, eye->metaObject()->className());
+        QCOMPARE(eyeItem->text(), phosphor::forSegoe(view)->text);
+        QCOMPARE(eyeItem->family(), regular.familyName());
+        QCOMPARE(eyeItem->em(), 20.0); // the container is the em, whatever the font DPI
+        QVERIFY(!eyeItem->fontDrawn());
+        QVERIFY(eyeItem->childItems().isEmpty());
+        QVERIFY(eye->findChildren<QObject*>().isEmpty());
         // A caption button keeps Windows' own close glyph.
         const QString close(QChar(0xE8BB));
         std::unique_ptr<QObject> caption(glyph.createWithInitialProperties({{u"glyph"_s, close}, {u"caption"_s, true}}));
         QVERIFY2(caption, qPrintable(glyph.errorString()));
-        QCOMPARE(caption->property("shown").toString(), close);
+        QVERIFY(qobject_cast<const PhosphorGlyph*>(caption.get())->text().isEmpty());
+        QCOMPARE(fontShown(caption.get()), close);
 
         // Both families are what Qt picks by those names, and drawn: the
         // pinned pin (Fill) has much more ink than the outlined one.
@@ -1130,11 +1140,12 @@ private slots:
         QQmlComponent glyph(&engine, folder.resolved(QUrl(u"Glyph.qml"_s)));
         std::unique_ptr<QObject> byName(glyph.createWithInitialProperties({{u"iconName"_s, u"heart"_s}, {u"size"_s, 20}}));
         QVERIFY2(byName, qPrintable(glyph.errorString()));
-        QCOMPARE(byName->property("shown").toString(), heart->text);
+        QCOMPARE(qobject_cast<const PhosphorGlyph*>(byName.get())->text(), heart->text);
         std::unique_ptr<QObject> unknown(glyph.createWithInitialProperties({{u"iconName"_s, u"no-such-icon"_s}, {u"size"_s, 20}}));
         QVERIFY2(unknown, qPrintable(glyph.errorString()));
-        QCOMPARE(unknown->property("shown").toString(), QString());
-        QCOMPARE(unknown->property("missing").toBool(), true);
+        QCOMPARE(qobject_cast<const PhosphorGlyph*>(unknown.get())->text(), QString());
+        QVERIFY(!unknown->property("fontDrawn").toBool()); // nor the system font's
+        QVERIFY(!unknown->property("fontPart").value<QQuickItem*>());
         QCOMPARE(unknown->property("implicitWidth").toReal(), 20.0);
     }
 

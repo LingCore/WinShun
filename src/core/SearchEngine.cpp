@@ -458,6 +458,7 @@ SearchResult fromApp(const AppInfo& app, bool recent, int otherName = -1)
     r.path = app.launchPath();
     r.app = app.kind;
     r.elevatable = app.elevatable;
+    r.hosted = app.hosted;
     r.target = app.target;
     r.recent = recent;
     return r;
@@ -1237,13 +1238,32 @@ SearchResults favoriteRows(const QList<const Favorite*>& favorites, const AppLis
     return out;
 }
 
+// Whether the words are read as anywhere: nothing typed in a folder's window,
+// or typed in Win顺's own box beside one with its rows first (Request::ownBox).
+bool wordsAsAnywhere(const SearchEngine::Request& request)
+{
+    return request.currentFolder.isEmpty()
+        || (request.ownBox && !request.currentFolderOnly && !request.currentFolderLevel);
+}
+
+// What was chosen before puts a row first; one only guessed (`guesses`: fuzzy
+// always on, the letters found in order and no more) by having been chosen
+// for this text or one like it, not by how much it is used: System Informer,
+// opened daily, is not what "tim" asks for.
+bool learnedFor(const History::Affinity& affinity, const SearchResult& r, bool guesses) noexcept
+{
+    return affinity.learned() && (!guesses || !r.fuzzy || affinity.group < 3);
+}
+
 // Favorites among the matches: marked; one whose keyword is all that was
 // typed on top (below a web shortcut's typed keyword); with `promote`, the
 // first few that match (in their order) put first, those the index does not
 // hold (a folder left out of it) looked for on disk; with `types` (a type
-// chosen), only files of it. Adds to `total` what it adds.
+// chosen), only files of it. With `guesses`, `typed` is the matcher that
+// does not guess: a favorite only guessed is marked and stays where it is.
+// Adds to `total` what it adds.
 void promoteFavorites(SearchResults& results, qint64& total, const SearchEngine::Request& request,
-    const NameMatcher& matcher, bool promote, bool learnedFirst, const AppList& apps, const PlaceList& places, RecentOnDisk& onDisk,
+    const NameMatcher& matcher, const NameMatcher& typed, bool guesses, bool promote, bool learnedFirst, const AppList& apps, const PlaceList& places, RecentOnDisk& onDisk,
     const IndexService* index, const std::vector<std::string>& types)
 {
     const FavoriteList& favorites = request.favorites;
@@ -1262,7 +1282,7 @@ void promoteFavorites(SearchResults& results, qint64& total, const SearchEngine:
     QList<const Favorite*> wanted;
     // Typed in a folder's window (GitHub #110), the words are looked for in
     // it, never a keyword: they need not end in a space there.
-    const bool keywords = request.currentFolder.isEmpty() && request.typeFolders.isEmpty();
+    const bool keywords = wordsAsAnywhere(request) && request.typeFolders.isEmpty();
     const qsizetype command = !request.commandPath.isEmpty() ? indexOfFavorite(favorites, request.commandPath)
         : keywords ? typedCommandKeyword(favorites, request.text) : -1;
     const qsizetype keyword = command >= 0 ? command : keywords ? typedFavoriteKeyword(favorites, request.text) : -1;
@@ -1272,19 +1292,21 @@ void promoteFavorites(SearchResults& results, qint64& total, const SearchEngine:
     // A keyword being typed ("cm" of "cmda", GitHub #313) finds its favorite
     // as its name does: what was opened so then comes first the next time
     // (learnedFirst), the keyword not typed out again.
-    const QStringView typed = QStringView(request.text).trimmed();
+    const QStringView text = QStringView(request.text).trimmed();
     const auto keywordStarts = [&](const Favorite& f) {
-        return keywords && !request.regex && !typed.isEmpty() && f.keyword.size() > typed.size()
-            && f.keyword.startsWith(typed, Qt::CaseInsensitive);
+        return keywords && !request.regex && !text.isEmpty() && f.keyword.size() > text.size()
+            && f.keyword.startsWith(text, Qt::CaseInsensitive);
     };
+    const auto typedName = [&](const QString& name) { return typed.matchName(wtf8::fromUtf16(wtf8::view(name))) >= 0; };
     for (qsizetype i = 0; promote && i < favorites.size() && wanted.size() < kFavoritesPromoted + (keyed ? 1 : 0); ++i) {
         const Favorite& f = favorites[i];
         if (i == keyword || !favoriteShown(request.scope, f, types))
             continue;
-        const bool found = std::any_of(results.cbegin(), results.cend(),
-            [&](const SearchResult& r) { return r.favorite && pathtext::samePath(r.path, f.path); });
-        if (found || nameMatches(f.name) || keywordStarts(f)
-            || (f.isFileOrFolder() && matcher.matchPath(f.path, f.kind == Favorite::Kind::Folder) >= 0)) {
+        const bool found = std::any_of(results.cbegin(), results.cend(), [&](const SearchResult& r) {
+            return r.favorite && !(guesses && r.fuzzy) && pathtext::samePath(r.path, f.path);
+        });
+        if (found || typedName(f.name) || keywordStarts(f)
+            || (f.isFileOrFolder() && typed.matchPath(f.path, f.kind == Favorite::Kind::Folder) >= 0)) {
             wanted.push_back(&f);
         }
     }
@@ -1342,8 +1364,8 @@ void promoteFavorites(SearchResults& results, qint64& total, const SearchEngine:
             const auto aa = History::affinity(request.historyAffinity, a.path);
             const auto ba = History::affinity(request.historyAffinity, b.path);
             // Guessed switches must keep their conservative placement.
-            const bool aLearned = aa.learned() && (a.switchId.isEmpty() || a.recent);
-            const bool bLearned = ba.learned() && (b.switchId.isEmpty() || b.recent);
+            const bool aLearned = learnedFor(aa, a, guesses) && (a.switchId.isEmpty() || a.recent);
+            const bool bLearned = learnedFor(ba, b, guesses) && (b.switchId.isEmpty() || b.recent);
             if (aLearned != bLearned)
                 return aLearned;
             if (!aLearned)
@@ -1704,9 +1726,9 @@ void SearchEngine::runNameSearch(const Job& job)
         // A share may be indexed at a subfolder: its UNC prefix is a single
         // root entry, not a chain of ancestor names. Search the words alone
         // and constrain by the folder's identity, as for Explorer typing.
-        const NameMatcher matcher(withTypes(
-            !typedIn && !typedPath.folder.isEmpty() ? parseQuery(typedPath.name) : query, types, searchHidden),
-            autoFuzzyNow);
+        const ParsedQuery named = withTypes(
+            !typedIn && !typedPath.folder.isEmpty() ? parseQuery(typedPath.name) : query, types, searchHidden);
+        const NameMatcher matcher(named, autoFuzzyNow);
         // A path typed from some folder along the way ("tools/out/"); none in regex mode.
         const auto relative = [&] { return request.regex ? pathtext::RelativePath() : pathtext::splitRelative(request.text); };
         EntryFilter filter = request.filter;
@@ -2092,7 +2114,8 @@ void SearchEngine::runNameSearch(const Job& job)
                 top.append(std::move(results));
                 if (rankBy == RankBy::Match && request.order.key == SortKey::Rank && !filtered && !insideFirst) {
                     const auto learned = [&](const SearchResult& r) {
-                        return !guessedActions.contains(r.path) && History::affinity(request.historyAffinity, r.path).learned();
+                        return !guessedActions.contains(r.path)
+                            && learnedFor(History::affinity(request.historyAffinity, r.path), r, autoFuzzyNow);
                     };
                     std::stable_sort(top.begin() + explicitRows, top.end(), [&](const SearchResult& a, const SearchResult& b) {
                         const bool aLearned = learned(a);
@@ -2133,6 +2156,15 @@ void SearchEngine::runNameSearch(const Job& job)
                         std::stable_partition(top.begin() + explicitRows, last.base(),
                             [&](const SearchResult& r) { return !yielding.contains(r.path); });
                     }
+                }
+                // Fuzzy always on: apps come before files, so an app only
+                // guessed (System Informer for "tim") would stand above a
+                // file named as typed. Guesses go after every row that is
+                // not one, in their order; one chosen for this text stays.
+                if (autoFuzzyNow && rankBy == RankBy::Match && request.order.key == SortKey::Rank && !insideFirst) {
+                    std::stable_partition(top.begin() + explicitRows, top.end(), [&](const SearchResult& r) {
+                        return !r.fuzzy || learnedFor(History::affinity(request.historyAffinity, r.path), r, true);
+                    });
                 }
                 if (top.size() > request.limit)
                     top.resize(request.limit);
@@ -2203,20 +2235,23 @@ void SearchEngine::runNameSearch(const Job& job)
         }
 
         // Favorites first, but not before what a typed path leads to, nor
-        // among rows ranked by time (marked there only).
-        const bool promote = rankBy == RankBy::Match && typedPath.folder.isEmpty() && !listing
-            && relative().names.isEmpty();
+        // among rows ranked by time (marked there only). Typed in our own
+        // box beside a folder (ownBox): before its rows, as before any.
+        const bool anywhere = typedIn ? wordsAsAnywhere(request) : typedPath.folder.isEmpty();
+        const bool promote = rankBy == RankBy::Match && anywhere && !listing && relative().names.isEmpty();
         const bool learnedFirst = promote && request.order.key == SortKey::Rank && !filtered && !insideFirst;
-        promoteFavorites(results, total, request, matcher, promote, learnedFirst, *apps, *places, *m_onDisk, m_index, types);
+        // Fuzzy always on: a favorite found by a guess alone is not put first.
+        const std::optional<NameMatcher> asTyped = autoFuzzyNow ? std::optional<NameMatcher>(std::in_place, named) : std::nullopt;
+        promoteFavorites(results, total, request, matcher, asTyped ? *asTyped : matcher, autoFuzzyNow, promote, learnedFirst, *apps, *places, *m_onDisk, m_index, types);
 
         // Nothing at all is named as typed (no file or folder, no app, place
         // or favorite either): the query read aloud, for the names that sound
         // the same (年度报告 for 年度报高), listed under a heading that says
         // so (approximate). Only then: a query that finds anything costs
         // nothing more. Each reading (行: xing, hang) is a search of its own;
-        // an entry found by several keeps its best score.
-        if (results.isEmpty() && typedPath.folder.isEmpty() && relative().names.isEmpty()
-            && !isStale(job.id)) {
+        // an entry found by several keeps its best score. Typed in our own
+        // box beside a folder: what is in it first here too.
+        if (results.isEmpty() && anywhere && relative().names.isEmpty() && !isStale(job.id)) {
             phase = "names that sound the same";
             const auto alikeBegan = Clock::now();
             const auto alikeOnDisk = m_onDisk->waited(); // its recent items: counted with the others
@@ -2234,6 +2269,7 @@ void SearchEngine::runNameSearch(const Job& job)
                     .kindsApart = !request.browse || request.order.key == SortKey::Rank,
                     .filter = filter,
                     .typeFolders = typeFolders,
+                    .insideFirst = insideFirst ? insideFolder : kNoEntry,
                     .order = request.order,
                     .trustedUntil = trustedUntil(),
                     .preferred = preferred};
@@ -2253,7 +2289,9 @@ void SearchEngine::runNameSearch(const Job& job)
                 hits.reserve(best.size());
                 for (const auto& [id, hit] : best)
                     hits.push_back(hit);
-                std::ranges::sort(hits, [rankBy](const NameHit& a, const NameHit& b) {
+                std::ranges::sort(hits, [rankBy, insideFirst](const NameHit& a, const NameHit& b) {
+                    if (insideFirst && a.inside != b.inside)
+                        return a.inside;
                     if (rankBy != RankBy::Match && a.modified != b.modified) {
                         if (a.modified == 0 || b.modified == 0)
                             return b.modified == 0;
@@ -2272,11 +2310,13 @@ void SearchEngine::runNameSearch(const Job& job)
                     for (const NameHit& hit : hits) {
                         SearchResult r = fromIndex(*index, hit.id);
                         r.modified = knownTime(index->modified(hit.id));
+                        r.elsewhere = insideFirst && !hit.inside;
                         results.push_back(std::move(r));
                     }
                 }
                 total = static_cast<qint64>(best.size());
-                arrange(results, request, NameMatcher(withTypes(readings.front(), types, hidden)), rankBy, *m_onDisk, {});
+                arrange(results, request, NameMatcher(withTypes(readings.front(), types, hidden)), rankBy, *m_onDisk,
+                    typedPath.folder);
                 for (SearchResult& r : results)
                     r.approximate = true; // the recent ones arrange() puts first too
             }
@@ -2323,8 +2363,9 @@ void SearchEngine::runNameSearch(const Job& job)
             }
             total = static_cast<qint64>(out.totalMatches);
             arrange(results, request, fuzzyMatcher, rankBy, *m_onDisk, typedPath.folder);
-            promoteFavorites(results, total, request, fuzzyMatcher, promote, learnedFirst, *apps, *places, *m_onDisk,
-                m_index, types);
+            // Every row here is a guess, and said to be: favorites first among them.
+            promoteFavorites(results, total, request, fuzzyMatcher, fuzzyMatcher, false, promote, learnedFirst, *apps, *places,
+                *m_onDisk, m_index, types);
             for (SearchResult& r : results) {
                 r.approximate = true;
                 r.fuzzy = true;

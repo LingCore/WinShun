@@ -83,7 +83,7 @@ int IdleTrim::memoryLoad() noexcept
     return ::GlobalMemoryStatusEx(&memory) ? static_cast<int>(memory.dwMemoryLoad) : -1;
 }
 
-IdleTrim::IdleTrim(std::function<const char*()> busy, std::function<bool()> up, std::function<PageSet()> keep, QObject* parent)
+IdleTrim::IdleTrim(std::function<const char*()> busy, std::function<bool()> up, std::function<PageSet(Keep)> keep, QObject* parent)
     : QObject(parent)
     , m_busy(std::move(busy))
     , m_up(std::move(up))
@@ -136,14 +136,25 @@ bool IdleTrim::inUse() const
     return owner == ::GetCurrentProcessId();
 }
 
+bool IdleTrim::shortAt(int load) const noexcept
+{
+    return load >= (m_short ? kShortOfMemoryLoad - kRoomAgain : kShortOfMemoryLoad);
+}
+
+bool IdleTrim::shortOfMemory() const
+{
+    return shortAt(m_memoryLoad ? m_memoryLoad() : -1);
+}
+
 QJsonObject IdleTrim::status() const
 {
     const char* busy = m_busy ? m_busy() : nullptr;
     const LastTrim last = lastTrim();
+    const int load = m_memoryLoad ? m_memoryLoad() : -1;
     return {
         {u"held_after_resume"_s, m_heldAfterResume},
-        {u"held_short_of_memory"_s, m_heldShortAt >= 0},
-        {u"memory_load"_s, m_memoryLoad ? m_memoryLoad() : -1},
+        {u"short_of_memory"_s, shortAt(load)}, // more stays (Keep::ShortOfMemory); nothing is held back for it
+        {u"memory_load"_s, load},
         {u"waiting_for"_s, busy ? QString::fromLatin1(busy) : QString()},
         {u"window_up"_s, m_up && m_up()}, // the clipboard, a pinned launcher, a dialog's bar
         {u"after_use_ms"_s, m_afterUseMs},
@@ -260,31 +271,27 @@ void IdleTrim::trim()
 {
     if (m_trimming.load(std::memory_order_acquire))
         return;
+    // Windows short of memory: what the next use needs stays as well
+    // (Keep::ShortOfMemory). With room again that goes too, whatever stayed
+    // the last time.
+    const int load = m_memoryLoad ? m_memoryLoad() : -1;
+    const bool isShort = shortAt(load);
+    if (std::exchange(m_short, isShort) && !isShort)
+        m_floor = 0;
     const WorkingSet now = privateWorkingSet();
     if (now.bytes <= m_floor.load() + kTrimAbove)
         return;
-    // Windows short of memory: held, until there is room again (rechecked
-    // as ever). Told once each time it starts holding.
-    const int load = m_memoryLoad ? m_memoryLoad() : -1;
-    if (load >= kShortOfMemoryLoad) {
-        if (m_heldShortAt < 0) {
-            qInfo("Idle trim: held, Windows short of memory (%d%% in use)", load);
-            journal({{u"held"_s, u"short of memory"_s}, {u"memory_load"_s, load},
-                        {now.exact ? u"private_mb"_s : u"working_set_mb"_s, static_cast<qint64>(now.bytes >> 20)}},
-                true);
-        }
-        m_heldShortAt = load;
-        return;
-    }
-    m_heldShortAt = -1;
     const SIZE_T bytes = now.bytes;
-    PageSet keep = m_keep ? m_keep() : PageSet();
+    PageSet keep = m_keep ? m_keep(isShort ? Keep::ShortOfMemory : Keep::Lean) : PageSet();
     const auto megabytes = static_cast<qint64>(bytes / (1024 * 1024));
     const auto keepMb = static_cast<qint64>(keep.bytes() >> 20);
-    qInfo() << "Idle trim:" << megabytes << "MB, keeping" << keepMb << "MB";
+    qInfo().nospace() << "Idle trim: " << megabytes << " MB, keeping " << keepMb << " MB"
+                      << (isShort ? " (Windows short of memory: what the next use needs stays)" : "");
     QJsonObject details {{now.exact ? u"private_mb"_s : u"working_set_mb"_s, megabytes}};
     if (load >= 0)
         details.insert(u"memory_load"_s, load);
+    if (isShort)
+        details.insert(u"short_of_memory"_s, true);
     if (!keep.empty())
         details.insert(u"keep_mb"_s, keepMb);
     // ~10 ms per 100 MB: not on the GUI thread, so a hotkey pressed

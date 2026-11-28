@@ -6,6 +6,7 @@
 
 #include <QEvent>
 #include <QFont>
+#include <QFontMetricsF>
 #include <QGuiApplication>
 #include <QOperatingSystemVersion>
 #include <QPalette>
@@ -42,14 +43,6 @@ QString SystemTheme::iconFontName()
 qreal SystemTheme::iconScale()
 {
     return phosphor::kScale;
-}
-
-QVariant SystemTheme::phosphorIcon(const QString& spec) const
-{
-    const std::optional<phosphor::Icon> icon = phosphor::resolve(spec);
-    if (!icon)
-        return {};
-    return QVariantMap {{u"text"_s, icon->text}, {u"family"_s, icon->family}};
 }
 
 QFont SystemTheme::glyphFont(const QString& family, qreal pointSize, int pixelSize) const
@@ -96,6 +89,15 @@ bool SystemTheme::hasGlyph(const QString& glyph) const
         qWarning("WinShun: the icon font (%s) has no U+%04X; drawn another way, or not at all", qPrintable(m_iconFont),
             glyph.toUcs4().value(0));
     return has;
+}
+
+qreal SystemTheme::textAdvance(const QString& text, int pixelSize) const
+{
+    if (text.isEmpty() || pixelSize <= 0)
+        return 0;
+    QFont font; // the application's, as a Text or a TextMetrics with only font.pixelSize set
+    font.setPixelSize(pixelSize);
+    return QFontMetricsF(font).horizontalAdvance(text);
 }
 
 bool SystemTheme::backdropSystem() const

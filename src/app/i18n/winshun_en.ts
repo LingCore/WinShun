@@ -755,6 +755,14 @@
         <translation>Where the search bar goes</translation>
     </message>
     <message>
+        <source>对话框旁的搜索框只搜当前文件夹</source>
+        <translation>Dialog search bar: current folder only</translation>
+    </message>
+    <message>
+        <source>搜索的范围</source>
+        <translation>Search scope</translation>
+    </message>
+    <message>
         <source>对话框自动转到文件管理器的文件夹</source>
         <translation>File dialogs go to the file manager’s folder by themselves</translation>
     </message>
@@ -2505,12 +2513,12 @@
         <translation>%1 ›</translation>
     </message>
     <message>
-        <source>只搜“%1”里面，按下后搜索整个电脑</source>
-        <translation>Only inside “%1”; press to search the whole PC</translation>
+        <source>只搜“%1”里面，按下后也搜其他位置</source>
+        <translation>Only inside “%1”; press to search elsewhere too</translation>
     </message>
     <message>
-        <source>只搜这个文件夹，Ctrl+Shift+D 搜索整个电脑</source>
-        <translation>Only this folder; Ctrl+Shift+D searches the whole PC</translation>
+        <source>只搜这个文件夹，Ctrl+Shift+D 也搜其他位置</source>
+        <translation>Only this folder; Ctrl+Shift+D searches elsewhere too</translation>
     </message>
 </context>
 <context>
@@ -7256,8 +7264,8 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>File manager for opening folders</translation>
     </message>
     <message>
-        <source>文件管理器;资源管理器;打开文件夹;打开所在位置;Total Commander;Directory Opus;TC;Opus;XYplorer;Pulse;OneCommander;自定义;其他;Tessoa;custom</source>
-        <translation>file manager;explorer;open folder;open file location;Total Commander;Directory Opus;TC;Opus;XYplorer;Pulse;OneCommander;custom;other;Tessoa</translation>
+        <source>文件管理器;资源管理器;文件浏览器;默认文件管理器;打开文件夹;打开所在位置;Total Commander;Directory Opus;TC;Opus;XYplorer;Pulse;OneCommander;Q-Dir;QDir;自定义;其他;Tessoa;custom</source>
+        <translation>file manager;explorer;file browser;default file manager;open folder;open file location;Total Commander;Directory Opus;TC;Opus;XYplorer;Pulse;OneCommander;Q-Dir;QDir;custom;other;Tessoa</translation>
     </message>
     <message>
         <source>Ctrl+G 转到文件管理器的文件夹</source>
@@ -7601,6 +7609,22 @@ Double-click grip: expand/collapse search panel</translation>
     <message>
         <source>打字;当前文件夹;优先;只搜;其他位置;子文件夹;Listary;Ctrl+Shift+D;current folder;type to search</source>
         <translation>typing;current folder;first;only;elsewhere;subfolders;Listary;Ctrl+Shift+D;current folder;type to search</translation>
+    </message>
+    <message>
+        <source>搜索的范围</source>
+        <translation>Search scope</translation>
+    </message>
+    <message>
+        <source>范围;当前文件夹;优先;只搜;其他位置;子文件夹;Ctrl+Shift+D;current folder;scope</source>
+        <translation>scope;current folder;first;only;elsewhere;subfolders;Ctrl+Shift+D;current folder;scope</translation>
+    </message>
+    <message>
+        <source>搜索时可按 Ctrl+Shift+D 切换</source>
+        <translation>Ctrl+Shift+D switches it while searching</translation>
+    </message>
+    <message>
+        <source>当前文件夹优先：先列出对话框所在文件夹及子文件夹里的结果，再列出其他位置的；收藏的仍在最前。只搜当前文件夹：只列那个文件夹及子文件夹里的</source>
+        <translation>Current folder first: what lies in the dialog's folder and its subfolders comes first, then the rest; favorites stay on top. Current folder only: only that folder and its subfolders</translation>
     </message>
     <message>
         <source>当前文件夹优先</source>
@@ -13527,8 +13551,8 @@ Content index: %5</translation>
         <translation>Add its folder to favorites</translation>
     </message>
     <message>
-        <source>搜索整个电脑</source>
-        <translation>Search the whole PC</translation>
+        <source>也搜其他位置</source>
+        <translation>Elsewhere too</translation>
     </message>
     <message>
         <source>只搜“%1”里面</source>
@@ -14265,8 +14289,8 @@ Content index: %5</translation>
         <translation>Last given back: %1, %2 MB</translation>
     </message>
     <message>
-        <source>系统内存已用 %1%，闲着时先不归还，宽裕了再还</source>
-        <translation>%1% of the PC&apos;s memory is in use: idle memory is kept until there is room</translation>
+        <source>系统内存已用 %1%：下次呼出和搜索要用的先留着，其余照常归还</source>
+        <translation>%1% of the PC&apos;s memory is in use: what the next opening and search need stays, the rest is given back as usual</translation>
     </message>
     <message>
         <source>正在建立内容索引</source>
@@ -14821,6 +14845,14 @@ Content index: %5</translation>
     <message>
         <source>在原窗口定位</source>
         <translation>Locate in the original window</translation>
+    </message>
+    <message>
+        <source>在此文件夹打开</source>
+        <translation>Open in this folder</translation>
+    </message>
+    <message>
+        <source>以管理员身份在此文件夹打开</source>
+        <translation>Open in this folder as administrator</translation>
     </message>
     <message>
         <source>正在向插件获取详情…</source>
@@ -16993,6 +17025,30 @@ Content index: %5</translation>
         <translation>Cannot install the index service: %1 could not be confirmed as changeable by administrators only, so the service would not be safe there. Restore its default permissions and try again.</translation>
     </message>
     <message>
+        <source>无法安装索引服务：下面几处普通程序也能改动（正常只有管理员能改），服务放进去不安全：</source>
+        <translation>Cannot install the index service: ordinary programs may change these places (normally only administrators can), so the service would not be safe there:</translation>
+    </message>
+    <message>
+        <source>· %1 的所有者是“%2”，不是管理员</source>
+        <translation>· %1 is owned by “%2”, not by administrators</translation>
+    </message>
+    <message>
+        <source>· “%2”可以修改 %1</source>
+        <translation>· “%2” may change %1</translation>
+    </message>
+    <message>
+        <source>· 不能确认 %1 只有管理员能改</source>
+        <translation>· %1 could not be confirmed as changeable by administrators only</translation>
+    </message>
+    <message>
+        <source>复制下面的命令，在“命令提示符（管理员）”里一次运行完，再点一次安装；原来能读取和运行的，仍然可以。</source>
+        <translation>Copy the commands below, run them all in Command Prompt (Admin), then choose Install again. Whoever could read and run things there still can.</translation>
+    </message>
+    <message>
+        <source>不能确认的那几处，请恢复它们的默认权限后再试。</source>
+        <translation>For the places that could not be confirmed, restore their default permissions and try again.</translation>
+    </message>
+    <message>
         <source>这个快捷键已用来打开结果，请换一个</source>
         <translation>This shortcut already opens results; choose another</translation>
     </message>
@@ -18039,6 +18095,22 @@ Content index: %5</translation>
     <message>
         <source>电脑不睡眠、屏幕不关；合盖仍会睡眠</source>
         <translation>The PC stays awake and the screen stays on; closing the lid still sleeps</translation>
+    </message>
+    <message>
+        <source>电脑不睡眠、屏幕不关</source>
+        <translation>The PC stays awake and the screen stays on</translation>
+    </message>
+    <message>
+        <source>电脑不睡眠、屏幕不关，合盖也不睡眠</source>
+        <translation>The PC stays awake and the screen stays on, with the lid closed too</translation>
+    </message>
+    <message>
+        <source>合盖仍会睡眠：合盖的动作由管理员统一设定</source>
+        <translation>Closing the lid still sleeps: an administrator sets what the lid does</translation>
+    </message>
+    <message>
+        <source>合盖仍会睡眠：Windows 没让改合盖的动作</source>
+        <translation>Closing the lid still sleeps: Windows did not let the lid's action be changed</translation>
     </message>
     <message>
         <source>没能保持唤醒：Windows 没有接受请求</source>

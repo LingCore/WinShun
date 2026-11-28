@@ -126,12 +126,54 @@ Item {
 
     // Draws the eye to the row once it has been gone to.
     function flash() {
-        if (SystemTheme.animations) {
-            flashAnimation.restart()
-        } else {
-            flashMark.opacity = 0.14
-            flashTimer.restart()
-        }
+        const made = needMarks()
+        if (made)
+            made.flash()
+    }
+
+    // The parts few rows ever show, made the first time one is needed and
+    // then kept; by their files' names, as an inline Component would be one
+    // more object in every row (see Glyph.qml).
+    //   marks: the search's highlight and the flash (SettingRowMarks)
+    //   tipBadge: the "i" after the title of a row with a tip (SettingRowTip)
+    //   unlockedLine: what the search found among the rows this one keeps away
+    // What makes one must not read `dpr` (nor anything else that asks the
+    // section) from a handler that runs while the row is being made, `tip`
+    // set where the row is declared, say: the row has no parent yet then, so
+    // no section, and its `dpr` would be worked out from Screen, one attached
+    // object per row (docs/pitfalls: QQuickScreenAttached).
+    property Item marks: null
+    property Item tipBadge: null
+    property Item unlockedLine: null
+    function madePart(file: string, parent: Item, properties: var): Item {
+        const part = Qt.createComponent(file)
+        const made = part.createObject(parent, properties) as Item
+        if (!made)
+            console.warn("SettingRow:", file, "could not be made:", part.errorString())
+        return made
+    }
+    function needMarks(): Item {
+        if (!marks)
+            marks = madePart("SettingRowMarks.qml", row, { row: row })
+        return marks
+    }
+    onTipChanged: {
+        if (tip.length > 0 && !tipBadge)
+            tipBadge = madePart("SettingRowTip.qml", titleRow, { row: row, title: titleText })
+    }
+    onUnlockedChanged: {
+        if (unlocked.length === 0 || unlockedLine)
+            return
+        const line = Qt.createComponent("QtQuick", "Text").createObject(texts, {
+            width: Qt.binding(() => texts.width),
+            visible: Qt.binding(() => row.unlocked.length > 0),
+            text: Qt.binding(() => qsTr("打开后可以设置：%1").arg(row.unlocked.join(qsTr("、")))),
+            color: Qt.binding(() => Theme.accent),
+            wrapMode: Text.Wrap
+        })
+        if (line)
+            line.font.pixelSize = Qt.binding(() => Theme.fontCaption)
+        unlockedLine = line as Item
     }
 
     onScoreChanged: if (search) search.report(row, section, section.page, score)
@@ -161,20 +203,13 @@ Item {
     readonly property bool hovered: rowHover.hovered // for controls shown only then
 
     // The option Enter goes to while searching: the style's highlight
-    // (Theme.rowHighlight), made on the first need only. Not under the
-    // pointer: a row is no button, only the controls on it are.
+    // (Theme.rowHighlight), made on the first need only (marks).
     readonly property bool current: searching && search.current === row
-    Hook {
-        anchors.fill: parent
-        anchors.margins: row.edge
-        part: row.current ? Theme.rowHighlight : null
-        selected: row.current
-        role: "panel"
-        dpr: row.dpr
-    }
+    onCurrentChanged: if (current) needMarks()
 
     Rectangle {
         visible: row.sub
+        z: 1 // over the marks, as the content is
         x: 20
         y: Theme.snap(8, row.dpr)
         width: 2
@@ -183,31 +218,9 @@ Item {
         color: Theme.tok("subRowBar", Qt.alpha(Theme.accent, Theme.dark ? 0.40 : 0.32)) // a style may keep it neutral
     }
 
-    Rectangle { // see flash()
-        id: flashMark
-        anchors.fill: parent
-        anchors.margins: row.edge
-        radius: Theme.insetCardRadius
-        color: Theme.accent
-        opacity: 0
-        visible: opacity > 0
-
-        SequentialAnimation {
-            id: flashAnimation
-            NumberAnimation { target: flashMark; property: "opacity"; to: 0.16; duration: 160; easing.type: Easing.OutQuad }
-            NumberAnimation { target: flashMark; property: "opacity"; to: 0.04; duration: 360; easing.type: Easing.InOutQuad }
-            NumberAnimation { target: flashMark; property: "opacity"; to: 0.16; duration: 200; easing.type: Easing.InOutQuad }
-            NumberAnimation { target: flashMark; property: "opacity"; to: 0; duration: 700; easing.type: Easing.InQuad }
-        }
-        Timer {
-            id: flashTimer
-            interval: 1600
-            onTriggered: flashMark.opacity = 0
-        }
-    }
-
     Column {
         id: content
+        z: 1 // over the marks (SettingRowMarks), which are made later and would else be drawn over it
         x: row.leftInset
         y: row.sub ? 11 : 14
         width: parent.width - row.leftInset - 18
@@ -235,47 +248,14 @@ Item {
 
                     Text {
                         id: titleText
-                        width: Math.min(implicitWidth, parent.width - (tipBadge.visible ? tipBadge.width + parent.spacing : 0))
+                        width: Math.min(implicitWidth, parent.width - (row.tipBadge && row.tipBadge.visible ? row.tipBadge.width + parent.spacing : 0))
                         text: row.found ? row.hit.title : row.title
                         textFormat: row.found ? Text.StyledText : Text.AutoText
                         color: Theme.text
                         font.pixelSize: Theme.fontBody
                         wrapMode: Text.Wrap
                     }
-
-                    Loader { // made on the few rows with a tip only, not on every row
-                        id: tipBadge
-                        active: row.tip.length > 0
-                        visible: row.tip.length > 0 && !row.searching
-                        width: 20
-                        height: 20
-                        anchors.verticalCenter: titleText.lineCount <= 1 ? titleText.verticalCenter : undefined
-                        y: titleText.lineCount > 1 ? 2 : 0
-
-                        sourceComponent: Item {
-                            Glyph {
-                                anchors.centerIn: parent
-                                glyph: "\uE946"
-                                size: 14
-                                color: tipArea.containsMouse ? Theme.accent : Theme.subtext
-                            }
-
-                            MouseArea {
-                                id: tipArea
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                            }
-
-                            HoverTip {
-                                essential: true // the badge says nothing else
-                                target: tipArea.containsMouse ? tipBadge : null
-                                text: row.tip
-                                delay: 150
-                                maxWidth: 420
-                            }
-                        }
-                    }
+                    // (a row with a tip: its "i" comes here, tipBadge)
                 }
 
                 Text {
@@ -289,14 +269,7 @@ Item {
                     wrapMode: Text.Wrap
                     lineHeight: 1.15
                 }
-                Text { // found among the rows this one keeps away
-                    width: parent.width
-                    visible: row.unlocked.length > 0
-                    text: qsTr("打开后可以设置：%1").arg(row.unlocked.join(qsTr("、")))
-                    color: Theme.accent
-                    font.pixelSize: Theme.fontCaption
-                    wrapMode: Text.Wrap
-                }
+                // (found among the rows this one keeps away: its line comes here, unlockedLine)
             }
 
             Row {

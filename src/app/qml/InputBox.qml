@@ -105,42 +105,47 @@ Rectangle {
         }
     }
 
-    Item {
+    Loader { // made in a box that can be emptied: few are
         id: clearButton
-        objectName: "inputClear"
+        active: box.clearable
         visible: box.clearable && !input.readOnly && input.text.length > 0
         anchors.right: parent.right
         anchors.rightMargin: 4
         anchors.verticalCenter: parent.verticalCenter
         width: 24
         height: 24
-        Accessible.role: Accessible.Button
-        Accessible.name: qsTr("清空")
-        Accessible.onPressAction: clearButton.empty()
 
-        function empty() {
-            input.text = ""
-            input.forceActiveFocus(Qt.MouseFocusReason)
-            box.cleared()
-        }
+        sourceComponent: Item {
+            id: clearItem
+            objectName: "inputClear"
+            Accessible.role: Accessible.Button
+            Accessible.name: qsTr("清空")
+            Accessible.onPressAction: clearItem.empty()
 
-        Rectangle {
-            anchors.fill: parent
-            radius: Theme.controlRadius
-            color: Theme.text
-            opacity: clearArea.pressed ? 0.12 : clearArea.containsMouse ? 0.07 : 0
-        }
-        Glyph {
-            anchors.centerIn: parent
-            iconName: "x"
-            size: 14
-            color: clearArea.containsMouse ? Theme.text : Theme.subtext
-        }
-        MouseArea {
-            id: clearArea
-            anchors.fill: parent
-            hoverEnabled: true
-            onClicked: clearButton.empty()
+            function empty() {
+                input.text = ""
+                input.forceActiveFocus(Qt.MouseFocusReason)
+                box.cleared()
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                radius: Theme.controlRadius
+                color: Theme.text
+                opacity: clearArea.pressed ? 0.12 : clearArea.containsMouse ? 0.07 : 0
+            }
+            Glyph {
+                anchors.centerIn: parent
+                iconName: "x"
+                size: 14
+                color: clearArea.containsMouse ? Theme.text : Theme.subtext
+            }
+            MouseArea {
+                id: clearArea
+                anchors.fill: parent
+                hoverEnabled: true
+                onClicked: clearItem.empty()
+            }
         }
     }
 }

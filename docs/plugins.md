@@ -329,7 +329,7 @@ C++ SDK 的 `initialized()` 在回答完 `initialize` 后调一次：`eager` 插
 
 ### 系统开关提供者
 
-随包的 `winshun.switches` 是可关闭的 C++ 常驻插件，新配置默认关闭，旧配置按原有“搜索系统设置”选择迁移一次。它复用主程序的 Qt，只在插件进程中创建硬件监听、COM 工作线程和电源请求。停用或崩溃会释放保持唤醒，重启不恢复。主程序只保留异步界面缓存；关闭时，系统设置搜索仍能打开对应页面。
+随包的 `winshun.switches` 是可关闭的 C++ 常驻插件，新配置默认关闭，旧配置按原有“搜索系统设置”选择迁移一次。它复用主程序的 Qt，只在插件进程中创建硬件监听、COM 工作线程和电源请求。停用或崩溃会释放保持唤醒，重启不恢复；“保持唤醒时合盖也不睡眠”改过的合盖动作在停用时改回，崩溃后下次启动时按插件数据目录里的记录改回。主程序只保留异步界面缓存；关闭时，系统设置搜索仍能打开对应页面。
 
 清单声明 `"systemSwitches": true`，必须是 resident、`start: "eager"`、`idleExitSec: 0`，且包含 `ui` 和 `system:settings` 权限。主程序优先选择已启用的 `winshun.switches`，否则选择目录中第一个已启用的提供者。此能力只使用以下七个 id：`theme`、`hidden-files`、`file-extensions`、`bluetooth`、`wlan`、`volume`、`keep-awake`。
 

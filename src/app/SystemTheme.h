@@ -73,11 +73,7 @@ public:
     QString iconFont() const { return m_iconFont; }
     static QString iconFontName(); // iconFont(), for C++ (FileIconProvider draws glyph icons)
     static qreal iconScale();
-    // The Phosphor icon for "ph:name", "ph-fill:name" or a legacy Segoe code
-    // point, as {text, family}, or undefined: the icon font draws it then
-    // (see phosphor::resolve).
-    Q_INVOKABLE QVariant phosphorIcon(const QString& spec) const;
-    // The font an icon's Text is given (Glyph.qml): the application's, of
+    // The font an icon's Text is given (GlyphFont.qml): the application's, of
     // this family and size, and never merged with another font. Without
     // that, a code the family has no glyph for sends Qt through every font
     // installed, loading each (69 of them here, 17 MB and the time to read
@@ -91,6 +87,10 @@ public:
     // character from a font of a company's own characters, say. Remembered;
     // the GUI thread only.
     Q_INVOKABLE bool hasGlyph(const QString& glyph) const;
+    // How wide the words are in the interface's font at that size (as a
+    // TextMetrics' advanceWidth, without an object per word in every control
+    // that keeps room for its longest: ToggleSwitch's 开 / 关).
+    Q_INVOKABLE qreal textAdvance(const QString& text, int pixelSize) const;
     // hasGlyph's check, in any installed font; true when the font is not
     // there to ask (the text is drawn as it ever was).
     static bool fontHas(const QString& family, const QString& glyph);

@@ -46,6 +46,11 @@ Service::Service(SwitchBackends backends, Protocol& protocol)
     ::RegisterClassW(&cls);
     m_window = ::CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, cls.lpszClassName, L"", WS_POPUP,
         0, 0, 1, 1, nullptr, nullptr, cls.hInstance, this);
+    // Keep awake holding the lid follows another power plan made active
+    // (SwitchKeepAwake::read). GUID_ACTIVE_POWERSCHEME, here without INITGUID.
+    static constexpr GUID kActiveScheme {0x31f9f286, 0x5084, 0x42fe, {0xb7, 0x20, 0x2b, 0x02, 0x64, 0x99, 0x37, 0x63}};
+    if (m_window)
+        m_schemeNotify = ::RegisterPowerSettingNotification(m_window, &kActiveScheme, DEVICE_NOTIFY_WINDOW_HANDLE);
 }
 
 Service::~Service() { shutdown(); }
@@ -57,6 +62,10 @@ LRESULT CALLBACK Service::windowProc(HWND window, UINT message, WPARAM wp, LPARA
     auto* service = reinterpret_cast<Service*>(::GetWindowLongPtrW(window, GWLP_USERDATA));
     if (service && message == WM_SETTINGCHANGE)
         service->changed(u"theme"_s);
+    if (service && message == WM_POWERBROADCAST && wp == PBT_POWERSETTINGCHANGE) {
+        service->changed(u"keep-awake"_s); // read again, and the lid held in the new plan
+        return TRUE;
+    }
     return ::DefWindowProcW(window, message, wp, lp);
 }
 
@@ -71,6 +80,10 @@ void Service::changed(const QString& id)
 
 void Service::request(const QJsonValue& id, const QString& method, const QJsonObject& params)
 {
+    if (method == u"settingsChanged") { // a notification: no id
+        configure(params.value(u"settings"_s).toObject());
+        return;
+    }
     if (method == u"shutdown") {
         shutdown();
         m_protocol.respond(id, QJsonObject {});
@@ -123,10 +136,25 @@ void Service::request(const QJsonValue& id, const QString& method, const QJsonOb
     });
 }
 
+void Service::configure(const QJsonObject& settings)
+{
+    if (!m_accepting)
+        return;
+    std::vector<SwitchBackend*> backends;
+    for (const auto& backend : m_backends)
+        backends.push_back(backend.get());
+    m_worker->post([backends = std::move(backends), settings] {
+        for (SwitchBackend* backend : backends)
+            backend->configure(settings);
+    });
+}
+
 void Service::shutdown()
 {
     if (!std::exchange(m_accepting, false))
         return;
+    if (m_schemeNotify)
+        ::UnregisterPowerSettingNotification(std::exchange(m_schemeNotify, nullptr));
     m_notify.stop();
     m_worker.reset(); // stop and close COM on its owner thread
     m_backends.clear(); // release the provider's power request now

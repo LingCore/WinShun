@@ -13,7 +13,8 @@ Item {
     id: hook
 
     property Component part
-    readonly property Item item: built
+    // The part made (null: none, or not yet). Read by the host; set here only.
+    property Item item: null
     // Made the first time it is shown, then kept (hidden with the host):
     // for a host that is mostly hidden, in every row of a list (a row's
     // buttons, its hover, its tip). Making a part costs far more than
@@ -60,28 +61,41 @@ Item {
     //   chipSurface  "" | "type" (the type strip) | "group" (clipboard groups) | "filter"
     property string role
     // Inputs only one style knows ({ name: value }), passed on as they are to
-    // a part that declares that name; the others ignore them.
-    property var extra: ({})
+    // a part that declares that name; the others ignore them. null: none.
+    property var extra: null
 
-    // Older names of `role`, as the brand and tactile parts were first written.
-    readonly property bool raised: role === "rowAction"
-    readonly property bool inField: role === "scope" || role === "fieldKey"
-    readonly property bool bar: role !== "menu"
+    // A menu's highlight (`role` "menu"): read by the hosts that draw their own there.
     readonly property bool inMenu: role === "menu"
-    readonly property bool keyed: role === "scope"
-    readonly property bool checkbox: kind === "check"
 
-    readonly property var names: ["hovered", "pressed", "checked", "focused", "selected", "current", "active", "error", "isAll",
-        "highlighted", "danger", "maximized", "mixed", "hueIndex", "count", "currentIndex", "hoveredIndex", "pressedIndex",
-        "segments", "kind", "paint", "size", "orientation", "position", "extent", "corner", "fill", "dpr", "flat", "iconOnly", "role",
-        "raised", "inField", "bar", "inMenu", "keyed", "checkbox"]
-
-    property Item built: null
+    // A window has hundreds of these (the settings window some 1800: every
+    // button, switch, field and separator): nothing here is worked out or
+    // kept per instance that only rebuild() needs. The names passed on are a
+    // function's, not a property (an array in each), and the older names of
+    // `role` are worked out when a part asks for them (state()), not bound
+    // in every Hook for the few parts that declare one.
+    function names() {
+        return ["hovered", "pressed", "checked", "focused", "selected", "current", "active", "error", "isAll",
+            "highlighted", "danger", "maximized", "mixed", "hueIndex", "count", "currentIndex", "hoveredIndex", "pressedIndex",
+            "segments", "kind", "paint", "size", "orientation", "position", "extent", "corner", "fill", "dpr", "flat", "iconOnly", "role",
+            "raised", "inField", "bar", "inMenu", "keyed", "checkbox"]
+    }
+    // The state by name; the older names of `role` and `kind`, as the brand
+    // and tactile parts were first written, among them.
+    function state(name: string): var {
+        switch (name) {
+        case "raised": return hook.role === "rowAction"
+        case "inField": return hook.role === "scope" || hook.role === "fieldKey"
+        case "bar": return hook.role !== "menu"
+        case "keyed": return hook.role === "scope"
+        case "checkbox": return hook.kind === "check"
+        default: return hook[name]
+        }
+    }
 
     // A value the part works out (contentOffsetY, foreground, leadingInset,
     // textColor …), or the host's own for a part without it.
     function out(name: string, fallback: var): var {
-        const it = built
+        const it = item
         if (!it)
             return fallback
         const value = it[name]
@@ -89,25 +103,25 @@ Item {
     }
     // The same for a function of the part (segmentX(i) …).
     function call(name: string, args: var, fallback: var): var {
-        const it = built
+        const it = item
         if (!it || typeof it[name] !== "function")
             return fallback
         return it[name].apply(it, args)
     }
 
     function applyExtra() {
-        if (!built || !extra)
+        if (!item || !extra)
             return
         for (const name in extra) {
-            if (name in built)
-                built[name] = extra[name]
+            if (name in item)
+                item[name] = extra[name]
         }
     }
 
     function rebuild() {
-        if (built) {
-            built.destroy()
-            built = null
+        if (item) {
+            item.destroy()
+            item = null
         }
         if (!part || (lazy && !visible))
             return
@@ -116,27 +130,30 @@ Item {
         // late (lazy, or a reused row's) shows at once as it should be,
         // instead of fading in from its defaults; later changes still
         // animate. Names the part does not declare are ignored.
+        const all = names()
         const now = {}
-        for (const name of names)
-            now[name] = hook[name]
-        for (const name in extra)
-            now[name] = extra[name]
+        for (const name of all)
+            now[name] = state(name)
+        if (extra) {
+            for (const name in extra)
+                now[name] = extra[name]
+        }
         const made = part.createObject(hook, now)
         if (!made) {
             console.warn("Hook: the part could not be made:", part.errorString())
             return
         }
-        for (const name of names) {
+        for (const name of all) {
             if (name in made)
-                made[name] = Qt.binding(() => hook[name])
+                made[name] = Qt.binding(() => hook.state(name))
         }
         made.anchors.fill = hook
-        built = made
+        item = made
         applyExtra()
     }
 
     onPartChanged: rebuild()
-    onVisibleChanged: if (visible && !built && part) rebuild() // `visible` is the effective one: a hidden ancestor hides it too
+    onVisibleChanged: if (visible && !item && part) rebuild() // `visible` is the effective one: a hidden ancestor hides it too
     onExtraChanged: applyExtra()
-    Component.onCompleted: if (!built) rebuild()
+    Component.onCompleted: if (!item) rebuild()
 }

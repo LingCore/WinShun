@@ -1256,6 +1256,30 @@ bool Launcher::typedInFolder() const
         && typedWithoutKind().startsWith(m_typingPrefix, Qt::CaseInsensitive);
 }
 
+QString Launcher::terminalTypedIn(const SearchResult& r) const
+{
+    if (!typedInFolder() || !QFileInfo(m_typingFolder).isAbsolute())
+        return {};
+    if (r.app == AppKind::None) // a file's row: the program itself
+        return r.isDir ? QString() : commandlaunch::terminalOfApp({}, r.path);
+    const bool program = r.app == AppKind::Desktop || r.isPackagedApp();
+    return program && !r.hosted ? commandlaunch::terminalOfApp(r.path, r.target) : QString();
+}
+
+bool Launcher::openTerminalTypedIn(const SearchResult& r, bool asAdministrator)
+{
+    const QString terminal = terminalTypedIn(r);
+    if (terminal.isEmpty())
+        return false;
+    const QString program = r.app == AppKind::None ? r.path : r.target;
+    if (m_terminalOpener && m_terminalOpener({terminal, program, m_typingFolder, asAdministrator}))
+        return true;
+    if (!shell::openTerminalProgram(terminal, program, m_typingFolder, reportFailure(r.name), asAdministrator))
+        return false;
+    qInfo().noquote() << u"Opening the terminal %1 in the folder typed in"_s.arg(terminal);
+    return true;
+}
+
 QString Launcher::typingWords() const
 {
     return typedInFolder() ? typedWithoutKind().mid(m_typingPrefix.size()).trimmed() : QString();
@@ -4818,12 +4842,16 @@ void Launcher::refreshKeyHints()
         }
     } else if (r->isApp()) {
         enter = adminRemembered(*r) ? tr("以管理员身份运行") : tr("打开"); // GitHub #313: said before Enter is pressed
+        if (!terminalTypedIn(*r).isEmpty())
+            enter = adminRemembered(*r) ? tr("以管理员身份在此文件夹打开") : tr("在此文件夹打开");
         if (!r->target.isEmpty()) {
             secondKeys = u"Ctrl+Enter"_s;
             second = r->isPackagedApp() ? tr("打开安装文件夹") : tr("打开位置");
         }
     } else {
         enter = r->isDir ? tr("打开文件夹") : adminRemembered(*r) ? tr("以管理员身份运行") : tr("打开");
+        if (!terminalTypedIn(*r).isEmpty())
+            enter = adminRemembered(*r) ? tr("以管理员身份在此文件夹打开") : tr("在此文件夹打开");
         secondKeys = u"Ctrl+Enter"_s;
         // Typed in a folder's window: its direct items are followed there as the
         // keys move; the rest are not (that would navigate the tab), Ctrl+Enter
@@ -6424,6 +6452,8 @@ void Launcher::perform(const SearchResult& result, Action action, bool fileCheck
         // Opened by typing in Explorer, a folder goes to that tab (GitHub #39).
         if (action == Open && r.where == SearchResult::Where::Line && r.line > 0 && !r.isDir)
             contentopen::open(r.path, r.line, reportFailure(r.name)); // at the matching line, in an editor that can
+        else if (openTerminalTypedIn(r, action == RunAsAdmin))
+            ; // a terminal's program, typed in a folder: opened there (GitHub #430)
         else if (action != Open || !r.isDir || !m_folderOpener || !m_folderOpener(r.path))
             shell::open(r.path, action == RunAsAdmin, reportFailure(r.name));
         markOpened(r);
@@ -6468,7 +6498,7 @@ void Launcher::perform(const SearchResult& result, Action action, bool fileCheck
         const QString folder = r.isDir ? r.path : folderOf(r.path);
         const bool asAdmin = action == OpenTerminalAdmin;
         remember(r.path, m_shownText);
-        if (!m_terminalOpener || !m_terminalOpener(folder, asAdmin))
+        if (!m_terminalOpener || !m_terminalOpener({m_terminal, {}, folder, asAdmin}))
             shell::openTerminalIn(m_terminal, m_terminalCommand, folder, reportFailure(r.name), asAdmin);
         emit dismissRequested();
         break;
@@ -6493,15 +6523,9 @@ void Launcher::performApp(const SearchResult& app, Action action)
             return;
         }
         remember(app.path, m_shownText);
-        // A terminal found while typing in a folder opens in that folder, as
-        // typing its name in Explorer's address bar does (GitHub #430).
-        if (const QString terminal = typedInFolder() ? commandlaunch::terminalOfApp(app.path, app.target) : QString();
-            !terminal.isEmpty() && QFileInfo(m_typingFolder).isAbsolute()) {
-            qInfo().noquote() << u"Opening the terminal %1 in the folder typed in"_s.arg(terminal);
-            shell::openTerminalIn(terminal, {}, m_typingFolder, reportFailure(app.name), action == RunAsAdmin);
-        } else {
+        // A terminal found while typing in a folder opens in that folder (terminalTypedIn).
+        if (!openTerminalTypedIn(app, action == RunAsAdmin))
             shell::launchApp(app.path, action == RunAsAdmin, reportFailure(app.name));
-        }
         emit dismissRequested();
         break;
     case Reveal:

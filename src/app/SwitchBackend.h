@@ -4,6 +4,7 @@
 #include "SwitchState.h"
 
 #include <QDateTime>
+#include <QJsonObject>
 #include <QString>
 #include <QStringList>
 
@@ -59,6 +60,11 @@ public:
     // what has to happen there. Dark mode: Win顺's own windows told at once,
     // then every other program from a thread of its own (SettingBroadcast).
     virtual void written(const QString& id) { (void)id; }
+
+    // Switch thread: the provider plugin's settings (plugin.json "settings",
+    // merged with the user's values), when it starts and each time the user
+    // changes one. A backend whose state shows one tells `changed`.
+    virtual void configure(const QJsonObject& settings) { (void)settings; }
 
     // Switch thread, as it ends: let go of what was made there (COM and WinRT
     // objects, their callbacks). No read or write comes after it.

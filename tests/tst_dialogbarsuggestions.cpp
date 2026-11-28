@@ -142,6 +142,45 @@ private slots:
         QVERIFY(shouldSuggest(one, false, true));
         QVERIFY(!canAskSuggestions(one, false, true, u""_s));
     }
+
+    // What a search found, as the bar lists it: the favorites, then the
+    // dialog's folder (当前文件夹优先), then elsewhere; the Open dialog's type
+    // and the Save dialog's folders first within each part, never across.
+    void foundRowsKeepTheDialogsFolderFirst()
+    {
+        const auto row = [](const QString& name, bool isDir, bool elsewhere, bool favorite = false) {
+            SearchResult r;
+            r.name = name;
+            r.path = u"D:\\"_s + name;
+            r.isDir = isDir;
+            r.elsewhere = elsewhere;
+            r.favorite = favorite;
+            return r;
+        };
+        const SearchResults found {row(u"notes.txt"_s, false, true), row(u"v2.2"_s, true, false), row(u"a.csv"_s, false, false),
+            row(u"fav.csv"_s, false, true, true), row(u"b.txt"_s, false, false), row(u"old"_s, true, true)};
+        const auto names = [](const SearchResults& rows) {
+            QStringList list;
+            for (const SearchResult& r : rows)
+                list.append(r.name);
+            return list;
+        };
+        SearchResults open = found;
+        arrangeFound(open, {}, false);
+        QCOMPARE(names(open), (QStringList {u"fav.csv"_s, u"v2.2"_s, u"a.csv"_s, u"b.txt"_s, u"notes.txt"_s, u"old"_s}));
+
+        SearchResults typed = found; // *.txt shown: within each part, folders and .txt before the .csv
+        arrangeFound(typed, [](const SearchResult& r) { return r.name.endsWith(u".txt"_s); }, false);
+        QCOMPARE(names(typed), (QStringList {u"fav.csv"_s, u"v2.2"_s, u"b.txt"_s, u"a.csv"_s, u"notes.txt"_s, u"old"_s}));
+
+        SearchResults save = found; // where to save: folders first within each part
+        arrangeFound(save, {}, true);
+        QCOMPARE(names(save), (QStringList {u"fav.csv"_s, u"v2.2"_s, u"a.csv"_s, u"b.txt"_s, u"old"_s, u"notes.txt"_s}));
+
+        SearchResults none; // nothing found: nothing to do
+        arrangeFound(none, {}, true);
+        QVERIFY(none.isEmpty());
+    }
 };
 
 QTEST_GUILESS_MAIN(DialogBarSuggestionsTest)
