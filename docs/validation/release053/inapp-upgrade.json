@@ -1,0 +1,71 @@
+{
+  "mode": "InApp",
+  "hold": false,
+  "before": {
+    "version": "0.52.0",
+    "exeSha": "bb4b3a3c7e5996e655409fe1d74f13d09f2c5aaa9daaa9b54a4f22ba1c575a55",
+    "runningFromHere": 1,
+    "running": 2,
+    "elevated": [
+      false,
+      false
+    ],
+    "aside": [],
+    "service": "STATE : 4 RUNNING",
+    "serviceBinary": "BINARY_PATH_NAME : \"C:\\Program Files\\WinShun\\WinShunService.exe\"",
+    "task": "<Command>C:\\Program Files\\WinShun\\WinShun.exe</Command> <Arguments>--background</Arguments>",
+    "installedVersion": "0.52.0",
+    "iniBytes": 9919,
+    "historySha": "09302327aa428c1c2d785f8d633802a83bd31b6c7b8c8d7abf69455660651809",
+    "indexBytes": 27703341
+  },
+  "updated": true,
+  "seconds": 45.5,
+  "after": {
+    "version": "0.53.0",
+    "exeSha": "8ae59a24336be9831a7abd57dca30ff6c211e2baa2e10d1bc4cfe66456590352",
+    "runningFromHere": 1,
+    "running": 2,
+    "elevated": [
+      false,
+      false
+    ],
+    "aside": [],
+    "service": "STATE : 4 RUNNING",
+    "serviceBinary": "BINARY_PATH_NAME : \"C:\\Program Files\\WinShun\\WinShunService.exe\"",
+    "task": "<Command>C:\\Program Files\\WinShun\\WinShun.exe</Command> <Arguments>--background</Arguments>",
+    "installedVersion": "0.53.0",
+    "iniBytes": 10004,
+    "historySha": "09302327aa428c1c2d785f8d633802a83bd31b6c7b8c8d7abf69455660651809",
+    "indexBytes": 27816440
+  },
+  "feedRequests": [
+    "0.53.0 from F:\\电脑便捷工具\\dist\\release053 on http://127.0.0.1:47631/stable.json, deltas: ['WinShun-0.53.0-x64-delta-from-0.50.0.zip', 'WinShun-0.53.0-x64-delta-from-0.51.0.zip', 'WinShun-0.53.0-x64-delta-from-0.52.0.zip'], push: normal",
+    "\"GET /stable.json HTTP/1.1\" 200 -",
+    "\"GET /stable.json HTTP/1.1\" 200 -",
+    "\"GET /WinShun-0.53.0-x64-delta-from-0.52.0.zip HTTP/1.1\" 200 -"
+  ],
+  "downloaded": [
+    "WinShun-0.53.0-x64-delta-from-0.52.0.zip"
+  ],
+  "setupLog": null,
+  "helperLog": [
+    "2026-11-27 17:37:13 portable update of F:\\电脑便捷工具\\build\\release051\\portable\\portable\\WinShun",
+    "2026-11-27 17:37:14 swapped in 45 entries, backed up 45",
+    "2026-11-27 17:37:14 started F:\\电脑便捷工具\\build\\release051\\portable\\portable\\WinShun\\WinShun.exe (pid 35328)",
+    "2026-11-27 17:37:15 done",
+    "2026-11-28 12:28:03 Setup ended (exit code 0)",
+    "2026-11-28 18:08:02 Setup ended (exit code 0)"
+  ],
+  "appLog": [
+    "warning: Update: installing 0.51.0 at once (WINSHUN_UPDATE_AUTOINSTALL)",
+    "info: Update: delta package WinShun-0.51.0-x64-delta-from-0.50.0.zip 7660378 bytes",
+    "warning: Update check failed: 0 12029",
+    "warning: Update check failed: 0 12029",
+    "warning: Update: installing 0.52.0 at once (WINSHUN_UPDATE_AUTOINSTALL)",
+    "info: Update: delta package WinShun-0.52.0-x64-delta-from-0.51.0.zip 8347556 bytes",
+    "warning: Update: installing 0.53.0 at once (WINSHUN_UPDATE_AUTOINSTALL)",
+    "info: Update: delta package WinShun-0.53.0-x64-delta-from-0.52.0.zip 8433050 bytes"
+  ],
+  "runningAfterRestart": 1
+}
