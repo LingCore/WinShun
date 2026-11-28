@@ -70,8 +70,10 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool dialogJump READ dialogJump WRITE setDialogJump NOTIFY changed FINAL)
     Q_PROPERTY(bool dialogBar READ dialogBar WRITE setDialogBar NOTIFY changed FINAL)
     Q_PROPERTY(QString dialogBarPlace READ dialogBarPlace WRITE setDialogBarPlace NOTIFY changed FINAL)
-    // Only the dialog's folder (GitHub #286); off: its folder first, then everywhere else.
-    Q_PROPERTY(bool dialogBarFolderOnly READ dialogBarFolderOnly WRITE setDialogBarFolderOnly NOTIFY changed FINAL)
+    // What the dialog bar searches: "all" (the whole PC), "first" (the
+    // dialog's folder first, then everywhere else) or "only" (that folder,
+    // GitHub #286). "only" keeps the other one for Ctrl+Shift+D to go back to.
+    Q_PROPERTY(QString dialogBarScope READ dialogBarScope WRITE setDialogBarScope NOTIFY changed FINAL)
     Q_PROPERTY(bool dialogBarSuggestions READ dialogBarSuggestions WRITE setDialogBarSuggestions NOTIFY changed FINAL)
     Q_PROPERTY(bool dialogBarSuggestOpen READ dialogBarSuggestOpen WRITE setDialogBarSuggestOpen NOTIFY changed FINAL)
     Q_PROPERTY(bool dialogBarSuggestClipboard READ dialogBarSuggestClipboard WRITE setDialogBarSuggestClipboard NOTIFY changed FINAL)
@@ -505,8 +507,8 @@ public:
     void setDialogBar(bool on);
     QString dialogBarPlace() const { return m_settings.dialogBarPlace; }
     void setDialogBarPlace(const QString& place);
-    bool dialogBarFolderOnly() const { return m_settings.dialogBarFolderOnly; }
-    void setDialogBarFolderOnly(bool on);
+    QString dialogBarScope() const;
+    void setDialogBarScope(const QString& scope);
     bool dialogBarSuggestions() const { return m_settings.dialogBarSuggestions; }
     void setDialogBarSuggestions(bool on);
     bool dialogBarSuggestOpen() const { return m_settings.dialogBarSuggestOpen; }

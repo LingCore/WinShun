@@ -129,6 +129,10 @@ struct Settings {
     // It searches only the folder the dialog shows (GitHub #286): turned on
     // and off in the bar itself (its menu, Ctrl+Shift+D), kept here.
     bool dialogBarFolderOnly = false;
+    // Not only that folder: what lies in it first, then everywhere else
+    // (当前文件夹优先); off, the whole PC as anywhere. Off by default: the bar
+    // is mostly for going elsewhere, a Save dialog's above all (GitHub #507).
+    bool dialogBarFolderFirst = false;
     // Clicked into with nothing typed, the bar lists the folders open in file
     // managers, the copied one, favorites and recent ones. Off (GitHub #417:
     // abrupt, and seen by whoever looks on), the list waits for typing; ↓

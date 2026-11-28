@@ -6994,21 +6994,21 @@ Window {
                     }
                 }
 
-                SettingRow { // GitHub #286; 当前文件夹优先 as typing in a folder's window
+                SettingRow { // GitHub #286, #507: the whole PC unless chosen otherwise
                     id: dialogBarScopeRow
                     sub: true
                     shown: window.editor.dialogBar
                     title: qsTr("搜索的范围")
-                    keywords: qsTr("范围;当前文件夹;优先;只搜;其他位置;子文件夹;Ctrl+Shift+D;current folder;scope").split(";")
+                    keywords: qsTr("范围;整个电脑;当前文件夹;优先;只搜;其他位置;子文件夹;Ctrl+Shift+D;current folder;scope").split(";")
                     description: qsTr("搜索时可按 Ctrl+Shift+D 切换")
-                    tip: qsTr("当前文件夹优先：先列出对话框所在文件夹及子文件夹里的结果，再列出其他位置的；收藏的仍在最前。只搜当前文件夹：只列那个文件夹及子文件夹里的")
+                    tip: qsTr("整个电脑：和搜索框一样，按匹配程度排。当前文件夹优先：先列出对话框所在文件夹及子文件夹里的结果，再列出其他位置的；收藏的仍在最前。只搜当前文件夹：只列那个文件夹及子文件夹里的")
 
                     ScopeTabs {
                         objectName: "dialogBarScopeTabs"
                         dpr: window.dpr
-                        labels: [qsTr("当前文件夹优先"), qsTr("只搜当前文件夹")]
-                        current: window.editor.dialogBarFolderOnly ? 1 : 0
-                        onActivated: (index) => window.editor.dialogBarFolderOnly = index === 1
+                        labels: [qsTr("整个电脑"), qsTr("当前文件夹优先"), qsTr("只搜当前文件夹")]
+                        current: ["all", "first", "only"].indexOf(window.editor.dialogBarScope)
+                        onActivated: (index) => window.editor.dialogBarScope = ["all", "first", "only"][index]
                     }
                 }
 

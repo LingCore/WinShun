@@ -143,6 +143,36 @@ private slots:
         QVERIFY(!canAskSuggestions(one, false, true, u""_s));
     }
 
+    // GitHub #507: the bar searches the whole PC unless 当前文件夹优先 or
+    // 只搜当前文件夹 was chosen; a dialog on This PC (no folder) the whole PC
+    // whatever was chosen.
+    void searchLooksEverywhereUnlessAsked()
+    {
+        const QString folder = u"C:\\Users\\me\\jpegview"_s;
+        const SearchScope everywhere = searchScope(false, false, folder);
+        QVERIFY(everywhere.currentFolder.isEmpty());
+        QVERIFY(!everywhere.currentFolderOnly);
+
+        const SearchScope first = searchScope(false, true, folder);
+        QCOMPARE(first.currentFolder, folder);
+        QVERIFY(!first.currentFolderOnly);
+
+        // Alone, the folder is searched the same whichever way Ctrl+Shift+D goes back.
+        for (const bool folderFirst : {false, true}) {
+            const SearchScope only = searchScope(true, folderFirst, folder);
+            QCOMPARE(only.currentFolder, folder);
+            QVERIFY(only.currentFolderOnly);
+        }
+
+        for (const bool folderOnly : {false, true}) {
+            for (const bool folderFirst : {false, true}) {
+                const SearchScope thisPc = searchScope(folderOnly, folderFirst, {});
+                QVERIFY(thisPc.currentFolder.isEmpty());
+                QVERIFY(!thisPc.currentFolderOnly);
+            }
+        }
+    }
+
     // What a search found, as the bar lists it: the favorites, then the
     // dialog's folder (当前文件夹优先), then elsewhere; the Open dialog's type
     // and the Save dialog's folders first within each part, never across.

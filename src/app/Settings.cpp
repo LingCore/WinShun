@@ -1006,7 +1006,8 @@ void Settings::load()
     if (dialogBarPlace != u"below" && dialogBarPlace != u"left" && dialogBarPlace != u"right")
         dialogBarPlace = d.dialogBarPlace;
     dialogBarFolderOnly = readOrDefault(s, u"Launcher/DialogBarFolderOnly"_s, d.dialogBarFolderOnly);
-    dialogBarSuggestions = readOrDefault(s, u"Launcher/DialogBarSuggestions"_s, d.dialogBarSuggestions);
+    dialogBarFolderFirst = readOrDefault(s, u"Launcher/DialogBarFolderFirst"_s, d.dialogBarFolderFirst);
+    dialogBarSuggestions =readOrDefault(s, u"Launcher/DialogBarSuggestions"_s, d.dialogBarSuggestions);
     dialogBarSuggestOpen = readOrDefault(s, u"Launcher/DialogBarSuggestOpen"_s, d.dialogBarSuggestOpen);
     dialogBarSuggestClipboard = readOrDefault(s, u"Launcher/DialogBarSuggestClipboard"_s, d.dialogBarSuggestClipboard);
     dialogBarSuggestFavorites = readOrDefault(s, u"Launcher/DialogBarSuggestFavorites"_s, d.dialogBarSuggestFavorites);
@@ -1535,6 +1536,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Launcher/DialogBar"_s, dialogBar);
     s.setValue(u"Launcher/DialogBarPlace"_s, dialogBarPlace);
     s.setValue(u"Launcher/DialogBarFolderOnly"_s, dialogBarFolderOnly);
+    s.setValue(u"Launcher/DialogBarFolderFirst"_s, dialogBarFolderFirst);
     s.setValue(u"Launcher/DialogBarSuggestions"_s, dialogBarSuggestions);
     s.setValue(u"Launcher/DialogBarSuggestOpen"_s, dialogBarSuggestOpen);
     s.setValue(u"Launcher/DialogBarSuggestClipboard"_s, dialogBarSuggestClipboard);

@@ -99,6 +99,23 @@ struct SuggestionList {
     return out;
 }
 
+// Where the bar's search looks (Request::currentFolder, currentFolderOnly):
+// the whole PC as anywhere unless chosen otherwise (GitHub #507), the
+// dialog's folder first (`folderFirst`, 当前文件夹优先) or that folder alone
+// (`folderOnly`, #286). A dialog nowhere on a disk (This PC, a library:
+// `dialogFolder` empty) has the whole PC searched whatever was chosen.
+struct SearchScope {
+    QString currentFolder;
+    bool currentFolderOnly = false;
+};
+
+[[nodiscard]] inline SearchScope searchScope(bool folderOnly, bool folderFirst, const QString& dialogFolder)
+{
+    if (dialogFolder.isEmpty() || !(folderOnly || folderFirst))
+        return {};
+    return {dialogFolder, folderOnly};
+}
+
 // The rows a search found, as the bar lists them: the favorites first, then
 // what lies in the dialog's folder (the engine's rows not `elsewhere`, the
 // folder searched first), then the rest. In each part the files of the type

@@ -2118,6 +2118,7 @@ private slots:
         fresh.load();
         QVERIFY(fresh.dialogBar);
         QVERIFY(fresh.dialogBarSuggestions); // listed as it is clicked into (GitHub #417: can be turned off)
+        QVERIFY(!fresh.dialogBarFolderOnly && !fresh.dialogBarFolderFirst); // the whole PC (GitHub #507)
         QCOMPARE(fresh.folderMenu, u"auto"_s);
         QVERIFY(fresh.explorerTyping);
         QVERIFY(fresh.dialogJump);
@@ -2125,6 +2126,7 @@ private slots:
         QVERIFY(fresh.pasteFileCtrlV && fresh.pasteFileMenu); // its ways, once it is on
         fresh.dialogBar = false;
         fresh.dialogBarSuggestions = false;
+        fresh.dialogBarFolderFirst = true;
         fresh.folderMenu = u"off"_s;
         fresh.explorerTyping = false;
         fresh.save();
@@ -2132,6 +2134,7 @@ private slots:
         again.load();
         QVERIFY(!again.dialogBar);
         QVERIFY(!again.dialogBarSuggestions);
+        QVERIFY(again.dialogBarFolderFirst && !again.dialogBarFolderOnly);
         QCOMPARE(again.folderMenu, u"off"_s);
         QVERIFY(!again.explorerTyping);
 
@@ -2146,6 +2149,7 @@ private slots:
         upgraded.load();
         QVERIFY(upgraded.dialogBar);
         QVERIFY(upgraded.dialogBarSuggestions); // as before the key
+        QVERIFY(!upgraded.dialogBarFolderFirst); // 0.52.0 had it first with no key: the whole PC again
         QCOMPARE(upgraded.folderMenu, u"auto"_s);
         QVERIFY(!upgraded.explorerTyping); // an upgrade changes nothing
         QVERIFY(!upgraded.pasteFileEnabled); // new: off, as 截图 is

@@ -5411,6 +5411,38 @@ void checkDialogSearchKeys(IndexService& index, QQmlEngine* engine, const QDir& 
                 u"dialog favorite rows display their keyword tag"_s);
         }
     }
+    {
+        // GitHub #507: the way back from the folder alone (the bar's menu,
+        // Ctrl+Shift+D) goes where the settings say, the whole PC unless
+        // 当前文件夹优先 was chosen, and says so; going there keeps that choice.
+        const auto toggleText = [&bar] {
+            for (const QVariant& item : bar.menuItems(-1)) {
+                const QVariantMap entry = item.toMap();
+                if (entry.value(u"action"_s).toInt() == DialogBar::ToggleFolderOnly)
+                    return entry.value(u"text"_s).toString();
+            }
+            return QString();
+        };
+        int scopes = 0;
+        QList<bool> kept;
+        const QMetaObject::Connection onScope = QObject::connect(&bar, &DialogBar::scopeChanged, &bar, [&scopes] { ++scopes; });
+        const QMetaObject::Connection onKept
+            = QObject::connect(&bar, &DialogBar::folderOnlyRequested, &bar, [&kept](bool on) { kept.append(on); });
+        bar.setScope(true, false);
+        check(!bar.folderFirst() && toggleText() == DialogBar::tr("搜索整个电脑"),
+            u"#507: from the folder alone back to the whole PC, so labelled"_s);
+        bar.setScope(true, true);
+        check(bar.folderFirst() && scopes >= 1 && toggleText() == DialogBar::tr("也搜其他位置"),
+            u"#507: with 当前文件夹优先 chosen, back to the folder first, so labelled"_s);
+        bar.toggleFolderOnly();
+        check(kept == QList<bool> {false} && bar.folderFirst(),
+            u"#507: Ctrl+Shift+D back from the folder alone keeps 当前文件夹优先"_s);
+        QObject::disconnect(onScope);
+        QObject::disconnect(onKept);
+        bar.setScope(false, false);
+        check(!bar.folderFirst() && toggleText().isEmpty(),
+            u"#507: the whole PC, no dialog folder: nothing to narrow to"_s);
+    }
     QFile report(output.filePath(u"dialog-navigation.json"_s));
     check(report.open(QIODevice::WriteOnly), u"write the dialog regression report"_s);
     if (report.isOpen()) {

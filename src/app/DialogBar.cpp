@@ -665,19 +665,23 @@ bool DialogBar::holdUntilShown(int number, bool open)
     return true;
 }
 
-void DialogBar::setFolderOnly(bool on)
+void DialogBar::setScope(bool folderOnly, bool folderFirst)
 {
-    if (m_folderOnly == on)
+    if (m_folderOnly == folderOnly && m_folderFirst == folderFirst)
         return;
-    m_folderOnly = on;
+    // Alone, the folder is searched the same either way: only the way back differs.
+    const bool searchChanges = m_folderOnly != folderOnly || !folderOnly;
+    m_folderOnly = folderOnly;
+    if (std::exchange(m_folderFirst, folderFirst) != folderFirst)
+        emit scopeChanged();
     refreshScope();
-    if (m_dialog && !m_query.trimmed().isEmpty())
+    if (searchChanges && m_dialog && !m_query.trimmed().isEmpty())
         relist();
 }
 
 void DialogBar::toggleFolderOnly()
 {
-    setFolderOnly(!m_folderOnly);
+    setScope(!m_folderOnly, m_folderFirst);
     emit folderOnlyRequested(m_folderOnly);
 }
 
@@ -723,7 +727,10 @@ QString DialogBar::scopeName() const
 // Where the dialog is now: it may have gone elsewhere since the last look.
 void DialogBar::refreshScope()
 {
-    m_dialogFolder = m_dialog ? QString::fromStdWString(filedialog::currentFolder(m_dialog)) : QString();
+    // Not read at all while the whole PC is searched.
+    m_dialogFolder = m_dialog && (m_folderOnly || m_folderFirst)
+        ? QString::fromStdWString(filedialog::currentFolder(m_dialog))
+        : QString();
     const QString folder = m_folderOnly ? m_dialogFolder : QString();
     if (folder == m_scopeFolder)
         return;
@@ -753,11 +760,14 @@ void DialogBar::search()
 {
     SearchEngine::Request request;
     request.text = m_query;
-    // Where the dialog is first, then everywhere else, as typing in a
-    // folder's window (当前文件夹优先), the box ours (favorites and their
-    // keywords as anywhere); or only there (GitHub #286).
-    request.currentFolder = m_dialogFolder;
-    request.currentFolderOnly = !m_scopeFolder.isEmpty();
+    // The whole PC as anywhere: the bar is mostly for going elsewhere (GitHub
+    // #507). Chosen in the settings, where the dialog is first, then
+    // everywhere else, as typing in a folder's window (当前文件夹优先), the
+    // box ours (favorites and their keywords as anywhere); or only there
+    // (GitHub #286).
+    dialogbar::SearchScope scope = dialogbar::searchScope(m_folderOnly, m_folderFirst, m_dialogFolder);
+    request.currentFolder = std::move(scope.currentFolder);
+    request.currentFolderOnly = scope.currentFolderOnly;
     request.ownBox = true;
     // A folder picker: folders alone (each its own best, not those of the
     // best matches of all); where to save: folders first.
@@ -1141,7 +1151,8 @@ QVariantList DialogBar::menuItems(int row) const
                                 : entry(PinCurrent, tr("收藏“%1”").arg(nameOf(current)), {}, u"\uE734"_s));
         }
         if (m_folderOnly)
-            items.append(entry(ToggleFolderOnly, tr("也搜其他位置"), u"Ctrl+Shift+D"_s, u"\uE721"_s)); // Search
+            items.append(entry(ToggleFolderOnly, m_folderFirst ? tr("也搜其他位置") : tr("搜索整个电脑"), u"Ctrl+Shift+D"_s,
+                u"\uE721"_s)); // Search
         else if (!current.isEmpty())
             items.append(entry(ToggleFolderOnly, tr("只搜“%1”里面").arg(nameOf(current)), u"Ctrl+Shift+D"_s, u"\uE8B7"_s)); // Folder
         if (m_suggestSources.any()) {

@@ -35,8 +35,8 @@ class SearchEngine;
 // The search bar under an Open or Save dialog of another program, as in
 // Listary: the folder shown in the file manager (File Explorer, Total
 // Commander, Directory Opus), to go to with a click (or Ctrl+G), and a box
-// to search folders and files by name, what lies in the dialog's folder
-// first (or only that: setFolderOnly); picking one takes
+// to search folders and files by name on the whole PC, what lies in the
+// dialog's folder first or only that (setScope); picking one takes
 // the dialog there (a file: to its folder, its name in the file name box,
 // so Enter opens it; Ctrl+Enter in an Open dialog opens it at once). A path
 // typed (or pasted) lists what that folder holds, as a shell completes it:
@@ -90,9 +90,13 @@ class DialogBar : public QObject {
     Q_PROPERTY(bool nothingFound READ nothingFound NOTIFY resultsReplaced FINAL)
     // Searching only the folder the dialog shows and what lies in it (GitHub
     // #286, Settings::dialogBarFolderOnly): that folder's name; empty while
-    // everything is searched, what lies in that folder first (当前文件夹优先;
-    // the dialog nowhere on a disk, This PC, a library: just everything).
+    // everything is searched (the dialog nowhere on a disk, This PC, a
+    // library: just everything).
     Q_PROPERTY(QString scopeName READ scopeName NOTIFY scopeChanged FINAL)
+    // Not only that folder: what lies in it first, then everywhere else
+    // (Settings::dialogBarFolderFirst); false: the whole PC as anywhere.
+    // Where Ctrl+Shift+D goes back to from the folder alone.
+    Q_PROPERTY(bool folderFirst READ folderFirst NOTIFY scopeChanged FINAL)
     // The folder whose contents are listed for a path typed; empty while searching.
     Q_PROPERTY(QString browsedFolder READ browsedFolder NOTIFY browsedFolderChanged FINAL)
     Q_PROPERTY(int rows READ rows NOTIFY layoutChanged FINAL) // of the list; 0 while it is closed
@@ -172,8 +176,10 @@ public:
     }
     void setExcludedApps(const QStringList& apps); // program files ("notepad.exe") whose dialogs go without
     void setPlace(const QString& name); // Settings::dialogBarPlace: "auto", "below", "left", "right"
-    void setFolderOnly(bool on); // Settings::dialogBarFolderOnly
+    // Settings::dialogBarFolderOnly, Settings::dialogBarFolderFirst.
+    void setScope(bool folderOnly, bool folderFirst);
     QString scopeName() const;
+    bool folderFirst() const { return m_folderFirst; }
     Q_INVOKABLE void toggleFolderOnly(); // and asks for it to be kept (folderOnlyRequested)
     // Settings::dialogBarSuggestions (GitHub #417). Off: with nothing typed,
     // no list until asked for (askSuggestions).
@@ -357,6 +363,7 @@ private:
     QTimer m_moveTimeout; // should it not get there (or not be restored)
     Place m_place = Place::Auto;
     bool m_folderOnly = false;
+    bool m_folderFirst = false;
     QString m_dialogFolder; // the dialog's folder as last read (empty: This PC, a library); see refreshScope()
     QString m_scopeFolder; // ... while m_folderOnly
     void refreshScope();

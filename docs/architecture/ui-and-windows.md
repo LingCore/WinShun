@@ -63,7 +63,7 @@
 
 - **`DialogJump`**：仅在同权限受支持对话框在前台时按需 `RegisterHotKey(Ctrl+G)`；自动跳转（默认关）跟踪“文件管理器 → 对话框”切换并防重复跳回，隐藏复用型对话框（如 Qt/WPS）时重置已见状态；WPS 冷启动 UIA 探测去重且未就绪不永久缓存，按需单次重试。
 - **`FileDialog`**：支持现代 `#32770` 地址栏（无地址栏回退文件名框）、XP 传统对话框、`SHBrowseForFolder`（`VirtualAllocEx` + `BFFM_SETSELECTIONW`）、WPS `KcfdFileDialog`（UIA）、Inno `TSelectFolderForm`（仅写框不回车）、AutoCAD/AutoCAD LT、Bandizip/7-Zip/WinRAR 路径框、用户自定义规则（`dialogs.json`）及 Blender 官方扩展命名管道。Tessoa 接管后的自绘打开/另存为窗口由 `isTessoaPicker` 认出但不属任何 `kind`（无法驱动）。完整兼容清单见 [dialog-compatibility.md](../dialog-compatibility.md)。
-- **`DialogBar`**：无焦点置顶工具窗，**不挂外部对话框为 owner**（防合并输入队列），通过 `win::followDialog` 维持 z 序；`roomAlong` 优先下方、不足放左右，必要时异步调整对话框尺寸腾位（每框仅一次）；搜索默认“当前文件夹优先”（`Request::currentFolder` + `ownBox`：收藏关键词、收藏置顶与同音近似照常，`dialogbar::arrangeFound` 按收藏 → 当前文件夹 → 其他位置分段再各自排类型），`Ctrl+Shift+D`（`DialogBarFolderOnly`，设置页“搜索的范围”）仅搜当前目录；另有路径实时补全。转不过去的窗口（无服务的管理员对话框、Tessoa 自己的窗口）进入只复制模式：`copyOnlyHint` 决定提示语，选中结果只复制路径；`App::adminDialogFront` / `App::tessoaPickerFront` 负责日志、诊断记录与一次性通知。
+- **`DialogBar`**：无焦点置顶工具窗，**不挂外部对话框为 owner**（防合并输入队列），通过 `win::followDialog` 维持 z 序；`roomAlong` 优先下方、不足放左右，必要时异步调整对话框尺寸腾位（每框仅一次）；搜索范围三档（设置页“搜索的范围”，`dialogbar::searchScope` 定请求）：默认整个电脑（#507：多用于换目录，不读对话框路径）；`DialogBarFolderFirst` 当前文件夹优先（`Request::currentFolder` + `ownBox`：收藏关键词、收藏置顶与同音近似照常，`dialogbar::arrangeFound` 按收藏 → 当前文件夹 → 其他位置分段再各自排类型；上限 100 条时其他位置可能排不进）；`Ctrl+Shift+D`（`DialogBarFolderOnly`，切回时回到前两档中选定的那档）仅搜当前目录；另有路径实时补全。转不过去的窗口（无服务的管理员对话框、Tessoa 自己的窗口）进入只复制模式：`copyOnlyHint` 决定提示语，选中结果只复制路径；`App::adminDialogFront` / `App::tessoaPickerFront` 负责日志、诊断记录与一次性通知。
 
 ### 4.3 `FileManagers` 支持矩阵
 

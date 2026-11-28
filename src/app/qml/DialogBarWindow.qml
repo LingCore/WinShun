@@ -348,7 +348,7 @@ Window {
             Accessible.ignored: true
         }
 
-        Text { // searching only the folder the dialog shows: its name; a click searches elsewhere too again
+        Text { // searching only the folder the dialog shows: its name; a click goes back (the whole PC, or that folder first)
             id: scopeTag
             objectName: "dialogScopeTag"
             anchors.left: searchIcon.right
@@ -362,7 +362,8 @@ Window {
             color: scopeArea.containsMouse ? Theme.text : Theme.accent
             font.pixelSize: Theme.uiBody
             Accessible.role: Accessible.Button
-            Accessible.name: qsTr("只搜“%1”里面，按下后也搜其他位置").arg(window.bar.scopeName)
+            Accessible.name: window.bar.folderFirst ? qsTr("只搜“%1”里面，按下后也搜其他位置").arg(window.bar.scopeName)
+                                                    : qsTr("只搜“%1”里面，按下后搜索整个电脑").arg(window.bar.scopeName)
             Accessible.onPressAction: window.bar.toggleFolderOnly()
 
             MouseArea {
@@ -412,7 +413,8 @@ Window {
                                                : window.bar.copyOnlyHint === "service" ? qsTr("管理员窗口：搜索后复制路径再手动粘贴（装 Win顺 服务可直接跳转）")
                                                : qsTr("管理员窗口：搜索后复制路径再手动粘贴"))
                       : window.bar.elevatedJump ? qsTr("管理员窗口：转过去并填好文件名，由你点打开")
-                      : window.bar.scopeName.length > 0 ? qsTr("只搜这个文件夹，Ctrl+Shift+D 也搜其他位置")
+                      : window.bar.scopeName.length > 0 ? (window.bar.folderFirst ? qsTr("只搜这个文件夹，Ctrl+Shift+D 也搜其他位置")
+                                                                                   : qsTr("只搜这个文件夹，Ctrl+Shift+D 搜索整个电脑"))
                       : window.bar.foldersOnly ? qsTr("搜索文件夹，或输入路径") : qsTr("搜索文件或文件夹，或输入路径")
                 color: Theme.faint
                 font: input.font

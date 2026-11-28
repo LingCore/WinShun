@@ -442,8 +442,14 @@ std::vector<Entry> buildCatalog()
     }
     {
         Entry& e = add(boolean({"Launcher/DialogBarFolderOnly", QT_TRANSLATE_NOOP("AiSettings", "对话框旁的搜索框只搜当前文件夹"), "files_and_dialogs", 3,
-                                   "The dialog search bar searches only the folder the dialog shows and its subfolders. Off: that folder's results first, then everywhere else (favorites stay on top). Ctrl+Shift+D in the bar switches it and keeps the choice."},
+                                   "The dialog search bar searches only the folder the dialog shows and its subfolders. Off: as Launcher/DialogBarFolderFirst says. Ctrl+Shift+D in the bar switches it and keeps the choice."},
             &Settings::dialogBarFolderOnly));
+        e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "搜索的范围");
+    }
+    {
+        Entry& e = add(boolean({"Launcher/DialogBarFolderFirst", QT_TRANSLATE_NOOP("AiSettings", "对话框旁的搜索框当前文件夹优先"), "files_and_dialogs", 3,
+                                   "Unless it searches only the dialog's folder (Launcher/DialogBarFolderOnly): on, what lies in that folder and its subfolders comes first, then everywhere else (favorites stay on top); off (the default), the whole PC in match order, as the search box."},
+            &Settings::dialogBarFolderFirst));
         e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "搜索的范围");
     }
     {

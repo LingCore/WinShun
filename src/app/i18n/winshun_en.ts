@@ -759,6 +759,10 @@
         <translation>Dialog search bar: current folder only</translation>
     </message>
     <message>
+        <source>对话框旁的搜索框当前文件夹优先</source>
+        <translation>Dialog search bar: current folder first</translation>
+    </message>
+    <message>
         <source>搜索的范围</source>
         <translation>Search scope</translation>
     </message>
@@ -2519,6 +2523,14 @@
     <message>
         <source>只搜这个文件夹，Ctrl+Shift+D 也搜其他位置</source>
         <translation>Only this folder; Ctrl+Shift+D searches elsewhere too</translation>
+    </message>
+    <message>
+        <source>只搜“%1”里面，按下后搜索整个电脑</source>
+        <translation>Only inside “%1”; press to search the whole PC</translation>
+    </message>
+    <message>
+        <source>只搜这个文件夹，Ctrl+Shift+D 搜索整个电脑</source>
+        <translation>Only this folder; Ctrl+Shift+D searches the whole PC</translation>
     </message>
 </context>
 <context>
@@ -7615,16 +7627,16 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Search scope</translation>
     </message>
     <message>
-        <source>范围;当前文件夹;优先;只搜;其他位置;子文件夹;Ctrl+Shift+D;current folder;scope</source>
-        <translation>scope;current folder;first;only;elsewhere;subfolders;Ctrl+Shift+D;current folder;scope</translation>
+        <source>范围;整个电脑;当前文件夹;优先;只搜;其他位置;子文件夹;Ctrl+Shift+D;current folder;scope</source>
+        <translation>scope;whole PC;current folder;first;only;elsewhere;subfolders;Ctrl+Shift+D;current folder;scope</translation>
     </message>
     <message>
         <source>搜索时可按 Ctrl+Shift+D 切换</source>
         <translation>Ctrl+Shift+D switches it while searching</translation>
     </message>
     <message>
-        <source>当前文件夹优先：先列出对话框所在文件夹及子文件夹里的结果，再列出其他位置的；收藏的仍在最前。只搜当前文件夹：只列那个文件夹及子文件夹里的</source>
-        <translation>Current folder first: what lies in the dialog's folder and its subfolders comes first, then the rest; favorites stay on top. Current folder only: only that folder and its subfolders</translation>
+        <source>整个电脑：和搜索框一样，按匹配程度排。当前文件夹优先：先列出对话框所在文件夹及子文件夹里的结果，再列出其他位置的；收藏的仍在最前。只搜当前文件夹：只列那个文件夹及子文件夹里的</source>
+        <translation>Whole PC: as in the search box, best matches first. Current folder first: what lies in the dialog's folder and its subfolders comes first, then the rest; favorites stay on top. Current folder only: only that folder and its subfolders</translation>
     </message>
     <message>
         <source>当前文件夹优先</source>
@@ -13517,6 +13529,10 @@ Content index: %5</translation>
     <message>
         <source>也搜其他位置</source>
         <translation>Elsewhere too</translation>
+    </message>
+    <message>
+        <source>搜索整个电脑</source>
+        <translation>Search the whole PC</translation>
     </message>
     <message>
         <source>只搜“%1”里面</source>

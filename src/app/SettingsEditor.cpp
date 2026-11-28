@@ -1556,11 +1556,22 @@ void SettingsEditor::setDialogBarPlace(const QString& place)
     commit();
 }
 
-void SettingsEditor::setDialogBarFolderOnly(bool on)
+QString SettingsEditor::dialogBarScope() const
 {
-    if (m_settings.dialogBarFolderOnly == on)
+    if (m_settings.dialogBarFolderOnly)
+        return u"only"_s;
+    return m_settings.dialogBarFolderFirst ? u"first"_s : u"all"_s;
+}
+
+void SettingsEditor::setDialogBarScope(const QString& scope)
+{
+    if (scope != u"all" && scope != u"first" && scope != u"only")
         return;
-    m_settings.dialogBarFolderOnly = on;
+    if (scope == dialogBarScope())
+        return;
+    m_settings.dialogBarFolderOnly = scope == u"only";
+    if (!m_settings.dialogBarFolderOnly)
+        m_settings.dialogBarFolderFirst = scope == u"first";
     commit();
 }
 
