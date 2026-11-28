@@ -5714,7 +5714,7 @@ Window {
                 SettingRow {
                     id: letterJumpRow
                     title: qsTr("字母直达")
-                    unlocks: [letterJumpKeyRow, letterJumpKeysRow, resultNumberHintsRow]
+                    unlocks: [letterJumpLauncherOnOpenRow, letterJumpDialogBarOnOpenRow, letterJumpClipboardOnOpenRow, letterJumpKeyRow, letterJumpKeysRow, resultNumberHintsRow]
                     description: qsTr("轻按一下下面选的键再松开，每一行前面出现一个字母，按字母直接打开这一行（剪贴板里是粘贴），第九行以后也有。搜索框里按 Shift+字母是选中这一行，它的按钮（打开所在位置、在终端中打开、复制、复制路径、删除）上再出现字母，按字母就是点那个按钮，删除要按两次；剪贴板和对话框旁的搜索栏里 Shift+字母是选中那一条，剪贴板里可以选几条一起粘贴。再按一下那个键或按 Esc 退出。启动器和剪贴板共用")
                     keywords: qsTr("快捷键;字母;单手;vim;vi;提示;跳转;直达;hint").split(";")
 
@@ -5722,6 +5722,57 @@ Window {
                         dpr: window.dpr
                         checked: window.editor.letterJump
                         onToggled: (on) => window.editor.letterJump = on
+                    }
+                }
+
+                SettingRow {
+                    id: letterJumpLauncherOnOpenRow
+                    objectName: "letterJumpLauncherOnOpenRow"
+                    sub: true
+                    shown: window.editor.letterJump
+                    title: qsTr("启动器打开时默认进入字母直达")
+                    description: qsTr("打开启动器后，字母直接选择结果；轻按直达键切回输入模式")
+                    keywords: qsTr("启动器;字母直达;默认;打开").split(";")
+
+                    ToggleSwitch {
+                        objectName: "letterJumpLauncherOnOpenSwitch"
+                        dpr: window.dpr
+                        checked: window.editor.letterJumpLauncherOnOpen
+                        onToggled: (on) => window.editor.letterJumpLauncherOnOpen = on
+                    }
+                }
+
+                SettingRow {
+                    id: letterJumpDialogBarOnOpenRow
+                    objectName: "letterJumpDialogBarOnOpenRow"
+                    sub: true
+                    shown: window.editor.letterJump
+                    title: qsTr("Ctrl+G 面板打开时默认进入字母直达")
+                    description: qsTr("打开 Ctrl+G 对话框搜索框后，字母直接选择结果；轻按直达键切回输入模式")
+                    keywords: qsTr("Ctrl+G;对话框;字母直达;默认;打开").split(";")
+
+                    ToggleSwitch {
+                        objectName: "letterJumpDialogBarOnOpenSwitch"
+                        dpr: window.dpr
+                        checked: window.editor.letterJumpDialogBarOnOpen
+                        onToggled: (on) => window.editor.letterJumpDialogBarOnOpen = on
+                    }
+                }
+
+                SettingRow {
+                    id: letterJumpClipboardOnOpenRow
+                    objectName: "letterJumpClipboardOnOpenRow"
+                    sub: true
+                    shown: window.editor.letterJump
+                    title: qsTr("剪贴板打开时默认进入字母直达")
+                    description: qsTr("打开剪贴板后，字母直接粘贴对应条目；轻按直达键切回搜索模式")
+                    keywords: qsTr("剪贴板;粘贴;字母直达;默认;打开").split(";")
+
+                    ToggleSwitch {
+                        objectName: "letterJumpClipboardOnOpenSwitch"
+                        dpr: window.dpr
+                        checked: window.editor.letterJumpClipboardOnOpen
+                        onToggled: (on) => window.editor.letterJumpClipboardOnOpen = on
                     }
                 }
 

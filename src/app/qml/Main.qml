@@ -632,12 +632,14 @@ Window {
         id: numberHints
         objectName: "launcherNumberHints"
         mode: window.launcher.numberHints
+        startOnOpen: window.launcher.letterJump && window.launcher.letterJumpOnOpen
+                      && window.gridColumns === 1 && !window.panel
         key: window.numberKey
         // Refused the front over the folder typed in, its keys come through
         // its KeyRouter, Ctrl, Alt and Shift too (as the clipboard's do).
         listening: window.visible && (window.active || window.launcher.keysRouted) && !window.menuOpen && !window.clipboardBelow
         // 字母直达 (GitHub #175): the plain list only (its rows have the room for a letter).
-        jumpEnabled: window.launcher.letterJump && window.gridColumns === 1 && !window.panel
+        jumpEnabled: window.launcher.letterJump && window.gridColumns === 1 && !window.panel && view.count > 0
         trigger: window.launcher.letterJumpKey
         letters: window.launcher.letterJumpKeys
     }
@@ -840,7 +842,10 @@ Window {
 
     // Hidden: also free the menu window until it is needed again.
     onVisibleChanged: {
-        if (!visible) {
+        if (visible) {
+            numberHints.opened()
+        } else {
+            numberHints.closed()
             arriving = false
             leftPath = launcher.results.pathAt(view.currentIndex)
             leftRowY = view.currentItem ? view.currentItem.y - view.contentY : 0

@@ -2179,6 +2179,14 @@ void Launcher::setLetterJump(bool on, const QString& key, const QString& keys)
     emit resultOptionsChanged();
 }
 
+void Launcher::setLetterJumpOnOpen(bool on)
+{
+    if (m_letterJumpOnOpen == on)
+        return;
+    m_letterJumpOnOpen = on;
+    emit resultOptionsChanged();
+}
+
 void Launcher::setNumberHints(const QString& hints)
 {
     if (m_numberHints == hints)

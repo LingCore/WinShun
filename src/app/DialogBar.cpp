@@ -642,6 +642,14 @@ void DialogBar::setLetterJump(bool on, const QString& key, const QString& keys)
     emit resultOptionsChanged();
 }
 
+void DialogBar::setLetterJumpOnOpen(bool on)
+{
+    if (on == m_letterJumpOnOpen)
+        return;
+    m_letterJumpOnOpen = on;
+    emit resultOptionsChanged();
+}
+
 void DialogBar::setNumberKeysLeft(unsigned digits)
 {
     if (digits == m_numberKeysLeft)

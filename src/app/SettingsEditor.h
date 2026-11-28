@@ -262,6 +262,9 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QString numberKeys READ numberKeys WRITE setNumberKeys NOTIFY changed FINAL) // ctrl | alt | off
     Q_PROPERTY(QString numberHints READ numberHints WRITE setNumberHints NOTIFY changed FINAL) // held | always | off
     Q_PROPERTY(bool letterJump READ letterJump WRITE setLetterJump NOTIFY changed FINAL)
+    Q_PROPERTY(bool letterJumpLauncherOnOpen READ letterJumpLauncherOnOpen WRITE setLetterJumpLauncherOnOpen NOTIFY changed FINAL)
+    Q_PROPERTY(bool letterJumpDialogBarOnOpen READ letterJumpDialogBarOnOpen WRITE setLetterJumpDialogBarOnOpen NOTIFY changed FINAL)
+    Q_PROPERTY(bool letterJumpClipboardOnOpen READ letterJumpClipboardOnOpen WRITE setLetterJumpClipboardOnOpen NOTIFY changed FINAL)
     Q_PROPERTY(QString letterJumpKey READ letterJumpKey WRITE setLetterJumpKey NOTIFY changed FINAL) // auto | ctrl | alt | shift
     Q_PROPERTY(QString letterJumpKeys READ letterJumpKeys WRITE setLetterJumpKeys NOTIFY changed FINAL)
     Q_PROPERTY(QString defaultLetterJumpKeys READ defaultLetterJumpKeys CONSTANT FINAL)
@@ -988,6 +991,12 @@ public:
     void setNumberHints(const QString& hints);
     bool letterJump() const { return m_settings.letterJump; }
     void setLetterJump(bool on);
+    bool letterJumpLauncherOnOpen() const { return m_settings.letterJumpLauncherOnOpen; }
+    void setLetterJumpLauncherOnOpen(bool on);
+    bool letterJumpDialogBarOnOpen() const { return m_settings.letterJumpDialogBarOnOpen; }
+    void setLetterJumpDialogBarOnOpen(bool on);
+    bool letterJumpClipboardOnOpen() const { return m_settings.letterJumpClipboardOnOpen; }
+    void setLetterJumpClipboardOnOpen(bool on);
     QString letterJumpKey() const { return m_settings.letterJumpKey; }
     void setLetterJumpKey(const QString& key);
     QString letterJumpKeys() const { return m_settings.letterJumpKeys; }

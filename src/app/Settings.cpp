@@ -1148,6 +1148,9 @@ void Settings::load()
     if (numberHints != u"held" && numberHints != u"always" && numberHints != u"off")
         numberHints = d.numberHints;
     letterJump = readOrDefault(s, u"Results/LetterJump"_s, d.letterJump);
+    letterJumpLauncherOnOpen = readOrDefault(s, u"Results/LetterJumpLauncherOnOpen"_s, d.letterJumpLauncherOnOpen);
+    letterJumpDialogBarOnOpen = readOrDefault(s, u"Results/LetterJumpDialogBarOnOpen"_s, d.letterJumpDialogBarOnOpen);
+    letterJumpClipboardOnOpen = readOrDefault(s, u"Results/LetterJumpClipboardOnOpen"_s, d.letterJumpClipboardOnOpen);
     letterJumpKey = readOrDefault(s, u"Results/LetterJumpKey"_s, d.letterJumpKey).trimmed().toLower();
     if (letterJumpKey != u"ctrl" && letterJumpKey != u"alt" && letterJumpKey != u"shift")
         letterJumpKey = d.letterJumpKey;
@@ -1631,6 +1634,9 @@ bool Settings::saveChecked() const
     s.setValue(u"Results/NumberKeys"_s, numberKeys);
     s.setValue(u"Results/NumberHints"_s, numberHints);
     s.setValue(u"Results/LetterJump"_s, letterJump);
+    s.setValue(u"Results/LetterJumpLauncherOnOpen"_s, letterJumpLauncherOnOpen);
+    s.setValue(u"Results/LetterJumpDialogBarOnOpen"_s, letterJumpDialogBarOnOpen);
+    s.setValue(u"Results/LetterJumpClipboardOnOpen"_s, letterJumpClipboardOnOpen);
     s.setValue(u"Results/LetterJumpKey"_s, letterJumpKey);
     s.setValue(u"Results/LetterJumpKeys"_s, letterJumpKeys);
     s.setValue(u"Results/ShortcutHelp"_s, shortcutHelp);

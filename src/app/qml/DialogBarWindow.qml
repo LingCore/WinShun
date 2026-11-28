@@ -42,7 +42,10 @@ Window {
     }
     // Hidden: also free the menu window until it is needed again.
     onVisibleChanged: {
-        if (!visible) {
+        if (visible) {
+            numberHints.opened()
+        } else {
+            numberHints.closed()
             closeMenu()
             menuLoader.active = false
             nameTip.dismiss()
@@ -148,9 +151,10 @@ Window {
         id: numberHints
         objectName: "dialogNumberHints"
         mode: window.bar.numberHints
+        startOnOpen: window.bar.letterJump && window.bar.letterJumpOnOpen
         key: window.numberKey
         listening: window.active && !window.menuOpen
-        jumpEnabled: window.bar.letterJump && list.visible
+        jumpEnabled: window.bar.letterJump && window.bar.rows > 0
         trigger: window.bar.letterJumpKey
         letters: window.bar.letterJumpKeys
     }

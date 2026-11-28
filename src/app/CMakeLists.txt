@@ -4,14 +4,19 @@
 # models into ocr\; the app loads the DLL itself by its full path (Windows
 # has an older onnxruntime.dll in System32), so it only needs the headers.
 set(ORT_VERSION 1.30.0)
-set(ORT_SHA256 c6ba983baf5681af108599675d2a89c2d145512d02de28aed0bff177cd0ba949)
+set(ORT_SHA256 30df119bd9164eaa187666d93147448fdd4a9a1a3caf83f1505daf7af2d1c5d2)
 set(ORT_DIR "${CMAKE_BINARY_DIR}/_deps/onnxruntime-win-x64-${ORT_VERSION}" CACHE INTERNAL "")
 if(NOT EXISTS "${ORT_DIR}/lib/onnxruntime.dll")
-    set(archive "${CMAKE_BINARY_DIR}/_deps/onnxruntime-win-x64-${ORT_VERSION}.zip")
+    # GitHub release archives are unavailable; use Microsoft's same-version NuGet package.
+    set(archive "${CMAKE_BINARY_DIR}/_deps/microsoft.ml.onnxruntime.${ORT_VERSION}.nupkg")
     winshun_download(
-        "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-win-x64-${ORT_VERSION}.zip"
+        "https://api.nuget.org/v3-flatcontainer/microsoft.ml.onnxruntime/${ORT_VERSION}/microsoft.ml.onnxruntime.${ORT_VERSION}.nupkg"
         "${archive}" "${ORT_SHA256}")
-    file(ARCHIVE_EXTRACT INPUT "${archive}" DESTINATION "${CMAKE_BINARY_DIR}/_deps")
+    file(ARCHIVE_EXTRACT INPUT "${archive}" DESTINATION "${ORT_DIR}"
+        PATTERNS "build/native/include/*" "runtimes/win-x64/native/onnxruntime.dll" "LICENSE" "ThirdPartyNotices.txt")
+    file(COPY "${ORT_DIR}/build/native/include" DESTINATION "${ORT_DIR}")
+    file(MAKE_DIRECTORY "${ORT_DIR}/lib")
+    file(RENAME "${ORT_DIR}/runtimes/win-x64/native/onnxruntime.dll" "${ORT_DIR}/lib/onnxruntime.dll")
     file(REMOVE "${archive}")
 endif()
 add_library(onnxruntime_headers INTERFACE IMPORTED GLOBAL)

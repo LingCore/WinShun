@@ -1,0 +1,53 @@
+name: Windows build and targeted tests
+
+on:
+  push:
+    branches:
+      - feature/letter-jump-on-open
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python for aqtinstall
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: 6.12.1
+          arch: win64_msvc2022_64
+          archives: qtbase qtsvg qtdeclarative qttools
+          modules: qttasktree
+          # Qt 6.12 repository support is merged upstream but not released in aqt 3.3.0.
+          aqtsource: https://github.com/miurahr/aqtinstall/archive/8e4ea786f8a4f9dc578516738a137dec80a0362c.zip
+          setup-python: false
+          cache: true
+
+      - name: Check ONNX Runtime package layout
+        shell: pwsh
+        run: cmake "-DTEST_DIR=$env:RUNNER_TEMP/onnxruntime-cmake" -P tests/cmake/tst_onnxruntime.cmake
+
+      - name: Build and run touched tests
+        shell: pwsh
+        run: |
+          $qmake = Get-Command qmake.exe -ErrorAction SilentlyContinue
+          if (-not $qmake) {
+              throw "qmake.exe was not added to PATH by the Qt setup action"
+          }
+          $qtDir = Split-Path (Split-Path $qmake.Source -Parent) -Parent
+          & .\scripts\build.ps1 -QtDir $qtDir -Tests '^tst_(numberhints|idletrim|download_cmake|onnxruntime_cmake)$'
+          if ($LASTEXITCODE) {
+              throw "WinShun build or targeted tests failed"
+          }
