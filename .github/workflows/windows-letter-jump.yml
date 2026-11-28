@@ -26,9 +26,9 @@ jobs:
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
-          # Qt 6.12.0 is currently missing Windows XML metadata on the public aqt mirror.
-          # 6.8.3 is the minimum version declared by CMakeLists.txt.
-          version: 6.8.3
+          # Qt 6.8 lacks the UTF-16 string concatenation used by the current sources.
+          # 6.10.3 still uses the repository layout supported by aqtinstall 3.3.
+          version: 6.10.3
           arch: win64_msvc2022_64
           archives: qtbase qtsvg qtdeclarative qttools
           setup-python: false
