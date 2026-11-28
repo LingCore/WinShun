@@ -1436,6 +1436,8 @@ set_tests_properties(tst_download PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 add_test(NAME tst_download_cmake COMMAND ${CMAKE_COMMAND}
     "-DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/download-cmake" -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/tst_download.cmake")
+add_test(NAME tst_onnxruntime_cmake COMMAND ${CMAKE_COMMAND}
+    "-DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/onnxruntime-cmake" -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/tst_onnxruntime.cmake")
 
 # What a drop target gets when results are dragged out of Win顺.
 qt_add_executable(tst_dragout tst_dragout.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/DragOut.cpp)

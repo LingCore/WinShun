@@ -34,6 +34,10 @@ jobs:
           setup-python: false
           cache: true
 
+      - name: Check ONNX Runtime package layout
+        shell: pwsh
+        run: cmake "-DTEST_DIR=$env:RUNNER_TEMP/onnxruntime-cmake" -P tests/cmake/tst_onnxruntime.cmake
+
       - name: Build and run touched tests
         shell: pwsh
         run: |
@@ -42,7 +46,7 @@ jobs:
               throw "qmake.exe was not added to PATH by the Qt setup action"
           }
           $qtDir = Split-Path (Split-Path $qmake.Source -Parent) -Parent
-          & .\scripts\build.ps1 -QtDir $qtDir -Tests 'tst_numberhints|tst_idletrim'
+          & .\scripts\build.ps1 -QtDir $qtDir -Tests '^tst_(numberhints|idletrim|download_cmake|onnxruntime_cmake)$'
           if ($LASTEXITCODE) {
               throw "WinShun build or targeted tests failed"
           }
