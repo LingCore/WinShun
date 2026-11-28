@@ -1,0 +1,40 @@
+name: Windows build and targeted tests
+
+on:
+  push:
+    branches:
+      - feature/letter-jump-on-open
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: 6.12.0
+          arch: win64_msvc2022_64
+          modules: qtdeclarative qtsvg qttools
+          cache: true
+
+      - name: Build and run touched tests
+        shell: pwsh
+        run: |
+          $qmake = Get-Command qmake.exe -ErrorAction SilentlyContinue
+          if (-not $qmake) {
+              throw "qmake.exe was not added to PATH by the Qt setup action"
+          }
+          $qtDir = Split-Path (Split-Path $qmake.Source -Parent) -Parent
+          & .\scripts\build.ps1 -QtDir $qtDir -Tests 'tst_numberhints|tst_idletrim'
+          if ($LASTEXITCODE) {
+              throw "WinShun build or targeted tests failed"
+          }
