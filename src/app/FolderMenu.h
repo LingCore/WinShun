@@ -223,6 +223,9 @@ signals:
     void settingsRequested();
     void pluginSettingsRequested(const QString& pluginId); // a favorite that is a plugin's settings (GitHub #390)
     void notice(const QString& text);
+    // A favorite shortcut chosen (Favorite::pressesKeys): its "winshun:keys/…",
+    // to press in `window`, the File Explorer (or desktop) the menu was over.
+    void keysRequested(const QString& command, const QString& name, quintptr window);
     void openChanged(bool open);
     void appsExpandedRequested(bool expanded);
 

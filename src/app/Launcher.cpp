@@ -16,6 +16,7 @@
 #include "History.h"
 #include "Host.h"
 #include "IndexService.h"
+#include "KeyChord.h"
 #include "Merge.h"
 #include "ZeroCode.h"
 #include "OpenPolicy.h"
@@ -4823,6 +4824,8 @@ void Launcher::refreshKeyHints()
             enter = isPowerArmed(r->target) ? tr("确认%1").arg(r->name)
                   : !ws::powerCommandNeedsConfirm(r->target) ? tr("锁定")
                   : tr("执行");
+        } else if (r->isCommand() && keychord::isCommand(r->target)) {
+            enter = tr("按下快捷键"); // which one, the row says (快捷键 · Ctrl+Shift+N)
         } else {
             enter = ws::isOwnCommand(r->target) ? tr("打开设置") : tr("打开");
         }
@@ -6611,7 +6614,9 @@ void Launcher::performPlace(const SearchResult& place, Action action)
             emit dismissRequested();
             return;
         }
-        if (place.isCommand())
+        if (place.isCommand() && keychord::isCommand(place.target)) // a shortcut: as administrator means nothing
+            emit keysRequested(place.target, place.name);
+        else if (place.isCommand())
             shell::runCustom(place.target, place.workingDirectory, place.words, reportFailure(place.name),
                 {place.silent, place.runAsAdmin || action == RunAsAdmin});
         else
@@ -6630,6 +6635,11 @@ void Launcher::performPlace(const SearchResult& place, Action action)
         if (own) { // as a winshun:// link opens it (WinShunUri)
             shell::copyText(u"winshun://"_s + place.target.mid(place.target.indexOf(u':') + 1));
             flash(tr("已复制链接"));
+            break;
+        }
+        if (place.isCommand() && keychord::isCommand(place.target)) {
+            shell::copyText(place.target.mid(keychord::kCommandPrefix.size()));
+            flash(tr("已复制快捷键"));
             break;
         }
         shell::copyText(place.target);

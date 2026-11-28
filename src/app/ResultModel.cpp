@@ -8,6 +8,7 @@
 #include "FileIndex.h"
 #include "FileIconProvider.h"
 #include "FuzzyMatch.h"
+#include "KeyChord.h"
 #include "ThumbnailProvider.h"
 #include "PathText.h"
 #include "Pinyin.h"
@@ -192,6 +193,8 @@ QString appOrigin(const SearchResult& r)
         return ResultModel::tr("外观、快捷键与插件");
     if (r.isPluginSettings())
         return ResultModel::tr("Win顺 设置 › 插件");
+    if (r.isCommand() && keychord::isCommand(r.target)) // a shortcut to press: which one
+        return ResultModel::tr("快捷键 · %1").arg(r.target.mid(keychord::kCommandPrefix.size()));
     if (r.isCommand())
         return ResultModel::tr("自定义命令 · %1").arg(r.words.isEmpty() ? r.target : r.words);
     switch (r.app) {

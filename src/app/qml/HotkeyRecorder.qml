@@ -143,7 +143,8 @@ Rectangle {
             }
             break
         }
-        const key = keyName(event.key)
+        // The number pad's keys make no hotkey: "Ctrl+0" would be the main row's 0.
+        const key = event.modifiers & Qt.KeypadModifier ? "" : keyName(event.key)
         const combination = mods.concat([key]).join("+")
         if (key.length === 0) {
             partial = qsTr("这个键不能用，换一个试试")

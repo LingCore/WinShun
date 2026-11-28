@@ -4,6 +4,7 @@
 
 #include "AppCatalog.h"
 #include "FileIconProvider.h"
+#include "KeyChord.h"
 #include "SiteIconImage.h"
 #include "SvgIcon.h"
 #include "SettingsEditor.h"
@@ -256,7 +257,7 @@ void FavoritesSettings::refresh()
             missing = places && windowsPlacesRead(*places) && !place; // not read yet: not known to be missing
         } else if (f.kind == Favorite::Kind::Command) {
             icon = FileIconProvider::commandIconUrl(f.command, f.workingDirectory, f.icon, dark());
-            shownPath = f.command;
+            shownPath = f.pressesKeys() ? tr("快捷键 %1").arg(f.command.mid(keychord::kCommandPrefix.size())) : f.command;
             missing = false;
         } else {
             icon = FileIconProvider::iconUrl(f.path, f.kind == Favorite::Kind::Folder);
@@ -286,6 +287,8 @@ void FavoritesSettings::refresh()
             {u"administrator"_s, f.runAsAdmin},
             {u"searchFiles"_s, f.searchFiles},
             {u"fileMenu"_s, f.fileMenu},
+            {u"pressesKeys"_s, f.pressesKeys()},
+            {u"keys"_s, f.pressesKeys() ? f.command.mid(keychord::kCommandPrefix.size()) : QString()},
             {u"modifiedText"_s, modifiedText},
             {u"sizeText"_s, sizeText},
         });
@@ -419,6 +422,8 @@ QString FavoritesSettings::saveCommand(int index, const QString& name, const QSt
     if (const QString error = validateKeyword(index, word); !error.isEmpty())
         return error;
     const QString line = command.trimmed();
+    if (keychord::isCommand(line))
+        return tr("要按快捷键，请用“添加快捷键”");
     if (line.isEmpty() || line.contains(QChar::Null) || line.contains(u'\n') || line.contains(u'\r')
         || (line.startsWith(u'"') && line.indexOf(u'"', 1) < 0))
         return tr("请填写有效的单行命令；含空格的程序路径请加双引号");
@@ -448,6 +453,45 @@ QString FavoritesSettings::saveCommand(int index, const QString& name, const QSt
     else
         m_store->update(index, f);
     return {};
+}
+
+QString FavoritesSettings::saveKeys(int index, const QString& name, const QString& keyword, const QString& keys,
+    const QString& icon)
+{
+    if (!m_store || index < -1 || index >= m_store->items().size()
+        || (index >= 0 && !m_store->items()[index].pressesKeys()))
+        return tr("这一项已经不在了");
+    const QString word = keyword.trimmed();
+    if (name.trimmed().isEmpty() || word.isEmpty())
+        return tr("请填写名称和关键词");
+    if (const QString error = validateKeyword(index, word); !error.isEmpty())
+        return error;
+    const std::optional<keychord::Chord> chord = keychord::parse(keys);
+    if (!chord)
+        return tr("请点“快捷键”框，再按下要按的组合键");
+    if (!keychord::sendable(*chord))
+        return tr("Windows 不允许程序按这个组合键，只能在键盘上按");
+    if (!icon.isEmpty() && favoriteIconPng(icon).isEmpty())
+        return tr("图标读不了，请重新选择或恢复自动提取");
+    Favorite f = index >= 0 ? m_store->items()[index] : Favorite();
+    f.kind = Favorite::Kind::Command;
+    if (index < 0)
+        f.path = u"winshun-command:"_s + QUuid::createUuid().toString(QUuid::WithoutBraces);
+    f.name = name.trimmed();
+    f.keyword = word;
+    f.command = keychord::command(*chord);
+    f.icon = icon;
+    if (index < 0)
+        m_store->add(f);
+    else
+        m_store->update(index, f);
+    return {};
+}
+
+QString FavoritesSettings::keysOf(int key, int modifiers) const
+{
+    const std::optional<keychord::Chord> chord = keychord::fromQt(key, Qt::KeyboardModifiers::fromInt(modifiers));
+    return chord && keychord::sendable(*chord) ? keychord::text(*chord) : QString();
 }
 
 QString FavoritesSettings::pickCommand()
@@ -605,6 +649,8 @@ void FavoritesSettings::open(int index)
     if (!m_store || index < 0 || index >= m_store->items().size())
         return;
     const Favorite& f = m_store->items()[index];
+    if (f.pressesKeys())
+        return; // pressed where one works, from the search box (its row has no 打开)
     switch (f.kind) {
     case Favorite::Kind::Command:
         shell::runCustom(f.command, f.workingDirectory, {}, {}, {f.silent, f.runAsAdmin});

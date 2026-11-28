@@ -23,6 +23,7 @@ qt_add_library(wscore STATIC
     DoubleClickDetector.h
     DoubleTapDetector.h
     Favorites.cpp Favorites.h
+    KeyChord.cpp KeyChord.h
     FileIndex.cpp FileIndex.h
     FileText.cpp FileText.h
     FuzzyMatch.cpp FuzzyMatch.h

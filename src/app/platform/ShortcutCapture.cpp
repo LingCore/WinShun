@@ -38,45 +38,78 @@ void logRawInput(bool warning, const std::string& line)
         write();
 }
 
-// The key as the settings window's recorder knows it (see HotkeyRecorder.qml).
-int qtKey(UINT vk, Qt::KeyboardModifiers modifiers)
+// The key as the settings window's recorders know it (see HotkeyRecorder.qml),
+// as Qt names it: the number pad's with Qt::KeypadModifier (`keypad`), the
+// signs by the US keyboard's keys whatever the layout (a favorite's shortcut
+// presses them by key, KeyChord.h). Qt::Key_unknown: the recorder says it
+// cannot be used.
+struct QtKey {
+    int key;
+    bool keypad = false;
+};
+
+QtKey qtKey(UINT vk, Qt::KeyboardModifiers modifiers, bool extended)
 {
     if ((vk >= 'A' && vk <= 'Z') || (vk >= '0' && vk <= '9'))
-        return static_cast<int>(vk); // Qt::Key_A… and Qt::Key_0… have the same codes
+        return {static_cast<int>(vk)}; // Qt::Key_A… and Qt::Key_0… have the same codes
     if (vk >= VK_F1 && vk <= VK_F24)
-        return Qt::Key_F1 + static_cast<int>(vk - VK_F1);
+        return {Qt::Key_F1 + static_cast<int>(vk - VK_F1)};
+    if (vk >= VK_NUMPAD0 && vk <= VK_NUMPAD9)
+        return {Qt::Key_0 + static_cast<int>(vk - VK_NUMPAD0), true};
     switch (vk) {
     case VK_CONTROL: // sent by programs; the keyboard says which one
     case VK_LCONTROL:
     case VK_RCONTROL:
-        return Qt::Key_Control;
+        return {Qt::Key_Control};
     case VK_MENU:
     case VK_LMENU:
     case VK_RMENU:
-        return Qt::Key_Alt;
+        return {Qt::Key_Alt};
     case VK_SHIFT:
     case VK_LSHIFT:
     case VK_RSHIFT:
-        return Qt::Key_Shift;
+        return {Qt::Key_Shift};
     case VK_LWIN:
     case VK_RWIN:
-        return Qt::Key_Meta;
-    case VK_SPACE:
-        return Qt::Key_Space;
-    case VK_OEM_3:
-        return Qt::Key_QuoteLeft;
-    case VK_TAB:
-        return modifiers.testFlag(Qt::ShiftModifier) ? Qt::Key_Backtab : Qt::Key_Tab; // as Qt spells Shift+Tab
-    case VK_ESCAPE:
-        return Qt::Key_Escape;
-    case VK_BACK:
-        return Qt::Key_Backspace;
-    case VK_DELETE:
-        return Qt::Key_Delete;
-    case VK_RETURN:
-        return Qt::Key_Return;
-    default:
-        return Qt::Key_unknown; // the recorder says it cannot be used
+        return {Qt::Key_Meta};
+    case VK_SPACE: return {Qt::Key_Space};
+    case VK_TAB: return {modifiers.testFlag(Qt::ShiftModifier) ? Qt::Key_Backtab : Qt::Key_Tab}; // as Qt spells Shift+Tab
+    case VK_ESCAPE: return {Qt::Key_Escape};
+    case VK_BACK: return {Qt::Key_Backspace};
+    case VK_DELETE: return {Qt::Key_Delete};
+    case VK_RETURN: return extended ? QtKey {Qt::Key_Enter, true} : QtKey {Qt::Key_Return};
+    case VK_INSERT: return {Qt::Key_Insert};
+    case VK_HOME: return {Qt::Key_Home};
+    case VK_END: return {Qt::Key_End};
+    case VK_PRIOR: return {Qt::Key_PageUp};
+    case VK_NEXT: return {Qt::Key_PageDown};
+    case VK_LEFT: return {Qt::Key_Left};
+    case VK_RIGHT: return {Qt::Key_Right};
+    case VK_UP: return {Qt::Key_Up};
+    case VK_DOWN: return {Qt::Key_Down};
+    case VK_SNAPSHOT: return {Qt::Key_Print};
+    case VK_PAUSE: return {Qt::Key_Pause};
+    case VK_CAPITAL: return {Qt::Key_CapsLock};
+    case VK_NUMLOCK: return {Qt::Key_NumLock};
+    case VK_SCROLL: return {Qt::Key_ScrollLock};
+    case VK_APPS: return {Qt::Key_Menu};
+    case VK_MULTIPLY: return {Qt::Key_Asterisk, true};
+    case VK_ADD: return {Qt::Key_Plus, true};
+    case VK_SUBTRACT: return {Qt::Key_Minus, true};
+    case VK_DECIMAL: return {Qt::Key_Period, true};
+    case VK_DIVIDE: return {Qt::Key_Slash, true};
+    case VK_OEM_3: return {Qt::Key_QuoteLeft};
+    case VK_OEM_MINUS: return {Qt::Key_Minus};
+    case VK_OEM_PLUS: return {Qt::Key_Equal};
+    case VK_OEM_4: return {Qt::Key_BracketLeft};
+    case VK_OEM_6: return {Qt::Key_BracketRight};
+    case VK_OEM_5: return {Qt::Key_Backslash};
+    case VK_OEM_1: return {Qt::Key_Semicolon};
+    case VK_OEM_7: return {Qt::Key_Apostrophe};
+    case VK_OEM_COMMA: return {Qt::Key_Comma};
+    case VK_OEM_PERIOD: return {Qt::Key_Period};
+    case VK_OEM_2: return {Qt::Key_Slash};
+    default: return {Qt::Key_unknown};
     }
 }
 
@@ -153,7 +186,8 @@ bool ShortcutCapture::handle(WPARAM message, const KBDLLHOOKSTRUCT& event)
     m_taken.set(vk, !press); // a press is not counted yet, a release still is (see Key::modifiers)
     const Qt::KeyboardModifiers held = modifiers();
     m_taken.set(vk, press);
-    m_onKey({qtKey(vk, held), held, press, autoRepeat});
+    const QtKey key = qtKey(vk, held, (event.flags & LLKHF_EXTENDED) != 0);
+    m_onKey({key.key, key.keypad ? held | Qt::KeypadModifier : held, press, autoRepeat});
     return true;
 }
 

@@ -2386,7 +2386,7 @@ int runSettings(const QStringList& args)
     editor->setWindow(window);
     QTimer watchdog;
     armWatchdog(watchdog, 600);
-    if (args.contains(u"--command-form"_s) && args.contains(u"--compact"_s))
+    if ((args.contains(u"--command-form"_s) || args.contains(u"--keys-form"_s)) && args.contains(u"--compact"_s))
         window->resize(760, 420);
     if (const int width = valueAfter(args, u"--width").toInt(); width >= window->minimumWidth()) // narrower than usual, down to the window's least
         window->resize(width, window->height());
@@ -4050,7 +4050,7 @@ int runSettings(const QStringList& args)
         return finish(window, result, editor);
     }
     for (int page = 0; page < pages.size(); ++page) {
-        if (args.contains(u"--command-form"_s))
+        if (args.contains(u"--command-form"_s) || args.contains(u"--keys-form"_s))
             break;
         if (onePage && page != wantedPage)
             continue;
@@ -4193,6 +4193,81 @@ int runSettings(const QStringList& args)
             - flick->property("height").toDouble()));
         settle(window, 3);
         saved = saveGrab(window, out.filePath(u"command-form-bottom.png"_s)) && saved;
+        // 收藏夹 › 添加快捷键: the form as a hand fills it in, its recorder
+        // given Ctrl+Shift+N, saved; its row, and its form as 编辑 opens it.
+        if (args.contains(u"--keys-form"_s)) {
+            QObject* section = partOf(window, favoritesPage, "favoritesSection");
+            if (!section) {
+                qWarning("preview: favorites section missing");
+                return finish(window, false);
+            }
+            section->setProperty("editing", -1);
+            section->setProperty("addingKeys", true);
+            flick->setProperty("contentY", 0);
+            settle(window, 3);
+            saved = saveGrab(window, out.filePath(u"keys-new.png"_s)) && saved;
+            QObject* form = visualNamed(qobject_cast<QQuickItem*>(section), u"favoriteForm"_s);
+            auto* recorder = form ? form->findChild<QQuickItem*>(u"favoriteKeysRecorder"_s) : nullptr;
+            QObject* name = form ? form->findChild<QObject*>(u"favoriteName"_s) : nullptr;
+            QObject* keyword = form ? form->findChild<QObject*>(u"favoriteKeyword"_s) : nullptr;
+            QObject* commandBox = form ? form->findChild<QObject*>(u"favoriteCommand"_s) : nullptr;
+            if (!recorder || !name || !keyword || !commandBox) {
+                qWarning("preview: shortcut form fields missing");
+                return finish(window, false);
+            }
+            if (!recorder->isVisible() || commandBox->property("visible").toBool())
+                qWarning("preview: the shortcut form shows a command line, or no recorder");
+            name->setProperty("text", u"新建文件夹"_s);
+            keyword->setProperty("text", u"xj"_s);
+            recorder->forceActiveFocus(Qt::MouseFocusReason); // clicked
+            settle(window, 2);
+            const bool recording = section->property("recordingKeys").toBool() && editor->recordingHotkey();
+            saved = saveGrab(window, out.filePath(u"keys-recording.png"_s)) && saved;
+            const auto press = [&](int code, Qt::KeyboardModifiers modifiers) {
+                QKeyEvent down(QEvent::KeyPress, code, modifiers);
+                QKeyEvent up(QEvent::KeyRelease, code, modifiers);
+                QCoreApplication::sendEvent(window, &down);
+                QCoreApplication::sendEvent(window, &up);
+                settle(window, 1);
+            };
+            press(Qt::Key_Control, Qt::ControlModifier); // a modifier alone records nothing
+            const bool waited = form->property("keys").toString().isEmpty() && section->property("recordingKeys").toBool();
+            press(Qt::Key_N, Qt::ControlModifier | Qt::ShiftModifier);
+            const QString recorded = form->property("keys").toString();
+            const bool stopped = !section->property("recordingKeys").toBool() && !editor->recordingHotkey();
+            say(u"shortcut form: recording %1 (the window takes the keyboard), a modifier alone waited %2, recorded \"%3\", stopped %4"_s
+                    .arg(recording).arg(waited).arg(recorded).arg(stopped));
+            if (!recording || !waited || recorded != u"Ctrl+Shift+N"_s || !stopped)
+                qWarning("preview: the shortcut's recorder did not record Ctrl+Shift+N as a hand presses it");
+            saved = saveGrab(window, out.filePath(u"keys-filled.png"_s)) && saved;
+            const qsizetype before = favorites.items().size();
+            QMetaObject::invokeMethod(form, "save");
+            settle(window, 3);
+            if (favorites.items().size() != before + 1 || section->property("addingKeys").toBool()) {
+                qWarning("preview: the shortcut form did not save and close");
+                return finish(window, false);
+            }
+            const Favorite added = favorites.items().constLast();
+            if (!added.pressesKeys() || added.command != u"winshun:keys/Ctrl+Shift+N"_s || added.keyword != u"xj"_s)
+                qWarning("preview: the shortcut was saved as %s", qPrintable(added.command));
+            flick->setProperty("contentY", std::max(0.0, flick->property("contentHeight").toDouble()
+                - flick->property("height").toDouble()));
+            settle(window, 3);
+            saved = saveGrab(window, out.filePath(u"keys-row.png"_s)) && saved;
+            section->setProperty("editing", static_cast<int>(favorites.items().size() - 1));
+            settle(window, 3);
+            flick->setProperty("contentY", std::max(0.0, flick->property("contentHeight").toDouble()
+                - flick->property("height").toDouble()));
+            settle(window, 3);
+            saved = saveGrab(window, out.filePath(u"keys-edit.png"_s)) && saved;
+            form = visualNamed(qobject_cast<QQuickItem*>(section), u"favoriteForm"_s);
+            recorder = form ? form->findChild<QQuickItem*>(u"favoriteKeysRecorder"_s) : nullptr;
+            if (!recorder || recorder->property("hotkey").toString() != u"Ctrl+Shift+N"_s)
+                qWarning("preview: the shortcut's form does not show its keys again");
+            section->setProperty("editing", -1);
+            favorites.remove(added.path);
+            return finish(window, saved);
+        }
         if (args.contains(u"--command-form"_s)) {
             if (QObject* section = partOf(window, favoritesPage, "favoritesSection")) {
                 section->setProperty("editing", -1);
@@ -17440,6 +17515,11 @@ int runRuntime(const QStringList& args)
         if (!seedCommandHotkey(settings))
             return 4;
     }
+    const bool favoriteKeys = args.contains(u"--favorite-keys-check"_s); // 收藏夹 › 添加快捷键: a chord nobody else has
+    if (favoriteKeys && !favoriteKeysChordFree()) {
+        qWarning("favorite keys: %s is someone else's already", qPrintable(QString(kFavoriteKeysProbeChord)));
+        return 4;
+    }
     const bool activationPaste = args.contains(u"--activation-paste-check"_s);
     const bool gameCheck = args.contains(u"--full-screen-game-check"_s); // GitHub #452
     const bool fieldFocus = gameCheck || args.contains(u"--field-focus-check"_s);
@@ -17453,6 +17533,8 @@ int runRuntime(const QStringList& args)
     }
     settings.save(); // prepared profiles normally skip onboarding
     if (entryHotkey && !seedEntryHotkey(Settings::dataDir() + u"/clipboard"_s))
+        return 4;
+    if (favoriteKeys && !seedFavoriteKeys(Settings::dataDir()))
         return 4;
     if (activationPaste
         && !seedActivationPastePicture(Settings::dataDir() + u"/clipboard"_s,
@@ -17560,7 +17642,7 @@ int runRuntime(const QStringList& args)
                     || args.contains(u"--clipboard-animation-check"_s) || args.contains(u"--settings-motion-check"_s)
                     || args.contains(u"--search-shadow-check"_s) || args.contains(u"--paste-plain-check"_s)
                     || args.contains(u"--activation-paste-check"_s) || args.contains(u"--entry-hotkey-check"_s)
-                    || args.contains(u"--command-hotkey-check"_s)
+                    || args.contains(u"--command-hotkey-check"_s) || args.contains(u"--favorite-keys-check"_s)
                     || args.contains(u"--duplicates-check"_s) || args.contains(u"--field-focus-check"_s)
                     || args.contains(u"--full-screen-game-check"_s)
                     || args.contains(u"--launcher-settings-check"_s) || args.contains(u"--launcher-open-check"_s)
@@ -17648,6 +17730,8 @@ int runRuntime(const QStringList& args)
             return checkEntryHotkey(app, args, out) ? 0 : 4; // its profile likewise
         if (args.contains(u"--command-hotkey-check"_s))
             return checkCommandHotkey(app, args, out) ? 0 : 4; // its profile likewise
+        if (args.contains(u"--favorite-keys-check"_s))
+            return checkFavoriteKeys(app, args, out) ? 0 : 4; // its profile likewise
         if (args.contains(u"--duplicates-check"_s))
             return checkDuplicates(app, args, out) ? 0 : 4; // its profile likewise
         if (args.contains(u"--settings-reopen-check"_s))

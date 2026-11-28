@@ -95,6 +95,12 @@
 - **`HoldWatch` 与 `PasteKeys/Guard`**：按住期于 `THREAD_PRIORITY_HIGHEST` 线程挂 `WH_KEYBOARD_LL`（不等 GUI、不写日志），吞 `Esc` 与主键重复，含 `Alt`/`Shift`/`Win` 时异步补 `vkE8`（`kOwnMask`），`drain()` ≤ 2 s。松开发键经 `paste::Guard`/`guardPaste`（`pastekeys::Guard`）协调手部按键（中途再按拦合成抬起并经 `agrees` 复核，无关修饰键先补 `vkE8` 抬起再按回，待 `pastePassing` 完卸钩）。
 - **范围与兜底**：仅新开外部普通窗且首条 `WM_HOTKEY` ≤ 50 ms（`kArmWithinMs`）时装钩；管理员窗在前且开 `PasteElevated` 时面板拿焦走 `OwnWatch` + `checkClipboardHold` 经服务代按（未开或自身框退 `m_browseHotkey`）。`Clipboard` 用 `m_heldId`/`heldRow` 锚定；50 ms `Hold::poll` 管 1 s 提示与 150 ms 静默兜底。
 
+### 4.5 收藏快捷键（`KeyChord` / `KeyPresser`）
+
+- **存法**：快捷键收藏是 `Favorite::Kind::Command`，`command` 为 `winshun:keys/<组合键>`（`keychord::command`，规范写法 Win、Ctrl、Alt、Shift 再主键，按美式键位命名、不随布局），不升收藏文件版本；读入时清空工作目录与四个命令开关，`typedCommandKeyword`/`commandWords` 跳过它（只认完整关键词，不接参数）。旧版把它当命令跑只会唤起 `WinShunUri`（打开搜索框）。
+- **按下**：`Launcher::keysRequested`（`App::m_launcherTarget`，打开启动器前的前台窗）与 `FolderMenu::keysRequested`（`m_hit.root`）→ `App::pressFavoriteKeys` → `KeyPresser`：`paste::usableTarget` 后 `activate`，每 10 ms 查目标已在前台（无目标则任一非本进程窗，1 s 超时）、非高完整性（`integrity::higherThanOurs` 拒，服务代按只按粘贴键不扩展）、修饰键与 `Enter`/`Space` 已松（1.5 s 超时），稳定 60 ms 后一次 `SendInput`（左侧修饰键，`MAPVK_VK_TO_VSC_EX` 扫描码，`kOwnInput`）；中途截断补发剩余抬起。失败一律通知原因，不改按别的窗口。
+- **录制**：`FavoriteForm` 的 `HotkeyRecorder`（`keyMode`）经 `SettingsEditor.recordingHotkey` 启 `ShortcutCapture`（`Win` 组合可录），`ShortcutCapture::qtKey` 按 `LLKHF_EXTENDED` 区分小键盘 `Enter`、给小键盘键加 `Qt::KeypadModifier`；`FavoritesSettings::keysOf` → `keychord::fromQt` + `sendable`（拒 `Ctrl+Alt+Del`/`Num.`）。
+
 ## 5. 已知边界与相关测试入口
 
 ### 5.1 已知边界
@@ -105,7 +111,8 @@
 
 ### 5.2 诊断与测试入口
 
-- **诊断键**：`trigger`（`tap_from`/`listener_ms`/`queued_ms`）、`double-tap-near-miss`、`double-tap-dropped`、`idle-trim`、`key-helper`、`clipboard-hold-end`/`skipped`、`Launcher: lost the front ...`。
-- **CTest（输入/剪贴板）**：`tst_core`（`hotkeySteps`/`pasteKeys`/`pasteGuard`）、`tst_keylistener`、`tst_keyrouter`、`tst_winkeys`、`tst_admintaphint`、`tst_service`、`tst_clipboard`、`tst_cliplifecycle`、`tst_clipselect`、`tst_clipimage`、`tst_clipfiles`、`tst_pinclipboard`、`tst_clipboarddisplay`、`tst_capturesurface`。
+- **诊断键**：`trigger`（`tap_from`/`listener_ms`/`queued_ms`）、`double-tap-near-miss`、`double-tap-dropped`、`idle-trim`、`key-helper`、`clipboard-hold-end`/`skipped`、`favorite-keys`（`outcome`/`reason`/`front_class`）、`Launcher: lost the front ...`。
+- **实跑探针**：`WinShun.exe --probe-runtime <dir> --favorite-keys-check`（隔离配置，`Ctrl+Alt+Shift+F17`，另一进程的 WinForms 窗记录收到的键）；`--preview-settings <dir> --keys-form` 录制与保存表单。
+- **CTest（输入/剪贴板）**：`tst_favorites`（`keyChords*`/`shortcutFavorites`）、`tst_core`（`hotkeySteps`/`pasteKeys`/`pasteGuard`）、`tst_keylistener`、`tst_keyrouter`、`tst_winkeys`、`tst_admintaphint`、`tst_service`、`tst_clipboard`、`tst_cliplifecycle`、`tst_clipselect`、`tst_clipimage`、`tst_clipfiles`、`tst_pinclipboard`、`tst_clipboarddisplay`、`tst_capturesurface`。
 - **CTest（粘贴/OCR/下载）**：`tst_paster`、`tst_servicepaste`、`tst_servicedialognav`、`tst_pastefile`、`WINSHUN_TEST_NATIVE_DIALOG=1 tst_filepaste`（默认跳过）、`tst_ocr`、`tst_ocrpackage`、`tst_download`、`tst_download_cmake`。
 - **实时验证夹具**：`docs/validation/issue277-20261111/`（管理员代按粘贴）、`docs/validation/issue287-20261111/`（按住连按粘贴）；其余早期验证与审计记录存于 Git 历史。

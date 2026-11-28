@@ -2770,6 +2770,42 @@
         <source>每次运行都会先弹出系统的权限确认</source>
         <translation>Windows asks for permission each time it runs</translation>
     </message>
+    <message>
+        <source>例如 xj</source>
+        <translation>For example: nf</translation>
+    </message>
+    <message>
+        <source>例如：新建文件夹</source>
+        <translation>For example: New folder</translation>
+    </message>
+    <message>
+        <source>只输入它，按 Enter 执行</source>
+        <translation>Type just this and press Enter</translation>
+    </message>
+    <message>
+        <source>快捷键</source>
+        <translation>Shortcut</translation>
+    </message>
+    <message>
+        <source>正在录制快捷键</source>
+        <translation>Recording a shortcut</translation>
+    </message>
+    <message>
+        <source>点击录制快捷键</source>
+        <translation>Click to record a shortcut</translation>
+    </message>
+    <message>
+        <source>点一下框，再按下组合键，Esc 取消。快捷键会按在打开搜索框前正在用的窗口里；以管理员身份运行的窗口收不到</source>
+        <translation>Click the box, then press the key combination; Esc cancels. The keys go to the window you were using before the search box opened; windows running as administrator don’t receive them</translation>
+    </message>
+    <message>
+        <source>自动使用键盘图标；也可选择 PNG、ICO、SVG，或从其他程序、快捷方式提取</source>
+        <translation>Uses a keyboard icon automatically. Choose a PNG, ICO or SVG, or extract an icon from another program or shortcut.</translation>
+    </message>
+    <message>
+        <source>这个键不能用，换一个试试</source>
+        <translation>This key can’t be used, try another</translation>
+    </message>
 </context>
 <context>
     <name>FavoriteTiles</name>
@@ -2976,8 +3012,12 @@
         <translation>Add command</translation>
     </message>
     <message>
-        <source>收藏;常用;书签;固定;关键词;自定义命令;命令;参数;命令图标;自定义图标;command;favorites;bookmark;pin;icon</source>
-        <translation>favorites;bookmark;pin;keyword;custom command;command;arguments;command icon;custom icon;icon</translation>
+        <source>收藏;常用;书签;固定;关键词;自定义命令;命令;参数;命令图标;自定义图标;快捷键;组合键;按键;command;favorites;bookmark;pin;icon;shortcut;keys</source>
+        <translation>favorites;bookmark;pin;keyword;custom command;command;arguments;command icon;custom icon;icon;shortcut;key combination;keys</translation>
+    </message>
+    <message>
+        <source>添加快捷键</source>
+        <translation>Add shortcut</translation>
     </message>
 </context>
 <context>
@@ -12281,6 +12321,14 @@ Double-click grip: expand/collapse search panel</translation>
         <source>请启用对应插件，并在“系统整合 › 任务栏”中重新选择托盘点击操作。</source>
         <translation>Enable the plugin and re-select the tray click action under System integration › Taskbar.</translation>
     </message>
+    <message>
+        <source>没有按下“%1”</source>
+        <translation>Couldn’t press “%1”</translation>
+    </message>
+    <message>
+        <source>这个快捷键读不了，请在“设置 › 收藏夹”里重新录制。</source>
+        <translation>This shortcut can’t be read. Record it again in Settings › Favorites.</translation>
+    </message>
 </context>
 <context>
     <name>ws::BackgroundStatus</name>
@@ -13864,6 +13912,22 @@ Content index: %5</translation>
         <source>程序和脚本</source>
         <translation>Programs and scripts</translation>
     </message>
+    <message>
+        <source>Windows 不允许程序按这个组合键，只能在键盘上按</source>
+        <translation>Windows doesn’t let programs press this combination; only the keyboard can</translation>
+    </message>
+    <message>
+        <source>快捷键 %1</source>
+        <translation>Shortcut %1</translation>
+    </message>
+    <message>
+        <source>要按快捷键，请用“添加快捷键”</source>
+        <translation>To press a shortcut, use “Add shortcut”</translation>
+    </message>
+    <message>
+        <source>请点“快捷键”框，再按下要按的组合键</source>
+        <translation>Click the “Shortcut” box, then press the key combination</translation>
+    </message>
 </context>
 <context>
     <name>ws::FilePreview</name>
@@ -14271,6 +14335,33 @@ Content index: %5</translation>
     <message>
         <source>；约 %1 MB 当前未驻留，不代表实际磁盘占用</source>
         <translation>; about %1 MB is currently nonresident, not a measure of disk usage</translation>
+    </message>
+</context>
+<context>
+    <name>ws::KeyPresser</name>
+    <message>
+        <source>Windows 不允许程序按这个组合键，只能在键盘上按</source>
+        <translation>Windows doesn’t let programs press this combination; only the keyboard can</translation>
+    </message>
+    <message>
+        <source>原来的窗口没有回到前面。请先点一下要用它的窗口，再试一次</source>
+        <translation>The window you were using didn’t come back to the front. Click the window you want the keys in, then try again</translation>
+    </message>
+    <message>
+        <source>前面的窗口以管理员身份运行，Windows 不允许 Win顺 向它发送按键</source>
+        <translation>The window in front runs as administrator; Windows doesn’t let WinShun send keys to it</translation>
+    </message>
+    <message>
+        <source>有按键一直按着。请松开键盘上的键，再试一次</source>
+        <translation>A key is still held down. Let go of the keys and try again</translation>
+    </message>
+    <message>
+        <source>没有按下“%1”</source>
+        <translation>Couldn’t press “%1”</translation>
+    </message>
+    <message>
+        <source>Windows 没有接受这些按键，请再试一次</source>
+        <translation>Windows didn’t take the keys. Please try again</translation>
     </message>
 </context>
 <context>
@@ -15562,6 +15653,14 @@ Content index: %5</translation>
     <message>
         <source>复制路径或窗口标题</source>
         <translation>Copy paths or window titles</translation>
+    </message>
+    <message>
+        <source>已复制快捷键</source>
+        <translation>Shortcut copied</translation>
+    </message>
+    <message>
+        <source>按下快捷键</source>
+        <translation>Press shortcut</translation>
     </message>
 </context>
 <context>
@@ -16901,6 +17000,10 @@ Content index: %5</translation>
     <message>
         <source>已打开</source>
         <translation>Open</translation>
+    </message>
+    <message>
+        <source>快捷键 · %1</source>
+        <translation>Shortcut · %1</translation>
     </message>
 </context>
 <context>

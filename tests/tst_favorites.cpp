@@ -3,6 +3,7 @@
 #include "History.h"
 #include "AppCatalog.h"
 #include "IndexService.h"
+#include "KeyChord.h"
 #include "PathText.h"
 #include "SearchEngine.h"
 
@@ -188,6 +189,158 @@ private slots:
         QVERIFY(!scopeShows(Scope::Files, command.kind));
         QVERIFY(!scopeShows(Scope::Folders, command.kind));
         QCOMPARE(favoriteOf(results.first())->command, command.command);
+    }
+
+    // 收藏夹 › 添加快捷键: the keys as written, read back the same; any case,
+    // spaces, other names for the modifiers; nothing for what is no chord.
+    void keyChordsWrittenAndRead()
+    {
+        const auto written = [](QStringView text) {
+            const std::optional<keychord::Chord> chord = keychord::parse(text);
+            return chord ? keychord::text(*chord) : u"(none)"_s;
+        };
+        QCOMPARE(written(u"Ctrl+Shift+T"), u"Ctrl+Shift+T"_s);
+        QCOMPARE(written(u" win + shift + s "), u"Win+Shift+S"_s);
+        QCOMPARE(written(u"shift+control+alt+del"), u"Ctrl+Alt+Shift+Delete"_s);
+        QCOMPARE(written(u"meta+e"), u"Win+E"_s);
+        QCOMPARE(written(u"F5"), u"F5"_s);
+        QCOMPARE(written(u"alt+f24"), u"Alt+F24"_s);
+        QCOMPARE(written(u"Num+"), u"Num+"_s);
+        QCOMPARE(written(u"Ctrl+Num+"), u"Ctrl+Num+"_s);
+        QCOMPARE(written(u"ctrl+num5"), u"Ctrl+Num5"_s);
+        QCOMPARE(written(u"Ctrl+="), u"Ctrl+="_s);
+        QCOMPARE(written(u"Ctrl+-"), u"Ctrl+-"_s);
+        QCOMPARE(written(u"Ctrl+\\"), u"Ctrl+\\"_s);
+        QCOMPARE(written(u"Alt+PageDown"), u"Alt+PgDn"_s);
+        QCOMPARE(written(u"Ctrl+Return"), u"Ctrl+Enter"_s);
+        QCOMPARE(written(u"NumEnter"), u"NumEnter"_s);
+        QCOMPARE(written(u"Win+←"), u"Win+Left"_s);
+        QCOMPARE(written(u"VolumeMute"), u"VolumeMute"_s);
+        for (const QStringView bad : {u"", u"Ctrl", u"Ctrl+", u"+T", u"Ctrl++T", u"Ctrl+Ctrl+A", u"Ctrl+A+B",
+                 u"F0", u"F25", u"F05", u"Foo", u"Hyper+A", u"Num10"})
+            QVERIFY2(!keychord::parse(bad), qPrintable(bad.toString()));
+        QVERIFY(keychord::parse(u"Ctrl+Num+") != keychord::parse(u"Ctrl+="));
+        QVERIFY(keychord::parse(u"NumEnter") != keychord::parse(u"Enter"));
+    }
+
+    // The settings' recorder hands its key over as Qt names it.
+    void keyChordsFromQt()
+    {
+        const auto recorded = [](int key, Qt::KeyboardModifiers modifiers) {
+            const std::optional<keychord::Chord> chord = keychord::fromQt(key, modifiers);
+            return chord ? keychord::text(*chord) : u"(none)"_s;
+        };
+        QCOMPARE(recorded(Qt::Key_N, Qt::ControlModifier | Qt::ShiftModifier), u"Ctrl+Shift+N"_s);
+        QCOMPARE(recorded(Qt::Key_S, Qt::MetaModifier | Qt::ShiftModifier), u"Win+Shift+S"_s);
+        QCOMPARE(recorded(Qt::Key_Exclam, Qt::ShiftModifier), u"Shift+1"_s); // the sign: the key under it
+        QCOMPARE(recorded(Qt::Key_Plus, Qt::ShiftModifier), u"Shift+="_s);
+        QCOMPARE(recorded(Qt::Key_Plus, Qt::ControlModifier | Qt::KeypadModifier), u"Ctrl+Num+"_s);
+        QCOMPARE(recorded(Qt::Key_5, Qt::KeypadModifier), u"Num5"_s);
+        QCOMPARE(recorded(Qt::Key_5, Qt::NoModifier), u"5"_s);
+        QCOMPARE(recorded(Qt::Key_Enter, Qt::KeypadModifier), u"NumEnter"_s);
+        QCOMPARE(recorded(Qt::Key_Return, Qt::NoModifier), u"Enter"_s);
+        QCOMPARE(recorded(Qt::Key_Backtab, Qt::ShiftModifier), u"Shift+Tab"_s);
+        QCOMPARE(recorded(Qt::Key_F4, Qt::AltModifier), u"Alt+F4"_s);
+        QCOMPARE(recorded(Qt::Key_Menu, Qt::NoModifier), u"Menu"_s);
+        QCOMPARE(recorded(Qt::Key_MediaTogglePlayPause, Qt::NoModifier), u"MediaPlayPause"_s);
+        QCOMPARE(recorded(Qt::Key_Control, Qt::ControlModifier), u"(none)"_s); // a modifier alone
+        QCOMPARE(recorded(Qt::Key_unknown, Qt::NoModifier), u"(none)"_s);
+    }
+
+    // As they are pressed: the modifiers down first, let go of last, the
+    // Windows key and the number pad's Enter as extended keys; never what
+    // Windows takes from a keyboard only.
+    void keyChordsPressed()
+    {
+        const auto chord = keychord::parse(u"Win+Shift+S");
+        QVERIFY(chord);
+        QVERIFY(keychord::sendable(*chord));
+        const std::vector<pastekeys::Key> keys = keychord::presses(*chord);
+        QCOMPARE(keys.size(), std::size_t(6));
+        const std::uint16_t lwin = 0x5B, lshift = 0xA0;
+        QVERIFY(keys[0].vk == lwin && !keys[0].up && keys[0].extended);
+        QVERIFY(keys[1].vk == lshift && !keys[1].up && !keys[1].extended);
+        QVERIFY(keys[2].vk == 'S' && !keys[2].up);
+        QVERIFY(keys[3].vk == 'S' && keys[3].up);
+        QVERIFY(keys[4].vk == lshift && keys[4].up);
+        QVERIFY(keys[5].vk == lwin && keys[5].up && keys[5].extended);
+        const std::vector<pastekeys::Key> enter = keychord::presses(*keychord::parse(u"NumEnter"));
+        QCOMPARE(enter.size(), std::size_t(2));
+        QVERIFY(enter[0].vk == 0x0D && enter[0].extended && enter[1].up && enter[1].extended);
+        QVERIFY(!keychord::sendable(*keychord::parse(u"Ctrl+Alt+Delete")));
+        QVERIFY(!keychord::sendable(*keychord::parse(u"Ctrl+Alt+Shift+Num.")));
+        QVERIFY(keychord::sendable(*keychord::parse(u"Ctrl+Shift+Esc")));
+        QVERIFY(!keychord::sendable({}));
+        QVERIFY(keychord::presses({}).empty());
+    }
+
+    // Kept as a command of Win顺's own: the keys after "winshun:keys/".
+    void keyChordsAsCommands()
+    {
+        const auto chord = keychord::parse(u"ctrl+shift+n");
+        QVERIFY(chord);
+        QCOMPARE(keychord::command(*chord), u"winshun:keys/Ctrl+Shift+N"_s);
+        QCOMPARE(keychord::ofCommand(u"winshun:keys/Ctrl+Shift+N"), chord);
+        QVERIFY(keychord::isCommand(u"WinShun:Keys/Ctrl+Shift+N"));
+        QCOMPARE(keychord::ofCommand(u"WinShun:Keys/ctrl+shift+n"), chord);
+        QVERIFY(!keychord::isCommand(u"winshun:power/sleep"));
+        QVERIFY(!keychord::isCommand(u"notepad.exe winshun:keys/Ctrl+S"));
+        QVERIFY(!keychord::ofCommand(u"winshun:power/sleep"));
+        QVERIFY(!keychord::ofCommand(u"winshun:keys/Ctrl+"));
+        QVERIFY(keychord::command({}).isEmpty());
+    }
+
+    // A shortcut favorite: kept as it is in the file, without the options
+    // for a program (none of them apply); its keyword alone finds it, first,
+    // with no words; a keyword with words after it does not.
+    void shortcutFavorites()
+    {
+        Favorite keys {Favorite::Kind::Command, u"winshun-command:keys"_s, u"新建文件夹"_s, u"xj"_s,
+            u"winshun:keys/Ctrl+Shift+N"_s};
+        QVERIFY(keys.pressesKeys());
+        QVERIFY(!Favorite({Favorite::Kind::Command, u"winshun-command:c"_s, u"c"_s, u"c"_s, u"code.exe"_s}).pressesKeys());
+        QVERIFY(!Favorite({Favorite::Kind::Folder, u"D:\\winshun:keys"_s}).pressesKeys());
+        const FavoriteList kept {keys, folder(u"D:\\Reports"_s, u"报告"_s, u"bg"_s)};
+        const auto loaded = readFavoritesFile(writeFavoritesFile(kept));
+        QVERIFY(loaded);
+        QCOMPARE(loaded->favorites, kept);
+
+        Favorite optioned = keys;
+        optioned.workingDirectory = u"D:\\工作"_s;
+        optioned.silent = optioned.runAsAdmin = optioned.searchFiles = optioned.fileMenu = true;
+        const auto cleaned = readFavoritesFile(writeFavoritesFile({optioned}));
+        QVERIFY(cleaned);
+        QCOMPARE(cleaned->favorites, (FavoriteList {keys}));
+
+        QCOMPARE(typedFavoriteKeyword(kept, u" XJ "), 0);
+        QCOMPARE(typedCommandKeyword(kept, u"xj"), -1);
+        QCOMPARE(typedCommandKeyword(kept, u"xj 报告"), -1);
+        QVERIFY(commandWords(keys, u"xj 报告").isEmpty());
+
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        IndexService service(temporary.filePath(u"index"_s), {});
+        SearchEngine engine(&service);
+        QSignalSpy spy(&engine, &SearchEngine::resultsReady);
+        SearchEngine::Request request;
+        request.favorites = kept;
+        const auto listed = [&] {
+            spy.clear();
+            engine.submit(request);
+            if (!spy.wait(5000))
+                return SearchResults();
+            return spy.first().at(1).value<SearchResults>();
+        };
+        request.text = u"xj"_s;
+        const SearchResults found = listed();
+        QVERIFY(!found.isEmpty());
+        QVERIFY(found.first().isCommand() && found.first().favorite && found.first().exact);
+        QCOMPARE(found.first().target, keys.command);
+        QVERIFY(found.first().words.isEmpty());
+        QCOMPARE(favoriteOf(found.first())->command, keys.command);
+        request.text = u"xj 报告"_s; // no words for a shortcut
+        for (const SearchResult& row : listed())
+            QVERIFY(row.target != keys.command);
     }
 
     void hidingStartFavoritesKeepsKeywords()

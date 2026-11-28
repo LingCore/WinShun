@@ -1012,6 +1012,9 @@ signals:
     // Not started: it would have needed administrator rights to start at all
     // (see shell::open). The launcher is closed by then.
     void openFailed(const QString& name);
+    // A favorite shortcut chosen (Favorite::pressesKeys): `command` is its
+    // "winshun:keys/…", to press where its user was before this window came.
+    void keysRequested(const QString& command, const QString& name);
     // Menu key / Shift+F10 (arrive as a context-menu event, not a key);
     // `system`: Shift+Menu or Ctrl+Shift+F10, the shell's menu (showSystemMenu).
     void contextMenuKeyPressed(bool system);

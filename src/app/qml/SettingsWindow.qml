@@ -1607,7 +1607,7 @@ Window {
         property: "recordingHotkey"
         value: (keysSlot.item?.recordingHotkey ?? false) || (resultsSlot.item?.recordingHotkey ?? false)
                || (integrationSlot.item?.recordingHotkey ?? false) || (clipboardSlot.item?.recordingHotkey ?? false)
-               || window.editor.plugins.recordingHotkey
+               || (favoritesSlot.item?.recordingHotkey ?? false) || window.editor.plugins.recordingHotkey
     }
     Binding { // the plugin cards read their processes' memory only while on show
         target: window.editor.plugins
@@ -7156,6 +7156,7 @@ Window {
                 content: Component { SettingsPage {
                     host: settingsContext
                     parts: ({ favoritesSection: favoritesSection, dropPieRow: favoritesSection.dropPieRow })
+                    recordingHotkey: favoritesSection.recordingKeys // a favorite shortcut's keys
             // <page favorites>
             FavoritesSection {
                 id: favoritesSection
