@@ -115,6 +115,7 @@
 #include <QQuickWindow>
 #include <stdexcept>
 #include <QScreen>
+#include <QSaveFile>
 #include <QScopeGuard>
 #include <QSettings>
 #include <QStyleHints>
@@ -7679,6 +7680,28 @@ void checkDropPieHelper(const QDir& output)
     const bool updatedAppearance = waitFor([](const QJsonObject& state) {
         return state.value(u"folders"_s).toInt() == 3 && state.value(u"theme"_s).toString() == u"dark";
     });
+    // 收藏 let go on in the helper's pie (GitHub #505): its request, as the
+    // helper writes it, becomes a favorite here, and the file favorite is in
+    // the helper's snapshot (to tell what is there already) though no chip.
+    const QString file = QDir::toNativeSeparators(profile.filePath(u"report.txt"_s));
+    {
+        FavoriteRequest request;
+        request.add = {favoriteForPath(file, false)};
+        QSaveFile asked(helper->profilePath() + u"/favorite-request.json"_s); // whole, as the helper's
+        if (asked.open(QIODevice::WriteOnly) && asked.write(writeFavoriteRequest(request)) > 0 && !asked.commit())
+            say(u"drop pie: the request not written"_s);
+    }
+    QElapsedTimer relaying;
+    relaying.start();
+    while (!favorites.contains(file) && relaying.elapsed() < 3000)
+        pump(20);
+    const auto snapshotted = [&]() -> std::optional<FavoritesFile> {
+        QFile snapshot(helper->profilePath() + u"/favorites.json"_s); // closed at once: the folder goes at the end
+        return snapshot.open(QIODevice::ReadOnly) ? readFavoritesFile(snapshot.readAll()) : std::nullopt;
+    }();
+    const bool relayedFavorite = favorites.contains(file) && snapshotted
+        && indexOfFavorite(snapshotted->favorites, file) >= 0
+        && waitFor(folders(3)) && !QFile::exists(helper->profilePath() + u"/favorite-request.json"_s);
     // Ended from outside (or crashed): started again by itself (GitHub #172).
     // Its two log lines (the exit, then running again) are expected here.
     const qint64 first = helper->state().value(u"pid"_s).toInteger();
@@ -7731,8 +7754,10 @@ void checkDropPieHelper(const QDir& output)
     state.insert(u"stop_ms"_s, stopping.elapsed());
     if (clickRetry)
         clickRetry(); // the helper gone: nothing (it once was a use after free)
-    passed = passed && updatedFavorites && updatedAppearance && restarted && toldOnce && stopped && relayedAll;
+    passed = passed && updatedFavorites && updatedAppearance && relayedFavorite && restarted && toldOnce && stopped
+        && relayedAll;
     state.insert(u"relayedAll"_s, relayedAll);
+    state.insert(u"relayedFavorite"_s, relayedFavorite);
     state.insert(u"updatedFavorites"_s, updatedFavorites);
     state.insert(u"updatedAppearance"_s, updatedAppearance);
     state.insert(u"restarted"_s, restarted);
@@ -7744,7 +7769,7 @@ void checkDropPieHelper(const QDir& output)
     QFile report(output.filePath(u"drop-pie-helper.json"_s));
     if (report.open(QIODevice::WriteOnly)) report.write(QJsonDocument(state).toJson());
     if (!passed) qWarning().noquote() << "Drop pie helper regression failed:" << notices << state;
-    else say(u"drop pie: real ordinary-user helper, OLE target registration, favorite and appearance refresh, restart after it ends, the notice after three failures (its retry harmless once the helper is gone), its log lines relayed and shutdown checked"_s);
+    else say(u"drop pie: real ordinary-user helper, OLE target registration, favorite and appearance refresh, restart after it ends, the notice after three failures (its retry harmless once the helper is gone), 收藏's request taken in, its log lines relayed and shutdown checked"_s);
 }
 
 // --scope-memory: the scope the user chose comes back at the next start
@@ -13710,6 +13735,193 @@ bool checkDropPieColumns(QQmlEngine* engine, const QDir& output)
     return passed;
 }
 
+// --drop-pie-favorite: 收藏 past the line under the chips (GitHub #505), as
+// DropPie and DropPieWindow.qml make it, off the screen, the pointer moved as
+// DragOver brings it: a file let go there becomes a favorite, then is taken
+// out again; a folder let go there is a chip the next time; more than ten,
+// or nothing at all, it cannot take. A drop meant for the chip below the
+// middle that goes a little far still goes into its folder; the line and on
+// the way to 收藏 the pie stays. By a screen's bottom it is above them all.
+// droppie-favorite-add, -done, -remove, -empty and -flipped.png.
+bool checkDropPieFavorite(QQmlEngine* engine, const QDir& output)
+{
+    bool passed = true;
+    const auto check = [&](bool condition, const QString& what) {
+        if (!condition)
+            say(u"drop pie favorite: %1 FAILED"_s.arg(what));
+        passed = passed && condition;
+    };
+    QTemporaryDir temporary;
+    const auto make = [&](const QString& path, bool folder) {
+        const QString full = temporary.filePath(path);
+        if (folder) {
+            QDir().mkpath(full);
+        } else {
+            QFile file(full);
+            if (!file.open(QIODevice::WriteOnly))
+                say(u"drop pie favorite: %1 not made"_s.arg(path));
+        }
+        return QDir::toNativeSeparators(full);
+    };
+    Favorites favorites(temporary.filePath(u"favorites.json"_s));
+    for (const QString& name : {u"年度报告"_s, u"项目资料"_s, u"照片"_s, u"下载"_s, u"客户合同"_s, u"设计素材"_s})
+        favorites.add({Favorite::Kind::Folder, make(name, true), name});
+    const QString report = make(u"下载/季度报告.docx"_s, false);
+    const QString travel = make(u"旅行计划"_s, true);
+
+    piedrop::FileOperations operations;
+    QQmlComponent component(engine, u"WinShun"_s, u"DropPieWindow"_s);
+    QScreen* primary = QGuiApplication::primaryScreen();
+    const qreal scale = primary->devicePixelRatio();
+    const auto physical = [&](QPoint logical) {
+        return POINT {LONG(std::lround(logical.x() * scale)), LONG(std::lround(logical.y() * scale))};
+    };
+    // A pie on `store`, opened at `at` (logical, on the primary screen) and shown off the screen.
+    struct Shown {
+        std::unique_ptr<DropPie> pie;
+        std::unique_ptr<QObject> window;
+    };
+    const auto show = [&](Favorites* store, int folders) -> Shown {
+        Shown shown;
+        shown.pie = std::make_unique<DropPie>(store, nullptr, &operations, DropPie::Notify {});
+        shown.window.reset(component.createWithInitialProperties({{u"dropPie"_s, QVariant::fromValue(shown.pie.get())}}));
+        auto* window = qobject_cast<QQuickWindow*>(shown.window.get());
+        check(window, component.errorString());
+        if (!window)
+            return shown;
+        shown.pie->setWindow(window);
+        QElapsedTimer waiting;
+        waiting.start();
+        while (shown.pie->folderCount() < folders && waiting.elapsed() < 5000)
+            pump(20);
+        pump(200); // none: gathered all the same (a pie up then would go)
+        check(shown.pie->folderCount() == folders, u"its %1 folders"_s.arg(folders));
+        return shown;
+    };
+    const auto open = [&](Shown& shown, QPoint at, const QStringList& items) {
+        auto* window = qobject_cast<QQuickWindow*>(shown.window.get());
+        shown.pie->preview(physical(at), -1);
+        const QSize size = window->size();
+        showOffScreen(window);
+        window->resize(size);
+        shown.pie->previewItems(items);
+        pump(300);
+    };
+    const auto shoot = [&](Shown& shown, const QString& name) {
+        auto* window = qobject_cast<QQuickWindow*>(shown.window.get());
+        settle(window);
+        pump(300);
+        settle(window, 2);
+        check(saveGrab(window, output.filePath(name + u".png"_s), shown.pie->drawnRect()), name);
+    };
+
+    Shown main = show(&favorites, 6);
+    if (!main.pie || !main.window)
+        return false;
+    DropPie& pie = *main.pie;
+    const QPoint middle = primary->availableGeometry().center();
+    open(main, middle, {report});
+    const QRectF star = pie.starRect();
+    const QRectF line = pie.statusRect();
+    check(!star.isEmpty() && star.top() >= line.bottom() && std::abs(star.center().x() - line.center().x()) < 1,
+        u"收藏 under the line, in its middle"_s);
+    check(pie.starText() == u"收藏" && !pie.starDisabled() && !pie.starRemoves(), u"a file not there yet: 收藏"_s);
+
+    // The chip below the middle (sector 3 of six), let go a little past it: still its folder.
+    const QVariantMap below = pie.sectors().value(3).toMap();
+    const QPointF chipBottom = pie.centre() + QPointF(below.value(u"x"_s).toReal() + below.value(u"width"_s).toReal() / 2,
+        below.value(u"y"_s).toReal() + pie.chipHeight());
+    pie.previewPointer(chipBottom + QPointF(0, 20));
+    check(pie.hovered() == 3 && pie.revealed(), u"a little past the chip below: its folder"_s);
+    // On the line, and between it and 收藏: on the pie, nothing chosen.
+    pie.previewPointer(QPointF(line.center().x(), line.bottom() - 4));
+    check(pie.revealed() && pie.hovered() == -1 && !pie.onStar(), u"on the line: nothing chosen, the pie stays"_s);
+    pie.previewPointer(QPointF(star.left() - 12, (line.bottom() + star.top()) / 2));
+    check(pie.revealed() && !pie.onStar(), u"beside the way to 收藏: the pie stays, nothing chosen"_s);
+    // On 收藏: the line says what letting go does.
+    const DWORD effect = pie.previewPointer(star.center());
+    check(pie.onStar() && effect == DROPEFFECT_COPY, u"on 收藏: chosen, a copy's pointer (no link allowed)"_s);
+    check(pie.statusVerb() == u"收藏" && pie.statusName() == u"季度报告.docx" && pie.statusDetail().contains(u"季度报告"),
+        u"on 收藏: the line names the file (%1 %2)"_s.arg(pie.statusVerb(), pie.statusName()));
+    shoot(main, u"droppie-favorite-add"_s);
+    pie.previewDrop(star.center());
+    check(favorites.contains(report) && favorites.items().constLast().kind == Favorite::Kind::File,
+        u"let go: the file is a favorite"_s);
+    check(pie.confirming() && pie.statusVerb() == u"已收藏" && pie.starFilled(), u"let go: the line says so, the star filled"_s);
+    // Grabbed at once: it goes in under a second.
+    settle(qobject_cast<QQuickWindow*>(main.window.get()));
+    check(saveGrab(qobject_cast<QQuickWindow*>(main.window.get()), output.filePath(u"droppie-favorite-done.png"_s),
+              pie.drawnRect()),
+        u"droppie-favorite-done"_s);
+    check(pie.revealed() && pie.folderCount() == 6, u"let go: the pie stays a moment, its chips as they were"_s);
+    QElapsedTimer waiting;
+    waiting.start();
+    while (pie.revealed() && waiting.elapsed() < 3000)
+        pump(50);
+    check(!pie.revealed(), u"let go: then it goes"_s);
+
+    // The same file again: taken out.
+    open(main, middle, {report});
+    check(pie.starText() == u"取消收藏" && pie.starRemoves(), u"a favorite file: 取消收藏"_s);
+    pie.previewPointer(star.center());
+    check(pie.statusVerb() == u"取消收藏", u"on 取消收藏: the line says so"_s);
+    shoot(main, u"droppie-favorite-remove"_s);
+    pie.previewDrop(star.center());
+    check(!favorites.contains(report) && pie.statusVerb() == u"已取消收藏" && !pie.starFilled(),
+        u"let go: it is a favorite no more, the star empty"_s);
+    waiting.restart();
+    while (pie.revealed() && waiting.elapsed() < 3000)
+        pump(50);
+
+    // A folder: a chip of the pie once it has gone.
+    open(main, middle, {travel});
+    pie.previewDrop(star.center());
+    check(favorites.contains(travel) && favorites.items().constLast().kind == Favorite::Kind::Folder,
+        u"a folder let go there: a folder favorite"_s);
+    pump(100);
+    check(pie.revealed() && pie.folderCount() == 6, u"... no chip moves while the line says so"_s);
+    waiting.restart();
+    while ((pie.revealed() || pie.folderCount() < 7) && waiting.elapsed() < 3000)
+        pump(50);
+    check(pie.folderCount() == 7, u"... and a chip once the pie has gone"_s);
+
+    // Eleven files, and items with no lasting path: nothing it can take.
+    QStringList many;
+    for (int i = 1; i <= 11; ++i)
+        many.append(make(u"下载/照片 %1.jpg"_s.arg(i), false));
+    open(main, middle, many);
+    check(pie.starDisabled() && pie.previewPointer(star.center()) == DROPEFFECT_NONE
+            && pie.statusDetail().contains(u"10"_s),
+        u"eleven: more than it takes (%1)"_s.arg(pie.statusDetail()));
+    open(main, middle, {});
+    check(pie.starDisabled(), u"nothing with a path: nothing it takes"_s);
+    qobject_cast<QQuickWindow*>(main.window.get())->hide();
+
+    // No favorites yet: 收藏 is how to have one.
+    Favorites none(temporary.filePath(u"none.json"_s));
+    Shown empty = show(&none, 0);
+    if (empty.pie) {
+        open(empty, middle, {travel});
+        check(empty.pie->statusDetail().contains(u"收藏"_s), u"none yet: the line says to drop on 收藏"_s);
+        shoot(empty, u"droppie-favorite-empty"_s);
+        qobject_cast<QQuickWindow*>(empty.window.get())->hide();
+    }
+
+    // By the screen's bottom: the line and 收藏 above the chips.
+    const QRect area = primary->availableGeometry();
+    open(main, QPoint(area.center().x(), area.bottom() - 20), {report});
+    const QRectF high = pie.starRect();
+    check(high.bottom() <= pie.statusRect().top() && pie.statusRect().bottom() <= pie.centre().y(),
+        u"by the bottom: 收藏 above the line, the line above the chips"_s);
+    pie.previewPointer(high.center());
+    check(pie.onStar(), u"by the bottom: 收藏 chosen"_s);
+    shoot(main, u"droppie-favorite-flipped"_s);
+    qobject_cast<QQuickWindow*>(main.window.get())->hide();
+
+    say(u"drop pie favorite: %1"_s.arg(passed ? u"passed"_s : u"FAILED"_s));
+    return passed;
+}
+
 // --style-windows: the small windows of every 界面风格 (themes/README.md),
 // each as the app makes it, off the screen: a menu dropped from a button and
 // a field with its caret (style-controls), the screenshot question
@@ -14006,6 +14218,8 @@ int runResults(const QStringList& args)
         return checkDropPiePages(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--drop-pie-columns"_s))
         return checkDropPieColumns(&engine, out) ? std::min(g_warnings, 100) : 4;
+    if (args.contains(u"--drop-pie-favorite"_s))
+        return checkDropPieFavorite(&engine, out) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-sizing"_s))
         return checkClipboardInteractions(&engine, out, {}, true) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--clipboard-file"_s))

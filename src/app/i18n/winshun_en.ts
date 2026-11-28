@@ -2785,6 +2785,14 @@
         <translation>Favorites come first when nothing is typed. Type a keyword and press Enter to open it. Right-click a search result to add it, or drop files and folders here.</translation>
     </message>
     <message>
+        <source>在文件上按住左键（不用拖动），再按数字 1 左边那个键（一般是 `，中文输入法下是 ·）。朝文件夹的方向拖，松开就放进去：同一个盘里移动，到别的盘复制，按住 Ctrl 复制、按住 Shift 移动。拖到“收藏”上，就把它们加进收藏（都已收藏时是取消收藏）</source>
+        <translation>Hold the left button on files (no need to drag), then press the key left of 1 (usually `). Drag toward a folder and let go to drop the files there: within a drive they move, to another drive they are copied; hold Ctrl to copy, Shift to move. Drop them on Favorite to add them to your favorites (Unfavorite when they all are already)</translation>
+    </message>
+    <message>
+        <source>拖放;拖动;拖拽;圆盘;按键;移动;复制;收藏;drag;drop;pie;key;favorite</source>
+        <translation>drag;drop;drag and drop;pie;key;move;copy;favorite;favorites</translation>
+    </message>
+    <message>
         <source>文件夹快捷菜单中的收藏</source>
         <translation>Favorites in the folder menu</translation>
     </message>
@@ -2909,16 +2917,8 @@
         <translation>Right-click a search result → Add to favorites, click “Add folder”, or drop files and folders here</translation>
     </message>
     <message>
-        <source>在文件上按住左键（不用拖动），再按数字 1 左边那个键（一般是 `，中文输入法下是 ·）。朝文件夹的方向拖，松开就放进去：同一个盘里移动，到别的盘复制，按住 Ctrl 复制、按住 Shift 移动</source>
-        <translation>Hold the left button on files (no need to drag), then press the key left of 1 (usually `). Drag toward a folder and let go to drop the files there: within a drive they move, to another drive they are copied; hold Ctrl to copy, Shift to move</translation>
-    </message>
-    <message>
         <source>拖文件时按 ` 键，弹出收藏圆盘</source>
         <translation>Press ` while dragging files to bring up the favorites pie</translation>
-    </message>
-    <message>
-        <source>拖放;拖动;拖拽;圆盘;按键;移动;复制;drag;drop;pie;key</source>
-        <translation>drag;drop;drag and drop;pie;key;move;copy</translation>
     </message>
     <message>
         <source>%1。文件夹收藏每 8 个一页（现有 %2 个）：按 Tab 翻到下一页，Shift+Tab 翻回上一页</source>
@@ -6756,6 +6756,14 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Clipboard · Single entries</translation>
     </message>
     <message>
+        <source>输入或粘贴文件夹路径，例如 D:\Work 或 %USERPROFILE%\Documents</source>
+        <translation>Type or paste a folder path, e.g. D:\Work or %USERPROFILE%\Documents</translation>
+    </message>
+    <message>
+        <source>输入或粘贴文件夹路径，例如 D:\Cache 或 %TEMP%</source>
+        <translation>Type or paste a folder path, e.g. D:\Cache or %TEMP%</translation>
+    </message>
+    <message>
         <source>在终端中打开</source>
         <translation>Open in Terminal</translation>
     </message>
@@ -9274,10 +9282,6 @@ Double-click grip: expand/collapse search panel</translation>
         <translation>Choose a folder to index</translation>
     </message>
     <message>
-        <source>输入或粘贴文件夹路径，例如 D:\Work 或 %USERPROFILE%\Documents</source>
-        <translation>Type or paste a folder path, e.g. D:\Work or %USERPROFILE%\Documents</translation>
-    </message>
-    <message>
         <source>还没有选文件夹：本机磁盘上的文件都搜不到</source>
         <translation>No folders chosen yet: no file on this PC’s disks can be found</translation>
     </message>
@@ -9327,10 +9331,6 @@ Double-click grip: expand/collapse search panel</translation>
             <numerusform>Now every hour</numerusform>
             <numerusform>Now every %n hours</numerusform>
         </translation>
-    </message>
-    <message>
-        <source>输入或粘贴文件夹路径，例如 D:\Cache 或 %TEMP%</source>
-        <translation>Type or paste a folder path, e.g. D:\Cache or %TEMP%</translation>
     </message>
     <message>
         <source>你在这台电脑上没有管理员权限，装不了索引服务。Win顺 会索引你选的文件夹，并定时核对</source>
@@ -13665,12 +13665,61 @@ Content index: %5</translation>
         <translation>This folder does not take these items.</translation>
     </message>
     <message>
+        <source>已取消收藏</source>
+        <translation>Removed from favorites</translation>
+    </message>
+    <message>
+        <source>已收藏</source>
+        <translation>Added to favorites</translation>
+    </message>
+    <message>
+        <source>没能取消收藏</source>
+        <translation>Couldn&apos;t remove from favorites</translation>
+    </message>
+    <message>
+        <source>没能收藏</source>
+        <translation>Couldn&apos;t add to favorites</translation>
+    </message>
+    <message>
+        <source>取消收藏</source>
+        <translation>Unfavorite</translation>
+    </message>
+    <message>
+        <source>收藏</source>
+        <translation>Favorite</translation>
+    </message>
+    <message numerus="yes">
+        <source>一次最多收藏 %n 项</source>
+        <translation>
+            <numerusform>At most %n item at a time</numerusform>
+            <numerusform>At most %n items at a time</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>只能收藏磁盘上的文件和文件夹</source>
+        <translation>Only files and folders on a disk can be favorites</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n 项</source>
+        <translation>
+            <numerusform>%n item</numerusform>
+            <numerusform>%n items</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>另有 %n 项已在收藏夹里</source>
+        <translation>
+            <numerusform>%n more is already a favorite</numerusform>
+            <numerusform>%n more are already favorites</numerusform>
+        </translation>
+    </message>
+    <message>
         <source>还没有收藏文件夹</source>
         <translation>No favorite folders yet</translation>
     </message>
     <message>
-        <source>在 设置 → 收藏夹 里添加</source>
-        <translation>Add some in Settings → Favorites</translation>
+        <source>把文件夹拖到“收藏”上就加进来</source>
+        <translation>Drop a folder on Favorite to add it here</translation>
     </message>
     <message>
         <source>朝文件夹拖，松开就放进去</source>

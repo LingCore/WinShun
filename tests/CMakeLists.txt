@@ -1245,6 +1245,11 @@ add_test(NAME tst_droppiehelper COMMAND $<TARGET_FILE:WinShun>
     --preview-results "${CMAKE_CURRENT_BINARY_DIR}/drop-pie-helper" --drop-pie-check --renderer d3d11)
 set_tests_properties(tst_droppiehelper PROPERTIES RUN_SERIAL TRUE TIMEOUT 120
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+# GitHub #505: 收藏 past the drop pie's line, adding and taking out favorites, off the screen.
+add_test(NAME tst_droppiefavorite COMMAND $<TARGET_FILE:WinShun>
+    --preview-results "${CMAKE_CURRENT_BINARY_DIR}/drop-pie-favorite" --drop-pie-favorite --renderer d3d11)
+set_tests_properties(tst_droppiefavorite PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 # Whether Windows takes every point over the pie's window for the pie's
 # (GitHub #150): a drag reaches it only there. By both renderers, revealed
 # and as it waits for a drag with nothing of it drawn. Each shows the real

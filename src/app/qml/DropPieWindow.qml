@@ -333,7 +333,7 @@ Window {
                         font.pixelSize: pie.labelSize + 1
                     }
                     Text {
-                        readonly property bool bold: pie.dropPie.onFolder
+                        readonly property bool bold: pie.dropPie.onFolder || star.picked
                         text: pie.dropPie.elide(pie.dropPie.statusName, pie.labelSize + 1, bold,
                                                 parent.width - (statusVerb.visible ? statusVerb.width + parent.spacing : 0))
                         textFormat: Text.PlainText
@@ -367,6 +367,53 @@ Window {
                         color: Theme.subtext
                         font.pixelSize: pie.smallSize
                     }
+                }
+            }
+        }
+
+        // 收藏, past the line (GitHub #505): let go on it and what is dragged
+        // goes into the favorites, or out of them (a filled star) when all of
+        // it is there already. A chip as the folders' are.
+        SoftShadow {
+            x: star.x
+            y: star.y
+            width: star.width
+            height: star.height
+            radius: star.radius
+        }
+
+        Rectangle {
+            id: star
+
+            readonly property bool picked: pie.dropPie.onStar && !pie.dropPie.starDisabled
+            readonly property color ink: picked ? Theme.accentText : pie.dropPie.starDisabled ? Theme.faint : Theme.text
+
+            objectName: "pieStar"
+            x: Theme.snap(pie.dropPie.starRect.x, pie.dpr)
+            y: Theme.snap(pie.dropPie.starRect.y, pie.dpr)
+            width: Theme.snap(pie.dropPie.starRect.width, pie.dpr)
+            height: pie.chipHeight
+            radius: pie.chipRadius
+            color: picked ? Theme.accentFill : pie.dropPie.onStar ? Theme.pieHover : Theme.menuBackground
+            border.width: picked ? 0 : Theme.edge(pie.dpr)
+            border.color: Theme.windowEdge
+
+            Row {
+                anchors.centerIn: parent
+                spacing: 6 * pie.k
+
+                Glyph {
+                    anchors.verticalCenter: parent.verticalCenter
+                    glyph: pie.dropPie.starFilled ? "ph-fill:star" : "ph:star"
+                    size: 18 * pie.k
+                    color: star.ink
+                }
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: pie.dropPie.starText
+                    textFormat: Text.PlainText
+                    color: star.ink
+                    font.pixelSize: pie.labelSize
                 }
             }
         }

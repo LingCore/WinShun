@@ -57,6 +57,23 @@ using FavoriteList = QList<Favorite>; // in the order shown
 // plugin's row.
 std::optional<Favorite> favoriteOf(const SearchResult& row);
 
+// A file or folder at `path` as a favorite: the path as the store keeps it
+// (backslashes, none at the end but a drive's), named after its last part.
+Favorite favoriteForPath(QStringView path, bool folder);
+
+// The favorites the drop pie's helper asks for (GitHub #505): it runs as the
+// desktop's user while Win顺 runs as administrator, and hands the change to
+// Win顺 in a file. Files and folders only, made anew from their paths by the
+// one reading it: nothing else (never a command) comes in that way.
+struct FavoriteRequest {
+    FavoriteList add;
+    QStringList remove;
+    bool isEmpty() const noexcept { return add.isEmpty() && remove.isEmpty(); }
+};
+inline constexpr int kMaxRequestItems = 100; // read from the file at most, each way
+QByteArray writeFavoriteRequest(const FavoriteRequest& request);
+FavoriteRequest readFavoriteRequest(QByteArrayView json);
+
 // Whether a scope lists a favorite of this kind: 全部 all, 文件 files and
 // folders, 文件夹 folders, 内容 none.
 bool scopeShows(Scope scope, Favorite::Kind kind) noexcept;
@@ -165,6 +182,14 @@ public:
     Merged merge(const FavoriteList& favorites);
     bool remove(QStringView path);
     int removeAll(const QStringList& paths);
+    // The drop pie's 收藏 (GitHub #505): its files and folders added, and
+    // the file and folder favorites at its remove paths taken away (an app,
+    // a place or a command never). How many were added, how many removed.
+    struct Applied {
+        int added = 0;
+        int removed = 0;
+    };
+    Applied apply(const FavoriteRequest& request);
     // Its name, keyword or path ("重新选择"); false if the path is another
     // favorite's or nothing changed.
     bool update(qsizetype index, const Favorite& favorite);

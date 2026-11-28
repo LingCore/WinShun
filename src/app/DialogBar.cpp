@@ -1090,11 +1090,7 @@ void DialogBar::setFavorite(const QString& path, bool isDir, bool on)
         m_favorites->remove(path);
         return;
     }
-    Favorite f;
-    f.kind = isDir ? Favorite::Kind::Folder : Favorite::Kind::File;
-    f.path = QDir::toNativeSeparators(path);
-    f.name = nameOf(f.path);
-    m_favorites->add(f);
+    m_favorites->add(favoriteForPath(path, isDir));
 }
 
 void DialogBar::enter(int row)

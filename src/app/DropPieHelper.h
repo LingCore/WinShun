@@ -34,6 +34,9 @@ public:
     // when this says so (once ever, App::keyTakenFirstTime).
     void setKeyTakenGate(std::function<bool()> gate) { m_keyTakenGate = std::move(gate); }
     QJsonObject state() const;
+    // Where the helper and this hand each other files (its favorites'
+    // snapshot, 收藏's request, its log): for the checks (Preview.cpp).
+    QString profilePath() const { return m_profile.path(); }
 private:
     enum class Failure { Start, Exit, NoAnswer };
     bool snapshot();

@@ -103,10 +103,10 @@ SettingsSection {
     SettingRow {
         id: dropPieRow
 
-        readonly property string how: qsTr("在文件上按住左键（不用拖动），再按数字 1 左边那个键（一般是 `，中文输入法下是 ·）。朝文件夹的方向拖，松开就放进去：同一个盘里移动，到别的盘复制，按住 Ctrl 复制、按住 Shift 移动")
+        readonly property string how: qsTr("在文件上按住左键（不用拖动），再按数字 1 左边那个键（一般是 `，中文输入法下是 ·）。朝文件夹的方向拖，松开就放进去：同一个盘里移动，到别的盘复制，按住 Ctrl 复制、按住 Shift 移动。拖到“收藏”上，就把它们加进收藏（都已收藏时是取消收藏）")
 
         title: qsTr("拖文件时按 ` 键，弹出收藏圆盘")
-        keywords: qsTr("拖放;拖动;拖拽;圆盘;按键;移动;复制;drag;drop;pie;key").split(";")
+        keywords: qsTr("拖放;拖动;拖拽;圆盘;按键;移动;复制;收藏;drag;drop;pie;key;favorite").split(";")
         description: section.editor.dropPie && DropPieText.folderCount > DropPieText.pageSize
                      ? qsTr("%1。文件夹收藏每 8 个一页（现有 %2 个）：按 Tab 翻到下一页，Shift+Tab 翻回上一页").arg(how).arg(DropPieText.folderCount)
                    : how
