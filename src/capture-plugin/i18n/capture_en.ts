@@ -1840,6 +1840,13 @@
     </message>
 </context>
 <context>
+    <name>InputBox</name>
+    <message>
+        <source>清空</source>
+        <translation>Clear</translation>
+    </message>
+</context>
+<context>
     <name>LongCapturePanel</name>
     <message>
         <source>等待滚动</source>
