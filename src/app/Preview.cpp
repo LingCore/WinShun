@@ -10956,7 +10956,10 @@ bool checkContentKinds(QQmlEngine* qml, const QDir& output)
         QFile back(temporary.filePath(name));
         if (!back.open(QIODevice::ReadOnly) || back.readAll() != bytes) return false;
         const auto lock = files->writeLock();
-        return files->add(root, name.toUtf8().toStdString(), 0) != kNoEntry;
+        const EntryId id = files->add(root, name.toUtf8().toStdString(), 0);
+        if (id != kNoEntry) // when it was written, for the rows' date
+            files->setModified(id, static_cast<FileTime>(QDateTime::currentSecsSinceEpoch() - 3600));
+        return id != kNoEntry;
     };
     check(write(u"牛蛙.txt"_s, "关于牛蛙的笔记\n") && write(u"牛蛙.md"_s, "# 牛蛙\n") && write(u"牛蛙.py"_s, "# 牛蛙\n"),
         "the files could not be written");
@@ -10990,6 +10993,39 @@ bool checkContentKinds(QQmlEngine* qml, const QDir& output)
     check(run([&] { launcher.setQuery(u"牛蛙"_s); }), "the content search did not run");
     check(names() == (QStringList {u"牛蛙.md"_s, u"牛蛙.txt"_s}), "内容 did not find the words in both kinds");
     check(otherTypesOffered(), "the .py file passed over was not offered");
+
+    // Where the match is (第 1 行) on the current row too, whose buttons take
+    // the right end (QQ group 2026-11-28: they hid it): left of the buttons,
+    // the date left of it, the text short of both; on another row at the end.
+    for (int i = 0; i < 2; ++i) {
+        auto* row = visualNamed(window->contentItem(), u"resultRow-%1"_s.arg(i));
+        auto* where = row ? visualNamed(row, u"resultTrailing"_s) : nullptr;
+        auto* date = row ? visualNamed(row, u"modifiedLabel"_s) : nullptr;
+        auto* text = row ? visualNamed(row, u"resultText"_s) : nullptr;
+        check(row && where && date && text, "a content row's parts were not found");
+        if (!row || !where || !date || !text)
+            break;
+        const bool current = row->property("current").toBool();
+        check(current == (i == 0), "the first row is not the current one");
+        const QRectF at = where->mapRectToItem(row, QRectF(0, 0, where->width(), where->height()));
+        check(where->isVisible() && where->property("text").toString() == u"第 1 行" && at.width() > 0,
+            "a content row does not say where the match is");
+        auto* actions = row->property("actions").value<QQuickItem*>();
+        const qreal end = current && actions
+            ? row->width() - actions->property("actionsWidth").toReal() - row->property("actionsRightMargin").toReal()
+            : row->width();
+        check(!current || actions, "the current row shows no buttons");
+        check(at.right() <= end - 4, "the place of the match runs into the buttons");
+        const QRectF dateAt = date->mapRectToItem(row, QRectF(0, 0, date->width(), date->height()));
+        check(date->isVisible() && dateAt.width() > 0, "a content row shows no date");
+        check(dateAt.right() <= at.left() - 4, "the date runs into the place of the match");
+        const qreal textEnd = text->mapToItem(row, QPointF(text->width(), 0)).x();
+        check(textEnd <= dateAt.left(), "the text runs into the date");
+        say(u"content row %1 (%2): text to %3, date %4-%5, place %6-%7, buttons from %8"_s.arg(i)
+                .arg(current ? u"current"_s : u"other"_s).arg(textEnd).arg(dateAt.left()).arg(dateAt.right())
+                .arg(at.left()).arg(at.right()).arg(end));
+    }
+    check(saveGrab(window, output.filePath(u"content-row-place.png"_s)), "the window did not render");
 
     // 文本 from the panel's 筛选 (as Panel.chooseType): still 内容, the .txt alone.
     check(run([&] { launcher.toggleFileType(0); }), "choosing a kind did not search again");

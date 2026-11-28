@@ -5,8 +5,8 @@ import WinShun
 
 // One result: icon, highlighted name, folder (or the matching line for
 // content search) and a small trailing label. The current and the hovered row
-// show buttons instead of the label: reveal, copy, copy path, delete (click
-// twice). An installed app shows where it comes from instead of a folder, an
+// show buttons at the right end, the label (第 3 行, 最近) and the date moved
+// left of them: reveal, copy, copy path, delete (click twice). An installed app shows where it comes from instead of a folder, an
 // "应用" tag, and its own buttons: run as administrator, reveal, copy (its
 // program file, if it has one), copy path. A place in Windows (a page of
 // Settings, a Control Panel task, a system tool) is tagged "系统", says where
@@ -151,12 +151,13 @@ Item {
     property bool levelMade: false
     onSwitchReadyChanged: if (switchReady) switchMade = true
     onLevelShownChanged: if (levelShown) levelMade = true
-    // Room kept on the right for the buttons, the badge or the label.
+    // Room kept on the right for the buttons, the badge or the label (a
+    // file's label, left of its buttons while they show).
     readonly property real trailingSpace: (switchReady ? switchControl.width + switchControl.anchors.rightMargin + levelSpace
                                                          + (showActions && actions !== null ? actions.actionsWidth + 2 : 0)
+                                           : !isApp ? trailing.width + trailing.anchors.rightMargin
                                            : actionsShown ? actions.actionsWidth + actionsRightMargin
-                                           : isApp ? badge.width + badge.anchors.rightMargin
-                                           : trailing.width + trailing.anchors.rightMargin) + 10
+                                           : badge.width + badge.anchors.rightMargin) + 10
     property bool deleteArmed: false // first click on delete; the second one deletes
 
     signal clicked(int index, int modifiers)
@@ -539,11 +540,15 @@ Item {
         }
     }
 
+    // Where a content match is (第 3 行), or what the row is (最近, 收藏, 离线,
+    // 已不存在): on the current and the hovered row too, left of the buttons,
+    // the date before it as on the other rows.
     Text {
         id: trailing
-        visible: !row.showActions && !row.isApp
+        objectName: "resultTrailing"
+        visible: !row.isApp
         anchors.right: parent.right
-        anchors.rightMargin: 18
+        anchors.rightMargin: row.actionsShown ? row.actions.actionsWidth + row.actionsRightMargin + (width > 0 ? 8 : 0) : 18
         y: row.onPixel((row.height - height) / 2)
         width: Math.min(implicitWidth, 200)
         elide: Text.ElideMiddle
@@ -554,6 +559,7 @@ Item {
             : row.offline ? qsTr("离线")
             : row.missing ? qsTr("已不存在")
             : tag // 空文件夹 / 空文件: after the name (emptyTag)
+        textFormat: Text.PlainText
         color: Theme.faint
         font.pixelSize: row.compact ? 12 : Theme.uiCaption
     }

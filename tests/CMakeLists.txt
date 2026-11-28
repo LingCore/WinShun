@@ -143,6 +143,12 @@ add_test(NAME tst_contentpane COMMAND $<TARGET_FILE:WinShun>
     --preview-results "${CMAKE_CURRENT_BINARY_DIR}/content-pane" --content-pane --renderer d3d11)
 set_tests_properties(tst_contentpane PROPERTIES RUN_SERIAL TRUE TIMEOUT 120
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+# 内容 for real files in the real window: kinds of file (#447), and where a
+# match is (第 1 行) on the current row beside its buttons.
+add_test(NAME tst_contentkinds COMMAND $<TARGET_FILE:WinShun>
+    --preview-results "${CMAKE_CURRENT_BINARY_DIR}/content-kinds" --content-kinds --renderer d3d11)
+set_tests_properties(tst_contentkinds PROPERTIES RUN_SERIAL TRUE TIMEOUT 120
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
 # The file types and the quick filters: the editor's checks, the rows in the real window.
 add_test(NAME tst_settingsfilters COMMAND $<TARGET_FILE:WinShun>
