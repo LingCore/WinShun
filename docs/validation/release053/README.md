@@ -58,3 +58,11 @@
 - #472：没装 WPS，只用探针核对了按住 40 毫秒时程序能读到 Ctrl。
 - #452：本机是 Windows 11，没有真正独占全屏的游戏，只有规则的单元测试；还会消失的话下一次诊断包里有 `front_taker`。
 - #507：有单元测试和对话框搜索框的预览，没有在真实的“打开”“另存为”对话框里打字（本机正在用的 Win顺 也会附上去）。
+
+## 发布后核对
+
+- `-Publish` 从 45ff85c4 重新构建打包：三个增量包与实测时逐字节相同；安装包、便携包重新生成（SHA256 变了），里面的 `WinShun.exe`（8ae59a24…）与实测装上的相同。之后用公开的安装包（65c169b3…）跑 `-Mode Setup`：7.8 秒，0.53.0，未提权，服务在运行，剪贴板历史不变，装好的 `WinShun.exe` 仍是 8ae59a24…。
+- GitHub Release 8 个附件，远端 SHA256 与 `SHA256SUMS.txt` 一致，标签指向 45ff85c4，是最新正式版。lcstp.com 两个接口发布约 6 分钟后都是 v0.53.0，大小和 digest 一致，第一个镜像是 cnb.cool，说明里有增量行、没有立即推送行（正常推送）。CNB 上的 `SHA256SUMS.txt` 下载回来与 GitHub 一致。Scoop f899ceca。
+- 插件库 8916e46，线上 index 44 个插件，5 个新版本都在，签名有效（ws-index-2026a）。
+- 关闭并回复 #448、#452、#472、#505、#507；#506 没有复现，等反馈者回答，保持打开。
+- 回收：分支 `favorite-keys`、`issues-448-472-452` 和它们的工作树（删前确认没有目录链接、没有程序从里面运行、没有未提交的修改）；`dist\release052`、`dist\release052pub` 和这一版的临时目录 `build\poster053`、`build\release053-upgrade`、`build\release053-setup`。保留 `build\release`、`build\recovery`、`dist\release053`、`dist\release053pub`。
