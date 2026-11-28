@@ -202,6 +202,14 @@ winget install LingCore.WinShun
 
 ### 最近更新
 
+**0.52.0**
+
+- 📂 “打开”“另存为”旁的搜索框**先列出对话框所在文件夹里的**，再列其他位置；💤 保持唤醒可以设成**合上盖子也不睡眠**（#503）。
+- 🧠 **设置窗口少占内存**，关掉后内存真的还回去；Windows 内存紧张时闲着的 Win顺 也让出内存（#500）。
+- 🛠️ **改进** 索引服务装不上时给的修复命令改对了（#504）；品牌色彩、轻拟物质感在 125% 下光标不见了（#501）；模糊匹配时猜中的收藏不再排最前；在文件夹里搜到 `pwsh.exe` 按 `Enter` 也开在这个文件夹（#430）。
+
+详见 [0.52.0 发布说明](docs/release-notes/v0.52.0.md)。
+
 **0.51.0**
 
 - 📌 剪贴板可以设成**打开时就钉住**，连着粘贴好几条；💻 在文件夹里打 `cmd`、`wt` 这类终端，按 `Enter` 就**开在这个文件夹里**（#430）。
@@ -622,6 +630,14 @@ Standard and portable packages install enhanced text recognition on demand. Open
 </details>
 
 ### What's new
+
+**0.52.0**
+
+- 📂 The bar beside Open and Save As **lists the dialog's folder first**, then everywhere else; 💤 keep awake can **ignore a closed lid** (#503).
+- 🧠 **The settings window takes less memory** and really gives it back when closed; an idle WinShun gives memory back while Windows is short of it (#500).
+- 🛠️ **Improved** the commands offered when the index service cannot be installed now fix it (#504); the caret shows again in Brand colours and Soft tactile at 125 % (#501); a favorite only guessed by fuzzy matching is not put first; `Enter` on `pwsh.exe` found while typing in a folder opens it there (#430).
+
+See the [0.52.0 release notes](docs/release-notes/v0.52.0.md).
 
 **0.51.0**
 
