@@ -3,6 +3,9 @@
 
 #include <QGuiApplication>
 #include <QElapsedTimer>
+#include <QFile>
+#include <QQmlExpression>
+#include <QRegularExpression>
 #include <QKeyEvent>
 #include <QQmlComponent>
 #include <QQmlEngine>
@@ -425,6 +428,44 @@ private slots:
         tap(Qt::Key_Control, Qt::ControlModifier);
         QVERIFY(hints->property("jumping").toBool());
         QCOMPARE(letter(0), u"A"_s);
+    }
+
+    void panelOpenPreference_data()
+    {
+        QTest::addColumn<QString>("file");
+        QTest::newRow("launcher") << u"Main.qml"_s;
+        QTest::newRow("dialog") << u"DialogBarWindow.qml"_s;
+        QTest::newRow("clipboard") << u"ClipboardPage.qml"_s;
+    }
+
+    void panelOpenPreference()
+    {
+        QFETCH(QString, file);
+        QFile source(QStringLiteral(WINSHUN_TEST_SOURCE) + u"/../src/app/qml/"_s + file);
+        QVERIFY(source.open(QIODevice::ReadOnly));
+        // Evaluate the real panel's binding against the properties its model exposes.
+        const QRegularExpression binding(u"startOnOpen: ([^\r\n]*(?:\r?\n[ \t]*&&[^\r\n]*)*)"_s);
+        const auto match = binding.match(QString::fromUtf8(source.readAll()));
+        QVERIFY(match.hasMatch());
+
+        QQmlEngine engine;
+        QQmlComponent component(&engine);
+        component.setData(
+            "import QtQml\n"
+            "QtObject { id: model; property bool letterJump: true; property bool letterJumpOnOpen: true;"
+            " property QtObject window: QtObject { property QtObject launcher: model; property QtObject bar: model;"
+            " property int gridColumns: 1; property bool panel: false }"
+            " property QtObject page: QtObject { property QtObject clipboard: model } }", QUrl());
+        std::unique_ptr<QObject> model(component.create());
+        QVERIFY2(model, qPrintable(component.errorString()));
+        QQmlExpression expression(engine.rootContext(), model.get(), match.captured(1));
+        QCOMPARE(expression.evaluate().toBool(), true);
+        QVERIFY2(!expression.hasError(), qPrintable(expression.error().toString()));
+        model->setProperty("letterJumpOnOpen", false);
+        QCOMPARE(expression.evaluate().toBool(), false);
+        model->setProperty("letterJumpOnOpen", true);
+        model->setProperty("letterJump", false);
+        QCOMPARE(expression.evaluate().toBool(), false);
     }
 
     void directModeOnOpen()

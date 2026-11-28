@@ -632,7 +632,7 @@ Window {
         id: numberHints
         objectName: "launcherNumberHints"
         mode: window.launcher.numberHints
-        startOnOpen: window.launcher.letterJump && window.launcher.letterJumpLauncherOnOpen
+        startOnOpen: window.launcher.letterJump && window.launcher.letterJumpOnOpen
                       && window.gridColumns === 1 && !window.panel
         key: window.numberKey
         // Refused the front over the folder typed in, its keys come through

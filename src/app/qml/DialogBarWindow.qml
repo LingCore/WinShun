@@ -151,7 +151,7 @@ Window {
         id: numberHints
         objectName: "dialogNumberHints"
         mode: window.bar.numberHints
-        startOnOpen: window.bar.letterJump && window.bar.letterJumpDialogBarOnOpen
+        startOnOpen: window.bar.letterJump && window.bar.letterJumpOnOpen
         key: window.numberKey
         listening: window.active && !window.menuOpen
         jumpEnabled: window.bar.letterJump && window.bar.rows > 0
