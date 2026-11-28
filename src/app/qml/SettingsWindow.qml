@@ -62,7 +62,7 @@ Window {
         [],
         [qsTr("打开 Win顺", "settings tab"), qsTr("按键一览")],
         [],
-        [qsTr("文件夹"), qsTr("名称和类型"), qsTr("磁盘"), qsTr("网络与 WSL"), qsTr("文件内容")],
+        [qsTr("文件夹"), qsTr("名称和类型"), qsTr("磁盘"), qsTr("网络与 WSL"), qsTr("文件内容"), qsTr("应用", "settings tab")],
         [qsTr("排序"), qsTr("显示与预览"), qsTr("操作习惯"), qsTr("类型与筛选")],
         [qsTr("任务栏"), qsTr("文件管理器"), qsTr("文件夹菜单"), qsTr("对话框")],
         [],
@@ -3689,8 +3689,9 @@ Window {
                 index: window.scopePage
                 content: Component { SettingsPage {
                     host: settingsContext
-                    parts: ({ foldersRow: foldersRow, sharesRow: sharesRow, indexAccessRow: indexAccessRow, indexServiceRow: indexServiceRow, nameInput: nameInput })
+                    parts: ({ foldersRow: foldersRow, sharesRow: sharesRow, indexAccessRow: indexAccessRow, indexServiceRow: indexServiceRow, nameInput: nameInput, userAppsSection: userAppsSection })
                     onResetForReopen: {
+                        userAppsSection.editing = ""
                         for (const field of [nameInput, typeInput, fileNameInput, shareInput, extensionInput])
                             field.clear()
                         foldersRow.problem = ""
@@ -4974,6 +4975,14 @@ Window {
                         }
                     }
                 }
+            }
+
+            UserAppsSection { // 应用: portable programs and the names given to apps (#505)
+                id: userAppsSection
+                page: window.scopePage
+                tab: 5
+                width: parent.width
+                editor: window.editor
             }
             // </page scope>
                 } }

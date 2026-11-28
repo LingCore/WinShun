@@ -19,6 +19,7 @@
 #include "CommandLine.h"
 #include "Crawler.h"
 #include "FavoritesSettings.h"
+#include "UserAppsSettings.h"
 #include "FileIconProvider.h"
 #include "IndexFolder.h"
 #include "McpClients.h"
@@ -189,6 +190,7 @@ SettingsEditor::SettingsEditor(const Settings& settings, const QString& runningR
     , m_taskbarWatch(std::make_unique<TaskbarWatch>())
     , m_plugins(new PluginSettings(this, this))
     , m_favorites(new FavoritesSettings(this, this))
+    , m_userApps(new UserAppsSettings(this, this))
     , m_cli(new CliSetup(this, this))
 {
     m_autostart = autostart::lastRead().value_or(false); // App::readAutostart reads the task as the window opens

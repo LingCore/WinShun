@@ -13351,6 +13351,152 @@ private slots:
         QVERIFY(!search(u"蓝牙"_s, Scope::All, {}, {switchPath}).first().statusRow);
     }
 
+    // #505: portable programs listed as apps, names of the user's for apps.
+    void userApps()
+    {
+        // Names typed: one line, one space between words, nothing invisible, 40 at most.
+        QCOMPARE(cleanAppName(u"  微信\n防撤回\t补丁  "_s), u"微信 防撤回 补丁"_s);
+        QCOMPARE(cleanAppName(u"a\u200Bb\u200Ec"_s), u"abc"_s);
+        QCOMPARE(cleanAppName(QString(50, u'x')).size(), kMaxAppNameLength);
+        const QString emoji = QString(39, u'a') + u"\U0001F600"_s; // the 40th character is half of it
+        QCOMPARE(cleanAppName(emoji), QString(39, u'a'));
+        QVERIFY(cleanAppName(u" \n "_s).isEmpty());
+
+        // Helpers are no apps; a program merely ending in "Helper" is one.
+        for (const QString& stem : {u"unins000"_s, u"Uninstall"_s, u"Update"_s, u"updater"_s, u"crashpad_handler"_s,
+                 u"notification_helper"_s, u"QQ_Updater"_s, u"vc_redist.x64"_s})
+            QVERIFY2(portableHelper(stem), qPrintable(stem));
+        for (const QString& stem : {u"Everything"_s, u"PDFHelper"_s, u"UpdateChecker"_s, u"RevokeMsgPatcher"_s})
+            QVERIFY2(!portableHelper(stem), qPrintable(stem));
+
+        // A program file as an app: by its path, named after it.
+        QVERIFY(programApp(uR"(D:\Apps\readme.txt)"_s).name.isEmpty());
+        QVERIFY(programApp(u"Tool.exe"_s).name.isEmpty()); // no folder: no path to open it by
+        const AppInfo patcher = programApp(u"D:/Apps/RevokeMsgPatcher.exe"_s);
+        QCOMPARE(patcher.name, u"RevokeMsgPatcher"_s);
+        QCOMPARE(patcher.id, uR"(D:\Apps\RevokeMsgPatcher.exe)"_s);
+        QCOMPARE(patcher.target, patcher.id);
+        QCOMPARE(patcher.launchPath(), patcher.id); // no shell:AppsFolder item
+        QVERIFY(patcher.portable && patcher.elevatable && !patcher.auxiliary);
+        QCOMPARE(patcher.program, std::string("RevokeMsgPatcher"));
+        const AppInfo shortcut = programApp(uR"(D:\Apps\Notes.lnk)"_s);
+        QCOMPARE(shortcut.name, u"Notes"_s);
+        QVERIFY(!shortcut.auxiliary); // a shortcut among them is no document
+        QVERIFY(!shortcut.elevatable);
+        QVERIFY(isListedProgram(uR"(D:\a.b\Run.CMD)"_s));
+        QVERIFY(!isListedProgram(uR"(D:\a.exe\notes)"_s));
+
+        // The folders: their programs, and those of the folders in them,
+        // only the one named after its folder where there is one.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString root = QDir::toNativeSeparators(dir.path());
+        const auto make = [&](const QString& relative) {
+            const QString path = root + u'\\' + relative;
+            QDir().mkpath(QFileInfo(path).path());
+            QFile file(path);
+            QVERIFY(file.open(QIODevice::WriteOnly));
+        };
+        for (const QString& file : {u"Tool.exe"_s, u"unins000.exe"_s, u"readme.txt"_s, u"Shortcut.lnk"_s, u"Hidden.exe"_s,
+                 uR"(Everything-1.4\Everything.exe)"_s, uR"(Everything-1.4\es.exe)"_s,
+                 uR"(PotPlayer\PotPlayerMini64.exe)"_s, uR"(PotPlayer\Update.exe)"_s, uR"(Suite\a.exe)"_s,
+                 uR"(Suite\b.exe)"_s, uR"(Deep\x\y.exe)"_s})
+            make(file);
+        QVERIFY(::SetFileAttributesW(reinterpret_cast<LPCWSTR>((root + uR"(\Hidden.exe)"_s).utf16()), FILE_ATTRIBUTE_HIDDEN));
+        const auto namesOf = [](const AppList& apps) {
+            QStringList names;
+            for (const AppInfo& a : apps)
+                names.append(a.name);
+            return names;
+        };
+        const QStringList found {u"Shortcut"_s, u"Tool"_s, u"Everything"_s, u"PotPlayerMini64"_s, u"a"_s, u"b"_s};
+        QCOMPARE(namesOf(portablePrograms({root})), found);
+        QCOMPARE(namesOf(portablePrograms({root, root + u'\\'})), found); // the same folder twice: once
+        QCOMPARE(namesOf(portablePrograms({u"Z:\\no such folder"_s})), QStringList());
+        QCOMPARE(portablePrograms({root}).front().id, root + uR"(\Shortcut.lnk)"_s);
+
+        // Named program files are apps too, if they are there.
+        UserApps user;
+        user.folders = {root};
+        user.names = {{root + uR"(\Deep\x\y.exe)"_s, u"深处"_s}, {root + uR"(\Deep\gone.exe)"_s, u"不在"_s},
+            {u"shell:AppsFolder\\Some.App"_s, u"某应用"_s}};
+        QCOMPARE(namesOf(userPrograms(user)), found + QStringList {u"y"_s});
+
+        // Something added where they are looked for changes the fingerprint.
+        const quint64 before = portableFingerprint({root});
+        QCOMPARE(portableFingerprint({root}), before);
+        make(uR"(Suite\c.exe)"_s);
+        QVERIFY(portableFingerprint({root}) != before);
+
+        // The list: the Start menu's apps, then the programs it has not;
+        // named as the user named them, the hidden ones left out.
+        const auto shellApp = [](const QString& name, const QString& id, const QString& target, AppKind kind) {
+            AppInfo a;
+            a.name = name;
+            a.id = id;
+            a.target = target;
+            a.kind = kind;
+            a.prepare();
+            return a;
+        };
+        const AppList shell {shellApp(u"Word"_s, u"Microsoft.Office.WINWORD"_s, uR"(C:\Office\WINWORD.EXE)"_s, AppKind::Desktop),
+            shellApp(u"Calculator"_s, u"Microsoft.WindowsCalculator_8wekyb3d8bbwe!App"_s, QString(), AppKind::Store)};
+        const AppList programs {programApp(uR"(D:\Apps\RevokeMsgPatcher.exe)"_s), programApp(uR"(C:\Office\WINWORD.EXE)"_s),
+            programApp(uR"(D:\Apps\Tool.exe)"_s)};
+        QCOMPARE(withUserApps(shell, {}, {}).size(), shell.size()); // nothing of the user's: as it was
+        UserApps own;
+        own.names = {{uR"(d:\apps\revokemsgpatcher.exe)"_s, u"微信防撤回"_s},
+            {u"shell:AppsFolder\\Microsoft.Office.WINWORD"_s, u"文字处理"_s}};
+        own.hidden = {uR"(D:\APPS\Tool.exe)"_s};
+        const AppList apps = withUserApps(shell, programs, own);
+        QCOMPARE(apps.size(), std::size_t {3}); // Word once, Tool hidden
+        const AppInfo* revoke = findApp(apps, uR"(D:\Apps\RevokeMsgPatcher.exe)"_s);
+        QVERIFY(revoke);
+        QCOMPARE(revoke->name, u"微信防撤回"_s);
+        QCOMPARE(revoke->ownName, u"RevokeMsgPatcher"_s);
+        QVERIFY(std::ranges::find(revoke->aliases, std::string("RevokeMsgPatcher")) != revoke->aliases.end());
+        const AppInfo* word = findApp(apps, u"shell:AppsFolder\\Microsoft.Office.WINWORD"_s);
+        QVERIFY(word && !word->portable);
+        QCOMPARE(word->name, u"文字处理"_s);
+        QCOMPARE(word->ownName, u"Word"_s);
+        QVERIFY(!findApp(apps, uR"(D:\Apps\Tool.exe)"_s));
+        QVERIFY(!findApp(apps, u"shell:AppsFolder\\D:\\Apps\\RevokeMsgPatcher.exe"_s)); // a portable one is its path
+        QCOMPARE(appKeyOf(uR"(D:\Apps\Tool.exe)"_s), uR"(D:\Apps\Tool.exe)"_s);
+        QCOMPARE(appKeyOf(u"shell:AppsFolder\\Some.App"_s), u"Some.App"_s);
+
+        // Found by the name given and by its own, shown by the one given.
+        const auto search = [&](const QString& text, const QStringList& history = {}) {
+            const ParsedQuery query = ws::parseQuery(text);
+            const NameMatcher matcher(query);
+            QStringList out;
+            for (const AppHit& hit : searchApps(apps, query, matcher, history)) {
+                const AppInfo& a = apps[hit.index];
+                out.append(hit.otherName >= 0 ? a.otherNames[hit.otherName] : a.name);
+            }
+            return out;
+        };
+        QCOMPARE(search(u"防撤回"_s), QStringList {u"微信防撤回"_s});
+        QCOMPARE(search(u"RevokeMsg"_s), QStringList {u"微信防撤回"_s});
+        QCOMPARE(search(u"word"_s), QStringList {u"文字处理"_s});
+        QVERIFY(search(u"tool"_s).isEmpty());
+
+        // A program file named from its row that the Start menu has: its app.
+        UserApps byProgram;
+        byProgram.names = {{uR"(C:\Office\WINWORD.EXE)"_s, u"Word 2024"_s}};
+        const AppList named = withUserApps(shell, {}, byProgram);
+        QCOMPARE(findApp(named, u"shell:AppsFolder\\Microsoft.Office.WINWORD"_s)->name, u"Word 2024"_s);
+
+        // Called by one of its other names: not shown by it as another any more.
+        AppInfo calc = shell[1];
+        calc.otherNames = {u"计算器"_s};
+        calc.otherNamesUtf8 = {std::string("计算器")};
+        calc.giveName(u"计算器"_s);
+        QVERIFY(calc.otherNames.isEmpty() && calc.otherNamesUtf8.empty());
+        QCOMPARE(calc.ownName, u"Calculator"_s);
+        calc.giveName(u"算盘"_s); // named again: its own name stays its own
+        QCOMPARE(calc.ownName, u"Calculator"_s);
+    }
+
     void appLogoChoice()
     {
         // As ChatGPT's package ships them.

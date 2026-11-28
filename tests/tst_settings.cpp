@@ -1594,6 +1594,71 @@ private slots:
         QVERIFY(!settings.selectedDrives);
     }
 
+    // #505: the folders of portable programs, the programs hidden and the
+    // names given to apps; nothing in the file for those who never used them.
+    void userAppsRoundTrip()
+    {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        ws::Settings::useProfile(temporary.path());
+        ws::Settings settings;
+        settings.load();
+        QVERIFY(settings.portableFolders.isEmpty() && settings.hiddenApps.isEmpty() && settings.appNames.isEmpty());
+
+        const QString folder = uR"(D:\Apps, Tools)"_s; // one folder, though a comma is in it
+        const QString patcher = uR"(D:\Apps\RevokeMsgPatcher.exe)"_s;
+        const QString word = u"shell:AppsFolder\\Microsoft.Office.WINWORD.EXE.15"_s;
+        settings.portableFolders = {folder};
+        settings.hiddenApps = {folder + uR"(\Helper.exe)"_s};
+        QVERIFY(settings.setAppName(patcher, u"  微信\n防撤回 "_s));
+        QVERIFY(settings.setAppName(word, u"文档"_s));
+        QVERIFY(!settings.setAppName(patcher.toLower(), u"微信 防撤回"_s)); // the same name again
+        QVERIFY(!settings.setAppName(uR"(D:\Apps\Other.exe)"_s, u" "_s)); // no name, none to drop
+        settings.save();
+        settings.load();
+        QCOMPARE(settings.portableFolders, QStringList {folder});
+        QCOMPARE(settings.hiddenApps, QStringList {folder + uR"(\Helper.exe)"_s});
+        QCOMPARE(settings.appNames.size(), 2);
+        QCOMPARE(settings.appNames[0].path, patcher);
+        QCOMPARE(settings.appNames[0].name, u"微信 防撤回"_s);
+        QCOMPARE(settings.appNames[1].name, u"文档"_s);
+        QVERIFY(settings.userApps() == (ws::UserApps {settings.portableFolders, settings.appNames, settings.hiddenApps}));
+
+        // A name emptied goes, and the app has its own again.
+        QVERIFY(settings.setAppName(patcher, u"\u200B"_s));
+        QCOMPARE(settings.appNames.size(), 1);
+        QCOMPARE(settings.appNames[0].path, word);
+
+        // Written by hand: tidied, each path once, none without a name.
+        {
+            QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+            ini.remove(u"AppNames"_s);
+            ini.beginWriteArray(u"AppNames"_s, 3);
+            const std::pair<QString, QString> rows[] {{uR"( E:\x.exe )"_s, u"甲"_s}, {uR"(e:\X.EXE)"_s, u"乙"_s}, {uR"(E:\y.exe)"_s, u"\u200B"_s}};
+            for (int i = 0; i < 3; ++i) {
+                ini.setArrayIndex(i);
+                ini.setValue(u"Path"_s, rows[i].first);
+                ini.setValue(u"Name"_s, rows[i].second);
+            }
+            ini.endArray();
+            ini.setValue(u"Apps/PortableFolders"_s, QStringList {uR"(D:\Apps)"_s, uR"(d:\apps)"_s, u" "_s});
+        }
+        settings.load();
+        QCOMPARE(settings.appNames.size(), 1);
+        QCOMPARE(settings.appNames[0].path, uR"(E:\x.exe)"_s);
+        QCOMPARE(settings.appNames[0].name, u"甲"_s);
+        QCOMPARE(settings.portableFolders, QStringList {uR"(D:\Apps)"_s});
+
+        // All taken away: the keys go too.
+        settings.portableFolders.clear();
+        settings.hiddenApps.clear();
+        settings.appNames.clear();
+        settings.save();
+        QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+        QVERIFY(!ini.contains(u"Apps/PortableFolders"_s) && !ini.contains(u"Apps/Hidden"_s));
+        QVERIFY(!ini.childGroups().contains(u"AppNames"_s));
+    }
+
     // GitHub #132: skipped file names, Office's and WPS's lock files by
     // default; an emptied list stays empty, and one written by hand is read
     // as the settings window keeps it.

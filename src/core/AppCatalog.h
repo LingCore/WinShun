@@ -2,6 +2,7 @@
 
 #include "SearchTypes.h"
 #include "History.h"
+#include "UserApps.h"
 
 #include <QHash>
 #include <QObject>
@@ -64,9 +65,24 @@ struct AppInfo {
     std::string initials; // folded first letters of the name's words ("vsc" for Visual Studio Code)
     std::vector<std::string> words; // folded ASCII words of the name (PowerShell: power, shell), for the word-prefix span match
 
+    // Not in the Start menu (#505): a program in one of the user's folders of
+    // portable programs, or a program file the user gave a name (UserApps).
+    // Its id is its path, and so is its launch path: no shell:AppsFolder item
+    // stands for it.
+    bool portable = false;
+    // The name it had before the user gave it one (UserApps::names; giveName):
+    // matched still, as an alias is; empty while it has none.
+    QString ownName;
+
     void prepare(); // with AppAliases::builtIn()
     void prepare(const AppAliases& aliases);
+    // Called `given` from now on: shown by it, and found by it and by the name
+    // it had (kept as ownName and among the aliases). Not when empty or the same.
+    void giveName(const QString& given);
     QString launchPath() const;
+
+private:
+    void prepareName(); // nameUtf8, initials and words, from name
 };
 
 using AppList = std::vector<AppInfo>;
@@ -112,6 +128,49 @@ private:
 QString appLaunchPath(const QString& id);
 bool isAppLaunchPath(QStringView path) noexcept;
 QString appIdOf(QStringView launchPath); // empty for any other path
+// The id of the app a launch path is of: shell:AppsFolder's id, or the path
+// itself (a program Win顺 lists of its own, AppInfo::portable).
+QString appKeyOf(QStringView launchPath);
+// The app in `apps` that opens by `launchPath`, or null.
+const AppInfo* findApp(const AppList& apps, QStringView launchPath);
+
+inline constexpr qsizetype kMaxAppNameLength = 40;
+// A name typed for an app: trimmed, on one line, one space between words,
+// without invisible characters, at most kMaxAppNameLength characters (never
+// half a surrogate pair).
+QString cleanAppName(QStringView typed);
+
+// Whether a file is a program Win顺 lists as an app of its own when it is
+// one of the portable programs or the user named it (programApp): .exe,
+// .lnk, .bat, .cmd, .com.
+bool isListedProgram(QStringView path);
+// Whether a program's file name (without extension) says it serves another
+// one rather than being one to start: an uninstaller, an updater, a crash
+// reporter ("unins000", "Update", "crashpad_handler").
+bool portableHelper(QStringView stem);
+// A program file as an app of its own (AppInfo::portable), named after the
+// file (without extension), its FileDescription an alias; empty name for a
+// file that is no such program (isListedProgram).
+AppInfo programApp(const QString& path);
+// The most portablePrograms lists: a whole drive chosen is not a thousand apps.
+inline constexpr std::size_t kMaxPortablePrograms = 1000;
+// The programs in `folders` (.exe and shortcuts): in each folder, and in
+// each folder in it; of such a folder, only the one named after it if there
+// is one ("Everything\Everything.exe" without "Everything\es.exe"). Never a
+// helper (portableHelper), a hidden or a system file. At most
+// kMaxPortablePrograms; in the order found.
+AppList portablePrograms(const QStringList& folders, const std::stop_token& stop = {});
+// portablePrograms, and the program files the user named that are there
+// (UserApps::names; an app's launch path aside).
+AppList userPrograms(const UserApps& user, const std::stop_token& stop = {});
+// Hash of the write times of `folders` and of the folders in them: changes
+// when a program is added, removed or renamed where portablePrograms looks.
+quint64 portableFingerprint(const QStringList& folders);
+// The apps as Win顺 lists them: `shell`'s, then the `programs` (userPrograms)
+// the Start menu does not have (no desktop app of that program); each called
+// what the user named it (giveName: by its launch path, or a desktop app by
+// its program's path), the hidden ones left out; sorted by name.
+AppList withUserApps(const AppList& shell, const AppList& programs, const UserApps& user);
 
 struct AppHit {
     std::size_t index = 0; // into the AppList
@@ -215,6 +274,7 @@ public:
     bool isLoaded() const;
     // Puts this list in as if it had been read (tests). Thread-safe.
     void setApps(std::shared_ptr<const AppList> apps);
+    void setPrograms(std::shared_ptr<const AppList> programs); // likewise programs()
 
     // Re-reads the list in the background if the Start-menu folders or the
     // installed packages changed since the last read (a check of a few
@@ -226,6 +286,15 @@ public:
     // since the last look (an app did not open). Call from the owner thread.
     void checkPrograms();
 
+    // The user's folders of portable programs, names and hidden apps (#505):
+    // the list is made again with them, in the background (changed() if it
+    // differs). Call from the owner thread.
+    void setUserApps(const UserApps& user);
+    // The programs userPrograms found for the list, under their own names,
+    // the hidden ones too (the settings list them); empty until read.
+    // Thread-safe.
+    std::shared_ptr<const AppList> programs() const;
+
 signals:
     void changed(); // the list differs from before
 
@@ -236,6 +305,8 @@ private:
         std::shared_ptr<const AppList> all; // as the shell read it; null: not read, or the read failed
         std::shared_ptr<const AppList> apps; // presentApps of the newest list; null: not looked at
         bool checked = false; // the programs were looked at
+        quint64 programsFingerprint = 0;
+        std::shared_ptr<const AppList> programs; // userPrograms read anew; null: not read
     };
 
     void start(bool force, bool check);
@@ -243,10 +314,14 @@ private:
 
     mutable std::mutex m_mutex;
     std::shared_ptr<const AppList> m_apps; // guarded by m_mutex
+    std::shared_ptr<const AppList> m_programs; // guarded by m_mutex
 
     // Owner thread only.
     std::shared_ptr<const AppList> m_all; // the last list the shell read, gone programs and all
     quint64 m_fingerprint = 0;
+    UserApps m_user;
+    bool m_userChanged = false; // m_user not yet in a list being made
+    quint64 m_programsFingerprint = 0;
     std::chrono::steady_clock::time_point m_loadedAt;
     bool m_busy = false;
     std::optional<std::chrono::steady_clock::time_point> m_checkedAt; // the programs last looked at

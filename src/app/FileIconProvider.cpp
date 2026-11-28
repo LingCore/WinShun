@@ -672,6 +672,8 @@ QImage FileIconProvider::requestImage(const QString& id, QSize* size, const QSiz
             image = packagedAppLogo(appId, px, parts.value(1) == u"dark");
         if (image.isNull()) // a desktop program, or a package whose files cannot be read
             image = shellItemIcon((u"shell:AppsFolder\\"_s + appId).toStdWString(), px);
+        if (image.isNull() && QDir::isAbsolutePath(appId)) // a portable program (#505): no AppsFolder item, its file
+            image = shellItemIcon(QDir::toNativeSeparators(appId).toStdWString(), px);
         if (image.isNull()) // uninstalled meanwhile
             image = shellIcon(L"file.exe", FILE_ATTRIBUTE_NORMAL, true, px);
     } else if (id.startsWith(u"place/")) {

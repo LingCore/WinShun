@@ -301,6 +301,7 @@ set(qml_files
     qml/AiClientsSection.qml
     qml/AiCommandLineSection.qml
     qml/AiPrivacySection.qml
+    qml/UserAppsSection.qml
     qml/PluginsSection.qml
     qml/OcrPackageRow.qml
     qml/OcrModelRow.qml
@@ -392,6 +393,7 @@ qt_add_qml_module(WinShun
         ColorSwatch.cpp ColorSwatch.h
         DialogBar.cpp DialogBar.h
         FavoritesSettings.cpp FavoritesSettings.h
+        UserAppsSettings.cpp UserAppsSettings.h # 搜索范围 › 应用 (#505)
         FileDropTarget.cpp FileDropTarget.h
         FileFacts.cpp FileFacts.h
         FilePreview.cpp FilePreview.h

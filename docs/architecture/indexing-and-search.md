@@ -24,6 +24,7 @@
 
 - **`Pinyin`**：`PinyinTable.cpp` 由 `tools/make_pinyin.py` 生成，每汉字保留最多 3 个无声调读音；`ws::pinyin::Matcher` 不可变供多线程共享，匹配首字母、全拼与混合前缀（`isPinyinTerm` 要求至少 2 个 ASCII 字符且含字母）。
 - **`AppCatalog`**：枚举 `shell:AppsFolder`，结合 `src/core/apps.txt`（跨语言显示名、别名、全词简写 `short`）匹配应用；通过 `PKEY_Link_Arguments` 标记经宿主运行的快捷方式（`AppInfo::hosted`，如 `cmd /k`、`rundll32`、`chrome_proxy`），避免按宿主程序名误匹配。
+- **用户的应用（#505）**：`Settings::userApps()`（`[Apps]` 的 `PortableFolders`、`Hidden` 与数组 `[AppNames]`）经 `AppCatalog::setUserApps` 交给后台线程；`userPrograms` 列出便携文件夹的程序（顶层全部；子文件夹有与文件夹同名者只取它，否则取全部；跳过卸载/更新等辅助程序，最多 1000 个）及起了别名、仍在的程序文件，`withUserApps` 把开始菜单没有的程序并入列表、套用别名（`AppInfo::giveName`：原名留作可搜的别名，`ownName` 记原名）并去掉隐藏项。便携程序以文件路径为 `id` 与启动路径（`AppInfo::portable`），别名与隐藏按 `appKeyOf` 比对（`shell:AppsFolder\<id>` 或路径）。程序清单单独缓存（`m_programs`），`portableFingerprint` 与开始菜单同一节奏（`programsCheckDue`）复查，设置一改即重算；设置页 **搜索范围 › 应用** 由 `UserAppsSettings` 读取当前列表，结果行菜单的“设置别名”经 `Launcher::appNameRequested` 写回设置。
 - **`SystemCatalog`**：后台解析 `%WINDIR%\ImmersiveControlPanel\Settings\AllSystemSettings_*.xml`、补全 `ms-settings:` 并评估 `shcond://` 条件，合并 `src/core/places.txt` 与 Win顺/插件自身设置页（`setOwnPlaces`）；**全部** 范围最多列 5 条并与应用共排，启动经资源管理器降权执行。
 
 ## 2. 权限分离与 NTFS 读取

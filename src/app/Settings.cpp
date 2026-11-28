@@ -1,4 +1,5 @@
 #include "Settings.h"
+#include "AppCatalog.h"
 #include "DoubleTapAction.h"
 #include "TrayAction.h"
 #include "UiSize.h"
@@ -256,6 +257,38 @@ template <typename T> T readOrDefault(QSettings& s, const QString& key, const T&
     } else {
         return s.value(key).value<T>();
     }
+}
+
+// [AppNames] (#505): one entry per app the user named, by its launch path.
+void writeAppNames(QSettings& s, const QList<AppName>& names)
+{
+    s.remove(u"AppNames"_s); // no entries left over from a longer list
+    if (names.isEmpty())
+        return;
+    s.beginWriteArray(u"AppNames"_s, static_cast<int>(names.size()));
+    for (int i = 0; i < names.size(); ++i) {
+        s.setArrayIndex(i);
+        s.setValue(u"Path"_s, names[i].path);
+        s.setValue(u"Name"_s, names[i].name);
+    }
+    s.endArray();
+}
+
+// As written by hand too: names tidied as typed ones are, one per app, none
+// without a path or a name.
+QList<AppName> readAppNames(QSettings& s)
+{
+    QList<AppName> names;
+    const int size = s.beginReadArray(u"AppNames"_s);
+    for (int i = 0; i < size; ++i) {
+        s.setArrayIndex(i);
+        AppName named {s.value(u"Path"_s).toString().trimmed(), cleanAppName(s.value(u"Name"_s).toString())};
+        const bool twice = std::ranges::any_of(names, [&](const AppName& n) { return n.path.compare(named.path, Qt::CaseInsensitive) == 0; });
+        if (!named.path.isEmpty() && !named.name.isEmpty() && !twice)
+            names.push_back(std::move(named));
+    }
+    s.endArray();
+    return names;
 }
 
 void writeWebShortcuts(QSettings& s, const WebShortcuts& shortcuts, bool suggestions)
@@ -866,6 +899,26 @@ bool Settings::hotkeyAllowed(const QString& shortcut)
     return hotkeys::allowed(shortcut);
 }
 
+bool Settings::setAppName(const QString& path, const QString& name)
+{
+    if (path.isEmpty())
+        return false;
+    const QString clean = cleanAppName(name);
+    const auto it = std::ranges::find_if(appNames, [&](const AppName& n) { return n.path.compare(path, Qt::CaseInsensitive) == 0; });
+    if (it == appNames.end()) {
+        if (clean.isEmpty())
+            return false;
+        appNames.push_back({path, clean});
+    } else if (clean.isEmpty()) {
+        appNames.erase(it);
+    } else if (it->name != clean) {
+        it->name = clean;
+    } else {
+        return false;
+    }
+    return true;
+}
+
 bool Settings::moveStripChip(int from, int to)
 {
     const int count = static_cast<int>(fileTypes.size()) + 1; // the kinds and 文件夹
@@ -1232,6 +1285,15 @@ void Settings::load()
     usageReport = readOrDefault(s, u"Update/UsageReport"_s, d.usageReport);
     // Picked folders some program garbled before they were kept (#346): as they were.
     backupFolder = ungarbledPath(readOrDefault(s, u"Backup/Folder"_s, d.backupFolder));
+
+    portableFolders.clear();
+    for (const QString& folder : readOrDefault(s, u"Apps/PortableFolders"_s, d.portableFolders)) {
+        if (const QString path = ungarbledPath(folder.trimmed()); !path.isEmpty() && !portableFolders.contains(path, Qt::CaseInsensitive))
+            portableFolders.push_back(path);
+    }
+    hiddenApps = readOrDefault(s, u"Apps/Hidden"_s, d.hiddenApps);
+    hiddenApps.removeAll(QString());
+    appNames = readAppNames(s);
 
     excludedPaths = readOrDefault(s, u"Index/ExcludedPaths"_s, d.excludedPaths);
     excludedNames = readOrDefault(s, u"Index/ExcludedNames"_s, d.excludedNames);
@@ -1669,6 +1731,13 @@ bool Settings::saveChecked() const
     s.setValue(u"Update/Automatic"_s, autoUpdate);
     s.setValue(u"Update/UsageReport"_s, usageReport);
     s.setValue(u"Backup/Folder"_s, backupFolder);
+    for (const auto& [key, list] : {std::pair {u"Apps/PortableFolders"_s, &portableFolders}, std::pair {u"Apps/Hidden"_s, &hiddenApps}}) {
+        if (list->isEmpty())
+            s.remove(key); // nothing in the file for those who never used it
+        else
+            s.setValue(key, *list);
+    }
+    writeAppNames(s, appNames);
     s.setValue(u"Index/ExcludedPaths"_s, excludedPaths);
     s.setValue(u"Index/ExcludedNames"_s, excludedNames);
     s.setValue(u"Index/ExcludedTypes"_s, excludedTypes);

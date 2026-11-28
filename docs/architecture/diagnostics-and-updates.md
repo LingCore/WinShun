@@ -39,6 +39,7 @@ Win顺 在读取任何设置之前按以下优先级确定目录：
 | `[Appearance]` | 主题、界面风格（`fluent`/`brand`/`tactile`/`liquid`）、圆角、毛玻璃、语言、界面大小、托盘图标风格、自定义字体、最大行数 |
 | `[Proxy]` / `[Update]` / `[Backup]` | WinHTTP 代理；自动检查更新与匿名用户统计开关；配置备份目录 |
 | `[Index]` | 排除路径/名称/类型/模式、盘符与可移动盘、索引方式（`Access`）与范围（`Scope`/`Folders`）、自定义索引位置（`Folder`） |
+| `[Apps]` / `[AppNames]` | 便携软件文件夹与隐藏的程序；用户给应用起的别名（按启动路径） |
 | `[Content]` | 内容搜索与文档提取开关、纯文本扩展名、四类文件大小上限、内容索引开关 |
 | `[Clipboard]` | 历史开关、Win+V/自定义/纯文本粘贴热键、`PlainByDefault=false`（默认关：开后点击/双击/`Enter`/数字键/快速粘贴键粘贴文字去掉格式，`Shift` 反向，`Clipboard::pastesPlain` 唯一判定）、保留策略、图片/截图收录策略、排除应用、布局与交互 |
 | `[Taskbar]` | Win+S 接管、开始菜单打字、任务栏搜索框样式与位置、托盘左右/中键动作 |

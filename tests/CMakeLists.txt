@@ -408,6 +408,12 @@ add_test(NAME tst_searchcaret COMMAND $<TARGET_FILE:WinShun>
 set_tests_properties(tst_searchcaret PROPERTIES RUN_SERIAL TRUE TIMEOUT 120
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# GitHub #505: an app's name in Win顺 typed over its row (设置别名, F2), in the real search box.
+add_test(NAME tst_appalias COMMAND $<TARGET_FILE:WinShun>
+    --preview-results "${CMAKE_CURRENT_BINARY_DIR}/app-alias" --app-alias --renderer d3d11)
+set_tests_properties(tst_appalias PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # 文件's type chips with how many of what is typed each lists: the tag, its room, switched off.
 add_test(NAME tst_typestripcounts COMMAND $<TARGET_FILE:WinShun>
     --preview-results "${CMAKE_CURRENT_BINARY_DIR}/type-strip-counts" --type-strip-counts --renderer d3d11)

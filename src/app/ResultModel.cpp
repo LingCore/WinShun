@@ -510,6 +510,8 @@ QVariant ResultModel::data(const QModelIndex& index, int role) const
                 return FileIconProvider::appIconUrl(r->icon.mid(4), true, dark);
             if (r->isPlace())
                 return FileIconProvider::placeIconUrl(r->icon, dark);
+            if (!isAppLaunchPath(r->path)) // a portable program (#505): its file's
+                return FileIconProvider::iconUrl(r->path, false);
             return FileIconProvider::appIconUrl(appIdOf(r->path), r->isPackagedApp(), dark);
         }
         return FileIconProvider::iconUrl(r->path, r->isDir);

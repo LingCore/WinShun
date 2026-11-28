@@ -11,6 +11,7 @@
 
 #include "AiBridge.h"
 #include "AppCatalog.h"
+#include "UserAppsSettings.h"
 #include "Backup.h"
 #include "Grabber.h" // take_screenshot (MCP)
 #include "CliSetup.h"
@@ -962,6 +963,16 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     connect(m_launcher.get(), &Launcher::fileChipMoveRequested, this, [this](int from, int to) {
         Settings settings = m_settings;
         if (!settings.moveStripChip(from, to))
+            return;
+        settings.save();
+        settingsEdited(settings);
+        if (m_settingsEditor)
+            m_settingsEditor->setSettings(m_settings);
+    });
+    // A name typed for an app over its row (#505): kept in the settings, the list made again with it.
+    connect(m_launcher.get(), &Launcher::appNameRequested, this, [this](const QString& path, const QString& name) {
+        Settings settings = m_settings;
+        if (!settings.setAppName(path, name))
             return;
         settings.save();
         settingsEdited(settings);
@@ -2272,6 +2283,7 @@ void App::applySettings(bool initial)
     m_messages->setTrayTooltip(trayTooltip()); // which Ctrl
     updateSearchBoxLook();
     applyMcp();
+    m_apps->setUserApps(m_settings.userApps()); // portable programs and the names given to apps (#505)
     filemanager::setCustomCommands(m_settings.fileManagerOpenCommand, m_settings.fileManagerRevealCommand);
     for (const auto& [kind, name] : filemanager::kSettingNames) {
         if (m_settings.fileManager == QLatin1StringView(name))
@@ -5064,6 +5076,7 @@ void App::showSettingsNow(const std::function<void(QQuickWindow*)>& at)
         connect(editor->plugins(), &PluginSettings::elevatedRestartRequested, this,
             [this] { restart({u"--settings"_s}, Elevation::Elevated); });
         editor->favorites()->setCatalogs(m_apps.get(), m_places.get());
+        editor->userApps()->setCatalog(m_apps.get());
         editor->favorites()->setStore(m_favorites.get());
         m_settingsWindow = window;
         m_settingsEditor = editor;

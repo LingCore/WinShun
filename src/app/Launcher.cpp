@@ -2580,7 +2580,8 @@ void Launcher::refreshFrequentApps(bool refreshWindows)
         for (const std::size_t i : indexes) {
             const AppInfo& app = (*apps)[i];
             const bool packaged = app.kind == AppKind::Store || app.kind == AppKind::System || app.kind == AppKind::Package;
-            picked.push_back({app.name, app.launchPath(), FileIconProvider::appIconUrl(app.id, packaged, dark)});
+            picked.push_back({app.name, app.launchPath(),
+                app.portable ? FileIconProvider::iconUrl(app.target, false) : FileIconProvider::appIconUrl(app.id, packaged, dark)});
         }
     }
     if (picked == m_frequent)
@@ -6519,7 +6520,8 @@ void Launcher::perform(const SearchResult& result, Action action, bool fileCheck
     case EditFavorite:
     case SystemMenu:
     case Rename:
-        break; // not for a file, or done above (SystemMenu: trigger; Rename: Main.qml's box)
+    case SetAlias:
+        break; // not for a file, or done above (SystemMenu: trigger; Rename, SetAlias: Main.qml's box)
     }
 }
 
@@ -7275,25 +7277,55 @@ static bool renamable(const SearchResult& r)
     return recyclable(r);
 }
 
-bool Launcher::beginRename(int row)
+// An app's row (installed, packaged or portable), or a program file's that
+// becomes an app so (#505): one Win顺 may call by a name of the user's.
+static bool aliasable(const SearchResult& r)
+{
+    if (r.missing || r.offline)
+        return false;
+    if (r.app == AppKind::Desktop || r.isPackagedApp())
+        return true;
+    return r.app == AppKind::None && renamable(r) && !r.isDir && isListedProgram(r.path)
+        && !r.path.startsWith(u"\\\\"_s); // not a share's: maybe not there when the list is made
+}
+
+bool Launcher::beginRename(int row, bool alias)
 {
     m_renaming.reset();
     const SearchResult* r = m_results.at(row);
-    if (!r || !renamable(*r) || m_results.selectedCount() > 1)
+    if (!r || m_results.selectedCount() > 1)
+        return false;
+    // F2 on an app's row: nothing to rename but what Win顺 calls it.
+    m_aliasing = alias || !renamable(*r);
+    if (m_aliasing ? !aliasable(*r) : !renamable(*r))
         return false;
     m_renaming = *r;
+    if (m_aliasing && r->app == AppKind::None) // a program file's row: its name without the extension
+        m_renaming->name = QFileInfo(r->path).completeBaseName();
     return true;
 }
 
 int Launcher::renameStem() const
 {
+    if (m_renaming && m_aliasing)
+        return static_cast<int>(m_renaming->name.size()); // all of it: typed anew more often than not
     return m_renaming ? static_cast<int>(renamecheck::stemLength(m_renaming->name, m_renaming->isDir)) : 0;
+}
+
+int Launcher::renameMaxLength() const
+{
+    return m_renaming && m_aliasing ? static_cast<int>(kMaxAppNameLength) : 32767;
 }
 
 bool Launcher::finishRename(const QString& typed)
 {
     if (!m_renaming)
         return true;
+    if (m_aliasing) {
+        const SearchResult was = *std::exchange(m_renaming, std::nullopt);
+        finishAlias(was, cleanAppName(typed));
+        return true;
+    }
     using renamecheck::Problem;
     const SearchResult was = *m_renaming;
     const QString name = renamecheck::cleaned(typed);
@@ -7336,6 +7368,31 @@ bool Launcher::finishRename(const QString& typed)
         }, Qt::QueuedConnection);
     });
     return true;
+}
+
+// The name kept in the settings (App) and the list made again with it; the
+// row takes it at once. Its own name typed, or none: it has that again.
+void Launcher::finishAlias(const SearchResult& was, const QString& name)
+{
+    const std::shared_ptr<const AppList> apps = m_apps->apps();
+    const AppInfo* app = findApp(*apps, was.path);
+    // Its own name: the app's before the user's, a program file's without extension.
+    const QString own = app ? (app->ownName.isEmpty() ? app->name : app->ownName) : was.name;
+    const bool named = app && !app->ownName.isEmpty();
+    if (name == was.name || ((name.isEmpty() || name == own) && !named))
+        return; // as it was
+    const QString given = name == own ? QString() : name;
+    emit appNameRequested(was.path, given);
+    const QString shown = given.isEmpty() ? own : given;
+    for (int row = 0; row < m_results.count(); ++row) {
+        const SearchResult* r = m_results.at(row);
+        if (r->path.compare(was.path, Qt::CaseInsensitive) != 0 || r->app == AppKind::None)
+            continue; // a program file's row becomes an app's as the list is made
+        SearchResult renamed = *r;
+        renamed.name = shown;
+        m_results.update(row, renamed);
+    }
+    flash(given.isEmpty() ? tr("已改回“%1”").arg(own) : tr("已设为“%1”，搜它就能找到").arg(given));
 }
 
 // The row takes the new name where it is (the index hears of it from the
@@ -7645,6 +7702,8 @@ QVariantList Launcher::menuItems(int row) const
         if (!r->target.isEmpty())
             items.append(entry(Reveal, r->isPackagedApp() ? tr("打开安装文件夹") : tr("打开所在位置"), u"Ctrl+Enter"_s,
                 u"\uE8DA"_s));
+        if (aliasable(*r) && m_results.selectedCount() <= 1)
+            items.append(entry(SetAlias, tr("设置别名"), u"F2"_s, u"\uE70F"_s)); // Edit: Phosphor's pencil
         items.append(separator);
         if (r->hasCopyableTarget())
             items.append(entry(CopyItem, tr("复制"), u"Ctrl+C"_s, u"\uE8C8"_s));
@@ -7684,6 +7743,8 @@ QVariantList Launcher::menuItems(int row) const
     fileCommandItems(items);
     if (renamable(*r) && m_results.selectedCount() <= 1)
         items.append(entry(Rename, tr("重命名"), u"F2"_s, u"\uE70F"_s)); // Edit: Phosphor's pencil
+    if (aliasable(*r) && m_results.selectedCount() <= 1) // a program: found by a name of the user's, as an app
+        items.append(entry(SetAlias, tr("设置别名"), QString(), u"\uE70F"_s));
     items.append(separator);
     items.append(entry(CopyItem, tr("复制"), u"Ctrl+C"_s, u"\uE8C8"_s));
     items.append(entry(CopyPath, tr("复制完整路径"), u"Ctrl+Shift+C"_s, u"copyPath"_s));

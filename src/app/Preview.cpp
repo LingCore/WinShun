@@ -29,6 +29,7 @@
 #include "DiagnosticLog.h"
 #include "DialogBar.h"
 #include "AppCatalog.h"
+#include "UserAppsSettings.h"
 #include "History.h"
 #include "IndexService.h"
 #include "Onboarding.h"
@@ -2245,6 +2246,14 @@ int runSettings(const QStringList& args)
     if (args.contains(u"--clipboard-disabled"_s))
         settings.clipboard = false;
     settings.mcpExcludedPaths = {u"%USERPROFILE%\\Documents\\私人"_s};
+    // 搜索范围 › 应用 (#505): a folder of portable programs, one of them named
+    // and one hidden; an installed app named; a named one gone since.
+    const QString portable = uR"(D:\PortableApps)"_s;
+    settings.portableFolders = {portable};
+    settings.appNames = {{portable + uR"(\RevokeMsgPatcher\RevokeMsgPatcher.exe)"_s, u"微信防撤回"_s},
+        {u"shell:AppsFolder\\Microsoft.Office.WINWORD.EXE.15"_s, u"文档"_s},
+        {uR"(E:\Tools\OldTool.exe)"_s, u"旧工具"_s}};
+    settings.hiddenApps = {portable + uR"(\Everything\Everything-uninstall.exe)"_s};
     // The real view-model and its real neighbours, as App::showSettings makes
     // them; the renderer "running" is the one set, so that no restart is asked for.
     auto* editor = new SettingsEditor(settings, Settings::resolveRenderer(settings.renderer), &engine);
@@ -2257,6 +2266,21 @@ int runSettings(const QStringList& args)
     });
     auto* frame = new WindowFrame(true, editor);
     auto* updater = new Updater(editor); // never setAutomatic() or check(): no network
+    { // the apps the 应用 tab lists: made up, nothing read from this PC
+        auto* previewApps = new AppCatalog(editor);
+        AppList programs;
+        for (const QString& file : {uR"(RevokeMsgPatcher\RevokeMsgPatcher.exe)"_s, uR"(Everything\Everything.exe)"_s,
+                 uR"(Everything\Everything-uninstall.exe)"_s, uR"(Snipaste\Snipaste.exe)"_s, uR"(Sysinternals\procexp64.exe)"_s})
+            programs.push_back(programApp(portable + u'\\' + file));
+        AppInfo office;
+        office.name = u"Word"_s;
+        office.id = u"Microsoft.Office.WINWORD.EXE.15"_s;
+        office.target = uR"(C:\Program Files\Microsoft Office\root\Office16\WINWORD.EXE)"_s;
+        office.prepare();
+        previewApps->setPrograms(std::make_shared<const AppList>(programs));
+        previewApps->setApps(std::make_shared<const AppList>(withUserApps({office}, programs, settings.userApps())));
+        editor->userApps()->setCatalog(previewApps);
+    }
     editor->plugins()->setLocale(u"zh"_s);
     if (!args.contains(u"--plugin-gallery-settings"_s))
         editor->plugins()->loadPreview(); // a plugin::Host would start WinShunPluginHost.exe: made-up cards instead
@@ -6030,6 +6054,160 @@ bool checkSearchCaret(QQmlEngine* engine, const QDir& output)
     QGuiApplication::styleHints()->setColorScheme(previousScheme);
     window->hide();
     say(u"search caret: %1"_s.arg(passed ? u"all checks passed"_s : u"FAILED"_s));
+    return passed;
+}
+
+// #505: an app's name in Win顺, typed over its row: 设置别名 in the menu of
+// an app's row and of a program file's (not of other files), F2 on an app's
+// row; the box takes 40 characters and says what an empty one does; Enter
+// asks for the name and the row shows it, Esc and the app's own name ask for
+// nothing.
+bool checkAppAlias(QQmlEngine* engine, const QDir& output)
+{
+    QTemporaryDir temporary;
+    const QString folder = QDir::toNativeSeparators(temporary.filePath(u"Portable"_s));
+    QDir().mkpath(folder);
+    const QString patcher = folder + uR"(\RevokeMsgPatcher.exe)"_s;
+    const QString tool = folder + uR"(\Tool.exe)"_s;
+    const QString notes = folder + uR"(\notes.txt)"_s;
+    for (const QString& path : {patcher, tool, notes}) {
+        QFile file(path);
+        if (!file.open(QIODevice::WriteOnly)) {
+            say(u"app alias: could not make %1"_s.arg(path));
+            return false;
+        }
+    }
+    IndexService index(temporary.path(), IndexService::Options{});
+    AppCatalog apps;
+    SystemCatalog places;
+    AppInfo word;
+    word.name = u"Word"_s;
+    word.id = u"Microsoft.Office.WINWORD.EXE.15"_s;
+    word.target = uR"(C:\Program Files\Microsoft Office\root\Office16\WINWORD.EXE)"_s;
+    word.prepare();
+    const AppList programs {programApp(patcher)};
+    apps.setPrograms(std::make_shared<const AppList>(programs));
+    apps.setApps(std::make_shared<const AppList>(withUserApps({word}, programs, {})));
+    places.setPlaces(std::make_shared<const PlaceList>());
+    History history(temporary.filePath(u"history.tsv"_s));
+    SearchEngine search(&index, &apps, &places);
+    Launcher launcher(&index, &apps, &places, &search, &history);
+    ClipStore store(temporary.filePath(u"clipboard"_s));
+    store.open(QDateTime::currentMSecsSinceEpoch());
+    ClipboardWatcher watcher({}, {});
+    Clipboard clipboard(&store, &watcher);
+    Placement placement(temporary.filePath(u"state.ini"_s), u"Launcher"_s);
+    WindowFrame frame(false);
+    QQmlComponent component(engine, u"WinShun"_s, u"Main"_s);
+    std::unique_ptr<QObject> object(component.createWithInitialProperties({
+        {u"launcher"_s, QVariant::fromValue(&launcher)}, {u"clipboard"_s, QVariant::fromValue(&clipboard)},
+        {u"frame"_s, QVariant::fromValue(&frame)}, {u"placement"_s, QVariant::fromValue(&placement)}}));
+    auto* window = qobject_cast<QQuickWindow*>(object.get());
+    if (!window) {
+        qWarning().noquote() << "app alias:" << component.errorString();
+        return false;
+    }
+    window->create();
+    launcher.setWindow(window);
+    frame.setWindow(window);
+    placement.setWindow(window);
+    placement.rememberWidth(760, 640);
+    showOffScreen(window);
+    placement.placeOn(window->screen());
+
+    QList<std::pair<QString, QString>> asked; // appNameRequested's
+    QObject::connect(&launcher, &Launcher::appNameRequested, [&](const QString& path, const QString& name) { asked.push_back({path, name}); });
+    bool passed = true;
+    const auto check = [&](bool okay, const QString& what) {
+        if (!okay)
+            say(u"app alias: %1 FAILED"_s.arg(what));
+        passed = okay && passed;
+    };
+    const AppInfo* portableApp = findApp(*apps.apps(), patcher);
+    const AppInfo* wordApp = findApp(*apps.apps(), word.launchPath());
+    if (!portableApp || !wordApp) {
+        say(u"app alias: the apps are not in the list FAILED"_s);
+        return false;
+    }
+    const SearchResult portableRow = appResult(*portableApp);
+    const SearchResult wordRow = appResult(*wordApp);
+    SearchResult toolRow {.name = u"Tool.exe"_s, .path = tool};
+    SearchResult notesRow {.name = u"notes.txt"_s, .path = notes};
+    check(portableRow.path == patcher && portableRow.app == AppKind::Desktop && wordRow.name == u"Word",
+        u"the portable program is an app by its path"_s);
+    launcher.results()->assign({portableRow, wordRow, toolRow, notesRow}, {});
+    settle(window);
+
+    const auto hasAlias = [&](int row) {
+        for (const QVariant& item : launcher.menuItems(row)) {
+            if (item.toMap().value(u"action"_s).toInt() == Launcher::SetAlias)
+                return true;
+        }
+        return false;
+    };
+    check(hasAlias(0) && hasAlias(1) && hasAlias(2), u"设置别名 in the menu of apps and of a program file"_s);
+    check(!hasAlias(3), u"no 设置别名 for a text file"_s);
+
+    auto* box = visualNamed(window->contentItem(), u"renameBox"_s);
+    auto* view = window->property("view").value<QObject*>();
+    auto* field = visualNamed(window->contentItem(), u"searchField"_s);
+    check(box && view && field, u"the rename box, the list and the search field"_s);
+    if (!box || !view || !field)
+        return false;
+    const auto press = [&](int code) {
+        QKeyEvent down(QEvent::KeyPress, code, Qt::NoModifier);
+        QCoreApplication::sendEvent(window, &down);
+        QKeyEvent up(QEvent::KeyRelease, code, Qt::NoModifier);
+        QCoreApplication::sendEvent(window, &up);
+        pump(60);
+    };
+    // 设置别名 on the portable program's row: its own name, all picked.
+    QMetaObject::invokeMethod(window, "startRename", Q_ARG(QVariant, 0), Q_ARG(QVariant, true));
+    settle(window);
+    check(box->isVisible() && box->property("alias").toBool() && box->property("text").toString() == u"RevokeMsgPatcher"
+            && box->property("maximumLength").toInt() == kMaxAppNameLength
+            && !box->property("placeholder").toString().isEmpty() && box->property("inputFocused").toBool(),
+        u"the box opens for the app's name"_s);
+    if (box->isVisible())
+        check(saveGrab(window, output.filePath(u"app-alias-box.png"_s)), u"the box's picture"_s);
+    box->setProperty("text", u"  微信防撤回  "_s);
+    press(Qt::Key_Return);
+    check(!box->isVisible() && asked.size() == 1 && asked.value(0) == std::pair {patcher, u"微信防撤回"_s},
+        u"Enter asks for the name, trimmed"_s);
+    check(launcher.results()->at(0) && launcher.results()->at(0)->name == u"微信防撤回", u"the row shows the name at once"_s);
+    check(launcher.statusText().contains(u"微信防撤回"), u"the footer says so"_s);
+    check(window->activeFocusItem() == field, u"the search box has the keyboard again"_s);
+
+    // F2 on an installed app's row: its name too; Esc asks for nothing.
+    view->setProperty("currentIndex", 1);
+    field->forceActiveFocus();
+    press(Qt::Key_F2);
+    check(box->isVisible() && box->property("alias").toBool() && box->property("text").toString() == u"Word",
+        u"F2 on an app's row opens the box for its name"_s);
+    press(Qt::Key_Escape);
+    check(!box->isVisible() && asked.size() == 1, u"Esc leaves it as it was"_s);
+    // Its own name typed: nothing to ask for (it has no other).
+    QMetaObject::invokeMethod(window, "startRename", Q_ARG(QVariant, 1), Q_ARG(QVariant, true));
+    settle(window);
+    press(Qt::Key_Return);
+    check(!box->isVisible() && asked.size() == 1, u"its own name again: nothing asked"_s);
+
+    // A program file's row: its name without the extension; F2 there renames the file.
+    QMetaObject::invokeMethod(window, "startRename", Q_ARG(QVariant, 2), Q_ARG(QVariant, true));
+    settle(window);
+    check(box->isVisible() && box->property("text").toString() == u"Tool", u"a program file's alias starts from its name"_s);
+    box->setProperty("text", u"小工具"_s);
+    press(Qt::Key_Return);
+    check(asked.size() == 2 && asked.value(1) == std::pair {tool, u"小工具"_s}, u"a program file is named by its path"_s);
+    QMetaObject::invokeMethod(window, "startRename", Q_ARG(QVariant, 2), Q_ARG(QVariant, false));
+    settle(window);
+    check(box->isVisible() && !box->property("alias").toBool() && box->property("text").toString() == u"Tool.exe"
+            && box->property("maximumLength").toInt() > kMaxAppNameLength,
+        u"rename on a program file is the file's own"_s);
+    press(Qt::Key_Escape);
+
+    window->hide();
+    say(u"app alias: %1"_s.arg(passed ? u"all checks passed"_s : u"FAILED"_s));
     return passed;
 }
 
@@ -14046,6 +14224,8 @@ int runResults(const QStringList& args)
     }
     if (args.contains(u"--search-caret"_s))
         return finish(window, checkSearchCaret(&engine, out) && saved);
+    if (args.contains(u"--app-alias"_s))
+        return finish(window, checkAppAlias(&engine, out) && saved);
     if (args.contains(u"--style-windows"_s))
         return finish(window, checkStyleWindows(&engine, out) && saved);
     if (args.contains(u"--preview-hotkeys"_s) || args.contains(u"--search-navigation"_s)) {
