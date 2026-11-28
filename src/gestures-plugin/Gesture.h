@@ -139,6 +139,24 @@ Action builtinAction(Builtin builtin);
 // language, the keys or the target as written. Empty for Nothing.
 std::wstring actionTitle(const Action& action, bool chinese);
 
+// A shortcut's keys as they are pressed (the engine's sendKeys): `first`,
+// then, when `held`, a pause, then `then`. With Ctrl, Alt, Shift or Win the
+// keys stay down over the pause (all down first, let go in reverse after
+// it), so a program that asks GetAsyncKeyState whether Ctrl is held when it
+// reads the key sees it held (WPS's spreadsheet, GitHub #472). A lone key is
+// pressed and let go in one go.
+struct KeyStroke {
+    std::uint16_t vk = 0;
+    bool up = false;
+    bool operator==(const KeyStroke&) const = default;
+};
+struct KeyPresses {
+    std::vector<KeyStroke> first;
+    std::vector<KeyStroke> then;
+    bool held = false;
+};
+KeyPresses pressesOf(const std::vector<std::uint16_t>& keys);
+
 // ---- mouse buttons ----
 
 // A mouse button involved in a gesture: Right, Middle, X1 (side back) and X2

@@ -1519,6 +1519,18 @@ void RubWatch::reset()
     m_turns.clear();
 }
 
+KeyPresses pressesOf(const std::vector<std::uint16_t>& keys)
+{
+    KeyPresses presses;
+    presses.held = keys.size() > 1;
+    std::vector<KeyStroke>& ups = presses.held ? presses.then : presses.first;
+    for (const std::uint16_t vk : keys)
+        presses.first.push_back({vk, false});
+    for (auto it = keys.rbegin(); it != keys.rend(); ++it)
+        ups.push_back({*it, true});
+    return presses;
+}
+
 // ---- mouse button & chord state machine ----
 
 namespace {

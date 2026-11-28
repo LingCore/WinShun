@@ -105,6 +105,28 @@ private slots:
         QCOMPARE(parseAction(L"随便写的").kind, Action::Kind::Invalid);
     }
 
+    // GitHub #472: Ctrl+Up set for a gesture in WPS moved one cell. Sent in
+    // one go, Ctrl was up again before WPS read the key (it asks
+    // GetAsyncKeyState); now a shortcut's keys stay down over a pause, all
+    // down first and let go in reverse after it. A lone key goes in one go.
+    void shortcutKeysHeldOverAPause()
+    {
+        const KeyPresses ctrlUp = pressesOf(parseAction(L"Ctrl+Up").keys);
+        QVERIFY(ctrlUp.held);
+        QCOMPARE(ctrlUp.first, (std::vector<KeyStroke> {{VK_CONTROL, false}, {VK_UP, false}}));
+        QCOMPARE(ctrlUp.then, (std::vector<KeyStroke> {{VK_UP, true}, {VK_CONTROL, true}}));
+
+        const KeyPresses reopen = pressesOf(parseAction(L"Ctrl+Shift+T").keys);
+        QVERIFY(reopen.held);
+        QCOMPARE(reopen.first, (std::vector<KeyStroke> {{VK_CONTROL, false}, {VK_SHIFT, false}, {'T', false}}));
+        QCOMPARE(reopen.then, (std::vector<KeyStroke> {{'T', true}, {VK_SHIFT, true}, {VK_CONTROL, true}}));
+
+        const KeyPresses refresh = pressesOf(parseAction(L"F5").keys);
+        QVERIFY(!refresh.held);
+        QCOMPARE(refresh.first, (std::vector<KeyStroke> {{VK_F5, false}, {VK_F5, true}}));
+        QVERIFY(refresh.then.empty());
+    }
+
     void titles()
     {
         QCOMPARE(actionTitle(parseAction(L"close"), true), std::wstring(L"关闭窗口"));
