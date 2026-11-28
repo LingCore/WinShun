@@ -317,7 +317,7 @@ private slots:
         QVERIFY(plugin.process.waitForStarted());
         plugin.send("initialize", Json::Object {{"locale", "en"}, {"dataDir", data.path().toStdString()},
             {"capabilities", Json::Object {{"settingsLinks", true}}},
-            {"settings", Json::Object {{"provider", "local"}, {"endpoint", "http://127.0.0.1:" + std::to_string(server.serverPort()) + "/v1"}}}}, 1);
+            {"settings", Json::Object {{"provider", "local"}, {"localEndpoint", "http://127.0.0.1:" + std::to_string(server.serverPort()) + "/v1"}}}}, 1);
         QVERIFY(plugin.answered(1));
 
         QElapsedTimer elapsed;
@@ -371,7 +371,7 @@ private slots:
         Runner plugin;
         QVERIFY(plugin.process.waitForStarted());
         plugin.send("initialize", Json::Object {{"locale", "zh"}, {"dataDir", data.path().toStdString()},
-            {"settings", Json::Object {{"provider", "local"}, {"endpoint", "http://127.0.0.1:" + std::to_string(port) + "/v1"}}}}, 1);
+            {"settings", Json::Object {{"provider", "local"}, {"localEndpoint", "http://127.0.0.1:" + std::to_string(port) + "/v1"}}}}, 1);
         QVERIFY(plugin.answered(1));
         plugin.send("query", Json::Object {{"queryId", 1}, {"command", "tr"}, {"text", "hello"}}, 2);
         QVERIFY(plugin.answered(2));
@@ -414,9 +414,13 @@ private slots:
         QVERIFY(tr::needsKey(tr::settingsFrom(Json::Object {{"provider", "openai"}})));
         QVERIFY(tr::needsKey(tr::settingsFrom(Json::Object {{"provider", "deepl"}})));
         QVERIFY(!tr::chatService(tr::settingsFrom(Json::Object {{"provider", "microsoft"}})));
-        // Its port changed in the local models' settings: the endpoint says so.
-        QCOMPARE(tr::settingsFrom(Json::Object {{"provider", "local"}, {"endpoint", "http://127.0.0.1:40000/v1"}}).endpoint,
-            std::string("http://127.0.0.1:40000/v1"));
+        // The endpoint field is shared by every service: one left from 火山方舟
+        // sent the local model's requests there, keyless, and came back 401.
+        // The local model never reads it.
+        QCOMPARE(tr::settingsFrom(Json::Object {{"provider", "local"}, {"endpoint", "https://ark.cn-beijing.volces.com/api/v3"}}).endpoint,
+            std::string(tr::kLocalEndpoint));
+        QCOMPARE(tr::settingsFrom(Json::Object {{"provider", "local"}, {"endpoint", "http://127.0.0.1:11434/v1"}}).endpoint,
+            std::string(tr::kLocalEndpoint));
     }
 
     void localRequest()

@@ -242,6 +242,10 @@ private slots:
         QVERIFY(p.local && p.modelFromService);
         QVERIFY(!p.configured()); // until the model is known
         QCOMPARE(p.endpoint, std::string("http://127.0.0.1:39281/v1"));
+        // The endpoint field is shared by every service: one left from another
+        // service is not where the local model is.
+        QCOMPARE(providerFrom(Json::Object {{"provider", "local"}, {"endpoint", "https://api.openai.com/v1"}}, true).endpoint,
+            std::string("http://127.0.0.1:39281/v1"));
         setModel(p, "qwen3-embedding-0.6b");
         QVERIFY(p.configured());
         QVERIFY(p.queryPrefix.starts_with("Instruct:")); // its family's prefix
@@ -290,7 +294,7 @@ private slots:
             }
         });
         const Provider p = providerFrom(
-            Json::Object {{"provider", "local"}, {"endpoint", "http://127.0.0.1:" + std::to_string(server.serverPort()) + "/v1"}}, true);
+            Json::Object {{"provider", "local"}, {"localEndpoint", "http://127.0.0.1:" + std::to_string(server.serverPort()) + "/v1"}}, true);
         const auto ask = [&](std::string& model) {
             auto answer = std::async(std::launch::async, [&] { return localModel(p, true, model); });
             while (answer.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready)

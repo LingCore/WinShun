@@ -168,7 +168,11 @@ Settings settingsFrom(const Json& json)
         if (s.model.empty())
             s.model = "hunyuan-turbos-latest";
     } else if (s.provider == "local") {
-        // The local models plugin: the endpoint only when its port was changed.
+        // The local models plugin, at its own address. Not the endpoint field:
+        // all services share it, and one left from another service (火山方舟)
+        // sent the requests there, keyless, back with 401. localEndpoint, not
+        // on the card, is for the tests' stand-in server.
+        s.endpoint = winshun::trim(json["localEndpoint"].toString());
         if (s.endpoint.empty())
             s.endpoint = kLocalEndpoint;
         if (s.model.empty())

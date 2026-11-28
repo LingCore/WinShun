@@ -11,7 +11,7 @@
 - 打字停止 100 毫秒后发请求。改词或关闭查询会取消旧请求，新词可立即开始处理。每个请求最多等 9 秒，成功结果缓存 5 分钟。网络与服务生成耗时仍取决于所选服务。
 - 日志仅记录服务名、请求耗时、HTTP 状态和错误码，便于定位网络延迟。日志不记录查询、译文和密钥。
 - 一次翻译多行文字（2.2.2）时，每一行单独翻译，译文按原来的顺序一行一行交回，截图翻译靠它把译文对回原处；一行文字照旧整句发送。
-- **本地模型（2.3.0，离线）**：服务选“本地模型（离线）”，用“本地模型”插件在这台电脑上运行的模型翻译，不联网、不用密钥，要翻译的字不出本机。先在插件库装“本地模型”并在它的卡片上下载模型；还没下载、没在运行或停了时，结果行直接说原因，回车打开它的卡片。接口地址留空即可，“本地模型”改过端口时填 `http://127.0.0.1:端口/v1`。
+- **本地模型（2.3.0，离线）**：服务选“本地模型（离线）”，用“本地模型”插件在这台电脑上运行的模型翻译，不联网、不用密钥，要翻译的字不出本机。先在插件库装“本地模型”并在它的卡片上下载模型；还没下载、没在运行或停了时，结果行直接说原因，回车打开它的卡片。它不看“接口地址”（2.4.1），那一栏留着别的服务的地址也不影响；“本地模型”的端口要保持默认的 39281。
 - **本机的模型服务**（2.3.0）：Ollama、LM Studio 等选“OpenAI 兼容”，接口地址填 `http://127.0.0.1:端口/v1`（Ollama 是 11434），模型填它里面的名字，不用密钥；本机地址不走代理。
 - **边出边显示**（2.3.0）：在搜索框里用模型类服务（本地模型、OpenAI 兼容和各预设）时，译文一边生成一边显示，不受 9 秒限制（本地模型第一次加载也能等）；DeepL、微软和截图翻译、AI 调用照旧一次拿到完整结果。
 
@@ -33,6 +33,6 @@ An empty endpoint uses the selected service's default. An empty model uses its d
 
 Several lines of text (2.2.2) are translated each on its own and come back one line each, in order, which is how screenshot translation puts the translations back where the words were; a single line is sent exactly as before.
 
-Local model (2.3.0, offline): the model the Local models plugin runs on this computer, with no network and no key; the text stays on this PC. Install Local models from the plugin library and download a model on its card first; when there is none yet, or it is not running, the row says so and Enter opens that card. Leave the endpoint empty, or `http://127.0.0.1:<port>/v1` when Local models uses another port. Ollama, LM Studio and other servers on this computer: OpenAI-compatible, `http://127.0.0.1:<port>/v1` (Ollama: 11434), their model name, no key, never through the proxy.
+Local model (2.3.0, offline): the model the Local models plugin runs on this computer, with no network and no key; the text stays on this PC. Install Local models from the plugin library and download a model on its card first; when there is none yet, or it is not running, the row says so and Enter opens that card. It ignores the endpoint field (2.4.1), so an address left there from another service does no harm; keep Local models on its default port, 39281. Ollama, LM Studio and other servers on this computer: OpenAI-compatible, `http://127.0.0.1:<port>/v1` (Ollama: 11434), their model name, no key, never through the proxy.
 
 As it comes (2.3.0): typed in the search box, a model service's translation (the local model, OpenAI-compatible and the presets) shows while it is written, past the 9 seconds (a local model may load first); DeepL, Microsoft, screenshot translation and AI calls still get the whole answer at once.

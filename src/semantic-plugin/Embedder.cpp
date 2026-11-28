@@ -257,7 +257,10 @@ Provider providerFrom(const winshun::Json& settings, bool chinese)
     }
     if (p.name.empty())
         p.id = "none";
-    const std::string endpoint = winshun::trim(settings["endpoint"].toString());
+    // The local models plugin at its own address, never the endpoint field:
+    // all services share it, and one left from another service is not where
+    // the model is. localEndpoint, not on the card, is for the tests' stand-in.
+    const std::string endpoint = winshun::trim(settings[p.id == "local" ? "localEndpoint" : "endpoint"].toString());
     const std::string model = winshun::trim(settings["model"].toString());
     if (!endpoint.empty())
         p.endpoint = endpoint;
