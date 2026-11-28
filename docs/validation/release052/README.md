@@ -48,3 +48,11 @@
 - 对话框搜索框当前文件夹优先：有单元测试（`tst_dialogbarsuggestions`、`tst_core`），没有在真实的“打开”对话框里打字。
 - #504：`tst_core` 核对了生成的修复命令，并在临时文件夹上用 `icacls` 设出类似的权限做了检查；没有在权限出问题的电脑上真的装服务。
 - #501：`tst_searchcaret` 在 125% 下用真实启动器核对了四种外观，没有在反馈者的电脑上确认。
+
+## 发布后核对
+
+- `-Publish` 从 d56f8f32 重新构建打包：三个增量包与实测时逐字节相同；安装包、便携包重新生成（SHA256 变了），里面的 `WinShun.exe`（bb4b3a3c…）与实测装上的相同。之后用公开的安装包（303c2328…）跑 `-Mode Setup`：8.9 秒，0.52.0，未提权，服务在运行，剪贴板历史不变。
+- GitHub Release 8 个附件，远端 SHA256 与 `SHA256SUMS.txt` 一致，标签指向 d56f8f32，是最新正式版。lcstp.com 两个接口发布约 9 分钟后都是 v0.52.0，大小和 digest 一致，第一个镜像是 cnb.cool，说明里有增量行、没有立即推送行（正常推送）。CNB 上的 `SHA256SUMS.txt` 下载回来与 GitHub 一致。Scoop e32b5076。
+- 插件库 75ac820，线上 index 44 个插件，6 个新版本都在，签名有效（ws-index-2026a）。
+- 关闭并回复 #430（通用 Command 模式没有做，已说明）、#475、#500、#501、#503、#504。
+- 回收：分支 `fuzzy-favorite` 和它的工作树；`build/`、`dist/` 下 33 个旧的临时目录（删前确认没有目录链接、没有程序从里面运行），保留 `build\release`、`build\recovery` 和这一版的 `dist\release052`、`dist\release052pub`。
