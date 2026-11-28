@@ -360,9 +360,13 @@ Item {
         // field's left edge), never nearer the logo than 6; 8 after the logo
         // in a style that says nothing (fluent).
         readonly property real styleStart: fieldPart.out("leadingInset", 0)
-        anchors.left: bar.logoShown ? handle.right : handle.left
-        anchors.leftMargin: !bar.logoShown ? handle.inkInset // where the Logo's left edge was
-            : styleStart > 0 ? Theme.snap(Math.max(6, Theme.fieldInset + styleStart - handle.x - handle.width), bar.dpr) : 8
+        // Its left edge on a whole device pixel, the words crisp: the Logo's
+        // box is not a whole number of them at every scale (34 px is 42.5 at
+        // 125 %), so the edge is snapped, not the gap after the box.
+        readonly property real startX: !bar.logoShown ? handle.x + handle.inkInset // where the Logo's left edge was
+            : handle.x + handle.width + (styleStart > 0 ? Math.max(6, Theme.fieldInset + styleStart - handle.x - handle.width) : 8)
+        anchors.left: bar.left
+        anchors.leftMargin: Theme.snap(startX, bar.dpr)
         anchors.right: bar.minimal ? bar.right : boxPin.visible && !bar.inBox ? boxPin.left : bar.firstKey.left
         anchors.rightMargin: boxPin.visible || regexChip.visible || fuzzyChip.visible ? 8 : 12
         height: bar.height - grip.y - 2 * grip.height

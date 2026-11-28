@@ -24,14 +24,32 @@ Rectangle {
     property real markY: 0
     // TextInput places only x (one pixel before the character); the rest as its own caret.
     y: textInput ? textInput.cursorRectangle.y : 0
-    // A transform, not y: the TextInput sets the delegate's position itself whenever the caret moves.
-    transform: Translate { y: caret.markHeight > 0 && caret.textInput ? caret.markY - caret.textInput.cursorRectangle.y : 0 }
+    // A transform, not x and y: the TextInput sets the delegate's position
+    // itself whenever the caret moves. Across, onto the nearest whole device
+    // pixel of the window (align()): one device pixel wide, a caret half a
+    // pixel off lit the pixel before; at the start of a field that began
+    // half a pixel in (125 %), that pixel was outside the field's clip and
+    // the empty box showed no caret at all (GitHub #501).
+    transform: Translate {
+        x: caret.shift
+        y: caret.markHeight > 0 && caret.textInput ? caret.markY - caret.textInput.cursorRectangle.y : 0
+    }
+    property real shift: 0
+    function align() {
+        if (!textInput || dpr <= 0)
+            return
+        const device = textInput.mapToItem(null, x, 0).x * dpr
+        shift = (Math.round(device) - device) / dpr
+    }
+    onXChanged: align()
+    onDprChanged: align()
     width: Math.max(1, Math.round(dpr)) / dpr
     height: markHeight > 0 ? markHeight : textInput ? textInput.cursorRectangle.height : 0
     visible: wanted && lit
     property bool lit: true
 
     function wake() {
+        align() // the field may have moved since (shown again, another size)
         lit = true
         if (blink.running)
             blink.restart()

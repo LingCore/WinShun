@@ -5814,6 +5814,138 @@ bool checkShortcutPanels(QQmlEngine* engine, const QDir& output)
     return passed;
 }
 
+// --search-caret (GitHub #501): the search box's caret is seen in every 界面风格,
+// light and dark, in the empty box and after words, and a click in the box
+// puts it there. The caret counts as seen when a column of device pixels where
+// it stands changes for at least half its height between the window grabbed
+// with it and without it (the field's own caret blinks: a few grabs).
+bool checkSearchCaret(QQmlEngine* engine, const QDir& output)
+{
+    QTemporaryDir temporary;
+    IndexService index(temporary.path(), IndexService::Options{});
+    AppCatalog apps;
+    SystemCatalog places;
+    apps.setApps(std::make_shared<const AppList>());
+    places.setPlaces(std::make_shared<const PlaceList>());
+    History history(temporary.filePath(u"history.tsv"_s));
+    SearchEngine search(&index, &apps, &places);
+    Launcher launcher(&index, &apps, &places, &search, &history);
+    ClipStore store(temporary.filePath(u"clipboard"_s));
+    store.open(QDateTime::currentMSecsSinceEpoch());
+    ClipboardWatcher watcher({}, {});
+    Clipboard clipboard(&store, &watcher);
+    Placement placement(temporary.filePath(u"state.ini"_s), u"Launcher"_s);
+    WindowFrame frame(false);
+    QQmlComponent component(engine, u"WinShun"_s, u"Main"_s);
+    std::unique_ptr<QObject> object(component.createWithInitialProperties({
+        {u"launcher"_s, QVariant::fromValue(&launcher)}, {u"clipboard"_s, QVariant::fromValue(&clipboard)},
+        {u"frame"_s, QVariant::fromValue(&frame)}, {u"placement"_s, QVariant::fromValue(&placement)}}));
+    auto* window = qobject_cast<QQuickWindow*>(object.get());
+    if (!window) {
+        qWarning().noquote() << "search caret:" << component.errorString();
+        return false;
+    }
+    window->create();
+    launcher.setWindow(window);
+    frame.setWindow(window);
+    placement.setWindow(window);
+    placement.rememberWidth(760, 640);
+    showOffScreen(window);
+    placement.placeOn(window->screen());
+    launcher.results()->assign({}, {});
+
+    bool passed = true;
+    const auto check = [&](bool okay, const QString& what) {
+        if (!okay)
+            say(u"search caret: %1 FAILED"_s.arg(what));
+        passed = okay && passed;
+    };
+    auto* field = visualNamed(window->contentItem(), u"searchField"_s);
+    auto* logo = visualNamed(window->contentItem(), u"searchLogo"_s);
+    check(field && logo, u"the production search field and logo"_s);
+    if (!field || !logo)
+        return false;
+    const HWND hwnd = reinterpret_cast<HWND>(window->winId());
+    const qreal dpr = window->devicePixelRatio();
+    say(u"search caret: device pixel ratio %1"_s.arg(dpr));
+
+    const QString previousStyle = SystemTheme::uiStyle();
+    const Qt::ColorScheme previousScheme = QGuiApplication::styleHints()->colorScheme();
+    for (const QString& style : {u"fluent"_s, u"brand"_s, u"tactile"_s, u"liquid"_s}) {
+        for (const bool dark : {false, true}) {
+            SystemTheme::setUiStyle(style);
+            QGuiApplication::styleHints()->setColorScheme(dark ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light);
+            for (const QString& query : {QString(), u"测试"_s}) {
+                const QString name = u"%1 %2 %3"_s.arg(style, dark ? u"dark"_s : u"light"_s, query.isEmpty() ? u"empty"_s : u"words"_s);
+                launcher.setQuery(query);
+                launcher.setKeysRouted(false);
+                logo->forceActiveFocus();
+                settle(window);
+                const QImage off = window->grabWindow();
+                // Shown as with the keys routed to it: steady, the window not made active.
+                launcher.setKeysRouted(true);
+                field->setProperty("cursorPosition", field->property("length"));
+                settle(window);
+                const QRectF at = field->mapRectToScene(field->property("cursorRectangle").toRectF());
+                const int left = static_cast<int>(std::floor(at.left() * dpr)) - 2;
+                const int right = static_cast<int>(std::ceil((at.left() + 1) * dpr)) + 2;
+                const int top = static_cast<int>(std::ceil((at.center().y() - at.height() * 0.3) * dpr));
+                const int bottom = static_cast<int>(std::floor((at.center().y() + at.height() * 0.3) * dpr));
+                const int needed = std::max(3, (bottom - top) / 2);
+                int seen = 0;
+                QImage on;
+                for (int grab = 0; grab < 6 && seen < needed; ++grab) {
+                    if (grab > 0)
+                        pump(130);
+                    on = window->grabWindow();
+                    for (int x = std::max(0, left); x <= right && x < on.width() && x < off.width(); ++x) {
+                        int column = 0;
+                        for (int y = std::max(0, top); y < bottom && y < on.height() && y < off.height(); ++y) {
+                            const QColor a = on.pixelColor(x, y);
+                            const QColor b = off.pixelColor(x, y);
+                            column += std::max({std::abs(a.red() - b.red()), std::abs(a.green() - b.green()), std::abs(a.blue() - b.blue())}) >= 48;
+                        }
+                        seen = std::max(seen, column);
+                    }
+                }
+                const QPointF fieldAt = field->mapToScene(QPointF());
+                say(u"search caret: %1: field x %2 device px, caret %3-%4 device px, %5 of %6 rows seen"_s.arg(name)
+                        .arg(fieldAt.x() * dpr).arg(at.left() * dpr).arg((at.left() + 1) * dpr).arg(seen).arg(bottom - top));
+                check(seen >= needed, name + u": the caret is seen"_s);
+                if (!on.isNull()) {
+                    const QRectF box = field->mapRectToScene(QRectF(QPointF(), field->size())).adjusted(-24, -8, 24, 8);
+                    on.copy(QRectF(box.topLeft() * dpr, box.size() * dpr).toAlignedRect().intersected(on.rect()))
+                        .save(output.filePath(u"search-caret-%1-%2-%3.png"_s.arg(style, dark ? u"dark"_s : u"light"_s,
+                            query.isEmpty() ? u"empty"_s : u"words"_s)));
+                }
+            }
+            // A click at the start of the words: the box's own (no drag, no
+            // caption), the caret goes there and the box takes the keys.
+            launcher.setKeysRouted(false);
+            logo->forceActiveFocus();
+            settle(window);
+            RECT client {};
+            ::GetClientRect(hwnd, &client);
+            const QPointF start = field->mapToScene(QPointF(1, field->height() / 2));
+            POINT native {qRound(start.x() * client.right / window->width()), qRound(start.y() * client.bottom / window->height())};
+            POINT screen = native;
+            ::ClientToScreen(hwnd, &screen);
+            const LRESULT hit = ::SendMessageW(hwnd, WM_NCHITTEST, 0, MAKELPARAM(screen.x, screen.y));
+            ::SendMessageW(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(native.x, native.y));
+            ::SendMessageW(hwnd, WM_LBUTTONUP, 0, MAKELPARAM(native.x, native.y));
+            settle(window, 2);
+            check(hit == HTCLIENT && field->hasActiveFocus() && field->property("cursorPosition").toInt() == 0,
+                u"%1 %2: a click at the start of the words puts the caret there"_s.arg(style, dark ? u"dark"_s : u"light"_s));
+        }
+    }
+    launcher.setKeysRouted(false);
+    SystemTheme::setUiStyle(previousStyle);
+    QGuiApplication::styleHints()->setColorScheme(previousScheme);
+    window->hide();
+    say(u"search caret: %1"_s.arg(passed ? u"all checks passed"_s : u"FAILED"_s));
+    return passed;
+}
+
 // #162: actual native hit testing/messages and production QML, isolated from
 // the user's profile. No global mouse or keyboard input is injected.
 bool checkSearchLogo(QQmlEngine* engine, const QDir& output)
@@ -13752,6 +13884,8 @@ int runResults(const QStringList& args)
     if (args.contains(u"--search-logo"_s)) {
         return finish(window, checkSearchLogo(&engine, out) && saved);
     }
+    if (args.contains(u"--search-caret"_s))
+        return finish(window, checkSearchCaret(&engine, out) && saved);
     if (args.contains(u"--style-windows"_s))
         return finish(window, checkStyleWindows(&engine, out) && saved);
     if (args.contains(u"--preview-hotkeys"_s) || args.contains(u"--search-navigation"_s)) {

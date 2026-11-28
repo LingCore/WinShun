@@ -401,6 +401,12 @@ add_test(NAME tst_searchlogo COMMAND $<TARGET_FILE:WinShun>
     --preview-results "${CMAKE_CURRENT_BINARY_DIR}/search-logo" --search-logo --renderer d3d11)
 set_tests_properties(tst_searchlogo PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+# GitHub #501: the search box's caret in every 界面风格, empty and after words,
+# at 125 % (where 品牌色彩 and 轻拟物质感 lost it), and a click putting it there.
+add_test(NAME tst_searchcaret COMMAND $<TARGET_FILE:WinShun>
+    --preview-results "${CMAKE_CURRENT_BINARY_DIR}/search-caret" --search-caret --scale 1.25 --renderer d3d11)
+set_tests_properties(tst_searchcaret PROPERTIES RUN_SERIAL TRUE TIMEOUT 120
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
 # 文件's type chips with how many of what is typed each lists: the tag, its room, switched off.
 add_test(NAME tst_typestripcounts COMMAND $<TARGET_FILE:WinShun>
