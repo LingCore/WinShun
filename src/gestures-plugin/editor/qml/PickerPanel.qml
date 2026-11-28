@@ -12,6 +12,7 @@ Item {
 
     property Item anchor // the button it drops from
     property bool open: false
+    property bool escaped: false // closed with Esc: what was being written in it is dropped
     property real boxWidth: 320
     property real boxHeight: 200
     default property alias contents: body.data
@@ -40,6 +41,7 @@ Item {
 
     onOpenChanged: {
         if (open) {
+            escaped = false
             if (frame)
                 frame.addPopup(box)
             place()
@@ -71,7 +73,10 @@ Item {
         id: box
         width: panel.boxWidth
         height: panel.boxHeight
-        Keys.onEscapePressed: panel.open = false
+        Keys.onEscapePressed: {
+            panel.escaped = true
+            panel.open = false
+        }
 
         Hook { // the style's box (Theme.menuFrame): body, edge and shadow
             anchors.fill: parent

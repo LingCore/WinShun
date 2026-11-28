@@ -14,6 +14,7 @@
 - **按住手势键滚滚轮**：默认切换上一个、下一个标签页；滚过滚轮，松开按键不弹菜单。不同的手势键可以设不同的动作。
 - **每个程序单独设置**：某个手势只在某个程序里换成别的动作，或设成“什么都不做”在那里关掉它。
 - **动作**：后退、前进、刷新、回到顶部、到底部；新建、关闭、重新打开、切换标签页；关闭、最小化、最大化、置顶窗口，显示桌面、任务视图、切到上一个窗口；复制、剪切、粘贴、撤销、重做、全选，网页搜索、用 Win顺 搜、翻译；打开 Win顺 搜索框；静音、音量、播放暂停、上一首下一首；锁屏、关闭屏幕、睡眠、关机、重启、注销。也可以按任意组合键、打开程序文件夹或网址、输入一段文字。
+- **提示文字**（#472）：画手势时轨迹旁写的是要做的动作，比如“Ctrl+Up”。在设置窗口里点动作，在弹出面板最下面的“提示文字”里写上自己的说法（比如“上移段落”），提示里就显示这句，列表里这一行也用它当标题；不填就还是动作的名字。触发角、摩擦边和快捷键的提示也一样。关机这类先倒数的动作，倒数卡片上照旧写实际要做的事。
 - **关机、重启、注销、睡眠先倒数**：屏幕中间出现一张卡片倒数 5 秒，按 Esc 或点“取消”就不做；有没保存的程序时，Windows 照常会问。
 
 ## 用起来
@@ -58,6 +59,7 @@ A resident C++ plugin from the plugin library (Settings → Plugins → Plugin l
 - **Gesture button + wheel**: previous / next tab by default; no menu on release after the wheel was used. Each gesture button can have its own.
 - **Per program**: a gesture can do something else in one program, or nothing there.
 - **Actions**: page, tab, window, text, WinShun, media and system actions (lock, screen off, sleep, shut down, restart, sign out), any keys, open a program, file, folder or address, or type some text.
+- **Hint text** (#472): the hint by the trail names the action, such as “Ctrl+Up”. Click the action in the settings window and write your own words in 提示文字 at the bottom of its panel (“Move paragraph up”): the hint shows them, and so does the gesture's row; left empty, it is the action's name again. Hot corners, rubbed edges and shortcuts show them too. The countdown card of shut down and the like still says what it will do.
 - **Shut down, restart, sign out and sleep count down first**: a card counts down 5 seconds; Esc or Cancel stops it. Programs with unsaved work can still hold Windows up.
 
 A plain click of a gesture button still does what it did (the menu for the right button); to drag with it, hold still a moment first. A button with a chord set waits as long as it is held still for the second button, and drags once it moves (#436). Esc or a left click while drawing cancels (unless the left button completes a chord there). Not with Win held, nor with Ctrl, Alt or Shift unless a gesture is set for those keys; not in the programs listed in the settings, full-screen games and video (unless turned on), touch and pen, or windows run as administrator. `gestures` lists them; Enter on the first row pauses or resumes. Gestures changed in 1.0 are carried over.

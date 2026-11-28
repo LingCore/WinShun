@@ -275,6 +275,9 @@ struct Rule {
     // names, lower case, ".exe" added); empty: in all of them.
     std::vector<std::wstring> apps;
     Action action;
+    // Its own words for the hint, in place of the action's title ("上移段落"
+    // for Ctrl+Up, GitHub #472): cleanName's; empty for none.
+    std::wstring name;
     bool operator==(const Rule&) const = default;
     MouseButton triggerButton() const;
     // The keys a gesture is drawn with (none for the other triggers).
@@ -289,6 +292,17 @@ struct Rule {
     // Whether two rules are for the same thing (the later one replaces the other).
     bool sameCase(const Rule& other) const;
 };
+
+// A rule's name as kept: trimmed, on one line (breaks and tabs are spaces, one between words),
+// without control or invisible characters (zero width, direction marks), at
+// most kMaxNameLength UTF-16 units and no half of a pair.
+inline constexpr std::size_t kMaxNameLength = 32;
+std::wstring cleanName(std::wstring_view text);
+// What the hints say a rule does (the trail's, a corner's, a shortcut's):
+// its name when it has one and its action reads, else the action's title
+// (empty for Nothing). Not the card that asks first (关机 …): that one says
+// what will be done.
+std::wstring ruleTitle(const Rule& rule, bool chinese);
 
 // Where and over what a trigger happens.
 struct Context {
@@ -327,6 +341,7 @@ bool anyFor(const std::vector<Rule>& rules, TriggerKind kind);
 // {"version": 2, "rules": [{"on": "DR", "do": "close"}, {"on": "cw", "where": "br", "do": "shutdown"},
 //  {"on": "D", "selection": true, "do": "copy"}, {"on": "L", "apps": ["photoshop.exe"], "keys": "Ctrl+Z"},
 //  {"on": "corner:tl", "open": "C:\\…"}, {"on": "edge:top", "type": "…"}, {"on": "R", "apps": [...]}]}
+// A rule may have a "name" ({"on": "ctrl:U", "keys": "Ctrl+Up", "name": "上移段落"}), shown by the hints.
 // A rule with no "do", "keys", "open" or "type" does nothing. Rules that do
 // not read are left out.
 std::string rulesJson(const std::vector<Rule>& rules);

@@ -39,7 +39,7 @@ Window {
         const button = find(flick.contentItem, ["ruleActionButton", "spotButton"])
         if (!button)
             return
-        actionPicker.ask(button, { kind: "builtin", id: "back" }, () => {}, () => {})
+        actionPicker.ask(button, { kind: "builtin", id: "back", name: "" }, () => {}, () => {}, () => {})
         if (kind.indexOf("menu:") === 0)
             actionPicker.category = parseInt(kind.substring(5))
         else if (kind !== "menu")

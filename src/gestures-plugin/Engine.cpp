@@ -1026,7 +1026,7 @@ Engine::Hint Engine::hintFor(const std::string& gesture) const
         hint.action = zh ? L"不做什么" : L"Does nothing";
         return hint;
     }
-    hint.action = actionTitle(a, zh);
+    hint.action = ruleTitle(*rule, zh); // its name, when it was given one (GitHub #472)
     if (a.kind == Action::Kind::Builtin && !m_selection.empty()
         && (takesSelection(a.builtin) || a.builtin == Builtin::Copy || a.builtin == Builtin::Cut))
         hint.words = L"「" + snippet(m_selection) + L"」";
@@ -1546,7 +1546,7 @@ void Engine::triggered(std::string_view on, POINT at)
         return;
     const bool asks = rule->action.kind == Action::Kind::Builtin && asksFirst(rule->action.builtin);
     if (!asks)
-        note(at, triggerIcon(on), actionTitle(rule->action, s->look.chinese), triggerTitle(on, s->look.chinese) + L" · ");
+        note(at, triggerIcon(on), ruleTitle(*rule, s->look.chinese), triggerTitle(on, s->look.chinese) + L" · ");
     performWithWords(*rule, t);
 }
 

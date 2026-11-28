@@ -17,7 +17,7 @@ Item {
     property string app
     property real dpr: Screen.devicePixelRatio
     readonly property real edge: Theme.edge(row.dpr)
-    // The rule now: {has, kind, title, icon, note, id}; read again when the rules change.
+    // The rule now: {has, kind, title, icon, note, id, name}; read again when the rules change.
     readonly property var info: {
         row.editor.revision
         return row.editor.slot(row.trigger, row.app)
@@ -26,7 +26,8 @@ Item {
 
     function askAction() {
         row.picker.ask(actionButton, row.info,
-            (kind, value) => row.editor.setSlot(row.trigger, row.app, kind, value), null)
+            (kind, value, name) => row.editor.setSlot(row.trigger, row.app, kind, value, name), null,
+            (name) => row.editor.setSlotName(row.trigger, row.app, name))
     }
 
     width: parent ? parent.width : 0
@@ -78,7 +79,7 @@ Item {
         }
         Text {
             width: parent.width
-            text: row.info.note.length > 0 ? row.caption + " · " + row.info.note : row.caption
+            text: [row.info.name, row.caption, row.info.note].filter(s => s.length > 0).join(" · ")
             elide: Text.ElideRight
             color: Theme.subtext
             font.pixelSize: Theme.fontCaption

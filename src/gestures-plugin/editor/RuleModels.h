@@ -10,6 +10,7 @@
 #include <QString>
 #include <QtQmlIntegration/qqmlintegration.h>
 
+#include <optional>
 #include <vector>
 
 namespace ws::gestureseditor {
@@ -48,6 +49,7 @@ public:
         ActionIconRole,
         ActionIdRole, // the builtin's id, or the text of a keys / open / type action
         ProvisionalRole, // added from the pad, not kept until it has an action
+        NameRole, // its own words for the hint ("上移段落"); empty for none (GitHub #472)
     };
 
     explicit RulesModel(QObject* parent = nullptr);
@@ -68,7 +70,9 @@ public:
     int find(const gestures::Rule& probe) const;
     // Appended. `provisional`: shown, but not part of saved() until it gets an action.
     int add(gestures::Rule rule, bool provisional);
-    void setAction(int row, const gestures::Action& action);
+    // `name`: its words for the hint as well (gestures::cleanName); none: as they were.
+    void setAction(int row, const gestures::Action& action, const std::optional<std::wstring>& name = std::nullopt);
+    void setName(int row, const std::wstring& name);
     // False when another rule is for the same thing there already.
     bool setWhere(int row, gestures::Zone zone);
     // Change a gesture rule's trigger button scope (Any / Right / Middle / X1 / X2).

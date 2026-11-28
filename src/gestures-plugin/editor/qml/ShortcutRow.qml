@@ -22,6 +22,7 @@ Item {
     required property string actionNote
     required property string actionIcon
     required property string actionId
+    required property string name // its own words for the hint; empty for none
 
     required property GestureEditor editor
     required property ActionPicker picker
@@ -32,8 +33,9 @@ Item {
     property string problem // what was wrong with the keys pressed last
 
     function askAction() {
-        row.picker.ask(actionButton, { kind: row.kind, id: row.actionId },
-            (kind, value) => row.editor.setAction(row.sourceRow, kind, value, ""), () => {})
+        row.picker.ask(actionButton, { kind: row.kind, id: row.actionId, name: row.name },
+            (kind, value, name) => row.editor.setAction(row.sourceRow, kind, value, "", name), () => {},
+            (name) => row.editor.setName(row.sourceRow, name, ""))
     }
 
     function flash() {
@@ -112,7 +114,7 @@ Item {
         visible: text.length > 0
         text: row.problem.length > 0 ? row.problem
             : row.taken ? qsTr("别的程序占用了这个快捷键，换一个试试")
-            : [row.description, row.actionNote].filter(s => s.length > 0).join(" · ")
+            : [row.name, row.description, row.actionNote].filter(s => s.length > 0).join(" · ")
         wrapMode: Text.Wrap
         color: warning ? Theme.danger : Theme.subtext
         font.pixelSize: Theme.fontCaption

@@ -74,7 +74,10 @@ public:
     Q_INVOKABLE void toggleButton(const QString& id);
     Q_INVOKABLE int addOrFind(const QString& on, int where, bool selection, const QString& app);
     Q_INVOKABLE void discardProvisional();
-    Q_INVOKABLE void setAction(int row, const QString& kind, const QString& value, const QString& app);
+    // `name` (a string): its words for the hint too; left out: as they were.
+    Q_INVOKABLE void setAction(int row, const QString& kind, const QString& value, const QString& app,
+        const QVariant& name = QVariant());
+    Q_INVOKABLE void setName(int row, const QString& name, const QString& app); // the hint's words alone (GitHub #472)
     Q_INVOKABLE void setWhere(int row, int zone, const QString& app);
     Q_INVOKABLE QVariantList zoneChoices(int row) const; // [{text, glyph, zone}]: where it can be moved to
     Q_INVOKABLE void setTriggerButton(int row, const QString& buttonId, const QString& app);
@@ -82,7 +85,9 @@ public:
     Q_INVOKABLE void remove(int row, const QString& app);
     // A trigger that is one rule everywhere (a corner, an edge, the wheel), or a program's: {has, kind, title, icon, note, id}.
     Q_INVOKABLE QVariantMap slot(const QString& on, const QString& app) const;
-    Q_INVOKABLE void setSlot(const QString& on, const QString& app, const QString& kind, const QString& value);
+    Q_INVOKABLE void setSlot(const QString& on, const QString& app, const QString& kind, const QString& value,
+        const QVariant& name = QVariant());
+    Q_INVOKABLE void setSlotName(const QString& on, const QString& app, const QString& name); // a slot that is set
     Q_INVOKABLE void clearSlot(const QString& on, const QString& app);
     Q_INVOKABLE QString addProgram(const QString& name); // its name as kept ("" when it is none)
     Q_INVOKABLE void removeProgram(const QString& app);

@@ -26,6 +26,7 @@ Item {
     required property string actionIcon
     required property string actionId
     required property bool provisional
+    required property string name // its own words for the hint; empty for none
 
     required property GestureEditor editor
     required property ActionPicker picker
@@ -38,9 +39,10 @@ Item {
 
     // Asks what it does: its picker opens under the action. A gesture just drawn, not given one, is dropped if the picker closes without a choice.
     function askAction() {
-        row.picker.ask(actionButton, { kind: row.provisional ? "none" : row.kind, id: row.actionId },
-            (kind, value) => row.editor.setAction(row.sourceRow, kind, value, row.app),
-            () => { if (row.provisional) row.editor.discardProvisional() })
+        row.picker.ask(actionButton, { kind: row.provisional ? "none" : row.kind, id: row.actionId, name: row.name },
+            (kind, value, name) => row.editor.setAction(row.sourceRow, kind, value, row.app, name),
+            () => { if (row.provisional) row.editor.discardProvisional() },
+            (name) => row.editor.setName(row.sourceRow, name, row.app))
     }
 
     // Draws the eye to the row (a gesture drawn again that was set already).
@@ -136,9 +138,9 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         spacing: 2
 
-        Text {
+        Text { // named: its name (the tile has the gesture)
             width: parent.width
-            text: row.description
+            text: row.name.length > 0 ? row.name : row.description
             elide: Text.ElideRight
             color: Theme.text
             font.pixelSize: Theme.fontBody

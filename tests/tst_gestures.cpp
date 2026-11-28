@@ -137,6 +137,46 @@ private slots:
         QCOMPARE(actionTitle(parseAction(L""), true), std::wstring());
     }
 
+    // GitHub #472: a rule's own words for the hint, in place of its action's.
+    void rulesNamedForTheHint()
+    {
+        QCOMPARE(cleanName(L"  上移段落 \t"), std::wstring(L"上移段落"));
+        QCOMPARE(cleanName(L"上移\r\n段落"), std::wstring(L"上移 段落")); // on one line
+        const std::wstring hidden = std::wstring(L"上") + wchar_t(0x200B) + wchar_t(0x202E) + wchar_t(0x07) + L"移";
+        QCOMPARE(cleanName(hidden), std::wstring(L"上移"));
+        QCOMPARE(cleanName(std::wstring(40, L'字')).size(), kMaxNameLength);
+        // Not half of a pair at the cut: 31 characters, then one written as two.
+        const std::wstring pair = std::wstring(31, L'a') + wchar_t(0xD83D) + wchar_t(0xDE00);
+        QCOMPARE(cleanName(pair), std::wstring(31, L'a'));
+        QCOMPARE(cleanName(L"   "), std::wstring());
+
+        Rule rule;
+        rule.on = "ctrl:U";
+        rule.action = keysAction(L"Ctrl+Up");
+        QCOMPARE(ruleTitle(rule, true), std::wstring(L"Ctrl+Up")); // no name: the action's
+        rule.name = L"上移段落";
+        QCOMPARE(ruleTitle(rule, true), std::wstring(L"上移段落"));
+        QCOMPARE(ruleTitle(rule, false), std::wstring(L"上移段落"));
+        Rule unknown = rule; // not understood: the hint says so, not the name
+        unknown.action = {.kind = Action::Kind::Invalid, .text = L"fly"};
+        QCOMPARE(ruleTitle(unknown, true), actionTitle(unknown.action, true));
+        Rule nothing = rule; // does nothing: no words
+        nothing.action = {};
+        QVERIFY(ruleTitle(nothing, true).empty());
+
+        // Kept with the rule, cleaned as it is read; none written when there is none.
+        const std::vector<Rule> rules {rule};
+        const std::string json = rulesJson(rules);
+        QVERIFY(json.find("\"name\"") != std::string::npos);
+        QVERIFY(parseRules(json).value() == rules);
+        QVERIFY(rulesJson(defaultRules()).find("\"name\"") == std::string::npos);
+        const auto read = parseRules(R"({"version":2,"rules":[{"on":"U","keys":"Ctrl+Up","name":"  上移\n段落 "},
+            {"on":"D","do":"copy","name":7}]})");
+        QVERIFY(read.has_value());
+        QCOMPARE((*read)[0].name, std::wstring(L"上移 段落"));
+        QVERIFY((*read)[1].name.empty());
+    }
+
     void moreGestures()
     {
         const auto more = parseMore(L"↑← = Ctrl+Shift+T; RL=notepad.exe；bad = x; UD=; =F5\nDLR = 刷新");

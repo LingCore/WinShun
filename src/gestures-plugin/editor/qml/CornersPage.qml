@@ -102,9 +102,10 @@ Column {
                             unset: !spot.info.has
                             invalid: spot.info.kind === "invalid"
                             icon: spot.info.icon
-                            text: spot.info.has ? spot.info.title : qsTr("未设置")
+                            text: !spot.info.has ? qsTr("未设置") : spot.info.name.length > 0 ? spot.info.name : spot.info.title
                             onClicked: page.picker.ask(button, spot.info,
-                                (kind, value) => page.editor.setSlot(spot.modelData.on, "", kind, value), null)
+                                (kind, value, name) => page.editor.setSlot(spot.modelData.on, "", kind, value, name), null,
+                                (name) => page.editor.setSlotName(spot.modelData.on, "", name))
                         }
                         Item { // clear: on a spot that is set, while the pointer is on it
                             anchors.right: parent.right

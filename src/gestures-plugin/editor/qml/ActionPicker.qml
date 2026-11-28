@@ -8,9 +8,13 @@ import WinShun
 // type, nothing). Keys are recorded here, in the window; Win+… and the like
 // that Windows keeps for itself can be written instead.
 //
-// ask() opens it for a button: `choose(kind, value)` gets what was chosen
-// (kind "builtin" with the action's id, "keys", "open", "type", "nothing"),
-// `cancel()` runs when it is closed without a choice.
+// ask() opens it for a button: `choose(kind, value, name)` gets what was
+// chosen (kind "builtin" with the action's id, "keys", "open", "type",
+// "nothing") and the words of 提示文字 under it, `cancel()` runs when it is
+// closed without a choice. With `rename(name)`, 提示文字 is there: the rule's
+// own words for the hint in place of the action's title (GitHub #472), kept
+// when it closes with a choice, with Enter in it, or with a click elsewhere;
+// Esc drops them.
 PickerPanel {
     id: picker
 
@@ -21,6 +25,8 @@ PickerPanel {
     property int category: 0
     property var chooseHandler: null
     property var cancelHandler: null
+    property var renameHandler: null
+    property string nameStart // 提示文字 as it opened
     property bool decided: false
     property string keysProblem
     property string typed // the words of the type box, once they were taken from it
@@ -30,8 +36,10 @@ PickerPanel {
     readonly property int rightWidth: 312
     readonly property int pad: Theme.menuPadding
     readonly property int rows: 12 // as many as the longest category
+    readonly property bool named: renameHandler !== null
+    readonly property int footerHeight: named ? 12 + 32 + 4 : 0 // a line and room, 提示文字, room under it
 
-    function ask(button: Item, now: var, choose: var, cancel: var) {
+    function ask(button: Item, now: var, choose: var, cancel: var, rename: var) {
         if (open && anchor === button) {
             open = false
             return
@@ -42,7 +50,10 @@ PickerPanel {
         typedTaken = false
         chooseHandler = choose
         cancelHandler = cancel
+        renameHandler = rename ?? null
         current = now ?? ({ kind: "none", id: "" })
+        nameStart = current.name ?? ""
+        nameInput.text = nameStart
         anchor = button
         stage = "menu"
         keysProblem = ""
@@ -53,10 +64,11 @@ PickerPanel {
 
     function choose(kind: string, value: string) {
         const handler = chooseHandler // closing lets go of it
+        const name = nameInput.text
         decided = true
         open = false
         if (handler)
-            handler(kind, value)
+            handler(kind, value, name)
     }
 
     function stageFor(next: string) {
@@ -72,7 +84,7 @@ PickerPanel {
     }
 
     boxWidth: leftWidth + 1 + rightWidth + 2 * pad
-    boxHeight: rows * Theme.menuItemHeight + 2 * pad
+    boxHeight: rows * Theme.menuItemHeight + 2 * pad + footerHeight
 
     // The rules were replaced (the plugin sent others): the row it was for is not there any more.
     Connections {
@@ -81,10 +93,16 @@ PickerPanel {
     }
 
     onClosed: {
-        if (!decided && cancelHandler)
-            cancelHandler()
+        if (!decided) {
+            // A rule there is, its words changed, not dropped with Esc.
+            if (renameHandler && !escaped && current.kind !== "none" && nameInput.text !== nameStart)
+                renameHandler(nameInput.text)
+            if (cancelHandler)
+                cancelHandler()
+        }
         chooseHandler = null
         cancelHandler = null
+        renameHandler = null
     }
 
     // ---- the left column: categories, then the other kinds ----
@@ -177,7 +195,7 @@ PickerPanel {
         x: picker.pad + picker.leftWidth
         y: picker.pad
         width: Theme.edge(picker.dpr)
-        height: parent.height - 2 * picker.pad
+        height: picker.rows * Theme.menuItemHeight
         part: Theme.separator
         extra: ({ card: true })
         orientation: Qt.Vertical
@@ -233,6 +251,7 @@ PickerPanel {
             onRecordingChanged: picker.editor.setRecording(recording) // the plugin's shortcuts let go: they reach here too
             onKeyPressed: (key, modifiers, scanCode) => {
                 if (key === Qt.Key_Escape && modifiers === Qt.NoModifier) {
+                    picker.escaped = true
                     picker.open = false
                     return
                 }
@@ -401,6 +420,49 @@ PickerPanel {
                 if (words.length > 0)
                     picker.choose("type", words)
             }
+        }
+    }
+
+    Item { // 提示文字: under both columns
+        x: picker.pad
+        y: picker.pad + picker.rows * Theme.menuItemHeight
+        width: picker.boxWidth - 2 * picker.pad
+        height: picker.footerHeight
+        visible: picker.named
+
+        Hook {
+            x: 10
+            y: 4
+            width: parent.width - 20
+            height: Theme.edge(picker.dpr)
+            part: Theme.separator
+            extra: ({ card: true })
+            orientation: Qt.Horizontal
+            dpr: picker.dpr
+        }
+        Text {
+            id: nameLabel
+            x: 12
+            anchors.verticalCenter: nameInput.verticalCenter
+            text: qsTr("提示文字")
+            color: Theme.subtext
+            font.pixelSize: Theme.fontCaption
+        }
+        InputBox {
+            id: nameInput
+            objectName: "pickerNameInput"
+            anchors.left: nameLabel.right
+            anchors.leftMargin: 10
+            anchors.right: parent.right
+            anchors.rightMargin: 12
+            y: 12
+            height: 32
+            dpr: picker.dpr
+            maximumLength: 32 // gestures::kMaxNameLength
+            clearable: true
+            placeholder: qsTr("提示里显示的字，不填就显示动作")
+            onAccepted: if (picker.current.kind !== "none") picker.open = false
+            Accessible.name: qsTr("提示文字")
         }
     }
 }
