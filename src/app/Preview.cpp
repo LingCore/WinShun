@@ -3486,14 +3486,19 @@ int runSettings(const QStringList& args)
     }
 
     // --service-blocked: 搜索范围 › 磁盘 after an install no protected folder
-    // would take (GitHub #426): what is wrong, and the commands to copy.
+    // would take (GitHub #426, #504): what is wrong, and the commands to copy.
     if (args.contains(u"--service-blocked"_s)) {
         bool saved = true;
-        const auto grab = [&](svcloc::Weakness::Kind kind, const wchar_t* path, const wchar_t* sid, const QString& name) {
+        using Kind = svcloc::Weakness::Kind;
+        const auto made = [](Kind kind, const wchar_t* path, const wchar_t* sid, std::vector<svcloc::Weakness::Grant> grants = {}) {
             svcloc::Weakness weak;
             weak.kind = kind;
             weak.path = path;
             weak.sid = sid;
+            weak.grants = std::move(grants);
+            return weak;
+        };
+        const auto grab = [&](const std::vector<svcloc::Weakness>& weak, const QString& name) {
             SettingsEditor::IndexAccessState state;
             state.effective = u"walk"_s;
             state.administrator = state.serviceInstallable = state.portable = true;
@@ -3511,10 +3516,42 @@ int runSettings(const QStringList& args)
             saved = saveGrab(window, out.filePath(name)) && saved;
         };
         window->resize(args.contains(u"--compact"_s) ? QSize(760, 560) : QSize(920, 720));
-        grab(svcloc::Weakness::Kind::Owner, LR"(C:\)", L"S-1-5-32-545", u"service-blocked-owner.png"_s); // a user's in life; here a name every Windows has
-        grab(svcloc::Weakness::Kind::Rights, LR"(C:\Program Files)", L"S-1-5-11", u"service-blocked-rights.png"_s);
-        grab(svcloc::Weakness::Kind::Unreadable, LR"(C:\Program Files)", L"", u"service-blocked-unknown.png"_s);
-        return finish(window, saved);
+        // Authenticated Users may Modify it, beside Windows' own entry for the folders made in it.
+        const svcloc::Weakness rights = made(Kind::Rights, LR"(C:\Program Files)", L"S-1-5-11",
+            {{0, 0x1301BF, true}, {OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE | INHERIT_ONLY_ACE, 0x1301BF, false}});
+        grab({made(Kind::Owner, LR"(C:\)", L"S-1-5-32-545")}, u"service-blocked-owner.png"_s); // a user's in life; here a name every Windows has
+        grab({rights}, u"service-blocked-rights.png"_s);
+        grab({made(Kind::Unreadable, LR"(C:\Program Files)", L"")}, u"service-blocked-unknown.png"_s);
+        // All at once: put right with one set of commands (#504).
+        grab({made(Kind::Owner, LR"(C:\)", L"S-1-5-32-545"), rights,
+                 made(Kind::Rights, LR"(C:\ProgramData)", L"S-1-5-32-545",
+                     {{OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE | INHERITED_ACE, 0x1301BF, true}})},
+            u"service-blocked-all.png"_s);
+        // An installed copy (#504): its service not there after all (the
+        // installer found no folder safe enough), the row is there to install
+        // it; there and running, the installer's, it is not. An install for
+        // one user ships no service: nothing to install from here.
+        const auto rowShown = [&](bool installed, bool shipped) {
+            SettingsEditor::IndexAccessState state;
+            state.effective = u"walk"_s;
+            state.administrator = state.serviceInstallable = true;
+            state.serviceShipped = shipped;
+            state.serviceInstalled = installed;
+            state.serviceState = installed ? u"running"_s : u"not_installed"_s;
+            editor->setIndexAccessState(state);
+            settle(window, 2);
+            const QObject* row = partOf(window, u"scope"_s, "indexServiceRow");
+            return row && row->property("shown").toBool();
+        };
+        const bool missing = rowShown(false, true);
+        saved = saveGrab(window, out.filePath(u"service-installed-missing.png"_s)) && saved;
+        const bool running = rowShown(true, true);
+        const bool perUser = rowShown(false, false);
+        say(u"installed copy: service row shown when missing %1, when running %2, with no service shipped %3"_s
+                .arg(missing).arg(running).arg(perUser));
+        if (!missing || running || perUser)
+            qWarning("preview: the index service row is wrong for an installed copy");
+        return finish(window, saved && missing && !running && !perUser);
     }
 
     if (args.contains(u"--file-types"_s)) {

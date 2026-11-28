@@ -16989,6 +16989,30 @@ Content index: %5</translation>
         <translation>Cannot install the index service: %1 could not be confirmed as changeable by administrators only, so the service would not be safe there. Restore its default permissions and try again.</translation>
     </message>
     <message>
+        <source>无法安装索引服务：下面几处普通程序也能改动（正常只有管理员能改），服务放进去不安全：</source>
+        <translation>Cannot install the index service: ordinary programs may change these places (normally only administrators can), so the service would not be safe there:</translation>
+    </message>
+    <message>
+        <source>· %1 的所有者是“%2”，不是管理员</source>
+        <translation>· %1 is owned by “%2”, not by administrators</translation>
+    </message>
+    <message>
+        <source>· “%2”可以修改 %1</source>
+        <translation>· “%2” may change %1</translation>
+    </message>
+    <message>
+        <source>· 不能确认 %1 只有管理员能改</source>
+        <translation>· %1 could not be confirmed as changeable by administrators only</translation>
+    </message>
+    <message>
+        <source>复制下面的命令，在“命令提示符（管理员）”里一次运行完，再点一次安装；原来能读取和运行的，仍然可以。</source>
+        <translation>Copy the commands below, run them all in Command Prompt (Admin), then choose Install again. Whoever could read and run things there still can.</translation>
+    </message>
+    <message>
+        <source>不能确认的那几处，请恢复它们的默认权限后再试。</source>
+        <translation>For the places that could not be confirmed, restore their default permissions and try again.</translation>
+    </message>
+    <message>
         <source>这个快捷键已用来打开结果，请换一个</source>
         <translation>This shortcut already opens results; choose another</translation>
     </message>

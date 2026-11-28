@@ -19489,6 +19489,17 @@ private slots:
         QVERIFY(!unsafe(L"O:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;BU)", Role::Parent)); // read/run only
         QVERIFY(unsafe(L"O:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x10000;;;BU)", Role::Parent)); // delete it
         QVERIFY(unsafe(L"O:S-1-5-21-1-2-3-1001D:P(A;;FA;;;SY)(A;;FA;;;BA)", Role::Parent));
+        // A drive's root (GitHub #504): users who may Modify it (delete it
+        // too, which a root cannot be) cannot swap Program Files; deleting a
+        // child, changing its permissions or its owner can. Below the root,
+        // Modify still lets a folder be renamed: unsafe.
+        const wchar_t* rootModify = L"O:BAD:(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;BU)"
+                                    L"(A;;0x1301bf;;;AU)(A;OICIIO;0x1301bf;;;AU)(A;;0x4;;;AU)";
+        QVERIFY(!unsafe(rootModify, Role::Root));
+        QVERIFY(unsafe(rootModify, Role::Ancestor));
+        QVERIFY(unsafe(L"O:BAD:(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;;FA;;;AU)", Role::Root)); // full control: delete a child
+        QVERIFY(unsafe(L"O:BAD:(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;;0x40000;;;AU)", Role::Root)); // its permissions
+        QVERIFY(unsafe(L"O:S-1-5-21-1-2-3-1001D:(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)", Role::Root)); // its owner
 
         // A NULL DACL grants everyone everything, even with an admin owner.
         BYTE adminSid[SECURITY_MAX_SID_SIZE] {};
@@ -19585,9 +19596,41 @@ private slots:
         QCOMPARE(weak.sid, std::wstring(L"S-1-5-11"));
         QCOMPARE(weak.mask, DWORD {0x1301bf});
         weak.path = LR"(C:\Program Files)";
+        // All its own entries away (icacls /grant:r would replace only the
+        // one with the same inheritance, GitHub #504), then back: the one at
+        // fault as read and run, the one for what is made in it as it was.
         QVERIFY(svcloc::repairCommands(weak)
-            == (std::vector<std::wstring> {LR"(icacls "C:\Program Files" /inheritance:d)",
-                LR"(icacls "C:\Program Files" /grant:r *S-1-5-11:(OI)(CI)(RX))"}));
+            == (std::vector<std::wstring> {LR"(icacls "C:\Program Files" /remove:g *S-1-5-11)",
+                LR"(icacls "C:\Program Files" /grant *S-1-5-11:(RX) *S-1-5-11:(OI)(CI)(IO)(M))"}));
+        // Everything at once, each account once with all its entries.
+        {
+            PSECURITY_DESCRIPTOR descriptor = nullptr;
+            QVERIFY(::ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                L"O:S-1-5-21-1-2-3-1001D:(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;ID;0x1301bf;;;BU)(A;;0x1200a9;;;AU)"
+                L"(A;OICI;0x1301bf;;;AU)(A;;0x4;;;WD)",
+                SDDL_REVISION_1, &descriptor, nullptr));
+            BOOL present = FALSE;
+            BOOL defaulted = FALSE;
+            PSID owner = nullptr;
+            PACL dacl = nullptr;
+            ::GetSecurityDescriptorOwner(descriptor, &owner, &defaulted);
+            ::GetSecurityDescriptorDacl(descriptor, &present, &dacl, &defaulted);
+            std::vector<svcloc::Weakness> all = svcloc::weaknesses(owner, dacl, Role::Ancestor);
+            ::LocalFree(descriptor);
+            QCOMPARE(all.size(), std::size_t {3}); // the owner, Users, Authenticated Users; not Everyone (may only add)
+            QCOMPARE(all[0].kind, Kind::Owner);
+            QCOMPARE(all[1].sid, std::wstring(L"S-1-5-32-545"));
+            QCOMPARE(all[2].sid, std::wstring(L"S-1-5-11"));
+            QCOMPARE(all[2].grants.size(), std::size_t {2});
+            for (svcloc::Weakness& each : all)
+                each.path = LR"(D:\Tools)";
+            // Users' entry comes from above: made the folder's own once, for
+            // both accounts (Authenticated Users' read-only one kept as it was).
+            QVERIFY(svcloc::repairCommands(all)
+                == (std::vector<std::wstring> {LR"(takeown /f D:\Tools /a)", LR"(icacls D:\Tools /inheritance:d)",
+                    LR"(icacls D:\Tools /remove:g *S-1-5-32-545)", LR"(icacls D:\Tools /grant *S-1-5-32-545:(RX))",
+                    LR"(icacls D:\Tools /remove:g *S-1-5-11)", LR"(icacls D:\Tools /grant *S-1-5-11:(RX) *S-1-5-11:(OI)(CI)(RX))"}));
+        }
         // Protected, or nothing a command of ours should touch: none.
         weak = weaknessOfSddl(L"O:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;BU)", Role::Object);
         QVERIFY(!weak);
@@ -19622,33 +19665,70 @@ private slots:
         BYTE admins[SECURITY_MAX_SID_SIZE] {};
         DWORD adminsSize = sizeof admins;
         QVERIFY(::CreateWellKnownSid(WinBuiltinAdministratorsSid, nullptr, admins, &adminsSize));
-        // The folder's DACL as it is on the disk, under an administrator owner.
-        const auto rightsWeakness = [&] {
+        // A folder's DACL as it is on the disk, under an administrator owner:
+        // all that is wrong with it.
+        const auto rightsWeaknesses = [&](const QString& path) {
             PSECURITY_DESCRIPTOR descriptor = nullptr;
             PACL dacl = nullptr;
-            svcloc::Weakness found {Kind::Unreadable};
-            if (::GetNamedSecurityInfoW(folder.toStdWString().c_str(), SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, nullptr, nullptr,
+            std::vector<svcloc::Weakness> found {svcloc::Weakness {Kind::Unreadable}};
+            if (::GetNamedSecurityInfoW(path.toStdWString().c_str(), SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, nullptr, nullptr,
                     &dacl, nullptr, &descriptor)
                 == ERROR_SUCCESS) {
-                found = svcloc::weakness(admins, dacl, Role::Ancestor);
+                found = svcloc::weaknesses(admins, dacl, Role::Ancestor);
                 ::LocalFree(descriptor);
             }
-            found.path = folder.toStdWString();
+            for (svcloc::Weakness& each : found)
+                each.path = path.toStdWString();
             return found;
         };
-        QStringList seen;
-        svcloc::Weakness found = rightsWeakness();
-        for (int round = 0; round < 6 && found; ++round) {
-            QCOMPARE(found.kind, Kind::Rights);
-            seen.append(QString::fromStdWString(found.sid));
-            for (const std::wstring& command : svcloc::repairCommands(found))
-                QVERIFY2(run(QString::fromStdWString(command)), qPrintable(QString::fromStdWString(command)));
-            found = rightsWeakness();
-        }
-        const bool repaired = !found;
+        const auto sids = [](const std::vector<svcloc::Weakness>& weak) {
+            QStringList list;
+            for (const svcloc::Weakness& each : weak)
+                list.append(QString::fromStdWString(each.sid));
+            return list;
+        };
+        // One round of commands puts all of it right (GitHub #504: each round
+        // used to show only the next thing wrong).
+        const std::vector<svcloc::Weakness> found = rightsWeaknesses(folder);
+        const QStringList seen = sids(found);
+        for (const std::wstring& command : svcloc::repairCommands(found))
+            QVERIFY2(run(QString::fromStdWString(command)), qPrintable(QString::fromStdWString(command)));
+        const QStringList left = sids(rightsWeaknesses(folder));
         QVERIFY(run(u"icacls \"%1\" /reset"_s.arg(folder))); // ours to delete again
-        QVERIFY2(repaired, qPrintable(seen.join(u' ')));
+        QVERIFY2(left.isEmpty(), qPrintable(left.join(u' ')));
         QVERIFY(seen.contains(u"S-1-5-11"_s));
+
+        // GitHub #504: an entry with no inheritance on the folder itself
+        // ("may change C:\"), beside Windows' own entry for the folders made
+        // in it. The command said before (icacls /grant:r with (OI)(CI))
+        // replaced only the entry with the same inheritance and left it; the
+        // commands now take it away and keep that other entry as it was.
+        const QString rootLike = QDir::toNativeSeparators(temp.filePath(u"root like"_s));
+        QVERIFY(QDir().mkpath(rootLike));
+        QVERIFY(run(u"icacls \"%1\" /grant *S-1-5-11:(M) *S-1-5-11:(OI)(CI)(IO)(M)"_s.arg(rootLike)));
+        QVERIFY(run(u"icacls \"%1\" /grant:r *S-1-5-11:(OI)(CI)(RX)"_s.arg(rootLike)));
+        const bool stayed = sids(rightsWeaknesses(rootLike)).contains(u"S-1-5-11"_s);
+        for (const std::wstring& command : svcloc::repairCommands(rightsWeaknesses(rootLike)))
+            QVERIFY2(run(QString::fromStdWString(command)), qPrintable(QString::fromStdWString(command)));
+        const QStringList rootLeft = sids(rightsWeaknesses(rootLike));
+        QString sddl;
+        {
+            PSECURITY_DESCRIPTOR descriptor = nullptr;
+            LPWSTR text = nullptr;
+            if (::GetNamedSecurityInfoW(rootLike.toStdWString().c_str(), SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, nullptr,
+                    nullptr, nullptr, nullptr, &descriptor)
+                    == ERROR_SUCCESS
+                && ::ConvertSecurityDescriptorToStringSecurityDescriptorW(descriptor, SDDL_REVISION_1, DACL_SECURITY_INFORMATION,
+                    &text, nullptr)) {
+                sddl = QString::fromWCharArray(text);
+                ::LocalFree(text);
+            }
+            ::LocalFree(descriptor);
+        }
+        QVERIFY(run(u"icacls \"%1\" /reset"_s.arg(rootLike))); // ours to delete again
+        QVERIFY2(stayed, "icacls /grant:r took the entry with no inheritance away after all");
+        QVERIFY2(rootLeft.isEmpty(), qPrintable(rootLeft.join(u' ')));
+        QVERIFY2(sddl.contains(u"(A;OICIIO;0x1301bf;;;AU)"_s), qPrintable(sddl));
     }
 };
 

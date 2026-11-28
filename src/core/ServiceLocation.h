@@ -37,7 +37,12 @@ namespace ws::svcloc {
 //              and %ProgramData% grant exactly that to ordinary users, and
 //              treating it as unsafe would flag every path, including the
 //              official Program Files install.
-enum class Role { Object, Parent, Ancestor };
+//  - Root:     a drive's root directory (X:\) as an Ancestor, less DELETE: a
+//              root can be neither renamed nor deleted, so being allowed to
+//              is no right at all. A C:\ that users may Modify (GitHub #504)
+//              is no way to swap Program Files; deleting a child, changing
+//              its permissions or its owner still is.
+enum class Role { Object, Parent, Ancestor, Root };
 
 // True when a principal that is not SYSTEM, the Administrators group or
 // TrustedInstaller could modify this object (Role::Object), plant a file in
@@ -63,16 +68,31 @@ struct Weakness {
     Kind kind = Kind::None;
     std::wstring path; // the file or folder at fault
     std::wstring sid; // Owner: its owner; Rights: who may change it ("S-1-5-11")
-    DWORD mask = 0; // Rights: the access that entry grants
+    DWORD mask = 0; // Rights: the access the first entry at fault grants
     DWORD error = 0; // Unreadable: the Win32 error
+    // Rights: every entry that lets `sid` in here, the harmless ones too (a
+    // C:\'s rights for the folders made in it): the repair takes them all
+    // away and gives back all but the ones at fault, those as read and run.
+    struct Grant {
+        BYTE flags = 0; // the ACE's: OI, CI, IO, NP, INHERITED_ACE
+        DWORD mask = 0;
+        bool atFault = false;
+    };
+    std::vector<Grant> grants;
     explicit operator bool() const noexcept { return kind != Kind::None; }
 };
 
-// The first thing wrong with this owner and DACL, judged as
-// writableByNonAdmin does (its `path` left empty). Pure.
+// Everything wrong with this owner and DACL, judged as writableByNonAdmin
+// does (`path` left empty): a non-administrator owner, no DACL, then one
+// Weakness per account that may change it (all its entries in `grants`), in
+// the order of its first entry at fault. Empty when it is protected. Pure.
+std::vector<Weakness> weaknesses(PSID owner, PACL dacl, Role role);
+
+// The first of them (none: kind None).
 Weakness weakness(PSID owner, PACL dacl, Role role);
 
 // The same for the file or folder at `path`, read from the disk.
+std::vector<Weakness> weaknessesOf(const std::wstring& path, Role role);
 Weakness weaknessOf(const std::wstring& path, Role role);
 
 // The account a string SID names, without its machine or domain
@@ -82,10 +102,15 @@ std::wstring accountName(const std::wstring& sid);
 
 // The commands (for an administrator's Command Prompt, in order) that put
 // right what `weak` names and nothing else: a non-administrator owner gives
-// the folder to the Administrators group; an account that may change it keeps
-// reading and running only. Not recursive: the folder itself, and what
-// inherits from it. Empty where there is no safe general command.
+// the folder to the Administrators group; an account that may change it loses
+// every entry it has there (icacls /grant:r replaces only the entry with the
+// same inheritance flags: a C:\ entry without them stayed, GitHub #504) and
+// gets back the harmless ones as they were and the ones at fault as read and
+// run. Inherited entries are made the folder's own first, only where one of
+// them is at fault. Not recursive: the folder itself, and what inherits from
+// it. Empty where there is no safe general command.
 std::vector<std::wstring> repairCommands(const Weakness& weak);
+std::vector<std::wstring> repairCommands(const std::vector<Weakness>& weak);
 
 // Reads the owner and DACL of the executable `path` (as an Object), of its
 // folder (as its Parent) and of every directory above it up to the volume root
@@ -125,6 +150,11 @@ bool inProtectedServiceDir(const std::wstring& path);
 // thing wrong, the first candidate's, to `firstWeak` (if given) and returns
 // false: putting that one right is enough.
 bool anyProtectedDirUsable(const std::vector<std::wstring>& candidates, Weakness* firstWeak = nullptr);
+
+// Everything wrong on the way to the first of `candidates` (the folder an
+// install would use), from the drive's root down: put right in one go,
+// nothing is left to find the next time. Empty when any of them is usable.
+std::vector<Weakness> protectedDirWeaknesses(const std::vector<std::wstring>& candidates);
 
 // Ensures `dir` exists and only administrators / SYSTEM can write to it:
 // creates it (Administrators as owner, Administrators & SYSTEM full control,

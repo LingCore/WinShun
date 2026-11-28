@@ -4410,8 +4410,13 @@ Window {
                     // A portable copy has no installer to register the service:
                     // done from here, as administrator (UAC asks once).
                     // An account that cannot install it (not an administrator's,
-                    // GitHub #52) gets the reason instead of the buttons.
-                    shown: window.editor.isPortable
+                    // GitHub #52) gets the reason instead of the buttons. An
+                    // installed copy's comes with the installer; where it is not
+                    // there after all (no folder safe enough for it, GitHub
+                    // #504), in an unsafe place or older, the row is here too.
+                    shown: window.editor.isPortable || window.editor.indexServiceShipped
+                           && (!window.editor.indexServiceInstalled || window.editor.indexServiceUnsafeLocation
+                               || window.editor.indexServiceUpdatable)
                     title: qsTr("索引服务")
                     keywords: qsTr("便携;安装服务;更新服务;卸载服务;索引服务;没有管理员权限;装不了;portable;service").split(";")
                     description: window.editor.indexServiceInstalled && window.editor.indexServiceUnsafeLocation
@@ -4452,8 +4457,9 @@ Window {
                     }
                     FlatButton {
                         dpr: window.dpr
-                        visible: window.editor.indexServiceInstallable && window.editor.indexServiceInstalled
-                                 && !window.editor.indexServiceUnsafeLocation
+                        // An installed copy's goes with it, when it is uninstalled.
+                        visible: window.editor.isPortable && window.editor.indexServiceInstallable
+                                 && window.editor.indexServiceInstalled && !window.editor.indexServiceUnsafeLocation
                         text: qsTr("卸载索引服务")
                         enabled: !window.editor.indexServiceBusy
                         onClicked: window.editor.uninstallIndexService()

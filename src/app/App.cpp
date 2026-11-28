@@ -9381,6 +9381,7 @@ void App::refreshIndexAccess()
     state.administrator = userIsAdministrator();
     state.portable = !Settings::portableFolder().isEmpty();
     state.serviceInstalled = ntfs::ServiceVolumeAccess::installed();
+    state.serviceShipped = QFile::exists(QCoreApplication::applicationDirPath() + u"/WinShunService.exe"_s);
     state.serviceState = QString::fromLatin1(ntfs::ServiceVolumeAccess::stateName(m_serviceState));
     state.serviceInstallable = state.administrator;
     // An older portable copy may have registered the service from a
@@ -9474,11 +9475,18 @@ void App::installIndexService(bool install)
                     if (!code) {
                         m_serviceMessage = tr("没有进行：需要管理员权限（在 UAC 里选“是”）");
                     } else if (*code != 0) {
-                        // No protected folder would take it: say which folder
-                        // and why, with the commands that put it right.
-                        svcloc::Weakness weak;
+                        // No protected folder would take it: say which folders
+                        // and why, all of them, with the commands that put
+                        // every one right (GitHub #504: one at a time, the
+                        // next only showed after the first was fixed).
+                        std::vector<svcloc::Weakness> weak;
                         if (install && *code == ERROR_ACCESS_DENIED && !svcloc::pathProtected(exe.toStdWString())
-                            && !svcloc::anyProtectedDirUsable(svcloc::protectedServiceDirs(), &weak)) {
+                            && !(weak = svcloc::protectedDirWeaknesses(svcloc::protectedServiceDirs())).empty()) {
+                            for (const svcloc::Weakness& each : weak)
+                                qWarning().noquote() << u"service: cannot be installed: %1 kind %2 sid %3 mask 0x%4 error %5 (%6 entries)"_s
+                                    .arg(QString::fromStdWString(each.path)).arg(static_cast<int>(each.kind))
+                                    .arg(QString::fromStdWString(each.sid)).arg(each.mask, 8, 16, u'0')
+                                    .arg(each.error).arg(each.grants.size());
                             m_serviceMessage = SettingsEditor::serviceBlockedMessage(weak);
                             QStringList commands;
                             for (const std::wstring& command : svcloc::repairCommands(weak))

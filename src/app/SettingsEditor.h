@@ -172,6 +172,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool isElevated READ isElevated NOTIFY indexAccessStateChanged FINAL)
     Q_PROPERTY(bool isPortable READ isPortable NOTIFY indexAccessStateChanged FINAL)
     Q_PROPERTY(bool indexServiceInstalled READ indexServiceInstalled NOTIFY indexAccessStateChanged FINAL)
+    Q_PROPERTY(bool indexServiceShipped READ indexServiceShipped NOTIFY indexAccessStateChanged FINAL)
     Q_PROPERTY(bool indexServiceBusy READ indexServiceBusy NOTIFY indexAccessStateChanged FINAL)
     Q_PROPERTY(QString indexServiceState READ indexServiceState NOTIFY indexAccessStateChanged FINAL)
     Q_PROPERTY(bool indexServiceInstallable READ indexServiceInstallable NOTIFY indexAccessStateChanged FINAL)
@@ -661,6 +662,7 @@ public:
         bool administrator = false; // the account is an administrator's (direct means something)
         bool portable = false; // a portable copy: the service is installed from here
         bool serviceInstalled = false;
+        bool serviceShipped = false; // WinShunService.exe is beside this copy (an install for one user has none)
         QString serviceState; // the SCM's word: not_installed | disabled | stopped | starting | running | unknown
         bool serviceInstallable = false; // the account can install it (an administrator's); else it is not offered (GitHub #52)
         bool serviceUnsafeLocation = false; // installed from a user-writable folder (an old portable copy): offer to repair
@@ -682,6 +684,7 @@ public:
     bool isElevated() const { return m_indexAccessState.elevated; }
     bool isPortable() const { return m_indexAccessState.portable; }
     bool indexServiceInstalled() const { return m_indexAccessState.serviceInstalled; }
+    bool indexServiceShipped() const { return m_indexAccessState.serviceShipped; }
     bool indexServiceBusy() const { return m_indexAccessState.serviceBusy; }
     QString indexServiceState() const { return m_indexAccessState.serviceState; }
     bool indexServiceInstallable() const { return m_indexAccessState.serviceInstallable; }
@@ -689,8 +692,10 @@ public:
     QString indexServiceMessage() const { return m_indexAccessState.serviceMessage; }
     QString indexServiceRepair() const { return m_indexAccessState.serviceRepair; }
     // Why the service cannot go into a protected folder, said for the user:
-    // which folder, what is wrong with it and who is behind it (GitHub #426).
+    // which folder, what is wrong with it and who is behind it (GitHub #426);
+    // every one of them at once, put right with one set of commands (#504).
     static QString serviceBlockedMessage(const svcloc::Weakness& weak);
+    static QString serviceBlockedMessage(const std::vector<svcloc::Weakness>& weak);
     bool indexServiceUpdatable() const { return m_indexAccessState.serviceUpdate; }
     QString indexServiceVersion() const { return m_indexAccessState.serviceVersion; }
     // The app restarts Win顺 as administrator (UAC asks once), installs or
