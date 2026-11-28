@@ -30,7 +30,7 @@ jobs:
           # 6.8.3 is the minimum version declared by CMakeLists.txt.
           version: 6.8.3
           arch: win64_msvc2022_64
-          modules: qtdeclarative qtsvg qttools
+          archives: qtbase qtsvg qtdeclarative qttools
           setup-python: false
           cache: true
 
