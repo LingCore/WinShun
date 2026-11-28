@@ -5733,6 +5733,56 @@ bool checkShortcutPanels(QQmlEngine* engine, const QDir& output)
                     u"row buttons: back as they come, not in their usual order"_s);
             }
 
+            // GitHub #448: a plugin's row that stands for a file (图片文字搜索's)
+            // has the file's buttons: its folder, 复制 (the file) and 复制完整路径;
+            // a plugin's row of text keeps its one 复制 (its text, Ctrl+C).
+            {
+                const QString picturePath = QDir::toNativeSeparators(temporary.filePath(u"牛蛙.png"_s));
+                QImage picture(48, 32, QImage::Format_RGB32);
+                picture.fill(QColor(0x2f, 0x8f, 0x6f));
+                picture.save(picturePath);
+                const auto pluginRow = [](const QString& name, const QString& copy, const QString& file) {
+                    auto row = std::make_shared<PluginRow>();
+                    row->pluginId = u"test.ocr"_s;
+                    row->source = u"图片文字搜索"_s;
+                    row->subtitle = u"OCR · 图片 · 牛蛙 识别出的文字"_s;
+                    row->copy = copy;
+                    if (!file.isEmpty()) {
+                        row->openKind = PluginRow::OpenKind::Path;
+                        row->openTarget = file;
+                    }
+                    SearchResult result {.name = name, .path = u"winshun-plugin:test.ocr/q/"_s + name};
+                    result.app = AppKind::Plugin;
+                    result.plugin.row = std::move(row);
+                    return result;
+                };
+                const auto showOnly = [&](const SearchResult& result) {
+                    launcher.results()->assign({result}, {});
+                    launcher.setCurrentRow(-1); // the footer's hints are the new row's
+                    launcher.setCurrentRow(0);
+                    settle(window);
+                };
+                const auto ctrlEnter = [&] { return launcher.keyHints().value(u"second"_s).toString(); };
+                showOnly(pluginRow(u"牛蛙.png"_s, u"牛蛙 识别出的文字"_s, picturePath));
+                QQuickItem* row = visualNamed(window->contentItem(), u"resultRow-0"_s);
+                QQuickItem* copyPath = row ? visualNamed(row, u"copyPathAction"_s) : nullptr;
+                check(shown(u"copyPathAction"_s) && copyPath && copyPath->property("tip").toString() == u"复制完整路径"
+                        && copyPath->property("tipShortcut").toString() == u"Ctrl+Shift+C" && ctrlEnter() == u"打开位置",
+                    u"#448: a plugin's row of a file lacks the file's 复制完整路径 button or Ctrl+Enter 打开位置"_s);
+                check(row && row->property("draggable").toBool() && row->property("copyable").toBool()
+                        && row->property("revealable").toBool(),
+                    u"#448: a plugin's row of a file cannot be dragged out, copied or shown in its folder"_s);
+                saveGrab(window, output.filePath(u"plugin-file-row.png"_s));
+                showOnly(pluginRow(u"6 × 7 = 42"_s, u"42"_s, {}));
+                row = visualNamed(window->contentItem(), u"resultRow-0"_s);
+                copyPath = row ? visualNamed(row, u"copyPathAction"_s) : nullptr;
+                check(shown(u"copyPathAction"_s) && copyPath && copyPath->property("tip").toString() == u"复制"
+                        && copyPath->property("tipShortcut").toString() == u"Ctrl+C" && row && !row->property("draggable").toBool()
+                        && !row->property("copyable").toBool() && ctrlEnter().isEmpty(),
+                    u"#448: a plugin's row of text lost its one 复制 button, or took a file's"_s);
+                saveGrab(window, output.filePath(u"plugin-text-row.png"_s));
+            }
+
             // Cross-folder multi-select delete in quick context menu (#434):
             // supports files across distinct folders, prunes nested children, skips apps/drive roots,
             // keeps systemCommandRunning true while in flight, and removes deleted rows.
@@ -8199,6 +8249,79 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
         showRow(SearchResult {.name = u"说明.txt"_s, .path = QDir::toNativeSeparators(temporary.filePath(u"说明.txt"_s))});
         check(!offers(Launcher::PinPicture) && !offers(Launcher::EditPicture), "a text file's row offered the picture verbs");
         launcher.setPictureVerbs(false, false);
+
+        // GitHub #448: a plugin's row that stands for a file (图片文字搜索's in
+        // 内容) is copied as that file, Ctrl+Shift+C its path, its text from the
+        // menu's 复制文字; dragged out and shown in its folder as the file's
+        // row. A plugin's row of text (a sum) still copies its text. The
+        // clipboard, and the user's history in it, left alone.
+        QStringList filesCopied;
+        QStringList textsCopied;
+        launcher.setFileCopier([&](const QStringList& files) { filesCopied.append(files); });
+        launcher.setTextCopier([&](const QString& text) { textsCopied.append(text); });
+        const auto pluginRow = [](const QString& name, const QString& copy, const QString& file) {
+            auto row = std::make_shared<PluginRow>();
+            row->pluginId = u"test.ocr"_s;
+            row->commandId = u"q"_s;
+            row->itemId = name;
+            row->source = u"图片文字搜索"_s;
+            row->copy = copy;
+            if (!file.isEmpty()) {
+                row->openKind = PluginRow::OpenKind::Path;
+                row->openTarget = file;
+            }
+            SearchResult result {.name = name, .path = u"winshun-plugin:test.ocr/q/"_s + name};
+            result.app = AppKind::Plugin;
+            result.plugin.row = std::move(row);
+            return result;
+        };
+        const SearchResult ocrRow = pluginRow(u"图表.png"_s, u"牛蛙 识别出的文字"_s, picturePath);
+        showRow(ocrRow);
+        const QModelIndex at = launcher.results()->index(0, 0);
+        const auto role = [&](int r) { return launcher.results()->data(at, r).toBool(); };
+        check(role(ResultModel::PluginFileRole) && role(ResultModel::CopyableRole) && role(ResultModel::RevealableRole),
+            "#448: a plugin's row of a file is not marked as one (drag, copy button, 打开所在位置)");
+        check(offers(Launcher::CopyItem) && offers(Launcher::CopyPath) && offers(Launcher::CopyText) && offers(Launcher::Reveal),
+            "#448: the menu of a plugin's row of a file lacks 复制, 复制完整路径, 复制文字 or 打开所在位置");
+        launcher.trigger(0, Launcher::CopyItem);
+        const bool fileCopied = filesCopied == QStringList {picturePath} && textsCopied.isEmpty()
+            && launcher.statusText() == QCoreApplication::translate("ws::Launcher", "已复制，可在资源管理器中粘贴");
+        launcher.trigger(0, Launcher::CopyPath);
+        launcher.trigger(0, Launcher::CopyText);
+        const bool pathAndText = textsCopied == QStringList {picturePath, u"牛蛙 识别出的文字"_s};
+        check(fileCopied && pathAndText, "#448: Ctrl+C on a plugin's row of a file did not copy the file, or Ctrl+Shift+C / 复制文字 the path / text");
+        say(u"#448 plugin's row of a file: Ctrl+C copied %1, then %2 text(s) copied: %3"_s
+                .arg(filesCopied.join(u", "_s))
+                .arg(textsCopied.size())
+                .arg(textsCopied.join(u" | "_s)));
+
+        // Its own text (a sum): no file to copy, path or folder; Ctrl+C its text.
+        filesCopied.clear();
+        textsCopied.clear();
+        showRow(pluginRow(u"6 × 7 = 42"_s, u"42"_s, {}));
+        check(!role(ResultModel::PluginFileRole) && !role(ResultModel::CopyableRole) && !offers(Launcher::CopyText)
+                && !offers(Launcher::CopyPath) && !offers(Launcher::Reveal),
+            "#448: a plugin's row of text was taken for a file's");
+        launcher.trigger(0, Launcher::CopyItem);
+        check(filesCopied.isEmpty() && textsCopied == QStringList {u"42"_s}, "#448: Ctrl+C on a plugin's row of text did not copy its text");
+
+        // Selected with a file's own row: Ctrl+C copies both files, Ctrl+Shift+C both paths.
+        filesCopied.clear();
+        textsCopied.clear();
+        const QString notePath = QDir::toNativeSeparators(temporary.filePath(u"说明.txt"_s));
+        QFile note(notePath);
+        check(note.open(QIODevice::WriteOnly) && note.write("note") == 4, "the text file could not be written");
+        note.close();
+        launcher.results()->assign({ocrRow, SearchResult {.name = u"说明.txt"_s, .path = notePath}}, {});
+        launcher.setCurrentRow(0);
+        launcher.selectRange(0, 1, false);
+        launcher.triggerSelection(Launcher::CopyItem);
+        launcher.triggerSelection(Launcher::CopyPath);
+        check(filesCopied == QStringList {picturePath, notePath} && textsCopied == QStringList {picturePath + u'\n' + notePath},
+            "#448: a selection with a plugin's row of a file did not copy both files or both paths");
+        launcher.clearSelection();
+        launcher.setFileCopier({});
+        launcher.setTextCopier({});
     }
     const auto tabHint = [&] { return launcher.keyHints().value(u"tab"_s).toString(); };
     const QString folderHint = QCoreApplication::translate("ws::Launcher", "进入文件夹");

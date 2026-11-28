@@ -3620,7 +3620,7 @@ SearchResults paneFiles(const SearchResults& rows)
         }
     }
     for (const SearchResult& row : rows) {
-        const QString file = row.isPlugin() && !plugin::asksDetails(*row.plugin) ? plugin::rowFile(*row.plugin) : QString();
+        const QString file = plugin::fileOf(row);
         if (file.isEmpty() || listed.contains(file.toCaseFolded()))
             continue;
         listed.insert(file.toCaseFolded());
@@ -4813,6 +4813,12 @@ void Launcher::refreshKeyHints()
                     : !p.setQuery.isEmpty()                   ? tr("填入搜索框")
                                                               : tr("复制"); // the plugin's default action copies the row's text
             }
+            // A file's row (GitHub #448): Ctrl+Enter shows it in its folder
+            // when the plugin has no second action of its own (performPlugin).
+            if (second.isEmpty() && p.actions.size() < 2 && !plugin::fileOf(*r).isEmpty()) {
+                secondKeys = u"Ctrl+Enter"_s;
+                second = tr("打开位置");
+            }
         }
     } else if (r->isWindow()) {
         enter = tr("切换到窗口");
@@ -5038,6 +5044,14 @@ void Launcher::copyFiles(const QStringList& files)
         m_fileCopier(files);
     else
         shell::copyFiles(files);
+}
+
+void Launcher::copyText(const QString& text)
+{
+    if (m_textCopier)
+        m_textCopier(text);
+    else
+        shell::copyText(text);
 }
 
 void Launcher::recycleFiles(const QStringList& files, std::function<void(bool)> done)
@@ -5971,7 +5985,7 @@ bool Launcher::copyPreviewSelection()
                                                                            : QString();
     if (text.isEmpty())
         return false;
-    shell::copyText(text);
+    copyText(text);
     return true;
 }
 
@@ -6189,28 +6203,34 @@ void Launcher::dragOut(int row)
     // server asked by its first file, all together (dragAnswers).
     QHash<QString, QString> asker; // serverKey: the file it is asked by
     QStringList asked;
+    // What goes: a file's or folder's own path, the file a plugin's row
+    // stands for (GitHub #448); nothing of apps, places, other plugins' rows.
+    const auto dragged = [](const SearchResult& r) {
+        return r.offline ? QString() : r.isPlugin() ? plugin::fileOf(r) : r.isApp() ? QString() : r.path;
+    };
     for (const SearchResult& r : items) {
-        if (!r.isApp() && !r.offline && onServer(r.path) && !asker.contains(serverKey(r.path))) {
-            asker.insert(serverKey(r.path), r.path);
-            asked.append(r.path);
+        if (const QString path = dragged(r); !path.isEmpty() && onServer(path) && !asker.contains(serverKey(path))) {
+            asker.insert(serverKey(path), path);
+            asked.append(path);
         }
     }
     const QSet<QString> answering = dragAnswers(asked);
     QStringList paths;
     QString away; // the first that did not answer
     for (const SearchResult& r : items) {
-        if (r.isApp() || r.offline)
+        const QString path = dragged(r);
+        if (path.isEmpty())
             continue;
         bool answers = true;
-        if (onServer(r.path)) {
-            answers = answering.contains(asker.value(serverKey(r.path)));
+        if (onServer(path)) {
+            answers = answering.contains(asker.value(serverKey(path)));
             if (!answers && away.isEmpty())
-                away = serverName(r.path);
+                away = serverName(path);
         } else {
-            answers = serverAnswers(r.path); // WSL: its state, without asking
+            answers = serverAnswers(path); // WSL: its state, without asking
         }
         if (answers)
-            paths.append(r.path);
+            paths.append(path);
     }
     if (paths.isEmpty() && !away.isEmpty())
         flash(tr("连不上 %1（离线或不在同一网络）").arg(away));
@@ -6280,7 +6300,7 @@ void Launcher::perform(const SearchResult& result, Action action, bool fileCheck
                 break;
             }
         } else if (action == CopyItem || action == CopyName || action == CopyPath) {
-            shell::copyText(r.name);
+            copyText(r.name);
             flash(tr("已复制名称"));
         }
         return;
@@ -6462,11 +6482,11 @@ void Launcher::perform(const SearchResult& result, Action action, bool fileCheck
         emit dismissRequested();
         break;
     case CopyPath:
-        shell::copyText(r.path);
+        copyText(r.path);
         flash(tr("已复制路径"));
         break;
     case CopyName:
-        shell::copyText(r.name);
+        copyText(r.name);
         flash(tr("已复制名称"));
         break;
     case CopyItem:
@@ -6540,11 +6560,11 @@ void Launcher::performApp(const SearchResult& app, Action action)
         }
         [[fallthrough]]; // nothing to paste: copy where it is instead
     case CopyPath:
-        shell::copyText(app.target.isEmpty() ? app.path : app.target);
+        copyText(app.target.isEmpty() ? app.path : app.target);
         flash(tr("已复制路径"));
         break;
     case CopyName:
-        shell::copyText(app.name);
+        copyText(app.name);
         flash(tr("已复制名称"));
         break;
     case ForgetRecent:
@@ -6628,15 +6648,15 @@ void Launcher::performPlace(const SearchResult& place, Action action)
             break;
         }
         if (own) { // as a winshun:// link opens it (WinShunUri)
-            shell::copyText(u"winshun://"_s + place.target.mid(place.target.indexOf(u':') + 1));
+            copyText(u"winshun://"_s + place.target.mid(place.target.indexOf(u':') + 1));
             flash(tr("已复制链接"));
             break;
         }
-        shell::copyText(place.target);
+        copyText(place.target);
         flash(tr("已复制打开它的命令"));
         break;
     case CopyName:
-        shell::copyText(place.name);
+        copyText(place.name);
         flash(tr("已复制名称"));
         break;
     case ForgetRecent:
@@ -6807,11 +6827,11 @@ void Launcher::performWeb(const SearchResult& web, Action action)
         break;
     case CopyItem:
     case CopyPath:
-        shell::copyText(web.target);
+        copyText(web.target);
         flash(tr("已复制网址"));
         break;
     case CopyName:
-        shell::copyText(web.name);
+        copyText(web.name);
         flash(tr("已复制名称"));
         break;
     case ForgetRecent:
@@ -6880,7 +6900,10 @@ void Launcher::performMany(const SearchResults& items, Action action, const Serv
         for (const SearchResult& r : items) {
             // What the action looks up for it: an app's target where that is
             // shown (its shortcut starts it as it is).
-            const QString path = !r.isApp() ? r.path : action == Reveal ? r.target : QString();
+            const QString path = r.isPlugin() ? plugin::fileOf(r)
+                : !r.isApp()                  ? r.path
+                : action == Reveal            ? r.target
+                                              : QString();
             if (!onServer(path))
                 elsewhere = true;
             else if (!seen.contains(path)) {
@@ -6985,7 +7008,7 @@ void Launcher::performMany(const SearchResults& items, Action action, const Serv
         QStringList paths;
         int shown = 0;
         for (const SearchResult& r : items) {
-            const QString& place = r.isApp() ? r.target : r.path;
+            const QString place = r.isPlugin() ? plugin::fileOf(r) : r.isApp() ? r.target : r.path;
             if (r.isWindow() || r.isPlace() || place.isEmpty() || !exists(place))
                 continue;
             remember(r.path, m_shownText);
@@ -7007,7 +7030,9 @@ void Launcher::performMany(const SearchResults& items, Action action, const Serv
     case CopyItem: {
         QStringList files;
         for (const SearchResult& r : items) {
-            const QString file = r.isApp() ? (r.hasCopyableTarget() ? r.target : QString()) : r.path;
+            const QString file = r.isPlugin() ? plugin::fileOf(r)
+                : r.isApp()                   ? (r.hasCopyableTarget() ? r.target : QString())
+                                              : r.path;
             if (!file.isEmpty() && (onServer(file) || exists(file))) // on a server: not asked (see above)
                 files.append(file);
         }
@@ -7024,12 +7049,14 @@ void Launcher::performMany(const SearchResults& items, Action action, const Serv
         for (const SearchResult& r : items) {
             if (r.isWindow())
                 paths.append(r.name);
+            else if (const QString file = plugin::fileOf(r); !file.isEmpty())
+                paths.append(file);
             else if (r.isPlugin())
                 paths.append(r.plugin->copy.isEmpty() ? r.name : r.plugin->copy);
             else
                 paths.append(r.isApp() && !r.target.isEmpty() ? r.target : r.path);
         }
-        shell::copyText(paths.join(u'\n'));
+        copyText(paths.join(u'\n'));
         flash(tr("已复制 %Ln 个路径", nullptr, static_cast<int>(paths.size())));
         break;
     }
@@ -7037,7 +7064,7 @@ void Launcher::performMany(const SearchResults& items, Action action, const Serv
         QStringList names;
         for (const SearchResult& r : items)
             names.append(r.name);
-        shell::copyText(names.join(u'\n'));
+        copyText(names.join(u'\n'));
         flash(tr("已复制 %Ln 个名称", nullptr, static_cast<int>(names.size())));
         break;
     }
@@ -7417,11 +7444,13 @@ QVariantList Launcher::menuItems(int row) const
         const auto any = [&](auto test) { return std::any_of(selection.cbegin(), selection.cend(), test); };
         QVariantList items;
         items.append(entry(Open, tr("打开 %Ln 项", nullptr, static_cast<int>(selection.size())), u"Enter"_s, u"\uE8E5"_s));
-        if (any([](const SearchResult& r) { return !r.isApp() || (!r.isWindow() && !r.isPlace() && !r.target.isEmpty()); }))
+        if (any([](const SearchResult& r) {
+                return !r.isApp() || (!r.isWindow() && !r.isPlace() && !r.target.isEmpty()) || !plugin::fileOf(r).isEmpty();
+            }))
             items.append(entry(Reveal, tr("打开所在位置"), u"Ctrl+Enter"_s, u"\uE8DA"_s));
         fileCommandItems(items);
         items.append(separator);
-        if (any([](const SearchResult& r) { return !r.isApp() || r.hasCopyableTarget(); }))
+        if (any([](const SearchResult& r) { return !r.isApp() || r.hasCopyableTarget() || !plugin::fileOf(r).isEmpty(); }))
             items.append(entry(CopyItem, tr("复制"), u"Ctrl+C"_s, u"\uE8C8"_s));
         items.append(entry(CopyPath, any([](const SearchResult& r) { return r.isWindow(); })
             ? tr("复制路径或窗口标题") : tr("复制完整路径"), u"Ctrl+Shift+C"_s, u"copyPath"_s));
@@ -7503,8 +7532,10 @@ QVariantList Launcher::menuItems(int row) const
     }
     if (r->isPlugin()) {
         // Its actions as the plugin named them (Enter, Ctrl+Enter, Shift+Enter
-        // in that order), else what its default does; then copying its text.
+        // in that order), else what its default does; then copying its text,
+        // or the file it stands for as that file's row (GitHub #448).
         const PluginRow& p = *r->plugin;
+        const QString file = plugin::fileOf(*r);
         static constexpr QStringView kKeys[] {u"Enter", u"Ctrl+Enter", u"Shift+Enter"};
         if (p.valid) {
             // A row that drills (setQuery/searchQuery) keeps that as its Enter
@@ -7528,9 +7559,16 @@ QVariantList Launcher::menuItems(int row) const
                                                                             : tr("打开");
                 items.append(entry(Open, text, u"Enter"_s, u"\uE8A7"_s));
             }
+            if (!file.isEmpty() && p.actions.size() < 2) // Ctrl+Enter: else the plugin's second action
+                items.append(entry(Reveal, tr("打开所在位置"), u"Ctrl+Enter"_s, u"\uE8DA"_s));
             items.append(separator);
         }
         items.append(entry(CopyItem, tr("复制"), u"Ctrl+C"_s, u"\uE8C8"_s));
+        if (!file.isEmpty()) {
+            items.append(entry(CopyPath, tr("复制完整路径"), u"Ctrl+Shift+C"_s, u"copyPath"_s));
+            if (!p.copy.isEmpty() && QDir::toNativeSeparators(p.copy).compare(file, Qt::CaseInsensitive) != 0)
+                items.append(entry(CopyText, tr("复制文字"), QString(), u"\uE8D2"_s)); // Font: text-aa
+        }
         items.append(entry(CopyName, tr("复制名称"), QString(), u"\uE8AC"_s));
         return items;
     }
@@ -8255,7 +8293,7 @@ void Launcher::performScreenshot(const SearchResult& result, Action action)
     case CopyName:
     case CopyPath:
         if (result.plugin && !result.plugin->copy.isEmpty()) {
-            shell::copyText(result.plugin->copy);
+            copyText(result.plugin->copy);
             flash(tr("已复制文字"));
         }
         return;
@@ -8547,15 +8585,39 @@ void Launcher::pluginSettled(const QString& pluginId)
 void Launcher::performPlugin(const SearchResult& result, Action action)
 {
     const PluginRow& p = *result.plugin;
-    const QString copyText = p.copy.isEmpty() ? result.name : p.copy;
+    const QString text = p.copy.isEmpty() ? result.name : p.copy;
+    // A row that stands for a file (图片文字搜索's) is copied, its path copied
+    // and its folder opened as the file's own row; its text is the menu's
+    // 复制文字 (GitHub #448).
+    const QString file = plugin::fileOf(result);
     switch (action) {
     case CopyItem:
-    case CopyPath:
-        shell::copyText(copyText);
+        if (!file.isEmpty()) {
+            copyFiles({file});
+            flash(tr("已复制，可在资源管理器中粘贴"));
+            return;
+        }
+        copyText(text);
         flash(tr("已复制"));
         return;
+    case CopyPath:
+        copyText(file.isEmpty() ? text : file);
+        flash(file.isEmpty() ? tr("已复制") : tr("已复制路径"));
+        return;
+    case CopyText:
+        copyText(text);
+        flash(tr("已复制文字"));
+        return;
+    case Reveal:
+        if (!file.isEmpty() && p.actions.size() < 2) { // else the plugin's second action, below
+            if (!m_revealer || !m_revealer(file))
+                shell::reveal(file);
+            emit dismissRequested();
+            return;
+        }
+        break;
     case CopyName:
-        shell::copyText(result.name);
+        copyText(result.name);
         flash(tr("已复制名称"));
         return;
     case RunAsAdmin:
@@ -8741,7 +8803,7 @@ void Launcher::applyEffects(const QString& pluginId, const QList<ws::plugin::Eff
             flash(e.text);
             break;
         case plugin::Effect::Kind::Copy:
-            shell::copyText(e.text);
+            copyText(e.text);
             break;
         case plugin::Effect::Kind::Open:
             if (e.open.kind == plugin::Open::Kind::Url

@@ -101,6 +101,9 @@ public:
         // A plugin's row that has its own text to copy (`copy`), or whose Enter
         // copies its title: it shows the copy button (Ctrl+C copies any row's).
         PluginCopiesRole,
+        // A plugin's row that stands for a file (plugin::fileOf): copied, its
+        // path copied and dragged out as that file's own row (GitHub #448).
+        PluginFileRole,
         // A plugin's row: its second line while the keyboard is on another
         // row (PluginRow::subtitleAway); empty: the folder line as ever.
         FolderAwayRole,

@@ -216,17 +216,20 @@ Item {
             shared: true
             small: bar.small
             keyLetter: bar.letterOf(copyPathAction)
+            // A plugin's row copies its text here; one that stands for a file
+            // has the file's buttons (GitHub #448).
+            readonly property bool pluginText: host !== null && host.plugin && !host.pluginFile
             visible: bar.shows("copyPath") && host !== null && !host.settingsAction && !host.switchReady
-                     && (!host.plugin || host.pluginCopies)
+                     && (!pluginText || host.pluginCopies)
             // Copy; else drawn by Glyph: a box holding "\\..".
-            glyph: host !== null && (host.plugin || host.windowResult) ? "" : "copyPath"
+            glyph: host !== null && (pluginText || host.windowResult) ?"" : "copyPath"
             tip: host === null ? ""
                 : host.windowResult ? qsTranslate("ResultRow", "复制窗口标题")
-                : host.plugin ? qsTranslate("ResultRow", "复制")
+                : pluginText ? qsTranslate("ResultRow", "复制")
                 : host.web ? qsTranslate("ResultRow", "复制网址")
                 : host.place ? qsTranslate("ResultRow", "复制打开命令")
                 : qsTranslate("ResultRow", "复制完整路径")
-            tipShortcut: host !== null && host.plugin ? "Ctrl+C" : "Ctrl+Shift+C"
+            tipShortcut: pluginText ? "Ctrl+C" : "Ctrl+Shift+C"
             onClicked: bar.host.actionRequested(bar.host.index, Launcher.CopyPath)
         }
         RowAction {

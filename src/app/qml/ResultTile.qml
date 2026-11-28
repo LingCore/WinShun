@@ -16,8 +16,10 @@ Item {
     required property string size
     required property string modifiedDate
     required property bool isApp
+    required property bool pluginFile // a plugin's row that stands for a file: dragged out as that file (GitHub #448)
     required property bool offline
     required property bool missing
+    readonly property bool draggable: (!isApp || pluginFile) && !offline && !missing
     required property bool selected
     property NameTip nameTip: null
     property real dpr: 1 // the window's, passed by the gallery (GitHub #111)
@@ -136,7 +138,7 @@ Item {
             pressedAt = Qt.point(mouse.x, mouse.y)
             dragButton = mouse.button
             // The right button too: Explorer then asks what to do with the drop (#338).
-            preventStealing = (mouse.button & (Qt.LeftButton | Qt.RightButton)) !== 0 && !tile.isApp && !tile.offline && !tile.missing
+            preventStealing = (mouse.button & (Qt.LeftButton | Qt.RightButton)) !== 0 && tile.draggable
                 && mouse.source === Qt.MouseEventNotSynthesized
         }
         onPositionChanged: mouse => {
