@@ -65,7 +65,7 @@
 | 📄 | [搜文件里的字](docs/使用说明.md#搜文件里的文字) | Word、Excel、PPT、PDF、WPS 和文本、代码，结果显示命中的那一行；可以用正则表达式，也能直接写 `*.docx`、`ext:py` 指定只读哪类文件 |
 | 🗂️ | [搜索面板](docs/使用说明.md#搜索面板筛选和排序) | `Ctrl+E` 展开：按类型、时间、大小、位置、名称筛选，常用条件可存成一点就用的快捷筛选，按列排序，大图浏览 |
 | 👀 | [预览](docs/使用说明.md#预览文件) | `Alt+P` 看一眼图片、文档、PDF，不用打开 |
-| 🚀 | [应用和系统设置](docs/使用说明.md#打开应用和系统设置) | 开始菜单里的应用和约 1200 个设置页，`vsc`、`网卡` 都能找到；可以加一个把应用排成图标网格的“应用”标签，还能切换已打开的窗口 |
+| 🚀 | [应用和系统设置](docs/使用说明.md#打开应用和系统设置) | 开始菜单里的应用和约 1200 个设置页，`vsc`、`网卡` 都能找到；解压就用的便携软件也能加进来，应用可以起别名；可以加一个把应用排成图标网格的“应用”标签，还能切换已打开的窗口 |
 | 📋 | [剪贴板历史](docs/使用说明.md#剪贴板历史) ¹ | 代替 `Win+V`，保存文字、图片和文件，支持分组查找、悬停预览和单条快捷键 |
 | 📂 | [“打开”“另存为”对话框](docs/使用说明.md#打开另存为对话框) ² | 对话框旁多一个搜索框；`Ctrl+G` 转到文件管理器正开着的文件夹 |
 | 🖱️ | [在资源管理器里](docs/使用说明.md#在资源管理器里) ² | 双击空白处弹出常用文件夹，可一层层走进子文件夹；在文件列表里直接打字就搜 |
@@ -201,6 +201,14 @@ winget install LingCore.WinShun
 </details>
 
 ### 最近更新
+
+**0.53.0**
+
+- ⌨️ 收藏夹能**收藏快捷键**，打关键词就按下一组键；📦 解压就用的**便携软件也能搜到**，应用可以**起别名**（#505）；⭐ 拖文件时的圆盘上拖到“收藏”就收藏（#505）。
+- 📂 “打开”“另存为”旁的搜索框**默认又搜整个电脑**，“当前文件夹优先”改成可选（#507）。
+- 🛠️ **修复** 鼠标手势的 `Ctrl+↑` 这类组合键在 WPS 里不灵，手势还能写自己的提示文字（#472）；“内容”里图片行 `Ctrl+C` 复制的是文字而不是图片（#448）；独占全屏游戏里剪贴板面板一闪就收起（#452）。
+
+详见 [0.53.0 发布说明](docs/release-notes/v0.53.0.md)。
 
 **0.52.0**
 
@@ -494,7 +502,7 @@ No installer, or Scoop and WinGet? See [Download and install](#download-and-inst
 | 📄 | [Text inside files](docs/features.en.md#full-text-search) | Word, Excel, PowerPoint, PDF, WPS, text and code, showing the matching line; regular expressions too, and `*.docx` or `ext:py` typed among the words picks which files to read |
 | 🗂️ | [Search panel](docs/features.en.md#file-search) | `Ctrl+E` expands it: filter by kind, date, size, folder and name, save your own quick filters, sort by column, large icons |
 | 👀 | [Preview](docs/features.en.md#file-search) | `Alt+P` shows a picture, document or PDF without opening it |
-| 🚀 | [Apps and settings](docs/features.en.md#apps-and-settings) | Start menu apps and about 1,200 Windows settings pages; an optional Apps tab shows the apps as a grid of icons and switches to open windows |
+| 🚀 | [Apps and settings](docs/features.en.md#apps-and-settings) | Start menu apps and about 1,200 Windows settings pages; portable programs you only unzipped too, and apps under names of your own; an optional Apps tab shows the apps as a grid of icons and switches to open windows |
 | 📋 | [Clipboard history](docs/features.en.md#clipboard-history) ¹ | Replaces `Win+V` with text, pictures and files, group search, hover previews and per-entry shortcuts |
 | 📂 | [Open / Save dialogs](docs/features.en.md#open-and-save-dialogs) ² | A search bar beside the dialog; `Ctrl+G` jumps to the folder open in your file manager |
 | 🖱️ | [In File Explorer](docs/features.en.md#in-file-explorer) ² | Double-click empty space for your folders and the folders inside them; type in a file list to search |
@@ -630,6 +638,14 @@ Standard and portable packages install enhanced text recognition on demand. Open
 </details>
 
 ### What's new
+
+**0.53.0**
+
+- ⌨️ Favorites can hold **key combinations pressed by a keyword**; 📦 **portable programs** you only unzipped are found too, and apps take **aliases** (#505); ⭐ drop files on Favorite in the drop pie to add them (#505).
+- 📂 The bar beside Open and Save As **searches the whole PC again by default**; current folder first is a choice now (#507).
+- 🛠️ **Fixed** gesture combinations such as `Ctrl+Up` in WPS, and gestures can have hint text of their own (#472); `Ctrl+C` on a picture row in Content copied text, not the picture (#448); the clipboard panel over a full-screen game went at once (#452).
+
+See the [0.53.0 release notes](docs/release-notes/v0.53.0.md).
 
 **0.52.0**
 
