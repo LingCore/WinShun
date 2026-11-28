@@ -34,6 +34,19 @@ jobs:
           setup-python: false
           cache: true
 
+      - name: Backport Qt shared-QML cache path fix
+        shell: pwsh
+        run: |
+          # Qt 6.12 normalizes parent directories before constructing cache filenames.
+          $macrosPath = Join-Path $env:QT_ROOT_DIR 'lib/cmake/Qt6Qml/Qt6QmlMacros.cmake'
+          $content = Get-Content -LiteralPath $macrosPath -Raw
+          $before = 'string(REGEX REPLACE "[$#?]+" "_" compiled_file ${compiled_file})'
+          if (([regex]::Matches($content, [regex]::Escape($before))).Count -ne 1) {
+              throw "Unexpected Qt cache filename implementation"
+          }
+          $after = $before + "`n            " + 'string(REPLACE "../" "_" compiled_file "${compiled_file}")'
+          Set-Content -LiteralPath $macrosPath -Value $content.Replace($before, $after) -NoNewline -Encoding utf8
+
       - name: Check ONNX Runtime package layout
         shell: pwsh
         run: cmake "-DTEST_DIR=$env:RUNNER_TEMP/onnxruntime-cmake" -P tests/cmake/tst_onnxruntime.cmake
